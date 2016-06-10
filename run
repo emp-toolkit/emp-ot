@@ -1,0 +1,30 @@
+#!/bin/bash
+if [ "$1" == "-p1" ] 
+then
+   shift
+   perf record  $1 1 $2 & (sleep 0.1;  $1 2 $2)
+elif [ "$1" == "-p2" ] 
+then
+   shift
+   (sleep 0.1; $1 1 $2) & (perf record $1 2 $2)
+
+elif [ "$1" == "-m1" ] 
+then
+   shift
+   valgrind --leak-check=full $1 1 $2 & $1 2 $2
+elif [ "$1" == "-m2" ] 
+then
+   shift
+   $1 1 $2 & valgrind --leak-check=full $1 2 $2
+elif [ "$1" == "-t1" ] 
+then
+   shift
+   time $1 1 $2 & $1 2 $2
+elif [ "$1" == "-t2" ] 
+then
+   shift
+   $1 1 $2 & time $1 2 $2
+
+else 
+  (sleep 0.05; $1 1 $2) &  $1 2 $2
+fi
