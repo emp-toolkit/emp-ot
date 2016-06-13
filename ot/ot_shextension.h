@@ -173,8 +173,8 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 	void cot_send_post(block* data0, block delta, int length) {
 		block pad[2];
 		for(int i = 0; i < length; ++i) {
-			pad[1] = xorBlocks(qT[i], block_s);
-			H2(pad, i, qT[i], pad[1]);
+			block tmp = xorBlocks(qT[i], block_s);
+			H2(pad, i, qT[i], tmp);
 			data0[i] = pad[0];
 			pad[0] = xorBlocks(pad[0], delta);
 			pad[0] = xorBlocks(pad[1], pad[0]);
@@ -184,12 +184,12 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 	}
 
 	void cot_recv_post(block* data, const bool* r, int length) {
-		block res[2];
+		block res;
 		for(int i = 0; i < length; ++i) {
-			io->recv_data(res, sizeof(block));
+			io->recv_data(&res, sizeof(block));
 			data[i] = H(i, data[i]);
 			if(r[i])
-				data[i] = xorBlocks(res[1], data[i]);
+				data[i] = xorBlocks(res, data[i]);
 		}
 	}
 };
