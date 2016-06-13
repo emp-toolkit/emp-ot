@@ -18,4 +18,5 @@
   
   `./bin/[binaries] 2 12345 [more opts]` on the other.
   
-  IP address is hardcoded.
+  IP address is hardcoded in the test files. Please replace
+  SERVER_IP variable to the real ip.
