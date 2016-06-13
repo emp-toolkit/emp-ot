@@ -28,9 +28,12 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 	}
 
 	void H2(block * out, long id, block in1, block in2) {
-		//		in = double_block(in);
+		in1 = double_block(in1);
+		in2 = double_block(in2);
 		__m128i k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
 		in1 = xorBlocks(in1, k_128);
+		++id;
+		k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
 		in2 = xorBlocks(in2, k_128);
 		out[0] = in1;
 		out[1] = in2;
@@ -40,6 +43,7 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 	}
 
 	block H(long id, block in) {
+		in = double_block(in);
 		__m128i k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
 		in = xorBlocks(in, k_128);
 		block t = in;
@@ -131,29 +135,29 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 		block pad[2];
 		for(int i = 0; i < length; ++i) {
 			pad[1] = xorBlocks(qT[i], block_s);
-			H2(pad, i, qT[i], pad[1]);
+			H2(pad, 2*i, qT[i], pad[1]);
 			pad[0] = xorBlocks(pad[0], data0[i]);
 			pad[1] = xorBlocks(pad[1], data1[i]);
 			io->send_data(pad, 2*sizeof(block));
 		}
-		delete[] qT;
 	}
 
 	void got_recv_post(block* data, const bool* r, int length) {
 		block res[2];
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
-			block tmp = H(i, data[i]);
+			//			block tmp = H(i, data[i]);
 			if(r[i]) {
-				data[i] = xorBlocks(res[1], tmp);
+				data[i] = xorBlocks(res[1], H(2*i+1, data[i]));
 			} else {
-				data[i] = xorBlocks(res[0], tmp);
+				data[i] = xorBlocks(res[0], H(2*i, data[i]));
 			}
 		}
 	}
 	void send_impl(const block* data0, const block* data1, int length) {
 		send_pre(length);
 		got_send_post(data0, data1, length);
+		delete[] qT;
 	}
 
 	void recv_impl(block* data, const bool* b, int length) {
@@ -164,33 +168,77 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 	void send_cot(block * data0, block delta, int length) {
 		send_pre(length);
 		cot_send_post(data0, delta, length);
+		delete[] qT;
 	}
 	void recv_cot(block* data, const bool* b, int length) {
 		recv_pre(data, b, length);
 		cot_recv_post(data, b, length);
+	}
+	void send_rot(block * data0, block * data1, int length) {
+		send_pre(length);
+		rot_send_post(data0, data1, length);
+		delete[] qT;
+	}
+	void recv_rot(block* data, const bool* b, int length) {
+		recv_pre(data, b, length);
+		rot_recv_post(data, b, length);
 	}
 
 	void cot_send_post(block* data0, block delta, int length) {
 		block pad[2];
 		for(int i = 0; i < length; ++i) {
 			block tmp = xorBlocks(qT[i], block_s);
-			H2(pad, i, qT[i], tmp);
+			H2(pad, 2*i, qT[i], tmp);
 			data0[i] = pad[0];
 			pad[0] = xorBlocks(pad[0], delta);
 			pad[0] = xorBlocks(pad[1], pad[0]);
 			io->send_data(pad, sizeof(block));
 		}
-		delete[] qT;
 	}
 
 	void cot_recv_post(block* data, const bool* r, int length) {
 		block res;
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(&res, sizeof(block));
-			data[i] = H(i, data[i]);
 			if(r[i])
-				data[i] = xorBlocks(res, data[i]);
+				data[i] = xorBlocks(res, H(2*i+1, data[i]));
+			else 
+				data[i] = H(2*i, data[i]);
 		}
+	}
+	
+	//hash function is inlined
+	void rot_send_post(block* data0, block* data1, int length) {
+		block * tmp0 = new block[length],
+	 	      * tmp1 = new block[length];
+		uint64_t id = 0;
+		for(int i = 0; i < length; ++i) {
+			data0[i] = double_block(qT[i]);
+			data1[i] = double_block(xorBlocks(qT[i], block_s));
+			tmp0[i] = data0[i] = xorBlocks(data0[i], _mm_loadl_epi64( (__m128i const *) (&id)));
+			id++;
+			tmp1[i] = data1[i] = xorBlocks(data1[i], _mm_loadl_epi64( (__m128i const *) (&id)));
+			id++;
+		}
+		pi.permute_block(tmp0, length);
+		pi.permute_block(tmp1, length);
+		xorBlocks_arr(data0, data0, tmp0, length);
+		xorBlocks_arr(data1, data1, tmp1, length);
+		delete[] tmp0;
+		delete[] tmp1;
+	}
+
+	//hash function is inlined
+	void rot_recv_post(block* data, const bool* r, int length) {
+		block * tmp = new block[length];
+		for(int i = 0; i < length; ++i) {
+			data[i] = double_block(data[i]);
+			uint64_t id = 2*i+r[i];
+			tmp[i] = data[i] = xorBlocks(data[i], _mm_loadl_epi64( (__m128i const *) (&id)));
+		}
+		pi.permute_block(tmp, length);
+		xorBlocks_arr(data, data, tmp, length);
+		delete[] tmp;
 	}
 };
 #endif// OT_EXTENSION_H__
