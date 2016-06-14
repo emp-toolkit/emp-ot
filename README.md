@@ -1,6 +1,8 @@
 # emp-ot
 
-## Install
+<img src="https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/art/logo-full.jpg" width=300px/>
+
+## Installation
 
 1. Install prerequisites using instructions [here](https://github.com/emp-toolkit/emp-readme).
 2. Install [emp-tool](https://github.com/emp-toolkit/emp-tool).
@@ -20,3 +22,6 @@
   
   IP address is hardcoded in the test files. Please replace
   SERVER_IP variable to the real ip.
+
+### Question
+Please send email to wangxiao@cs.umd.edu
