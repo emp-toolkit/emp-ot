@@ -126,12 +126,13 @@ double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 }
 
 int main(int argc, char** argv) {
+	int length = 1<<23;
 	int port, party;
 	parse_party_and_port(argv, &party, &port);
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
 	cout <<"1024 NPOT\t"<<test_ot<OTNP>(io, party, 1024)<<endl;
-	cout <<"8M Semi Honest OT Extension\t"<<test_ot<SHOTExtension>(io, party, 1<<23)<<endl;
-	cout <<"8M Semi Honest COT Extension\t"<<test_cot<SHOTExtension>(io, party, 1<<23)<<endl;
-	cout <<"8M Semi Honest ROT Extension\t"<<test_rot<SHOTExtension>(io, party, 1<<23)<<endl;
+	cout <<length<<" Semi Honest OT Extension\t"<<test_ot<SHOTExtension>(io, party, length)<<endl;
+	cout <<length<<" Semi Honest COT Extension\t"<<test_cot<SHOTExtension>(io, party, length)<<endl;
+	cout <<length<<" Semi Honest ROT Extension\t"<<test_rot<SHOTExtension>(io, party, length)<<endl;
 	delete io;
 }

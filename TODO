@@ -1,3 +1,2 @@
 1. improve malicious ot extension check
-2. verify that the code also works for n such that n%8==0 but n%128!=0
 3. add malicous cot, rot extension

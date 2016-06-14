@@ -11,7 +11,7 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 	block *k0, *k1;
 	bool *s;
 
-	block * qT, block_s;
+	block * qT, block_s, *tT;
 	bool setup = false;
 	SHOTExtension(NetIO * io): OT(io) {
 		this->base_ot = new OTNP(io);
@@ -78,7 +78,6 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 	}
 
 	void send_pre(int length) {
-		assert(length%8==0);
 		if (length%128 !=0) length = (length/128 + 1)*128;
 
 		if(!setup) setup_send();
@@ -100,18 +99,21 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 		delete[] q;
 	}
 
-	void recv_pre(block * data, const bool* r, int length) {
-		assert(length%8==0);
+	void recv_pre(const bool* r, int length) {
+		int old_length = length;
 		if (length%128 !=0) length = (length/128 + 1)*128;
 
 		if(!setup)setup_recv();
 		setup = false;
+		bool * r2 = new bool[length];
+		memcpy(r2, r, old_length);
 		block *block_r = new block[length/128];
 		for(int i = 0; i < length/128; ++i) {
-			block_r[i] = bool_to128(r+i*128);
+			block_r[i] = bool_to128(r2+i*128);
 		}
 		// send u
 		block* t = new block[length];
+		tT = new block[length];
 		block* tmp = new block[length/128];
 		PRG G;
 		for(int i = 0; i < l; ++i) {
@@ -124,11 +126,12 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 			io->send_data(tmp, length/8);
 		}
 
-		sse_trans((uint8_t *)data, (uint8_t*)t, l, length);
+		sse_trans((uint8_t *)tT, (uint8_t*)t, l, length);
 
 		delete[] t;
 		delete[] tmp;
 		delete[] block_r;
+		delete[] r2;
 	}
 
 	void got_send_post(const block* data0, const block* data1, int length) {
@@ -140,47 +143,53 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 			pad[1] = xorBlocks(pad[1], data1[i]);
 			io->send_data(pad, 2*sizeof(block));
 		}
+		delete[] qT;
 	}
 
 	void got_recv_post(block* data, const bool* r, int length) {
 		block res[2];
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
-			//			block tmp = H(i, data[i]);
 			if(r[i]) {
-				data[i] = xorBlocks(res[1], H(2*i+1, data[i]));
+				data[i] = xorBlocks(res[1], H(2*i+1, tT[i]));
 			} else {
-				data[i] = xorBlocks(res[0], H(2*i, data[i]));
+				data[i] = xorBlocks(res[0], H(2*i, tT[i]));
 			}
 		}
+		delete[] tT;
 	}
 	void send_impl(const block* data0, const block* data1, int length) {
+		if (length <= l) {
+			base_ot->send(data0, data1, length);
+			return;
+		}
 		send_pre(length);
 		got_send_post(data0, data1, length);
-		delete[] qT;
 	}
 
 	void recv_impl(block* data, const bool* b, int length) {
-		recv_pre(data, b, length);
+		if (length <= l) {
+			base_ot->recv(data, b, length);
+			return;
+		}
+		recv_pre(b, length);
 		got_recv_post(data, b, length);
 	}
 
 	void send_cot(block * data0, block delta, int length) {
 		send_pre(length);
 		cot_send_post(data0, delta, length);
-		delete[] qT;
 	}
 	void recv_cot(block* data, const bool* b, int length) {
-		recv_pre(data, b, length);
+		recv_pre(b, length);
 		cot_recv_post(data, b, length);
 	}
 	void send_rot(block * data0, block * data1, int length) {
 		send_pre(length);
 		rot_send_post(data0, data1, length);
-		delete[] qT;
 	}
 	void recv_rot(block* data, const bool* b, int length) {
-		recv_pre(data, b, length);
+		recv_pre(b, length);
 		rot_recv_post(data, b, length);
 	}
 
@@ -194,6 +203,7 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 			pad[0] = xorBlocks(pad[1], pad[0]);
 			io->send_data(pad, sizeof(block));
 		}
+		delete[] qT;
 	}
 
 	void cot_recv_post(block* data, const bool* r, int length) {
@@ -201,10 +211,11 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(&res, sizeof(block));
 			if(r[i])
-				data[i] = xorBlocks(res, H(2*i+1, data[i]));
+				data[i] = xorBlocks(res, H(2*i+1, tT[i]));
 			else 
-				data[i] = H(2*i, data[i]);
+				data[i] = H(2*i, tT[i]);
 		}
+		delete[] tT;
 	}
 	
 	//hash function is inlined
@@ -226,19 +237,19 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 		xorBlocks_arr(data1, data1, tmp1, length);
 		delete[] tmp0;
 		delete[] tmp1;
+		delete[] qT;
 	}
 
 	//hash function is inlined
 	void rot_recv_post(block* data, const bool* r, int length) {
-		block * tmp = new block[length];
 		for(int i = 0; i < length; ++i) {
-			data[i] = double_block(data[i]);
+			data[i] = double_block(tT[i]);
 			uint64_t id = 2*i+r[i];
-			tmp[i] = data[i] = xorBlocks(data[i], _mm_loadl_epi64( (__m128i const *) (&id)));
+			tT[i] = data[i] = xorBlocks(data[i], _mm_loadl_epi64( (__m128i const *) (&id)));
 		}
-		pi.permute_block(tmp, length);
-		xorBlocks_arr(data, data, tmp, length);
-		delete[] tmp;
+		pi.permute_block(tT, length);
+		xorBlocks_arr(data, data, tT, length);
+		delete[] tT;
 	}
 };
 #endif// OT_EXTENSION_H__
