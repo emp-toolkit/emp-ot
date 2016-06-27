@@ -159,19 +159,11 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 		delete[] tT;
 	}
 	void send_impl(const block* data0, const block* data1, int length) {
-		if (length <= l) {
-			base_ot->send(data0, data1, length);
-			return;
-		}
 		send_pre(length);
 		got_send_post(data0, data1, length);
 	}
 
 	void recv_impl(block* data, const bool* b, int length) {
-		if (length <= l) {
-			base_ot->recv(data, b, length);
-			return;
-		}
 		recv_pre(b, length);
 		got_recv_post(data, b, length);
 	}

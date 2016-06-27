@@ -19,8 +19,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=c++0x")
 
 add_executable(shot test/shot.cpp)
 target_link_libraries(shot  relic  ${OPENSSL_LIBRARIES} gmp ${EMP-TOOL_LIBRARIES}) 
+
 add_executable(mot test/mot.cpp)
 target_link_libraries(mot  relic  ${OPENSSL_LIBRARIES} gmp ${EMP-TOOL_LIBRARIES}) 
+
+add_executable(iter_ot test/iter_ot.cpp)
+target_link_libraries(iter_ot  relic  ${OPENSSL_LIBRARIES} gmp ${EMP-TOOL_LIBRARIES}) 
 
 install(FILES emp-ot-config.cmake DESTINATION cmake/)
 

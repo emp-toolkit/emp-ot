@@ -1,13 +1,11 @@
 //#include "emp-ot.h"
-#include "ot_np.h"
-#include "ot_co.h"
-#include "ot_shextension.h"
+#include "ot_iterated.h"
 #include <emp-tool/emp-tool.h>
 #include <iostream>
 using namespace std;
 
 template<typename T>
-double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10) {
+double test_ot(NetIO * io, int party, int length, T* ot, int TIME = 10) {
 	block *b0 = new block[length], *b1 = new block[length], *r = new block[length];
 	PRG prg(fix_key);
 	prg.random_block(b0, length);
@@ -21,8 +19,6 @@ double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10
 	io->sync();
 	for(int i = 0; i < TIME; ++i) {
 		t1 = timeStamp();
-		if (ot == nullptr)
-			ot = new T(io);
 		if (party == ALICE) {
 			ot->send(b0, b1, length);
 		} else {
@@ -34,7 +30,6 @@ double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10
 		if (b[i]) assert(block_cmp(&r[i], &b1[i], 1));
 		else assert(block_cmp(&r[i], &b0[i], 1));
 	}
-	delete ot;
 	delete[] b0;
 	delete[] b1;
 	delete[] r;
@@ -42,7 +37,7 @@ double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10
 	return (double)t/TIME;
 }
 template<typename T>
-double test_cot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10) {
+double test_cot(NetIO * io, int party, int length, T* ot, int TIME = 10) {
 	block *b0 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	block delta;
@@ -57,8 +52,6 @@ double test_cot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 	io->sync();
 	for(int i = 0; i < TIME; ++i) {
 		t1 = timeStamp();
-		if (ot == nullptr)
-			ot = new T(io);
 		if (party == ALICE) {
 			ot->send_cot(b0, delta, length);
 		} else {
@@ -76,7 +69,6 @@ double test_cot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 			else assert(block_cmp(&r[i], &b0[i], 1));
 		}
 	}
-	delete ot;
 	delete[] b0;
 	delete[] r;
 	delete[] b;
@@ -84,7 +76,7 @@ double test_cot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 }
 
 template<typename T>
-double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10) {
+double test_rot(NetIO * io, int party, int length, T* ot, int TIME = 10) {
 	block *b0 = new block[length], *r = new block[length];
 	block *b1 = new block[length];
 	bool *b = new bool[length];
@@ -97,8 +89,6 @@ double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 	io->sync();
 	for(int i = 0; i < TIME; ++i) {
 		t1 = timeStamp();
-		if (ot == nullptr)
-			ot = new T(io);
 		if (party == ALICE) {
 			ot->send_rot(b0, b1, length);
 		} else {
@@ -117,7 +107,6 @@ double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 			else assert(block_cmp(&r[i], &b0[i], 1));
 		}
 	}
-	delete ot;
 	delete[] b0;
 	delete[] b1;
 	delete[] r;
@@ -126,14 +115,16 @@ double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 }
 
 int main(int argc, char** argv) {
-	int length = 1<<23;
 	int port, party;
 	parse_party_and_port(argv, &party, &port);
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
 	io->set_nodelay();
-	cout <<"1024 NPOT\t"<<test_ot<OTNP>(io, party, 1024)<<endl;
-	cout <<length<<" Semi Honest OT Extension\t"<<test_ot<SHOTExtension>(io, party, length)<<endl;
-	cout <<length<<" Semi Honest COT Extension\t"<<test_cot<SHOTExtension>(io, party, length)<<endl;
-	cout <<length<<" Semi Honest ROT Extension\t"<<test_rot<SHOTExtension>(io, party, length)<<endl;
+	double t1 = timeStamp();
+	OTIterated * ot = new OTIterated(io, party == ALICE, 1<<14);
+	cout << (timeStamp() - t1)<<endl;
+	int length = 1<<23;
+	cout <<length<<" Semi Honest OT Extension\t"<<test_ot<OTIterated>(io, party, length, ot)<<endl;
+	cout <<length<<" Semi Honest COT Extension\t"<<test_cot<OTIterated>(io, party, length, ot)<<endl;
+	cout <<length<<" Semi Honest ROT Extension\t"<<test_rot<OTIterated>(io, party, length, ot)<<endl;
 	delete io;
 }
