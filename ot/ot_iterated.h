@@ -37,9 +37,7 @@ class OTIterated: public OT<OTIterated> { public:
 		} else {
 			if( size != 0)
 				ot->setup_recv(k0 ,k1);
-			else{
-				prg.random_bool(sel, seed_ot->l);
-			}
+			prg.random_bool(sel, seed_ot->l);
 			ot->recv_rot(k0, sel, seed_ot->l);
 			seed_ot->setup_send(k0, sel);
 			seed_ot->send_rot(k0, k1, buffer_size);

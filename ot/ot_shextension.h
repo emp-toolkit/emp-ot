@@ -210,37 +210,17 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 		delete[] tT;
 	}
 	
-	//hash function is inlined
 	void rot_send_post(block* data0, block* data1, int length) {
-		block * tmp0 = new block[length],
-	 	      * tmp1 = new block[length];
-		uint64_t id = 0;
 		for(int i = 0; i < length; ++i) {
-			data0[i] = double_block(qT[i]);
-			data1[i] = double_block(xorBlocks(qT[i], block_s));
-			tmp0[i] = data0[i] = xorBlocks(data0[i], _mm_loadl_epi64( (__m128i const *) (&id)));
-			id++;
-			tmp1[i] = data1[i] = xorBlocks(data1[i], _mm_loadl_epi64( (__m128i const *) (&id)));
-			id++;
+			data0[i] = H(2*i, qT[i]);
+			data1[i] = H(2*i+1, xorBlocks(qT[i], block_s));
 		}
-		pi.permute_block(tmp0, length);
-		pi.permute_block(tmp1, length);
-		xorBlocks_arr(data0, data0, tmp0, length);
-		xorBlocks_arr(data1, data1, tmp1, length);
-		delete[] tmp0;
-		delete[] tmp1;
 		delete[] qT;
 	}
 
-	//hash function is inlined
 	void rot_recv_post(block* data, const bool* r, int length) {
-		for(int i = 0; i < length; ++i) {
-			data[i] = double_block(tT[i]);
-			uint64_t id = 2*i+r[i];
-			tT[i] = data[i] = xorBlocks(data[i], _mm_loadl_epi64( (__m128i const *) (&id)));
-		}
-		pi.permute_block(tT, length);
-		xorBlocks_arr(data, data, tT, length);
+		for(int i = 0; i < length; ++i)
+			data[i] = H(2*i+r[i], tT[i]);
 		delete[] tT;
 	}
 };

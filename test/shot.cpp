@@ -89,13 +89,11 @@ double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 	block *b1 = new block[length];
 	bool *b = new bool[length];
 	PRG prg;
-	prg.random_bool(b, length);
-	prg.random_block(b0, length);
-	prg.random_block(b1, length);
 	
 	long long t1 = 0, t = 0;
 	io->sync();
 	for(int i = 0; i < TIME; ++i) {
+		prg.random_bool(b, length);
 		t1 = timeStamp();
 		if (ot == nullptr)
 			ot = new T(io);
