@@ -88,11 +88,11 @@ double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 	block *b0 = new block[length], *r = new block[length];
 	block *b1 = new block[length];
 	bool *b = new bool[length];
+	PRG prg;
+	prg.random_bool(b, length);
+	prg.random_block(b0, length);
+	prg.random_block(b1, length);
 	
-	for(int i = 0; i < length; ++i) {
-		b[i] = (rand()%2)==1;
-	}
-
 	long long t1 = 0, t = 0;
 	io->sync();
 	for(int i = 0; i < TIME; ++i) {
