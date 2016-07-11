@@ -5,3 +5,4 @@
 #include "ot.h"
 #include "ot_ideal.h"
 #include "ot_np.h"
+#include "ot_committing_mextension.h"
