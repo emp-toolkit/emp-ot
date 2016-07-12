@@ -46,6 +46,7 @@ double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10
 	delete[] b1;
 	delete[] r;
 	delete[] b;
+	delete[] op;
 	return (double)t/TIME;
 }
 

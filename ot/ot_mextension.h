@@ -111,11 +111,12 @@ class MOTExtension: public OT<MOTExtension> { public:
 	}
 
 	void ot_extension_recv_pre(block * data, const bool* r, int length) {
+		int old_length = length;
 		if (length%128 !=0) length = (length/128 + 1)*128;
 		if(!setup)setup_recv();
 		setup = false;
 		uint8_t *block_r = new uint8_t[length/8];
-		bool_to_uint8(block_r, r, length);
+		bool_to_uint8(block_r, r, old_length);
 		// send u
 		t = new uint8_t*[2];
 		t[0] = new uint8_t[length/8*l];

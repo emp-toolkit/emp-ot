@@ -133,7 +133,7 @@ int main(int argc, char** argv) {
 
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
 	cout <<"COOT\t"<<test_ot<OTCO>(io, party, 1024)<<endl;
-	cout <<"8M Malicious OT Extension\t"<<test_ot<MOTExtension>(io, party, 1<<20)<<endl;
+	cout <<"8M Malicious OT Extension\t"<<test_ot<MOTExtension>(io, party, 1<<23)<<endl;
 //	cout <<"8M Semi Honest COT Extension\t"<<test_cot<MOTExtension>(io, party, 1<<23)<<endl;
 //	cout <<"8M Semi Honest ROT Extension\t"<<test_rot<MOTExtension>(io, party, 1<<23)<<endl;
 	delete io;
