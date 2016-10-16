@@ -2,7 +2,6 @@
 #define OT_SH_EXTENSION_H__
 #include "ot.h"
 #include "ot_np.h"
-
 class SHOTExtension: public OT<SHOTExtension> { public:
 	OTNP * base_ot;
 	PRG prg;

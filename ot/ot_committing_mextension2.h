@@ -1,9 +1,9 @@
-#ifndef OT_M_EXTENSION2_H__
-#define OT_M_EXTENSION2_H__
+#ifndef OT_COM_M_EXTENSION2_H__
+#define OT_COM_M_EXTENSION2_H__
 #include "ot.h"
 #include "ot_co.h"
 
-class MOTExtension2: public OT<MOTExtension2> { public:
+class COMMITTING_MOTExtension2: public OT<COMMITTING_MOTExtension2> { public:
 	OTCO * base_ot;
 	PRG prg;
 	PRP pi;
@@ -11,11 +11,12 @@ class MOTExtension2: public OT<MOTExtension2> { public:
 	block *k0, *k1;
 	bool *s;
 
-	block * qT, block_s, *tT;
+	block * qT, block_s, *tT, *open_data;
 	bool setup = false;
 	int ssp;
 	bool * extended_r = nullptr;
-	MOTExtension2(NetIO * io, int ssp = 40): OT(io) {
+	char dgst[16];
+	COMMITTING_MOTExtension2(NetIO * io, int ssp = 40): OT(io) {
 		this->base_ot = new OTCO(io);
 		this->ssp = ssp;
 		this->s = new bool[l];
@@ -23,7 +24,7 @@ class MOTExtension2: public OT<MOTExtension2> { public:
 		this->k1 = new block[l];
 	}
 
-	~MOTExtension2() {
+	~COMMITTING_MOTExtension2() {
 		delete base_ot;
 		delete[] s;
 		delete[] k0;
@@ -35,7 +36,6 @@ class MOTExtension2: public OT<MOTExtension2> { public:
 		in2 = double_block(in2);
 		__m128i k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
 		in1 = xorBlocks(in1, k_128);
-		++id;
 		k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
 		in2 = xorBlocks(in2, k_128);
 		out[0] = in1;
@@ -84,6 +84,8 @@ class MOTExtension2: public OT<MOTExtension2> { public:
 		length = ((length+128+ssp+127)/128)*128;
 
 		if(!setup) setup_send();
+		Hash::hash_once(dgst, &block_s, sizeof(block));
+		io->send_data(dgst, 20);
 		setup = false;
 		block * q = new block[length];
 		qT = new block[length];
@@ -107,6 +109,7 @@ class MOTExtension2: public OT<MOTExtension2> { public:
 		length = ((length+128+ssp+127)/128)*128;
 
 		if(!setup)setup_recv();
+		io->recv_data(dgst, 20);
 		setup = false;
 		bool * r2 = new bool[length];
 		memcpy(r2, r, old_length);
@@ -209,15 +212,17 @@ class MOTExtension2: public OT<MOTExtension2> { public:
 
 	void got_recv_post(block* data, const bool* r, int length) {
 		block res[2];
+		open_data = new block[length];
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
 			if(r[i]) {
-				data[i] = xorBlocks(res[1], H(2*i+1, tT[i]));
+				data[i] = xorBlocks(res[1], H(2*i, tT[i]));
+				open_data[i] = res[0];
 			} else {
 				data[i] = xorBlocks(res[0], H(2*i, tT[i]));
+				open_data[i] = res[1];
 			}
 		}
-		delete[] tT;
 	}
 	void send_impl(const block* data0, const block* data1, int length) {
 		send_pre(length);
@@ -252,16 +257,36 @@ class MOTExtension2: public OT<MOTExtension2> { public:
 	void rot_send_post(block* data0, block* data1, int length) {
 		for(int i = 0; i < length; ++i) {
 			data0[i] = H(2*i, qT[i]);
-			data1[i] = H(2*i+1, xorBlocks(qT[i], block_s));
+			data1[i] = H(2*i, xorBlocks(qT[i], block_s));
 		}
 		delete[] qT;
 	}
 
 	void rot_recv_post(block* data, const bool* r, int length) {
 		for(int i = 0; i < length; ++i)
-			data[i] = H(2*i+r[i], tT[i]);
+			data[i] = H(2*i, tT[i]);
 		delete[] tT;
 	}
+
+	void open() {
+		io->send_block(&block_s, 1);
+	}
+//return data[1-b]
+	void open(block * data, int length) {
+		io->recv_block(&block_s, 1);
+		char com_recv[20];
+		Hash::hash_once(com_recv, &block_s, 16);
+		if (strncmp(com_recv, dgst, 20)!= 0)
+			assert(false);
+		for(int i = 0; i < length; ++i) {
+			tT[i] = xorBlocks(tT[i], block_s);
+			data[i] = xorBlocks(open_data[i], H(2*i, tT[i]));
+		}
+
+		delete[] tT;
+		delete[] open_data;
+	}
+
 
 	/**
 	  University of Bristol : Open Access Software Licence
@@ -318,4 +343,4 @@ class MOTExtension2: public OT<MOTExtension2> { public:
 	
 	
 };
-#endif// OT_EXTENSION_H__
+#endif// OT_COM_EXTENSION_H__
