@@ -8,7 +8,7 @@ class OTIterated: public OT<OTIterated> { public:
 	bool * sel = nullptr, is_sender;
 	int buffer_size, size = 0;
 	PRG prg;
-	OTIterated(NetIO* io, bool is_sender, int buffer_size = 1<<20) : OT(io) {
+	OTIterated(NetIO* io, bool is_sender, int buffer_size = 1<<10) : OT(io) {
 		seed_ot = new SHOTExtension(io);
 		ot = new SHOTExtension(io);
 		this->buffer_size = buffer_size;

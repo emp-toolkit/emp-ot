@@ -1,6 +1,7 @@
 //#include "emp-ot.h"
 #include "ot_co.h"
 #include "ot_mextension.h"
+#include "ot_mextension2.h"
 #include <emp-tool/emp-tool.h>
 #include <iostream>
 using namespace std;
@@ -134,7 +135,6 @@ int main(int argc, char** argv) {
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
 	cout <<"COOT\t"<<test_ot<OTCO>(io, party, 1024)<<endl;
 	cout <<"8M Malicious OT Extension\t"<<test_ot<MOTExtension>(io, party, 1<<23)<<endl;
-//	cout <<"8M Semi Honest COT Extension\t"<<test_cot<MOTExtension>(io, party, 1<<23)<<endl;
-//	cout <<"8M Semi Honest ROT Extension\t"<<test_rot<MOTExtension>(io, party, 1<<23)<<endl;
+	cout <<"8M Malicious OT Extension\t"<<test_ot<MOTExtension2>(io, party, 1<<23)<<endl;
 	delete io;
 }
