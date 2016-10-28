@@ -1,16 +1,18 @@
 #ifndef OT_ITERATED_H__
 #define OT_ITERATED_H__
-#include "ot_shextension.h"
-class OTIterated: public OT<OTIterated> { public:
-	SHOTExtension *seed_ot;
-	SHOTExtension *ot;
+#include "emp-ot.h"
+
+template<typename OTExtension>
+class OTIterated: public OT<OTIterated<OTExtension>> { public:
+	OTExtension *seed_ot;
+	OTExtension *ot;
 	block * k0 = nullptr, *k1 = nullptr;
 	bool * sel = nullptr, is_sender;
 	int buffer_size, size = 0;
 	PRG prg;
-	OTIterated(NetIO* io, bool is_sender, int buffer_size = 1<<10) : OT(io) {
-		seed_ot = new SHOTExtension(io);
-		ot = new SHOTExtension(io);
+	OTIterated(NetIO* io, bool is_sender, int buffer_size = 1<<10) : OT<OTIterated<OTExtension>>(io) {
+		seed_ot = new OTExtension(io);
+		ot = new OTExtension(io);
 		this->buffer_size = buffer_size;
 		this->is_sender = is_sender;
 		k0 = new block[buffer_size];
@@ -87,6 +89,7 @@ class OTIterated: public OT<OTIterated> { public:
 		ot->recv_rot(data, b, length);
 		size+=ot->l;
 	}
-
 };
+typedef OTIterated<SHOTExtension> SHOTIterated;
+typedef OTIterated<MOTExtension> MOTIterated;
 #endif// OT_ITERATED_H__

@@ -1,10 +1,14 @@
-#include "ot_co.h"
-#include "ot_mextension.h"
-#include "ot_mextension2.h"
-#include "ot_shextension.h"
-#include "ot_iterated.h"
 #include "ot.h"
-#include "ot_ideal.h"
-#include "ot_np.h"
-#include "ot_committing_mextension.h"
-#include "ot_committing_mextension2.h"
+#include "ideal.h"
+
+#include "co.h"
+#include "np.h"
+
+#include "shextension.h"
+#include "mextension_kos.h"
+#include "mextension_alsz.h"
+
+typedef MOTExtension_KOS MOTExtension;
+//typedef MOTExtension_ALSZ MOTExtension;
+
+#include "iterated.h"

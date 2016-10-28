@@ -1,58 +1,51 @@
-#ifndef OT_COM_M_EXTENSION2_H__
-#define OT_COM_M_EXTENSION2_H__
+#ifndef OT_M_EXTENSION_KOS_H__
+#define OT_M_EXTENSION_KOS_H__
 #include "ot.h"
-#include "ot_co.h"
+#include "co.h"
 
-class COMMITTING_MOTExtension2: public OT<COMMITTING_MOTExtension2> { public:
+template<typename T>
+void inline del_arrary_null(T * ptr){
+	if(ptr != nullptr)
+		delete[] ptr;
+}
+
+inline void error(const char * s) {
+	fprintf(stderr, s, "\n");
+	exit(1);
+}
+
+class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 	OTCO * base_ot;
 	PRG prg;
 	PRP pi;
 	const int l = 128;
-	block *k0, *k1;
-	bool *s;
+	block *k0 = nullptr, *k1 = nullptr;
+	bool *s = nullptr;
 
-	block * qT, block_s, *tT, *open_data;
+	block * qT = nullptr, block_s, *tT = nullptr, *open_data = nullptr;
 	bool setup = false;
 	int ssp;
 	bool * extended_r = nullptr;
-	char dgst[16];
-	COMMITTING_MOTExtension2(NetIO * io, int ssp = 40): OT(io) {
+	bool committing = false;
+	char dgst[Hash::DIGEST_SIZE];
+	MOTExtension_KOS(NetIO * io, bool committing = false, int ssp = 40): OT(io) {
 		this->base_ot = new OTCO(io);
 		this->ssp = ssp;
 		this->s = new bool[l];
 		this->k0 = new block[l];
 		this->k1 = new block[l];
+		this->committing = committing;
 	}
 
-	~COMMITTING_MOTExtension2() {
+	~MOTExtension_KOS() {
 		delete base_ot;
-		delete[] s;
-		delete[] k0;
-		delete[] k1;
-	}
-
-	void H2(block * out, long id, block in1, block in2) {
-		in1 = double_block(in1);
-		in2 = double_block(in2);
-		__m128i k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
-		in1 = xorBlocks(in1, k_128);
-		k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
-		in2 = xorBlocks(in2, k_128);
-		out[0] = in1;
-		out[1] = in2;
-		pi.permute_block(out, 2);
-		out[0] =  xorBlocks(in1, out[0]);
-		out[1] =  xorBlocks(in2, out[1]);
-	}
-
-	block H(long id, block in) {
-		in = double_block(in);
-		__m128i k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
-		in = xorBlocks(in, k_128);
-		block t = in;
-		pi.permute_block(&t, 1);
-		in =  xorBlocks(in, t);
-		return in;	
+		del_arrary_null(s);
+		del_arrary_null(k0);
+		del_arrary_null(k1);
+		del_arrary_null(qT);
+		del_arrary_null(tT);
+		del_arrary_null(open_data);
+		del_arrary_null(extended_r);
 	}
 
 	void setup_send(block * in_k0 = nullptr, bool * in_s = nullptr){
@@ -84,9 +77,11 @@ class COMMITTING_MOTExtension2: public OT<COMMITTING_MOTExtension2> { public:
 		length = ((length+128+ssp+127)/128)*128;
 
 		if(!setup) setup_send();
-		Hash::hash_once(dgst, &block_s, sizeof(block));
-		io->send_data(dgst, 20);
 		setup = false;
+		if (committing) {
+			Hash::hash_once(dgst, &block_s, sizeof(block));
+			io->send_data(dgst, Hash::DIGEST_SIZE);
+		}
 		block * q = new block[length];
 		qT = new block[length];
 		//get u, compute q
@@ -109,8 +104,10 @@ class COMMITTING_MOTExtension2: public OT<COMMITTING_MOTExtension2> { public:
 		length = ((length+128+ssp+127)/128)*128;
 
 		if(!setup)setup_recv();
-		io->recv_data(dgst, 20);
 		setup = false;
+		if (committing) {
+			io->recv_data(dgst, Hash::DIGEST_SIZE);
+		}
 		bool * r2 = new bool[length];
 		memcpy(r2, r, old_length);
 		extended_r = new bool[length - old_length];
@@ -196,18 +193,18 @@ class COMMITTING_MOTExtension2: public OT<COMMITTING_MOTExtension2> { public:
 		io->send_block(t, 2);
 
 		delete[] chi;
-		delete[] extended_r;
 	}
 	void got_send_post(const block* data0, const block* data1, int length) {
 		block pad[2];
 		for(int i = 0; i < length; ++i) {
+			pad[0] = qT[i];
 			pad[1] = xorBlocks(qT[i], block_s);
-			H2(pad, 2*i, qT[i], pad[1]);
+			pi.H<2>(pad, pad, 2*i);
 			pad[0] = xorBlocks(pad[0], data0[i]);
 			pad[1] = xorBlocks(pad[1], data1[i]);
 			io->send_data(pad, 2*sizeof(block));
 		}
-		delete[] qT;
+		delete[] qT; qT = nullptr;
 	}
 
 	void got_recv_post(block* data, const bool* r, int length) {
@@ -216,20 +213,18 @@ class COMMITTING_MOTExtension2: public OT<COMMITTING_MOTExtension2> { public:
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
 			if(r[i]) {
-				data[i] = xorBlocks(res[1], H(2*i, tT[i]));
+				data[i] = xorBlocks(res[1], pi.H(tT[i], 2*i+1));
 				open_data[i] = res[0];
 			} else {
-				data[i] = xorBlocks(res[0], H(2*i, tT[i]));
+				data[i] = xorBlocks(res[0], pi.H(tT[i], 2*i));
 				open_data[i] = res[1];
 			}
 		}
 	}
 	void send_impl(const block* data0, const block* data1, int length) {
 		send_pre(length);
-		if(!send_check(length)) {
-			cout <<"OT Extension check failed"<<endl<<flush;
-			exit(0);
-		}
+		if(!send_check(length))
+			error("OT Extension check failed");
 		got_send_post(data0, data1, length);
 	}
 
@@ -242,10 +237,8 @@ class COMMITTING_MOTExtension2: public OT<COMMITTING_MOTExtension2> { public:
 	void send_rot(block * data0, block * data1, int length) {
 		send_pre(length);
 		send_check(length);
-		if(!send_check(length)) {
-			cout <<"OT Extension check failed"<<endl<<flush;
-			exit(0);
-		}
+		if(!send_check(length))
+			error("OT Extension check failed");
 		rot_send_post(data0, data1, length);
 	}
 	void recv_rot(block* data, const bool* b, int length) {
@@ -255,38 +248,45 @@ class COMMITTING_MOTExtension2: public OT<COMMITTING_MOTExtension2> { public:
 	}
 
 	void rot_send_post(block* data0, block* data1, int length) {
+		block pad[2];
 		for(int i = 0; i < length; ++i) {
-			data0[i] = H(2*i, qT[i]);
-			data1[i] = H(2*i, xorBlocks(qT[i], block_s));
+			pad[0] = qT[i];
+			pad[1] = xorBlocks(qT[i], block_s);
+			pi.H<2> (pad, pad, 2*i);
+			data0[i] = pad[0];
+			data1[i] = pad[1];
 		}
-		delete[] qT;
+		delete[] qT; qT = nullptr;
 	}
 
 	void rot_recv_post(block* data, const bool* r, int length) {
 		for(int i = 0; i < length; ++i)
-			data[i] = H(2*i, tT[i]);
-		delete[] tT;
+			data[i] = pi.H(tT[i], 2*i+r[i]);
 	}
 
 	void open() {
-		io->send_block(&block_s, 1);
+		if (!committing)
+			error("Committing not enabled");
+		io->send_block(&block_s, 1);		
 	}
-//return data[1-b]
-	void open(block * data, int length) {
-		io->recv_block(&block_s, 1);
-		char com_recv[20];
-		Hash::hash_once(com_recv, &block_s, 16);
+
+	void open(block * data, const bool * r, int length) {		
+		if (!committing)
+			error("Committing not enabled");
+		io->recv_block(&block_s, 1);		
+		char com_recv[Hash::DIGEST_SIZE];		
+		Hash::hash_once(com_recv, &block_s, sizeof(block));		
 		if (strncmp(com_recv, dgst, 20)!= 0)
-			assert(false);
-		for(int i = 0; i < length; ++i) {
+			error("invalid commitment");
+
+		for(int i = 0; i < length; ++i) {	
 			tT[i] = xorBlocks(tT[i], block_s);
-			data[i] = xorBlocks(open_data[i], H(2*i, tT[i]));
-		}
-
-		delete[] tT;
-		delete[] open_data;
+			if(r[i])
+				data[i] = xorBlocks(open_data[i], pi.H(tT[i], 2*i));
+			else	
+				data[i] = xorBlocks(open_data[i], pi.H(tT[i], 2*i+1));
+		}		
 	}
-
 
 	/**
 	  University of Bristol : Open Access Software Licence
@@ -311,36 +311,33 @@ class COMMITTING_MOTExtension2: public OT<COMMITTING_MOTExtension2> { public:
 	  Contact GitHub API Training Shop Blog About
 	 */
 	inline void mul128(__m128i a, __m128i b, __m128i *res1, __m128i *res2) {
-	/*	block a0xora1 = xorBlocks(a, _mm_srli_si128(a, 8));
-		block b0xorb1 = xorBlocks(b, _mm_srli_si128(b, 8));
+		/*	block a0xora1 = xorBlocks(a, _mm_srli_si128(a, 8));
+			block b0xorb1 = xorBlocks(b, _mm_srli_si128(b, 8));
 
-		block a0b0 = _mm_clmulepi64_si128(a, b, 0x00);
-		block a1b1 = _mm_clmulepi64_si128(a, b, 0x11);
-		block ab = _mm_clmulepi64_si128(a0xora1, b0xorb1, 0x00);
+			block a0b0 = _mm_clmulepi64_si128(a, b, 0x00);
+			block a1b1 = _mm_clmulepi64_si128(a, b, 0x11);
+			block ab = _mm_clmulepi64_si128(a0xora1, b0xorb1, 0x00);
 
-		block tmp = xorBlocks(a0b0, a1b1);
-		tmp = xorBlocks(tmp, ab);
-		
-		*res1 = xorBlocks(a1b1, _mm_srli_si128(tmp, 8));
-		*res2 = xorBlocks(a0b0, _mm_slli_si128(tmp, 8));
-	}*/
-	    __m128i tmp3, tmp4, tmp5, tmp6;
+			block tmp = xorBlocks(a0b0, a1b1);
+			tmp = xorBlocks(tmp, ab);
 
-    tmp3 = _mm_clmulepi64_si128(a, b, 0x00);
-    tmp4 = _mm_clmulepi64_si128(a, b, 0x10);
-    tmp5 = _mm_clmulepi64_si128(a, b, 0x01);
-    tmp6 = _mm_clmulepi64_si128(a, b, 0x11);
+		 *res1 = xorBlocks(a1b1, _mm_srli_si128(tmp, 8));
+		 *res2 = xorBlocks(a0b0, _mm_slli_si128(tmp, 8));
+		 }*/
+		__m128i tmp3, tmp4, tmp5, tmp6;
+	tmp3 = _mm_clmulepi64_si128(a, b, 0x00);
+	tmp4 = _mm_clmulepi64_si128(a, b, 0x10);
+	tmp5 = _mm_clmulepi64_si128(a, b, 0x01);
+	tmp6 = _mm_clmulepi64_si128(a, b, 0x11);
 
-    tmp4 = _mm_xor_si128(tmp4, tmp5);
-    tmp5 = _mm_slli_si128(tmp4, 8);
-    tmp4 = _mm_srli_si128(tmp4, 8);
-    tmp3 = _mm_xor_si128(tmp3, tmp5);
-    tmp6 = _mm_xor_si128(tmp6, tmp4);
-    // initial mul now in tmp3, tmp6
-    *res1 = tmp3;
-    *res2 = tmp6;
+	tmp4 = _mm_xor_si128(tmp4, tmp5);
+	tmp5 = _mm_slli_si128(tmp4, 8);
+	tmp4 = _mm_srli_si128(tmp4, 8);
+	tmp3 = _mm_xor_si128(tmp3, tmp5);
+	tmp6 = _mm_xor_si128(tmp6, tmp4);
+	// initial mul now in tmp3, tmp6
+	*res1 = tmp3;
+	*res2 = tmp6;
 }
-	
-	
 };
-#endif// OT_COM_EXTENSION_H__
+#endif// OT_EXTENSION_H__

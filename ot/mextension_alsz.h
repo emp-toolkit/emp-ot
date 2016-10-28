@@ -1,22 +1,23 @@
-#ifndef OT_COMMITTING_M_EXTENSION_H__
-#define OT_COMMITTING_M_EXTENSION_H__
-#include <emp-tool/emp-tool.h>
-#include "ot_co.h"
+#ifndef OT_M_EXTENSION_ALSZ_H__
+#define OT_M_EXTENSION_ALSZ_H__
 #include "ot.h"
+#include "co.h"
 
-class COMMITTING_MOTExtension: public OT<COMMITTING_MOTExtension> { public:
+class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ> { public:
 	OTCO * base_ot;
 	PRG prg;
 	PRP pi;
 	int l, ssp;
 
-	block *k0, *k1, *data_for_open;
+	block *k0, *k1, * data_open = nullptr;
 	bool *s;
-	char com[10];
+
 	uint8_t * qT, *tT, *q = nullptr, **t, *block_s;
 	int u = 0;
 	bool setup = false;
-	COMMITTING_MOTExtension(NetIO * io, int ssp = 40): OT(io) , ssp(ssp){
+	bool committing = false;
+	char com[Hash::DIGEST_SIZE];
+	MOTExtension_ALSZ(NetIO * io, bool committing = false, int ssp = 40): OT(io) , ssp(ssp){
 		this->l = 192;
 		u = 2;
 		this->base_ot = new OTCO(io);
@@ -24,9 +25,10 @@ class COMMITTING_MOTExtension: public OT<COMMITTING_MOTExtension> { public:
 		this->k0 = new block[l];
 		this->k1 = new block[l];
 		block_s = new uint8_t[l/8];
+		this->committing = committing;
 	}
 
-	~COMMITTING_MOTExtension() {
+	~MOTExtension_ALSZ() {
 		delete base_ot;
 		delete[] s;
 		delete[] k0;
@@ -91,9 +93,11 @@ class COMMITTING_MOTExtension: public OT<COMMITTING_MOTExtension> { public:
 
 		q = new uint8_t[length/8*l];
 		if(!setup)setup_send();
-		Hash::hash_once(com, s, l);
-		io->send_data(com, 10);
 		setup = false;
+		if(committing) {
+			Hash::hash_once(com, s, l);		
+			io->send_data(com, Hash::DIGEST_SIZE);
+		}
 		//get u, compute q
 		qT = new uint8_t[length/8*l];
 		uint8_t * q2 = new uint8_t[length/8*l];
@@ -117,8 +121,10 @@ class COMMITTING_MOTExtension: public OT<COMMITTING_MOTExtension> { public:
 		int old_length = length;
 		if (length%128 !=0) length = (length/128 + 1)*128;
 		if(!setup)setup_recv();
-		io->recv_data(com, 10);
 		setup = false;
+		if(committing) {
+			io->recv_data(com, Hash::DIGEST_SIZE);
+		}
 		uint8_t *block_r = new uint8_t[length/8];
 		bool_to_uint8(block_r, r, old_length);
 		// send u
@@ -184,8 +190,8 @@ class COMMITTING_MOTExtension: public OT<COMMITTING_MOTExtension> { public:
 	}
 
 	void ot_extension_recv_post(block* data, const bool* r, int length) {
-		data_for_open = new block[length];
 		int old_length = length;
+		data_open = new block[length];
 		if (length%128 !=0) length = (length/128 + 1)*128;
 		block res[2];
 		for(int i = 0; i < old_length; ++i) {
@@ -193,11 +199,15 @@ class COMMITTING_MOTExtension: public OT<COMMITTING_MOTExtension> { public:
 			block tmp = H(tT+i*l/8, i, l/8);
 			if(r[i]) {
 				data[i] = xorBlocks(res[1], tmp);
-				data_for_open[i] = res[0];
+				data_open[i] = res[0];
 			} else {
 				data[i] = xorBlocks(res[0], tmp);
-				data_for_open[i] = res[1];
+				data_open[i] = res[1];
 			}
+		}
+		if(!committing) {
+			delete[] tT;
+			tT=nullptr;
 		}
 	}
 	bool ot_extension_send_check(int length) {
@@ -247,25 +257,26 @@ class COMMITTING_MOTExtension: public OT<COMMITTING_MOTExtension> { public:
 		ot_extension_recv_post(data, b, length);
 	}
 
-	void open() {
-		io->send_data(s, l);
-	}
-//return data[1-b]
-	void open(block * data, int length) {
-		io->recv_data(s, l);
-		char com_recv[10];
-		Hash::hash_once(com_recv, s, l);
-		if (strncmp(com_recv, com, 10)!= 0)
-			assert(false);
-		bool_to_uint8(block_s, s, l);
-		for(int i = 0; i < length; ++i) {
-			xor_arr(tT+i*l/8, tT+i*l/8, block_s, l/8);
-			block tmp = H(tT+i*l/8, i, l/8);
-			data[i] = xorBlocks(data_for_open[i], tmp);
-		}
-
+	void open() {		
+		io->send_data(s, l);		
+	}		
+	//return data[1-b]		
+	void open(block * data, const bool * r, int length) {		
+		io->recv_data(s, l);		
+		char com_recv[10];		
+		Hash::hash_once(com_recv, s, l);		
+		if (strncmp(com_recv, com, 10)!= 0)		
+			assert(false);		
+		bool_to_uint8(block_s, s, l);		
+		for(int i = 0; i < length; ++i) {		
+			xor_arr(tT+i*l/8, tT+i*l/8, block_s, l/8);		
+			block tmp = H(tT+i*l/8, i, l/8);		
+			data[i] = xorBlocks(data_open[i], tmp);		
+		}		
 		delete[] tT;
-		delete[] data_for_open;
+		delete[] data_open;
+		tT=nullptr;	
+		data_open = nullptr;	
 	}
 };
 #endif// OT_EXTENSION_H__

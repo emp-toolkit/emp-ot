@@ -1,7 +1,7 @@
 #ifndef OT_SH_EXTENSION_H__
 #define OT_SH_EXTENSION_H__
 #include "ot.h"
-#include "ot_np.h"
+#include "np.h"
 class SHOTExtension: public OT<SHOTExtension> { public:
 	OTNP * base_ot;
 	PRG prg;
@@ -24,31 +24,6 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 		delete[] s;
 		delete[] k0;
 		delete[] k1;
-	}
-
-	void H2(block * out, long id, block in1, block in2) {
-		in1 = double_block(in1);
-		in2 = double_block(in2);
-		__m128i k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
-		in1 = xorBlocks(in1, k_128);
-		++id;
-		k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
-		in2 = xorBlocks(in2, k_128);
-		out[0] = in1;
-		out[1] = in2;
-		pi.permute_block(out, 2);
-		out[0] =  xorBlocks(in1, out[0]);
-		out[1] =  xorBlocks(in2, out[1]);
-	}
-
-	block H(long id, block in) {
-		in = double_block(in);
-		__m128i k_128 = _mm_loadl_epi64( (__m128i const *) (&id));
-		in = xorBlocks(in, k_128);
-		block t = in;
-		pi.permute_block(&t, 1);
-		in =  xorBlocks(in, t);
-		return in;	
 	}
 
 	void setup_send(block * in_k0 = nullptr, bool * in_s = nullptr){
@@ -136,8 +111,9 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 	void got_send_post(const block* data0, const block* data1, int length) {
 		block pad[2];
 		for(int i = 0; i < length; ++i) {
+			pad[0] = qT[i];
 			pad[1] = xorBlocks(qT[i], block_s);
-			H2(pad, 2*i, qT[i], pad[1]);
+			pi.H<2>(pad, pad, 2*i);
 			pad[0] = xorBlocks(pad[0], data0[i]);
 			pad[1] = xorBlocks(pad[1], data1[i]);
 			io->send_data(pad, 2*sizeof(block));
@@ -150,9 +126,9 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
 			if(r[i]) {
-				data[i] = xorBlocks(res[1], H(2*i+1, tT[i]));
+				data[i] = xorBlocks(res[1], pi.H(tT[i], 2*i+1));
 			} else {
-				data[i] = xorBlocks(res[0], H(2*i, tT[i]));
+				data[i] = xorBlocks(res[0], pi.H(tT[i], 2*i));
 			}
 		}
 		delete[] tT;
@@ -187,8 +163,9 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 	void cot_send_post(block* data0, block delta, int length) {
 		block pad[2];
 		for(int i = 0; i < length; ++i) {
-			block tmp = xorBlocks(qT[i], block_s);
-			H2(pad, 2*i, qT[i], tmp);
+			pad[0] = qT[i];
+			pad[1] = xorBlocks(qT[i], block_s);
+			pi.H<2>(pad, pad, 2*i);
 			data0[i] = pad[0];
 			pad[0] = xorBlocks(pad[0], delta);
 			pad[0] = xorBlocks(pad[1], pad[0]);
@@ -202,24 +179,28 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(&res, sizeof(block));
 			if(r[i])
-				data[i] = xorBlocks(res, H(2*i+1, tT[i]));
+				data[i] = xorBlocks(res, pi.H(tT[i], 2*i+1));
 			else 
-				data[i] = H(2*i, tT[i]);
+				data[i] = pi.H(tT[i], 2*i);
 		}
 		delete[] tT;
 	}
 	
 	void rot_send_post(block* data0, block* data1, int length) {
+		block pad[2];
 		for(int i = 0; i < length; ++i) {
-			data0[i] = H(2*i, qT[i]);
-			data1[i] = H(2*i+1, xorBlocks(qT[i], block_s));
+			pad[0] = qT[i];
+			pad[1] = xorBlocks(qT[i], block_s);
+			pi.H<2>(pad, pad, 2*i);
+			data0[i] = pad[0];
+			data1[i] = pad[1];
 		}
 		delete[] qT;
 	}
 
 	void rot_recv_post(block* data, const bool* r, int length) {
 		for(int i = 0; i < length; ++i)
-			data[i] = H(2*i+r[i], tT[i]);
+			data[i] = pi.H(tT[i], 2*i+r[i]);
 		delete[] tT;
 	}
 };

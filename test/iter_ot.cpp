@@ -1,5 +1,5 @@
 //#include "emp-ot.h"
-#include "ot_iterated.h"
+#include "emp-ot.h"
 #include <emp-tool/emp-tool.h>
 #include <iostream>
 using namespace std;
@@ -120,11 +120,11 @@ int main(int argc, char** argv) {
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
 	io->set_nodelay();
 	double t1 = timeStamp();
-	OTIterated * ot = new OTIterated(io, party == ALICE, 1<<14);
+	SHOTIterated * ot = new SHOTIterated(io, party == ALICE, 1<<14);
 	cout << (timeStamp() - t1)<<endl;
 	int length = 1<<23;
-	cout <<length<<" Semi Honest OT Extension\t"<<test_ot<OTIterated>(io, party, length, ot)<<endl;
-	cout <<length<<" Semi Honest COT Extension\t"<<test_cot<OTIterated>(io, party, length, ot)<<endl;
-	cout <<length<<" Semi Honest ROT Extension\t"<<test_rot<OTIterated>(io, party, length, ot)<<endl;
+	cout <<length<<" Semi Honest OT Extension\t"<<test_ot<SHOTIterated>(io, party, length, ot)<<endl;
+	cout <<length<<" Semi Honest COT Extension\t"<<test_cot<SHOTIterated>(io, party, length, ot)<<endl;
+	cout <<length<<" Semi Honest ROT Extension\t"<<test_rot<SHOTIterated>(io, party, length, ot)<<endl;
 	delete io;
 }

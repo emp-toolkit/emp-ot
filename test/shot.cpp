@@ -1,7 +1,5 @@
 //#include "emp-ot.h"
-#include "ot_np.h"
-#include "ot_co.h"
-#include "ot_shextension.h"
+#include "emp-ot.h"
 #include <emp-tool/emp-tool.h>
 #include <iostream>
 using namespace std;

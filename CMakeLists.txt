@@ -10,8 +10,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin )
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} cmake/)
 FIND_PACKAGE(emp-tool)
-#INCLUDE_DIRECTORIES(${2PCTOOL_INCLUDE_DIRS})
-#message(${2PCTOOL_INCLUDE_DIRS})
 
 set (CMAKE_C_FLAGS "-pthread -Wall -march=native -O3 -maes")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pg -ggdb")
@@ -25,9 +23,6 @@ target_link_libraries(mot  relic  ${OPENSSL_LIBRARIES} gmp ${EMP-TOOL_LIBRARIES}
 
 add_executable(iter_ot test/iter_ot.cpp)
 target_link_libraries(iter_ot  relic  ${OPENSSL_LIBRARIES} gmp ${EMP-TOOL_LIBRARIES}) 
-
-add_executable(com_ot test/committing_ot.cpp)
-target_link_libraries(com_ot  relic  ${OPENSSL_LIBRARIES} gmp ${EMP-TOOL_LIBRARIES}) 
 
 install(FILES emp-ot-config.cmake DESTINATION cmake/)
 
