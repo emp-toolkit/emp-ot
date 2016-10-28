@@ -175,9 +175,9 @@ int main(int argc, char** argv) {
 
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
 	cout <<"COOT\t"<<test_ot<OTCO>(io, party, 1024)<<endl;
-	cout <<"8M Malicious OT Extension (KOS)\t"<<test_ot<MOTExtension_KOS>(io, party, 1<<21)<<endl;
-	cout <<"8M Malicious OT Extension (ALSZ)\t"<<test_ot<MOTExtension_ALSZ>(io, party, 1<<21)<<endl;
-	cout <<"8M Malicious Committing OT Extension (KOS)\t"<<test_com_ot<MOTExtension_KOS>(io, party, 1<<21)<<endl;
-	cout <<"8M Malicious Committing OT Extension (ALSZ)\t"<<test_com_ot<MOTExtension_ALSZ>(io, party, 1<<21)<<endl;
+	cout <<"8M Malicious OT Extension (KOS)\t"<<test_ot<MOTExtension_KOS>(io, party, 1<<23)<<endl;
+	cout <<"8M Malicious OT Extension (ALSZ)\t"<<test_ot<MOTExtension_ALSZ>(io, party, 1<<23)<<endl;
+	cout <<"8M Malicious Committing OT Extension (KOS)\t"<<test_com_ot<MOTExtension_KOS>(io, party, 1<<23)<<endl;
+	cout <<"8M Malicious Committing OT Extension (ALSZ)\t"<<test_com_ot<MOTExtension_ALSZ>(io, party, 1<<23)<<endl;
 	delete io;
 }
