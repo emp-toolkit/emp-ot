@@ -3,17 +3,6 @@
 #include "ot.h"
 #include "co.h"
 
-template<typename T>
-void inline del_arrary_null(T * ptr){
-	if(ptr != nullptr)
-		delete[] ptr;
-}
-
-inline void error(const char * s) {
-	fprintf(stderr, s, "\n");
-	exit(1);
-}
-
 class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 	OTCO * base_ot;
 	PRG prg;
@@ -39,13 +28,13 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 
 	~MOTExtension_KOS() {
 		delete base_ot;
-		del_arrary_null(s);
-		del_arrary_null(k0);
-		del_arrary_null(k1);
-		del_arrary_null(qT);
-		del_arrary_null(tT);
-		del_arrary_null(open_data);
-		del_arrary_null(extended_r);
+		delete_array_null(s);
+		delete_array_null(k0);
+		delete_array_null(k1);
+		delete_array_null(qT);
+		delete_array_null(tT);
+		delete_array_null(open_data);
+		delete_array_null(extended_r);
 	}
 
 	void setup_send(block * in_k0 = nullptr, bool * in_s = nullptr){
