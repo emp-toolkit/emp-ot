@@ -1,3 +1,6 @@
+/** @defgroup OT Oblivious Transfer
+*/
+
 #include "ot.h"
 #include "ideal.h"
 

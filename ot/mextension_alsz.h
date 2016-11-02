@@ -3,6 +3,9 @@
 #include "ot.h"
 #include "co.h"
 
+/** @addtogroup OT
+    @{
+  */
 class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ> { public:
 	OTCO * base_ot;
 	PRG prg;
@@ -34,6 +37,9 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ> { public:
 		delete[] k0;
 		delete[] k1;
 		delete[] block_s;
+		if(data_open != nullptr) {
+			delete[] data_open;
+		}
 	}
 
 	void xor_arr (uint8_t * a, uint8_t * b, uint8_t * c, int n) {
@@ -279,4 +285,5 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ> { public:
 		data_open = nullptr;	
 	}
 };
-#endif// OT_EXTENSION_H__
+  /**@}*/
+#endif// OT_M_EXTENSION_ALSZ_H__

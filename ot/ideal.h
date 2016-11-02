@@ -1,7 +1,10 @@
 #ifndef OT_IDEAL_H__
 #define OT_IDEAL_H__
 #include "ot.h"
-
+/** @addtogroup OT
+    @{
+  */
+  
 class OTIdeal: public OT<OTIdeal> { public:
 	int cnt = 0;
 	OTIdeal(NetIO * io): OT(io) {
@@ -24,4 +27,5 @@ class OTIdeal: public OT<OTIdeal> { public:
 		delete []data1;
 	}
 };
+/**@}*/
 #endif// OT_IDEAL_H__

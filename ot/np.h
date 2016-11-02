@@ -1,6 +1,10 @@
 #ifndef OT_NP_H__
 #define OT_NP_H__
 #include "ot.h"
+/** @addtogroup OT
+	@{
+*/
+
 
 class OTNP: public OT<OTNP> { public:
 	int cnt;
@@ -94,4 +98,5 @@ class OTNP: public OT<OTNP> { public:
 	}
 
 };
-#endif// OT_CO_H__
+/**@}*/
+#endif// OT_NP_H__

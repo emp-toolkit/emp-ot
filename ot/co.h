@@ -1,6 +1,9 @@
 #ifndef OT_CO_H__
 #define OT_CO_H__
 #include "ot.h"
+/** @addtogroup OT
+    @{
+  */
 
 class OTCO: public OT<OTCO> { public:
 	int cnt;
@@ -99,4 +102,5 @@ class OTCO: public OT<OTCO> { public:
 		delete[] B;
 	}
 };
+  /**@}*/
 #endif// OT_CO_H__

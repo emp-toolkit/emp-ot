@@ -2,6 +2,10 @@
 #define OT_SH_EXTENSION_H__
 #include "ot.h"
 #include "np.h"
+/** @addtogroup OT
+    @{
+  */
+
 class SHOTExtension: public OT<SHOTExtension> { public:
 	OTNP * base_ot;
 	PRG prg;
@@ -204,4 +208,5 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 		delete[] tT;
 	}
 };
+  /**@}*/
 #endif// OT_EXTENSION_H__

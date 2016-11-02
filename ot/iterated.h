@@ -1,7 +1,10 @@
 #ifndef OT_ITERATED_H__
 #define OT_ITERATED_H__
 #include "emp-ot.h"
-
+/** @addtogroup OT
+    @{
+  */
+  
 template<typename OTExtension>
 class OTIterated: public OT<OTIterated<OTExtension>> { public:
 	OTExtension *seed_ot;
@@ -92,4 +95,5 @@ class OTIterated: public OT<OTIterated<OTExtension>> { public:
 };
 typedef OTIterated<SHOTExtension> SHOTIterated;
 typedef OTIterated<MOTExtension> MOTIterated;
+/**@}*/
 #endif// OT_ITERATED_H__

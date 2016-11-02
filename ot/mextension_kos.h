@@ -3,6 +3,9 @@
 #include "ot.h"
 #include "co.h"
 
+/** @addtogroup OT
+  @{
+ */
 class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 	OTCO * base_ot;
 	PRG prg;
@@ -245,7 +248,6 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 			data0[i] = pad[0];
 			data1[i] = pad[1];
 		}
-		delete[] qT; qT = nullptr;
 	}
 
 	void rot_recv_post(block* data, const bool* r, int length) {
@@ -311,22 +313,23 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 			tmp = xorBlocks(tmp, ab);
 
 		 *res1 = xorBlocks(a1b1, _mm_srli_si128(tmp, 8));
-		 *res2 = xorBlocks(a0b0, _mm_slli_si128(tmp, 8));
-		 }*/
+		 *res2 = xorBlocks(a0b0, _mm_slli_si128(tmp, 8));*/
 		__m128i tmp3, tmp4, tmp5, tmp6;
-	tmp3 = _mm_clmulepi64_si128(a, b, 0x00);
-	tmp4 = _mm_clmulepi64_si128(a, b, 0x10);
-	tmp5 = _mm_clmulepi64_si128(a, b, 0x01);
-	tmp6 = _mm_clmulepi64_si128(a, b, 0x11);
+		tmp3 = _mm_clmulepi64_si128(a, b, 0x00);
+		tmp4 = _mm_clmulepi64_si128(a, b, 0x10);
+		tmp5 = _mm_clmulepi64_si128(a, b, 0x01);
+		tmp6 = _mm_clmulepi64_si128(a, b, 0x11);
 
-	tmp4 = _mm_xor_si128(tmp4, tmp5);
-	tmp5 = _mm_slli_si128(tmp4, 8);
-	tmp4 = _mm_srli_si128(tmp4, 8);
-	tmp3 = _mm_xor_si128(tmp3, tmp5);
-	tmp6 = _mm_xor_si128(tmp6, tmp4);
-	// initial mul now in tmp3, tmp6
-	*res1 = tmp3;
-	*res2 = tmp6;
-}
+		tmp4 = _mm_xor_si128(tmp4, tmp5);
+		tmp5 = _mm_slli_si128(tmp4, 8);
+		tmp4 = _mm_srli_si128(tmp4, 8);
+		tmp3 = _mm_xor_si128(tmp3, tmp5);
+		tmp6 = _mm_xor_si128(tmp6, tmp4);
+		// initial mul now in tmp3, tmp6
+		*res1 = tmp3;
+		*res2 = tmp6;
+	}
 };
-#endif// OT_EXTENSION_H__
+
+/**@}*/
+#endif// OT_M_EXTENSION_KOS_H__
