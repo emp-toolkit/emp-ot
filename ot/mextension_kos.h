@@ -34,6 +34,7 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 		delete_array_null(s);
 		delete_array_null(k0);
 		delete_array_null(k1);
+
 		delete_array_null(qT);
 		delete_array_null(tT);
 		delete_array_null(open_data);
@@ -75,6 +76,7 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 			io->send_data(dgst, Hash::DIGEST_SIZE);
 		}
 		block * q = new block[length];
+		delete_array_null(qT);
 		qT = new block[length];
 		//get u, compute q
 		block *tmp = new block[length/128];
@@ -102,6 +104,7 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 		}
 		bool * r2 = new bool[length];
 		memcpy(r2, r, old_length);
+		delete_array_null(extended_r);
 		extended_r = new bool[length - old_length];
 		prg.random_bool(extended_r, length- old_length);
 		memcpy(r2+old_length, extended_r, length - old_length);
@@ -112,6 +115,7 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 		}
 		// send u
 		block* t = new block[length];
+		delete_array_null(tT);
 		tT = new block[length];
 		block* tmp = new block[length/128];
 		PRG G;
@@ -201,6 +205,7 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 
 	void got_recv_post(block* data, const bool* r, int length) {
 		block res[2];
+		delete_array_null(open_data);
 		open_data = new block[length];
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
