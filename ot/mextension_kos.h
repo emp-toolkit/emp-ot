@@ -233,7 +233,6 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 
 	void send_rot(block * data0, block * data1, int length) {
 		send_pre(length);
-		send_check(length);
 		if(!send_check(length))
 			error("OT Extension check failed");
 		rot_send_post(data0, data1, length);
