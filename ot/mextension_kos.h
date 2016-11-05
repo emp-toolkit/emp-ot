@@ -256,7 +256,10 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 
 	void rot_recv_post(block* data, const bool* r, int length) {
 		for(int i = 0; i < length; ++i)
-			data[i] = pi.H(tT[i], 2*i+r[i]);
+			if(r[i])
+				data[i] = pi.H(tT[i], 2*i+1);
+			else
+				data[i] = pi.H(tT[i], 2*i);
 	}
 
 	void open() {
