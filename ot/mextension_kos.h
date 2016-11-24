@@ -9,6 +9,7 @@
 class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 	OTCO * base_ot;
 	PRG prg;
+	PRG * G0, *G1;
 	PRP pi;
 	const int l = 128;
 	block *k0 = nullptr, *k1 = nullptr;
@@ -27,6 +28,8 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 		this->k0 = new block[l];
 		this->k1 = new block[l];
 		this->committing = committing;
+		G0 = new PRG[l];
+		G1 = new PRG[l];
 	}
 
 	~MOTExtension_KOS() {
@@ -47,11 +50,14 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 			memcpy(k0, in_k0, l*sizeof(block));
 			memcpy(s, in_s, l);
 			block_s = bool_to128(s);
-			return;
+		} else {
+			prg.random_bool(s, l);
+			base_ot->recv(k0, s, l);
+			block_s = bool_to128(s);
 		}
-		prg.random_bool(s, l);
-		base_ot->recv(k0, s, l);
-		block_s = bool_to128(s);
+		for(int i = 0; i < l; ++i) {
+			G0[i].reseed(&k0[i]);
+		}
 	}
 
 	void setup_recv(block * in_k0 = nullptr, block * in_k1 =nullptr) {
@@ -59,11 +65,16 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 		if(in_k0 !=nullptr) {
 			memcpy(k0, in_k0, l*sizeof(block));
 			memcpy(k1, in_k1, l*sizeof(block));
-			return;
+		}else {
+			prg.random_block(k0, l);
+			prg.random_block(k1, l);
+			base_ot->send(k0, k1, l);
 		}
-		prg.random_block(k0, l);
-		prg.random_block(k1, l);
-		base_ot->send(k0, k1, l);
+		for(int i = 0; i < l; ++i) {
+			G0[i].reseed(&k0[i]);
+			G1[i].reseed(&k1[i]);
+		}
+
 	}
 
 	void send_pre(int length) {
@@ -75,22 +86,20 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 			Hash::hash_once(dgst, &block_s, sizeof(block));
 			io->send_data(dgst, Hash::DIGEST_SIZE);
 		}
-		block * q = new block[length];
+		block q[128], tmp;
 		delete_array_null(qT);
 		qT = new block[length];
 		//get u, compute q
-		block *tmp = new block[length/128];
-		PRG G;
-		for(int i = 0; i < l; ++i) {
-			io->recv_data(tmp, length/8);
-			G.reseed(&k0[i]);
-			G.random_data(q+(i*length/128), length/8);
-			if (s[i])
-				xorBlocks_arr(q+(i*length/128), q+(i*length/128), tmp, length/128);
+		for(int j = 0; j < length; j+=128) {
+			for(int i = 0; i < l; ++i) {
+				io->recv_data(&tmp, 16);
+				G0[i].random_data(&q[i], 16);
+				if (s[i])
+					q[i] = xorBlocks(q[i], tmp);
+			}
+			sse_trans((uint8_t *)(qT+j), (uint8_t*)q, 128, 128);
+			//	sse_transS((uint8_t *)(qT+j), (uint8_t*)q);
 		}
-		sse_trans((uint8_t *)(qT), (uint8_t*)q, l, length);
-		delete[] tmp;
-		delete[] q;
 	}
 
 	void recv_pre(const bool* r, int length) {
@@ -114,25 +123,21 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 			block_r[i] = bool_to128(r2+i*128);
 		}
 		// send u
-		block* t = new block[length];
+		block t[128], tmp;
 		delete_array_null(tT);
 		tT = new block[length];
-		block* tmp = new block[length/128];
-		PRG G;
-		for(int i = 0; i < l; ++i) {
-			G.reseed(&k0[i]);
-			G.random_data(t+i*length/128, length/8);
-			G.reseed(&k1[i]);
-			G.random_data(tmp, length/8);
-			xorBlocks_arr(tmp, t+(i*length/128), tmp, length/128);
-			xorBlocks_arr(tmp, block_r, tmp, length/128);
-			io->send_data(tmp, length/8);
+		for(int j = 0; j < length; j+=128) {
+			for(int i = 0; i < l; ++i) {
+				G0[i].random_block(&t[i], 1);
+				G1[i].random_block(&tmp, 1);
+				tmp = xorBlocks(t[i], tmp);
+				tmp = xorBlocks(tmp, block_r[j/128]);
+				io->send_data(&tmp, 16);
+			}
+//			sse_transS((uint8_t *)(tT+j), (uint8_t*)t);
+			sse_trans((uint8_t *)(tT+j), (uint8_t*)t, 128, 128);
 		}
 
-		sse_trans((uint8_t *)tT, (uint8_t*)t, l, length);
-
-		delete[] t;
-		delete[] tmp;
 		delete[] block_r;
 		delete[] r2;
 	}
