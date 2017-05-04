@@ -4,8 +4,8 @@
 #include <iostream>
 using namespace std;
 
-template<typename T>
-double test_ot(NetIO * io, int party, int length, T* ot, int TIME = 10) {
+template<typename IO, template<typename> typename T>
+double test_ot(IO * io, int party, int length, T<IO>* ot, int TIME = 10) {
 	block *b0 = new block[length], *b1 = new block[length], *r = new block[length];
 	PRG prg(fix_key);
 	prg.random_block(b0, length);
@@ -36,8 +36,8 @@ double test_ot(NetIO * io, int party, int length, T* ot, int TIME = 10) {
 	delete[] b;
 	return (double)t/TIME;
 }
-template<typename T>
-double test_cot(NetIO * io, int party, int length, T* ot, int TIME = 10) {
+template<typename IO, template<typename> class T>
+double test_cot(IO * io, int party, int length, T<IO>* ot, int TIME = 10) {
 	block *b0 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	block delta;
@@ -75,8 +75,8 @@ double test_cot(NetIO * io, int party, int length, T* ot, int TIME = 10) {
 	return (double)t/TIME;
 }
 
-template<typename T>
-double test_rot(NetIO * io, int party, int length, T* ot, int TIME = 10) {
+template<typename IO, template<typename> class T>
+double test_rot(IO * io, int party, int length, T<IO>* ot, int TIME = 10) {
 	block *b0 = new block[length], *r = new block[length];
 	block *b1 = new block[length];
 	bool *b = new bool[length];
@@ -120,11 +120,11 @@ int main(int argc, char** argv) {
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
 	io->set_nodelay();
 	double t1 = timeStamp();
-	SHOTIterated * ot = new SHOTIterated(io, party == ALICE, 1<<14);
+	SHOTIterated<NetIO> * ot = new SHOTIterated<NetIO>(io, party == ALICE, 1<<14);
 	cout << (timeStamp() - t1)<<endl;
 	int length = 1<<23;
-	cout <<length<<" Semi Honest OT Extension\t"<<test_ot<SHOTIterated>(io, party, length, ot)<<endl;
-	cout <<length<<" Semi Honest COT Extension\t"<<test_cot<SHOTIterated>(io, party, length, ot)<<endl;
-	cout <<length<<" Semi Honest ROT Extension\t"<<test_rot<SHOTIterated>(io, party, length, ot)<<endl;
+	cout <<length<<" Semi Honest OT Extension\t"<<test_ot<NetIO, SHOTIterated>(io, party, length, ot)<<endl;
+	cout <<length<<" Semi Honest COT Extension\t"<<test_cot<NetIO, SHOTIterated>(io, party, length, ot)<<endl;
+	cout <<length<<" Semi Honest ROT Extension\t"<<test_rot<NetIO, SHOTIterated>(io, party, length, ot)<<endl;
 	delete io;
 }

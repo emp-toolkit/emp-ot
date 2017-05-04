@@ -5,8 +5,6 @@
 template<typename T>
 class OT {
 public:
-	OT(NetIO * nio): io(nio){};
-	NetIO* io = nullptr;
 	void send(const block* data0, const block* data1, int length) {
 		static_cast<T*>(this)->send_impl(data0, data1, length);
 	}

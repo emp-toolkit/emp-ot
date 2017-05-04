@@ -4,8 +4,8 @@
 #include <iostream>
 using namespace std;
 
-template<typename T>
-double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10) {
+template<typename IO, template<typename>typename T>
+double test_ot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 10) {
 	block *b0 = new block[length], *b1 = new block[length], *r = new block[length];
 	PRG prg(fix_key);
 	prg.random_block(b0, length);
@@ -20,7 +20,7 @@ double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10
 	for(int i = 0; i < TIME; ++i) {
 		t1 = timeStamp();
 		if (ot == nullptr)
-			ot = new T(io);
+			ot = new T<IO>(io);
 		if (party == ALICE) {
 			ot->send(b0, b1, length);
 		} else {
@@ -39,8 +39,8 @@ double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10
 	delete[] b;
 	return (double)t/TIME;
 }
-template<typename T>
-double test_cot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10) {
+template<typename IO, template<typename>typename T>
+double test_cot(NetIO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 10) {
 	block *b0 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	block delta;
@@ -56,7 +56,7 @@ double test_cot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 	for(int i = 0; i < TIME; ++i) {
 		t1 = timeStamp();
 		if (ot == nullptr)
-			ot = new T(io);
+			ot = new T<IO>(io);
 		if (party == ALICE) {
 			ot->send_cot(b0, delta, length);
 		} else {
@@ -81,8 +81,8 @@ double test_cot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 	return (double)t/TIME;
 }
 
-template<typename T>
-double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10) {
+template<typename IO, template<typename>typename T>
+double test_rot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 10) {
 	block *b0 = new block[length], *r = new block[length];
 	block *b1 = new block[length];
 	bool *b = new bool[length];
@@ -94,7 +94,7 @@ double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 		prg.random_bool(b, length);
 		t1 = timeStamp();
 		if (ot == nullptr)
-			ot = new T(io);
+			ot = new T<IO>(io);
 		if (party == ALICE) {
 			ot->send_rot(b0, b1, length);
 		} else {
@@ -122,14 +122,15 @@ double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 }
 
 int main(int argc, char** argv) {
-	int length = 1<<23;
+	int length = 1<<20;
 	int port, party;
 	parse_party_and_port(argv, &party, &port);
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
 	io->set_nodelay();
-	cout <<"1024 NPOT\t"<<test_ot<OTNP>(io, party, 1024)<<endl;
-	cout <<length<<" Semi Honest OT Extension\t"<<test_ot<SHOTExtension>(io, party, length)<<endl;
-	cout <<length<<" Semi Honest COT Extension\t"<<test_cot<SHOTExtension>(io, party, length)<<endl;
-	cout <<length<<" Semi Honest ROT Extension\t"<<test_rot<SHOTExtension>(io, party, length)<<endl;
+	cout <<"1024 NPOT\t"<<test_ot<NetIO, OTNP>(io, party, 1024)<<endl;
+	cout <<length<<" Semi Honest OT Extension\t"<<test_ot<NetIO, SHOTExtension>(io, party, length)<<endl;
+	cout <<length<<" Semi Honest COT Extension\t"<<test_cot<NetIO, SHOTExtension>(io, party, length)<<endl;
+	cout <<length<<" Semi Honest ROT Extension\t"<<test_rot<NetIO, SHOTExtension>(io, party, length)<<endl;
 	delete io;
 }
+

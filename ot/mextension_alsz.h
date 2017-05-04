@@ -6,8 +6,9 @@
 /** @addtogroup OT
     @{
   */
-class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ> { public:
-	OTCO * base_ot;
+template<typename IO>
+class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ<IO>> { public:
+	OTCO<IO> * base_ot;
 	PRG prg;
 	PRP pi;
 	int l, ssp;
@@ -20,10 +21,12 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ> { public:
 	bool setup = false;
 	bool committing = false;
 	char com[Hash::DIGEST_SIZE];
-	MOTExtension_ALSZ(NetIO * io, bool committing = false, int ssp = 40): OT(io) , ssp(ssp){
+	IO* io = nullptr;
+	MOTExtension_ALSZ(IO * io, bool committing = false, int ssp = 40): ssp(ssp){
+		this->io = io;
 		this->l = 192;
 		u = 2;
-		this->base_ot = new OTCO(io);
+		this->base_ot = new OTCO<IO>(io);
 		this->s = new bool[l];
 		this->k0 = new block[l];
 		this->k1 = new block[l];

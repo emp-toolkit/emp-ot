@@ -6,8 +6,9 @@
     @{
   */
 
-class SHOTExtension: public OT<SHOTExtension> { public:
-	OTNP * base_ot;
+template<typename IO>
+class SHOTExtension: public OT<SHOTExtension<IO>> { public:
+	OTNP<IO> * base_ot;
 	PRG prg;
 	PRP pi;
 	const int l = 128;
@@ -16,8 +17,10 @@ class SHOTExtension: public OT<SHOTExtension> { public:
 
 	block * qT, block_s, *tT;
 	bool setup = false;
-	SHOTExtension(NetIO * io): OT(io) {
-		this->base_ot = new OTNP(io);
+	IO*io = nullptr;
+	SHOTExtension(IO * io) {
+		this->io = io;
+		this->base_ot = new OTNP<IO>(io);
 		this->s = new bool[l];
 		this->k0 = new block[l];
 		this->k1 = new block[l];

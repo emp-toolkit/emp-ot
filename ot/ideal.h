@@ -4,10 +4,13 @@
 /** @addtogroup OT
     @{
   */
-  
-class OTIdeal: public OT<OTIdeal> { public:
+ 
+template<typename IO> 
+class OTIdeal: public OT<OTIdeal<IO>> { public:
 	int cnt = 0;
-	OTIdeal(NetIO * io): OT(io) {
+	IO* io = nullptr;
+	OTIdeal(IO * io) {
+		this->io = io;
 	}
 
 	void send_impl(const block* data0, const block* data1, int length) {

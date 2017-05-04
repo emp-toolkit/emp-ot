@@ -4,8 +4,8 @@
 #include <iostream>
 using namespace std;
 
-template<typename T>
-double test_com_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10) {
+template<typename IO, template<typename>typename T>
+double test_com_ot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 10) {
 	block *b0 = new block[length], *b1 = new block[length], *r = new block[length], *op = new block[length];
 	bool *b = new bool[length];
 	PRG prg(fix_key);
@@ -18,7 +18,7 @@ double test_com_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME 
 	io->set_nodelay();
 	for(int i = 0; i < TIME; ++i) {
 		t1 = timeStamp();
-		ot = new T(io, true);
+		ot = new T<IO>(io, true);
 		if (party == ALICE) {
 			ot->send(b0, b1, length);
 			ot->open();
@@ -48,8 +48,8 @@ double test_com_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME 
 }
 
 
-template<typename T>
-double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10) {
+template<typename IO, template<typename>typename T>
+double test_ot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 10) {
 	block *b0 = new block[length], *b1 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	PRG prg(fix_key);
@@ -62,7 +62,7 @@ double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10
 	io->set_nodelay();
 	for(int i = 0; i < TIME; ++i) {
 		t1 = timeStamp();
-		ot = new T(io);
+		ot = new T<IO>(io);
 		if (party == ALICE) {
 			ot->send(b0, b1, length);
 		} else {
@@ -81,8 +81,8 @@ double test_ot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10
 	delete[] b;
 	return (double)t/TIME;
 }
-template<typename T>
-double test_cot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10) {
+template<typename IO, template<typename>typename T>
+double test_cot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 10) {
 	block *b0 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	block delta;
@@ -98,7 +98,7 @@ double test_cot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 	io->set_nodelay();
 	for(int i = 0; i < TIME; ++i) {
 		t1 = timeStamp();
-		ot = new T(io);
+		ot = new T<IO>(io);
 		if (party == ALICE) {
 			ot->send_cot(b0, delta, length);
 		} else {
@@ -123,8 +123,8 @@ double test_cot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 	return (double)t/TIME;
 }
 
-template<typename T>
-double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 10) {
+template<typename IO, template<typename>typename T>
+double test_rot(NetIO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 10) {
 	block *b0 = new block[length], *r = new block[length];
 	block *b1 = new block[length];
 	bool *b = new bool[length];
@@ -138,7 +138,7 @@ double test_rot(NetIO * io, int party, int length, T* ot = nullptr, int TIME = 1
 	io->set_nodelay();
 	for(int i = 0; i < TIME; ++i) {
 		t1 = timeStamp();
-		ot = new T(io);
+		ot = new T<IO>(io);
 		if (party == ALICE) {
 			ot->send_rot(b0, b1, length);
 		} else {
@@ -170,10 +170,10 @@ int main(int argc, char** argv) {
 	parse_party_and_port(argv, &party, &port);
 
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
-	cout <<"COOT\t"<<test_ot<OTCO>(io, party, 1024)<<endl;
-	cout <<"8M Malicious OT Extension (KOS)\t"<<test_ot<MOTExtension_KOS>(io, party, 1<<23)<<endl;
-	cout <<"8M Malicious OT Extension (ALSZ)\t"<<test_ot<MOTExtension_ALSZ>(io, party, 1<<23)<<endl;
-	cout <<"8M Malicious Committing OT Extension (KOS)\t"<<test_com_ot<MOTExtension_KOS>(io, party, 1<<23)<<endl;
-	cout <<"8M Malicious Committing OT Extension (ALSZ)\t"<<test_com_ot<MOTExtension_ALSZ>(io, party, 1<<23)<<endl;
+	cout <<"COOT\t"<<test_ot<NetIO, OTCO>(io, party, 1024)<<endl;
+	cout <<"8M Malicious OT Extension (KOS)\t"<<test_ot<NetIO, MOTExtension_KOS>(io, party, 1<<23)<<endl;
+	cout <<"8M Malicious OT Extension (ALSZ)\t"<<test_ot<NetIO, MOTExtension_ALSZ>(io, party, 1<<23)<<endl;
+	cout <<"8M Malicious Committing OT Extension (KOS)\t"<<test_com_ot<NetIO, MOTExtension_KOS>(io, party, 1<<23)<<endl;
+	cout <<"8M Malicious Committing OT Extension (ALSZ)\t"<<test_com_ot<NetIO, MOTExtension_ALSZ>(io, party, 1<<23)<<endl;
 	delete io;
 }

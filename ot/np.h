@@ -5,14 +5,16 @@
 	@{
 */
 
-
-class OTNP: public OT<OTNP> { public:
+template<typename IO>
+class OTNP: public OT<OTNP<IO>> { public:
 	int cnt;
 	eb_t g, C;
 	const eb_t *gTbl;
 	bn_t q;
 	PRG prg;
-	OTNP(NetIO * io): OT(io) {
+	NetIO* io;
+	OTNP(IO* io) {
+		this->io = io;
 		initialize_relic();
 		eb_curve_get_gen(g);
 		eb_curve_get_ord(q);

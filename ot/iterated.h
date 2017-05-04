@@ -5,17 +5,19 @@
     @{
   */
   
-template<typename OTExtension>
-class OTIterated: public OT<OTIterated<OTExtension>> { public:
-	OTExtension *seed_ot;
-	OTExtension *ot;
+template<typename IO, template<typename> typename OTExtension>
+class OTIterated: public OT<OTIterated<IO, OTExtension>> { public:
+	OTExtension<IO> *seed_ot;
+	OTExtension<IO> *ot;
 	block * k0 = nullptr, *k1 = nullptr;
 	bool * sel = nullptr, is_sender;
 	int buffer_size, size = 0;
 	PRG prg;
-	OTIterated(NetIO* io, bool is_sender, int buffer_size = 1<<10) : OT<OTIterated<OTExtension>>(io) {
-		seed_ot = new OTExtension(io);
-		ot = new OTExtension(io);
+	IO * io = nullptr;
+	OTIterated(IO* io, bool is_sender, int buffer_size = 1<<10) {
+		this->io = io;
+		seed_ot = new OTExtension<IO>(io);
+		ot = new OTExtension<IO>(io);
 		this->buffer_size = buffer_size;
 		this->is_sender = is_sender;
 		k0 = new block[buffer_size];
@@ -93,7 +95,10 @@ class OTIterated: public OT<OTIterated<OTExtension>> { public:
 		size+=ot->l;
 	}
 };
-typedef OTIterated<SHOTExtension> SHOTIterated;
-typedef OTIterated<MOTExtension> MOTIterated;
+template<typename IO>
+using SHOTIterated = OTIterated<IO, SHOTExtension>;
+template<typename IO>
+using MOTIterated = OTIterated<IO, MOTExtension>;
+
 /**@}*/
 #endif// OT_ITERATED_H__

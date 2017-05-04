@@ -6,8 +6,9 @@
 /** @addtogroup OT
   @{
  */
-class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
-	OTCO * base_ot;
+template<typename IO>
+class MOTExtension_KOS: public OT<MOTExtension_KOS<IO>> { public:
+	OTCO<IO> * base_ot;
 	PRG prg;
 	PRG * G0, *G1;
 	PRP pi;
@@ -21,8 +22,10 @@ class MOTExtension_KOS: public OT<MOTExtension_KOS> { public:
 	bool * extended_r = nullptr;
 	bool committing = false;
 	char dgst[Hash::DIGEST_SIZE];
-	MOTExtension_KOS(NetIO * io, bool committing = false, int ssp = 40): OT(io) {
-		this->base_ot = new OTCO(io);
+	IO * io = nullptr;
+	MOTExtension_KOS(IO * io, bool committing = false, int ssp = 40) {
+		this->io = io;
+		this->base_ot = new OTCO<IO>(io);
 		this->ssp = ssp;
 		this->s = new bool[l];
 		this->k0 = new block[l];
