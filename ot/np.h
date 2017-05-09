@@ -12,7 +12,7 @@ class OTNP: public OT<OTNP<IO>> { public:
 	const eb_t *gTbl;
 	bn_t q;
 	PRG prg;
-	NetIO* io;
+	IO* io;
 	OTNP(IO* io) {
 		this->io = io;
 		initialize_relic();
