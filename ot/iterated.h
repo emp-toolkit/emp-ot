@@ -5,7 +5,7 @@
     @{
   */
   
-template<typename IO, template<typename> typename OTExtension>
+template<typename IO, template<typename> class OTExtension>
 class OTIterated: public OT<OTIterated<IO, OTExtension>> { public:
 	OTExtension<IO> *seed_ot;
 	OTExtension<IO> *ot;

@@ -4,7 +4,7 @@
 #include <iostream>
 using namespace std;
 
-template<typename IO, template<typename>typename T>
+template<typename IO, template<typename>class T>
 double test_ot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 10) {
 	block *b0 = new block[length], *b1 = new block[length], *r = new block[length];
 	PRG prg(fix_key);
@@ -39,7 +39,7 @@ double test_ot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 1
 	delete[] b;
 	return (double)t/TIME;
 }
-template<typename IO, template<typename>typename T>
+template<typename IO, template<typename>class T>
 double test_cot(NetIO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 10) {
 	block *b0 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
@@ -81,7 +81,7 @@ double test_cot(NetIO * io, int party, int length, T<IO>* ot = nullptr, int TIME
 	return (double)t/TIME;
 }
 
-template<typename IO, template<typename>typename T>
+template<typename IO, template<typename>class T>
 double test_rot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 10) {
 	block *b0 = new block[length], *r = new block[length];
 	block *b1 = new block[length];

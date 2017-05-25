@@ -4,7 +4,7 @@
 #include <iostream>
 using namespace std;
 
-template<typename IO, template<typename> typename T>
+template<typename IO, template<typename> class T>
 double test_ot(IO * io, int party, int length, T<IO>* ot, int TIME = 10) {
 	block *b0 = new block[length], *b1 = new block[length], *r = new block[length];
 	PRG prg(fix_key);
