@@ -18,17 +18,17 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 
 	block * qT, block_s, *tT, *tmp;
 	bool setup = false;
-	IO*io = nullptr;
-	const int block_size = 2048;
+	IO *io = nullptr;
+	const int block_size = 1024;
 	SHOTExtension(IO * io) {
 		this->io = io;
-		this->base_ot = new OTNP<IO>(io);
-		this->s = new bool[l];
-		this->k0 = new block[l];
-		this->k1 = new block[l];
-		this->G0 = new PRG[l];
-		this->G1 = new PRG[l];
-		tmp = new block[block_size/8];
+		base_ot = new OTNP<IO>(io);
+		s = new bool[l];
+		k0 = new block[l];
+		k1 = new block[l];
+		G0 = new PRG[l];
+		G1 = new PRG[l];
+		tmp = new block[block_size/128];
 	}
 
 	~SHOTExtension() {
@@ -36,6 +36,9 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 		delete[] s;
 		delete[] k0;
 		delete[] k1;
+		delete[] G0;
+		delete[] G1;
+		delete[] tmp;
 	}
 
 	void setup_send(block * in_k0 = nullptr, bool * in_s = nullptr){
@@ -45,12 +48,13 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 			memcpy(s, in_s, l);
 			block_s = bool_to128(s);
 			return;
+		} else {
+			prg.random_bool(s, l);
+			base_ot->recv(k0, s, l);
+			block_s = bool_to128(s);
 		}
-		prg.random_bool(s, l);
-		base_ot->recv(k0, s, l);
 		for(int i = 0; i < l; ++i)
 			G0[i].reseed(&k0[i]);
-		block_s = bool_to128(s);
 	}
 
 	void setup_recv(block * in_k0 = nullptr, block * in_k1 =nullptr) {
@@ -59,10 +63,11 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 			memcpy(k0, in_k0, l*sizeof(block));
 			memcpy(k1, in_k1, l*sizeof(block));
 			return;
+		} else {
+			prg.random_block(k0, l);
+			prg.random_block(k1, l);
+			base_ot->send(k0, k1, l);
 		}
-		prg.random_block(k0, l);
-		prg.random_block(k1, l);
-		base_ot->send(k0, k1, l);
 		for(int i = 0; i < l; ++i) {
 			G0[i].reseed(&k0[i]);
 			G1[i].reseed(&k1[i]);
@@ -98,9 +103,6 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 		if(!setup)setup_recv();
 		bool * r2 = new bool[length];
 		memcpy(r2, r, old_length);
-		bool* extended_r = new bool[length - old_length];
-		prg.random_bool(extended_r, length- old_length);
-		memcpy(r2+old_length, extended_r, length - old_length);
 
 		block *block_r = new block[length/128];
 		for(int i = 0; i < length/128; ++i) {
@@ -117,18 +119,27 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 			}
 			sse_trans((uint8_t *)(tT+j*block_size), (uint8_t*)t, 128, block_size);
 		}
-		free(block_r);
+
+		delete[] t;
+		delete[] block_r;
+		delete[] r2;
 	}
 
 	void got_send_post(const block* data0, const block* data1, int length) {
-		block pad[2];
-		for(int i = 0; i < length; ++i) {
-			pad[0] = qT[i];
-			pad[1] = xorBlocks(qT[i], block_s);
-			pi.H<2>(pad, pad, 2*i);
-			pad[0] = xorBlocks(pad[0], data0[i]);
-			pad[1] = xorBlocks(pad[1], data1[i]);
-			io->send_data(pad, 2*sizeof(block));
+		const int bsize = AES_BATCH_SIZE*2;
+		block pad[2*bsize];
+		block tmp[2*bsize];
+		for(int i = 0; i < length; i+=bsize) {
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = qT[j];
+				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
+			}
+			pi.Hn(pad, pad, 2*i, 2*bsize, tmp);
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], data0[j]);
+				pad[2*(j-i)+1] = xorBlocks(pad[2*(j-i)+1], data1[j]);
+			}
+			io->send_data(pad, 2*sizeof(block)*min(bsize,length-i));
 		}
 		delete[] qT;
 	}

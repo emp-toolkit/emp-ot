@@ -122,7 +122,7 @@ double test_rot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 
 }
 
 int main(int argc, char** argv) {
-	int length = 1<<20;
+	int length = 1<<24;
 	int port, party;
 	parse_party_and_port(argv, &party, &port);
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
