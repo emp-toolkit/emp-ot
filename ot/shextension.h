@@ -184,15 +184,21 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 	}
 
 	void cot_send_post(block* data0, block delta, int length) {
-		block pad[2];
-		for(int i = 0; i < length; ++i) {
-			pad[0] = qT[i];
-			pad[1] = xorBlocks(qT[i], block_s);
-			pi.H<2>(pad, pad, 2*i);
-			data0[i] = pad[0];
-			pad[0] = xorBlocks(pad[0], delta);
-			pad[0] = xorBlocks(pad[1], pad[0]);
-			io->send_data(pad, sizeof(block));
+		const int bsize = AES_BATCH_SIZE*2;
+		block pad[2*bsize];
+		block tmp[2*bsize];
+		for(int i = 0; i < length; i+=bsize) {
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = qT[j];
+				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
+			}
+			pi.Hn(pad, pad, 2*i, 2*bsize, tmp);
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				data0[j] = pad[2*(j-i)];
+				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], delta);
+				tmp[j-i] = xorBlocks(pad[2*(j-i)+1], pad[2*(j-i)]);
+			}
+			io->send_data(tmp, sizeof(block)*min(bsize,length-i));
 		}
 		delete[] qT;
 	}
