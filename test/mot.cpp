@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
 	cout <<"COOT\t"<<test_ot<NetIO, OTCO>(io, party, 1024)<<endl;
 	cout <<"8M Malicious OT Extension (KOS)\t"<<test_ot<NetIO, MOTExtension_KOS>(io, party, length)<<endl;
 	cout <<"8M Malicious OT Extension (ALSZ)\t"<<test_ot<NetIO, MOTExtension_ALSZ>(io, party, length)<<endl;
-	cout <<"8M Malicious Committing OT Extension (KOS)\t"<<test_com_ot<NetIO, MOTExtension_KOS>(io, party, legnth)<<endl;
+	cout <<"8M Malicious Committing OT Extension (KOS)\t"<<test_com_ot<NetIO, MOTExtension_KOS>(io, party, length)<<endl;
 	cout <<"8M Malicious Committing OT Extension (ALSZ)\t"<<test_com_ot<NetIO, MOTExtension_ALSZ>(io, party, length)<<endl;
 	delete io;
 }
