@@ -21,7 +21,7 @@ before_install:
   - eval "${MATRIX_EVAL}"
   - git clone https://github.com/emp-toolkit/emp-readme.git
   - bash ./emp-readme/scripts/install_relic.sh
-  - bash ./emp-readme/scripts/emp-tool.sh
+  - bash ./emp-readme/scripts/install_emp-tool.sh
 
 addons:
 
