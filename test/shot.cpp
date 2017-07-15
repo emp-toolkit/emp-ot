@@ -54,7 +54,7 @@ double test_cot(NetIO * io, int party, int length, T<IO>* ot = nullptr, int TIME
 	long long t1 = 0, t = 0;
 	io->sync();
 	for(int i = 0; i < TIME; ++i) {
-		t1 = timeStamp();
+		auto start = clock_start();
 		if (ot == nullptr)
 			ot = new T<IO>(io);
 		if (party == ALICE) {
@@ -62,7 +62,7 @@ double test_cot(NetIO * io, int party, int length, T<IO>* ot = nullptr, int TIME
 		} else {
 			ot->recv_cot(r, b, length);
 		}
-		t += timeStamp()-t1;
+		t += time_from(start);
 	}
 	if(party == ALICE)
 			io->send_block(b0, length);
@@ -92,7 +92,7 @@ double test_rot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 
 	io->sync();
 	for(int i = 0; i < TIME; ++i) {
 		prg.random_bool(b, length);
-		t1 = timeStamp();
+		auto start = clock_start();
 		if (ot == nullptr)
 			ot = new T<IO>(io);
 		if (party == ALICE) {
@@ -100,7 +100,7 @@ double test_rot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 
 		} else {
 			ot->recv_rot(r, b, length);
 		}
-		t += timeStamp()-t1;
+		t += time_from(start);
 	}
 	if(party == ALICE) {
 			io->send_block(b0, length);
