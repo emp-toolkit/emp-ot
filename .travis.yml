@@ -26,5 +26,6 @@ before_install:
 addons:
 
 script:
-  - cmake -DCMAKE_BUILD_TYPE=Debug . && make 
-  
+  - cmake -DCMAKE_BUILD_TYPE=Debug . && make
+  - ./run ./bin/mot 12345  
+  - ./run ./bin/shot 12345  

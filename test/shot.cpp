@@ -51,7 +51,7 @@ double test_cot(NetIO * io, int party, int length, T<IO>* ot = nullptr, int TIME
 		b[i] = (rand()%2)==1;
 	}
 
-	long long t1 = 0, t = 0;
+	long long t = 0;
 	io->sync();
 	for(int i = 0; i < TIME; ++i) {
 		auto start = clock_start();
@@ -88,7 +88,7 @@ double test_rot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 
 	bool *b = new bool[length];
 	PRG prg;
 	
-	long long t1 = 0, t = 0;
+	long long t = 0;
 	io->sync();
 	for(int i = 0; i < TIME; ++i) {
 		prg.random_bool(b, length);

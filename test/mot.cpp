@@ -57,7 +57,7 @@ double test_ot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 1
 	prg.random_block(b1, length);
 	prg.random_bool(b, length);
 
-	long long t1 = 0, t = 0;
+	long long t = 0;
 	io->sync();
 	io->set_nodelay();
 	for(int i = 0; i < TIME; ++i) {
@@ -93,7 +93,7 @@ double test_cot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME = 
 		b[i] = (rand()%2)==1;
 	}
 
-	long long t1 = 0, t = 0;
+	long long t = 0;
 	io->sync();
 	io->set_nodelay();
 	for(int i = 0; i < TIME; ++i) {
@@ -133,7 +133,7 @@ double test_rot(NetIO * io, int party, int length, T<IO>* ot = nullptr, int TIME
 		b[i] = (rand()%2)==1;
 	}
 
-	long long t1 = 0, t = 0;
+	long long t = 0;
 	io->sync();
 	io->set_nodelay();
 	for(int i = 0; i < TIME; ++i) {
@@ -166,14 +166,14 @@ double test_rot(NetIO * io, int party, int length, T<IO>* ot = nullptr, int TIME
 }
 
 int main(int argc, char** argv) {
-	int port, party;
+	int port, party, length = 1<<24;
 	parse_party_and_port(argv, &party, &port);
 
 	NetIO * io = new NetIO(party==ALICE ? nullptr:SERVER_IP, port);
 	cout <<"COOT\t"<<test_ot<NetIO, OTCO>(io, party, 1024)<<endl;
-	cout <<"8M Malicious OT Extension (KOS)\t"<<test_ot<NetIO, MOTExtension_KOS>(io, party, 1<<23)<<endl;
-	cout <<"8M Malicious OT Extension (ALSZ)\t"<<test_ot<NetIO, MOTExtension_ALSZ>(io, party, 1<<23)<<endl;
-	cout <<"8M Malicious Committing OT Extension (KOS)\t"<<test_com_ot<NetIO, MOTExtension_KOS>(io, party, 1<<23)<<endl;
-	cout <<"8M Malicious Committing OT Extension (ALSZ)\t"<<test_com_ot<NetIO, MOTExtension_ALSZ>(io, party, 1<<23)<<endl;
+	cout <<"8M Malicious OT Extension (KOS)\t"<<test_ot<NetIO, MOTExtension_KOS>(io, party, length)<<endl;
+	cout <<"8M Malicious OT Extension (ALSZ)\t"<<test_ot<NetIO, MOTExtension_ALSZ>(io, party, length)<<endl;
+	cout <<"8M Malicious Committing OT Extension (KOS)\t"<<test_com_ot<NetIO, MOTExtension_KOS>(io, party, legnth)<<endl;
+	cout <<"8M Malicious Committing OT Extension (ALSZ)\t"<<test_com_ot<NetIO, MOTExtension_ALSZ>(io, party, length)<<endl;
 	delete io;
 }
