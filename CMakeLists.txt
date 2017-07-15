@@ -30,4 +30,4 @@ install(FILES emp-ot-config.cmake DESTINATION cmake/)
 
 add_test(shot)
 add_test(mot)
-add_test(iter_ot)
+#add_test(iter_ot)

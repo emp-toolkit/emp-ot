@@ -13,11 +13,11 @@ double test_com_ot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME
 	prg.random_block(b1, length);
 	prg.random_bool(b, length);
 
-	long long t1 = 0, t = 0;
+	double t = 0;
 	io->sync();
 	io->set_nodelay();
 	for(int i = 0; i < TIME; ++i) {
-		t1 = timeStamp();
+		auto start = clock_start();
 		ot = new T<IO>(io, true);
 		if (party == ALICE) {
 			ot->send(b0, b1, length);
@@ -26,7 +26,7 @@ double test_com_ot(IO * io, int party, int length, T<IO>* ot = nullptr, int TIME
 			ot->recv(r, b, length);
 			ot->open(op, b, length);
 		}
-		t += timeStamp()-t1;
+		t += time_from(start);
 		delete ot;
 	}
 	if(party == BOB) for(int i = 0; i < length; ++i) {
