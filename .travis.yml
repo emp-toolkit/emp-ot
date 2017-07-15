@@ -26,4 +26,5 @@ before_install:
 addons:
 
 script:
+	- ls
   - cmake -DCMAKE_BUILD_TYPE=Debug . && make 
