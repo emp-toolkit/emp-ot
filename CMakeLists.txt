@@ -15,7 +15,7 @@ INCLUDE_DIRECTORIES(${EMP-TOOL_INCLUDE_DIRS})
 
 macro (add_test _name)
 	add_executable(${_name} "test/${_name}.cpp" ${sources})
-	target_link_libraries(${_name}  ${RELIC_LIBRARIES} ${OPENSSL_LIBRARIES} gmp ${EMP-TOOL_LIBRARIES}) 
+	target_link_libraries(${_name} ${EMP-TOOL_LIBRARIES}) 
 endmacro()
 
 include_directories(${CMAKE_SOURCE_DIR}/ot)
