@@ -20,7 +20,6 @@ endmacro()
 
 include_directories(${CMAKE_SOURCE_DIR}/ot)
 
-
 file(GLOB  headers 
 "ot/*.h"
 "emp-ot"
@@ -30,4 +29,3 @@ install(FILES emp-ot-config.cmake DESTINATION cmake/)
 
 add_test(shot)
 add_test(mot)
-#add_test(iter_ot)
