@@ -13,17 +13,22 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 	PRP pi;
 	const int l = 128;
 	block *k0, *k1;
+	PRG * G0, *G1;
 	bool *s;
 
-	block * qT, block_s, *tT;
+	block * qT, block_s, *tT, *tmp;
 	bool setup = false;
-	IO*io = nullptr;
+	IO *io = nullptr;
+	const int block_size = 1024;
 	SHOTExtension(IO * io) {
 		this->io = io;
-		this->base_ot = new OTNP<IO>(io);
-		this->s = new bool[l];
-		this->k0 = new block[l];
-		this->k1 = new block[l];
+		base_ot = new OTNP<IO>(io);
+		s = new bool[l];
+		k0 = new block[l];
+		k1 = new block[l];
+		G0 = new PRG[l];
+		G1 = new PRG[l];
+		tmp = new block[block_size/128];
 	}
 
 	~SHOTExtension() {
@@ -31,6 +36,9 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 		delete[] s;
 		delete[] k0;
 		delete[] k1;
+		delete[] G0;
+		delete[] G1;
+		delete[] tmp;
 	}
 
 	void setup_send(block * in_k0 = nullptr, bool * in_s = nullptr){
@@ -40,10 +48,13 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 			memcpy(s, in_s, l);
 			block_s = bool_to128(s);
 			return;
+		} else {
+			prg.random_bool(s, l);
+			base_ot->recv(k0, s, l);
+			block_s = bool_to128(s);
 		}
-		prg.random_bool(s, l);
-		base_ot->recv(k0, s, l);
-		block_s = bool_to128(s);
+		for(int i = 0; i < l; ++i)
+			G0[i].reseed(&k0[i]);
 	}
 
 	void setup_recv(block * in_k0 = nullptr, block * in_k1 =nullptr) {
@@ -52,78 +63,83 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 			memcpy(k0, in_k0, l*sizeof(block));
 			memcpy(k1, in_k1, l*sizeof(block));
 			return;
+		} else {
+			prg.random_block(k0, l);
+			prg.random_block(k1, l);
+			base_ot->send(k0, k1, l);
 		}
-		prg.random_block(k0, l);
-		prg.random_block(k1, l);
-		base_ot->send(k0, k1, l);
+		for(int i = 0; i < l; ++i) {
+			G0[i].reseed(&k0[i]);
+			G1[i].reseed(&k1[i]);
+		}
 	}
 
+	int padded_length(int length){
+		return ((length+block_size-1)/block_size)*block_size;
+	}
 	void send_pre(int length) {
-		if (length%128 !=0) length = (length/128 + 1)*128;
-
-		if(!setup) setup_send();
-		setup = false;
-		block * q = new block[length];
+		length = padded_length(length);
+		block * q = new block[block_size];
 		qT = new block[length];
-		//get u, compute q
-		block *tmp = new block[length/128];
-		PRG G;
-		for(int i = 0; i < l; ++i) {
-			io->recv_data(tmp, length/8);
-			G.reseed(&k0[i]);
-			G.random_data(q+(i*length/128), length/8);
-			if (s[i])
-				xorBlocks_arr(q+(i*length/128), q+(i*length/128), tmp, length/128);
+		if(!setup) setup_send();
+
+		for (int j = 0; j < length/block_size; ++j) {
+			for(int i = 0; i < l; ++i) {
+				io->recv_data(tmp, block_size/8);
+				G0[i].random_data(q+(i*block_size/128), block_size/8);
+				if (s[i])
+					xorBlocks_arr(q+(i*block_size/128), q+(i*block_size/128), tmp, block_size/128);
+			}
+			sse_trans((uint8_t *)(qT+j*block_size), (uint8_t*)q, 128, block_size);
 		}
-		sse_trans((uint8_t *)(qT), (uint8_t*)q, l, length);
-		delete[] tmp;
 		delete[] q;
 	}
 
 	void recv_pre(const bool* r, int length) {
 		int old_length = length;
-		if (length%128 !=0) length = (length/128 + 1)*128;
-
+		length = padded_length(length);
+		block * t = new block[block_size];
+		tT = new block[length];
 		if(!setup)setup_recv();
-		setup = false;
 		bool * r2 = new bool[length];
 		memcpy(r2, r, old_length);
+
 		block *block_r = new block[length/128];
 		for(int i = 0; i < length/128; ++i) {
 			block_r[i] = bool_to128(r2+i*128);
 		}
-		// send u
-		block* t = new block[length];
-		tT = new block[length];
-		block* tmp = new block[length/128];
-		PRG G;
-		for(int i = 0; i < l; ++i) {
-			G.reseed(&k0[i]);
-			G.random_data(t+i*length/128, length/8);
-			G.reseed(&k1[i]);
-			G.random_data(tmp, length/8);
-			xorBlocks_arr(tmp, t+(i*length/128), tmp, length/128);
-			xorBlocks_arr(tmp, block_r, tmp, length/128);
-			io->send_data(tmp, length/8);
+
+		for (int j = 0; j * block_size < length; ++j) {
+			for(int i = 0; i < l; ++i) {
+				G0[i].random_data(t+(i*block_size/128), block_size/8);
+				G1[i].random_data(tmp, block_size/8);
+				xorBlocks_arr(tmp, t+(i*block_size/128), tmp, block_size/128);
+				xorBlocks_arr(tmp, block_r+(j*block_size/128), tmp, block_size/128);
+				io->send_data(tmp, block_size/8);
+			}
+			sse_trans((uint8_t *)(tT+j*block_size), (uint8_t*)t, 128, block_size);
 		}
 
-		sse_trans((uint8_t *)tT, (uint8_t*)t, l, length);
-
 		delete[] t;
-		delete[] tmp;
 		delete[] block_r;
 		delete[] r2;
 	}
 
 	void got_send_post(const block* data0, const block* data1, int length) {
-		block pad[2];
-		for(int i = 0; i < length; ++i) {
-			pad[0] = qT[i];
-			pad[1] = xorBlocks(qT[i], block_s);
-			pi.H<2>(pad, pad, 2*i);
-			pad[0] = xorBlocks(pad[0], data0[i]);
-			pad[1] = xorBlocks(pad[1], data1[i]);
-			io->send_data(pad, 2*sizeof(block));
+		const int bsize = AES_BATCH_SIZE*2;
+		block pad[2*bsize];
+		block tmp[2*bsize];
+		for(int i = 0; i < length; i+=bsize) {
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = qT[j];
+				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
+			}
+			pi.Hn(pad, pad, 2*i, 2*bsize, tmp);
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], data0[j]);
+				pad[2*(j-i)+1] = xorBlocks(pad[2*(j-i)+1], data1[j]);
+			}
+			io->send_data(pad, 2*sizeof(block)*min(bsize,length-i));
 		}
 		delete[] qT;
 	}
@@ -168,15 +184,21 @@ class SHOTExtension: public OT<SHOTExtension<IO>> { public:
 	}
 
 	void cot_send_post(block* data0, block delta, int length) {
-		block pad[2];
-		for(int i = 0; i < length; ++i) {
-			pad[0] = qT[i];
-			pad[1] = xorBlocks(qT[i], block_s);
-			pi.H<2>(pad, pad, 2*i);
-			data0[i] = pad[0];
-			pad[0] = xorBlocks(pad[0], delta);
-			pad[0] = xorBlocks(pad[1], pad[0]);
-			io->send_data(pad, sizeof(block));
+		const int bsize = AES_BATCH_SIZE*2;
+		block pad[2*bsize];
+		block tmp[2*bsize];
+		for(int i = 0; i < length; i+=bsize) {
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = qT[j];
+				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
+			}
+			pi.Hn(pad, pad, 2*i, 2*bsize, tmp);
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				data0[j] = pad[2*(j-i)];
+				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], delta);
+				tmp[j-i] = xorBlocks(pad[2*(j-i)+1], pad[2*(j-i)]);
+			}
+			io->send_data(tmp, sizeof(block)*min(bsize,length-i));
 		}
 		delete[] qT;
 	}
