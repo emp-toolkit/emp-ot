@@ -13,6 +13,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 FIND_PACKAGE(emp-tool)
 INCLUDE_DIRECTORIES(${EMP-TOOL_INCLUDE_DIRS})
 
+message(${EMP-TOOL_LIBRARIES})
 macro (add_test _name)
 	add_executable(${_name} "test/${_name}.cpp" ${sources})
 	target_link_libraries(${_name} ${EMP-TOOL_LIBRARIES}) 
