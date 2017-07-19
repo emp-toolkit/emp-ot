@@ -8,13 +8,10 @@
 #include "np.h"
 
 #include "shextension.h"
+#include "ot_extension.h"
 #include "mextension_kos.h"
 #include "mextension_alsz.h"
 
 template<typename IO>
 using MOTExtension = MOTExtension_KOS<IO>;
 //typedef MOTExtension_ALSZ MOTExtension;
-
-#include "iterated.h"
-
-
