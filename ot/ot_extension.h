@@ -80,7 +80,7 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 
 	void send_pre(int length) {
 		length = padded_length(length);
-		block * q = new block[block_size];
+		block q[block_size];
 		qT = new block[length];
 		if(!setup) setup_send();
 
@@ -93,13 +93,12 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 			}
 			sse_trans((uint8_t *)(qT+j*block_size), (uint8_t*)q, 128, block_size);
 		}
-		delete[] q;
 	}
 
 	void recv_pre(const bool* r, int length) {
 		int old_length = length;
 		length = padded_length(length);
-		block * t = new block[block_size];
+		block t[block_size];
 		tT = new block[length];
 
 		if(not setup) setup_recv();
@@ -125,21 +124,19 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 			sse_trans((uint8_t *)(tT+j*block_size), (uint8_t*)t, 128, block_size);
 		}
 
-		delete[] t;
 		delete[] block_r;
 		delete[] r2;
 	}
 
 	void got_send_post(const block* data0, const block* data1, int length) {
-		const int bsize = AES_BATCH_SIZE*2;
-		block pad[2*bsize];
-		block tmp[2*bsize];
+		const int bsize = AES_BATCH_SIZE;
+		block *pad = (block*)alloca(2*bsize*sizeof(block));
 		for(int i = 0; i < length; i+=bsize) {
 			for(int j = i; j < i+bsize and j < length; ++j) {
 				pad[2*(j-i)] = qT[j];
 				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
 			}
-			pi.Hn(pad, pad, 2*i, 2*bsize, tmp);
+			pi.H<2*bsize>(pad, pad, 2*i);
 			for(int j = i; j < i+bsize and j < length; ++j) {
 				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], data0[j]);
 				pad[2*(j-i)+1] = xorBlocks(pad[2*(j-i)+1], data1[j]);
@@ -163,15 +160,15 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 	}
 
 	void cot_send_post(block* data0, block delta, int length) {
-		const int bsize = AES_BATCH_SIZE*2;
-		block pad[2*bsize];
-		block tmp[2*bsize];
+		const int bsize = AES_BATCH_SIZE;
+		block *pad = (block*)alloca(2*bsize*sizeof(block));
+		block *tmp = (block*)alloca(2*bsize*sizeof(block));
 		for(int i = 0; i < length; i+=bsize) {
 			for(int j = i; j < i+bsize and j < length; ++j) {
 				pad[2*(j-i)] = qT[j];
 				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
 			}
-			pi.Hn(pad, pad, 2*i, 2*bsize, tmp);
+			pi.H<2*bsize>(pad, pad, 2*i);
 			for(int j = i; j < i+bsize and j < length; ++j) {
 				data0[j] = pad[2*(j-i)];
 				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], delta);

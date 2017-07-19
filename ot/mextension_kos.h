@@ -22,6 +22,7 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::prg;
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::pi;
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::padded_length;
+	using OTExtension<IO, OTCO, MOTExtension_KOS>::block_size;
 	
 	MOTExtension_KOS(IO * io, bool committing = false, int ssp = 40) :
 		OTExtension<IO, OTCO, MOTExtension_KOS>(io, ssp) {
@@ -41,25 +42,25 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 		int extended_length = padded_length(length);
 		block seed2, x, t[2], q[2], tmp1, tmp2;
 		io->recv_block(&seed2, 1);
-		block *chi = new block[extended_length];
+		block chi[block_size];
 		PRG prg2(&seed2);
-		prg2.random_block(chi, extended_length);
 
 		q[0] = zero_block();
 		q[1] = zero_block();
-		for(int i = 0; i < extended_length; ++i) {
-			mul128(qT[i], chi[i], &tmp1, &tmp2);
-			q[0] = xorBlocks(q[0], tmp1);
-			q[1] = xorBlocks(q[1], tmp2);
+		for(int i = 0; i < extended_length/block_size; ++i) {
+			prg2.random_block(chi, block_size);
+			for(int j = 0; j < block_size; ++j) {
+				mul128(qT[i*block_size+j], chi[j], &tmp1, &tmp2);
+				q[0] = xorBlocks(q[0], tmp1);
+				q[1] = xorBlocks(q[1], tmp2);
+			}
 		}
 		io->recv_block(&x, 1);
 		io->recv_block(t, 2);
-
 		mul128(x, block_s, &tmp1, &tmp2);
 		q[0] = xorBlocks(q[0], tmp1);
 		q[1] = xorBlocks(q[1], tmp2);
 
-		delete[] chi;
 		return block_cmp(q, t, 2);	
 	}
 	void recv_check(const bool* r, int length) {
