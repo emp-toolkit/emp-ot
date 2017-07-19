@@ -135,8 +135,7 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 
 	void send_rot(block * data0, block * data1, int length) {
 		send_pre(length);
-		if(!send_check(length))
-			error("OT Extension check failed");
+		if(!send_check(length))error("OT Extension check failed");
 		OTExtension<IO, OTCO, MOTExtension_KOS>::rot_send_post(data0, data1, length);
 	}
 
@@ -146,6 +145,16 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 		OTExtension<IO, OTCO, MOTExtension_KOS>::rot_recv_post(data, b, length);
 	}
 
+	void send_cot(block * data0, block delta, int length) {
+		send_pre(length);
+		if(!send_check(length))error("OT Extension check failed");
+		OTExtension<IO, OTCO, MOTExtension_KOS>::cot_send_post(data0, delta, length);
+	}
+	void recv_cot(block* data, const bool* b, int length) {
+		recv_pre(b, length);
+		recv_check(b, length);
+		OTExtension<IO, OTCO, MOTExtension_KOS>::cot_recv_post(data, b, length);
+	}
 
 	void open() {
 		if (!committing)

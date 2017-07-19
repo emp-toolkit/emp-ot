@@ -18,6 +18,7 @@ double test_ot(IO * io, int party, int length) {
 	} else {
 		ot->recv(r, b, length);
 	}
+	io->flush();
 	long long t = time_from(start);
 	if(party == BOB) for(int i = 0; i < length; ++i) {
 		if (b[i]) assert(block_cmp(&r[i], &b1[i], 1));
@@ -47,6 +48,7 @@ double test_cot(NetIO * io, int party, int length) {
 	} else {
 		ot->recv_cot(r, b, length);
 	}
+	io->flush();
 	long long t = time_from(start);
 	if(party == ALICE)
 			io->send_block(b0, length);
@@ -54,10 +56,16 @@ double test_cot(NetIO * io, int party, int length) {
 		io->recv_block(b0, length);
 		for(int i = 0; i < length; ++i) {
 			block b1 = xorBlocks(b0[i], delta); 
-			if (b[i]) assert(block_cmp(&r[i], &b1, 1));
-			else assert(block_cmp(&r[i], &b0[i], 1));
+			if (b[i]) {
+				if(!block_cmp(&r[i], &b1, 1))
+					error("COT failed!");
+			} else {
+				if(!block_cmp(&r[i], &b0[i], 1))
+					error("COT failed!");
+			}
 		}
 	}
+	io->flush();
 	delete ot;
 	delete[] b0;
 	delete[] r;
@@ -81,6 +89,7 @@ double test_rot(IO * io, int party, int length) {
 	} else {
 		ot->recv_rot(r, b, length);
 	}
+	io->flush();
 	long long t = time_from(start);
 	if(party == ALICE) {
 			io->send_block(b0, length);
@@ -93,6 +102,7 @@ double test_rot(IO * io, int party, int length) {
 			else assert(block_cmp(&r[i], &b0[i], 1));
 		}
 	}
+	io->flush();
 	delete ot;
 	delete[] b0;
 	delete[] b1;
