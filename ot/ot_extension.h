@@ -5,7 +5,7 @@
     @{
   */
 
-template<typename IO, template<typename> typename BaseOT, template<typename> typename OTE>
+template<typename IO, template<typename> class BaseOT, template<typename> class OTE>
 class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 	BaseOT<IO> * base_ot;
 	PRG prg;
