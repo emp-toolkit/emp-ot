@@ -11,17 +11,17 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 	PRG prg;
 	PRP pi;
 	const int l = 128;
-
-	block *k0, *k1;
-	PRG * G0, *G1;
-	bool *s;
-
-	block * qT, block_s, *tT, *tmp;
-	bool setup = false;
-	IO *io = nullptr;
 	const int block_size = 1024;
-	OTExtension(IO * io) {
+
+	block *k0 = nullptr, *k1 = nullptr, 
+			* qT  = nullptr, *tT = nullptr, *tmp = nullptr, block_s;
+	PRG *G0, *G1;
+	bool *s = nullptr, * extended_r = nullptr, setup = false;
+	IO *io = nullptr;
+	int ssp;
+	OTExtension(IO * io, int ssp = 0) {
 		this->io = io;
+		this->ssp = ssp;
 		base_ot = new BaseOT<IO>(io);
 		s = new bool[l];
 		k0 = new block[l];
@@ -29,6 +29,7 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 		G0 = new PRG[l];
 		G1 = new PRG[l];
 		tmp = new block[block_size/128];
+		extended_r = new bool[block_size];
 	}
 
 	~OTExtension() {
@@ -39,15 +40,15 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 		delete[] G0;
 		delete[] G1;
 		delete[] tmp;
+		delete[] extended_r;
 	}
 
-	void setup_send(block * in_k0 = nullptr, bool * in_s = nullptr){
+	void setup_send(block * in_k0 = nullptr, bool * in_s = nullptr) {
 		setup = true;
 		if(in_s != nullptr) {
 			memcpy(k0, in_k0, l*sizeof(block));
 			memcpy(s, in_s, l);
 			block_s = bool_to128(s);
-			return;
 		} else {
 			prg.random_bool(s, l);
 			base_ot->recv(k0, s, l);
@@ -62,7 +63,6 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 		if(in_k0 !=nullptr) {
 			memcpy(k0, in_k0, l*sizeof(block));
 			memcpy(k1, in_k1, l*sizeof(block));
-			return;
 		} else {
 			prg.random_block(k0, l);
 			prg.random_block(k1, l);
@@ -75,7 +75,7 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 	}
 
 	int padded_length(int length){
-		return ((length+block_size-1)/block_size)*block_size;
+		return ((length + ssp + block_size - 1) / block_size) * block_size;
 	}
 
 	void send_pre(int length) {
@@ -101,9 +101,13 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 		length = padded_length(length);
 		block * t = new block[block_size];
 		tT = new block[length];
-		if(!setup)setup_recv();
+
+		if(not setup) setup_recv();
+
 		bool * r2 = new bool[length];
+		prg.random_bool(extended_r, block_size);
 		memcpy(r2, r, old_length);
+		memcpy(r2+old_length, extended_r, length - old_length);
 
 		block *block_r = new block[length/128];
 		for(int i = 0; i < length/128; ++i) {
