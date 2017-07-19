@@ -11,7 +11,7 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 	block *open_data = nullptr;
 	bool committing = false;
 	char dgst[Hash::DIGEST_SIZE];
-	
+
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::send_pre;
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::recv_pre;
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::block_s;
@@ -23,11 +23,11 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::pi;
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::padded_length;
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::block_size;
-	
+
 	MOTExtension_KOS(IO * io, bool committing = false, int ssp = 40) :
 		OTExtension<IO, OTCO, MOTExtension_KOS>(io, ssp) {
-		this->committing = committing;
-	}
+			this->committing = committing;
+		}
 
 	~MOTExtension_KOS() {
 		delete_array_null(open_data);
@@ -69,31 +69,27 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 		}
 
 		int extended_length = padded_length(length);
-		block *chi = new block[extended_length];
+		block chi[block_size];
 		block seed2, x = zero_block(), t[2], tmp1, tmp2;
 		prg.random_block(&seed2,1);
 		io->send_block(&seed2, 1);
 		PRG prg2(&seed2);
 		t[0] = t[1] = zero_block();
-		prg2.random_block(chi,extended_length);
-		for(int i = 0 ; i < length; ++i) {
-			if(r[i])
-				x = xorBlocks(x, chi[i]);
-		}
-		for(int i = 0 ; i < extended_length - length; ++i) {
-			if(extended_r[i])
-				x = xorBlocks(x, chi[i+length]);
-		}
 
+		for(int i = 0; i < extended_length/block_size; ++i) {
+			prg2.random_block(chi, block_size);
+			for(int j = 0; j < block_size; ++j) {
+				mul128(chi[j], tT[i*block_size+j], &tmp1, &tmp2);
+				t[0] = xorBlocks(t[0], tmp1);
+				t[1] = xorBlocks(t[1], tmp2);
+				if (i*block_size+j < length and r[i*block_size+j])
+					x = xorBlocks(x, chi[j]);
+				else if (i*block_size+j >= length and extended_r[i*block_size+j-length]) 
+					x = xorBlocks(x, chi[j]);
+			}
+		}
 		io->send_block(&x, 1);
-		for(int i = 0 ; i < extended_length; ++i) {
-			mul128(chi[i], tT[i], &tmp1, &tmp2);
-			t[0] = xorBlocks(t[0], tmp1);
-			t[1] = xorBlocks(t[1], tmp2);
-		}
 		io->send_block(t, 2);
-
-		delete[] chi;
 	}
 	void got_recv_post(block* data, const bool* r, int length) {
 		block res[2];
