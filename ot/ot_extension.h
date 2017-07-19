@@ -11,7 +11,7 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 	PRG prg;
 	PRP pi;
 	const int l = 128;
-	const int block_size = 1024;
+	const int block_size = 1024*16;
 
 	block *k0 = nullptr, *k1 = nullptr, 
 			* qT  = nullptr, *tT = nullptr, *tmp = nullptr, block_s;
@@ -86,8 +86,8 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 
 		for (int j = 0; j < length/block_size; ++j) {
 			for(int i = 0; i < l; ++i) {
-				io->recv_data(tmp, block_size/8);
 				G0[i].random_data(q+(i*block_size/128), block_size/8);
+				io->recv_data(tmp, block_size/8);
 				if (s[i])
 					xorBlocks_arr(q+(i*block_size/128), q+(i*block_size/128), tmp, block_size/128);
 			}

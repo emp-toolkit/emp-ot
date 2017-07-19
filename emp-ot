@@ -15,7 +15,3 @@
 template<typename IO>
 using MOTExtension = MOTExtension_KOS<IO>;
 //typedef MOTExtension_ALSZ MOTExtension;
-
-#include "iterated.h"
-
-
