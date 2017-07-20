@@ -11,7 +11,6 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 	block *open_data = nullptr;
 	bool committing = false;
 	char dgst[Hash::DIGEST_SIZE];
-
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::send_pre;
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::recv_pre;
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::block_s;
