@@ -192,13 +192,18 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 	}
 	
 	void rot_send_post(block* data0, block* data1, int length) {
-		block pad[2];
-		for(int i = 0; i < length; ++i) {
-			pad[0] = qT[i];
-			pad[1] = xorBlocks(qT[i], block_s);
-			pi.H<2>(pad, pad, 2*i);
-			data0[i] = pad[0];
-			data1[i] = pad[1];
+		const int bsize = AES_BATCH_SIZE;
+		block *pad = (block*)alloca(2*bsize*sizeof(block));
+		for(int i = 0; i < length; i+=bsize) {
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = qT[j];
+				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
+			}
+			pi.H<2*bsize>(pad, pad, 2*i);
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				data0[j] = pad[2*(j-i)];
+				data1[j] = pad[2*(j-i)+1];
+			}
 		}
 		delete[] qT;
 	}
