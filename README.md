@@ -4,24 +4,55 @@
 
 ## Installation
 
-1. Install prerequisites using instructions [here](https://github.com/emp-toolkit/emp-readme).
+1. Install prerequisites using instructions [here](https://github.com/emp-toolkit/emp-readme#detailed-installation).
 2. Install [emp-tool](https://github.com/emp-toolkit/emp-tool).
-2. git clone https://github.com/emp-toolkit/emp-ot.git
-3. cd emp-ot && cmake . && sudo make install
+2. `git clone https://github.com/emp-toolkit/emp-ot.git`
+3. `cd emp-ot && cmake . && sudo make install`  
+    1. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
+    2. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX)
 
 ## Test
 
-* If you want to test the code in local machine, type
+### Testing on localhost
 
-   `./run ./bin/[binaries] 12345 [more opts]`
-* IF you want to test the code over two machine, type
+   `./run ./bin/[binary] 12345`
 
-  `./bin/[binaries] 1 12345 [more opts]` on one machine and 
+with `[binary]=shot` to test semi-honest OTs and `[binary]=mot` for malicious OTs
+   
+### Testing on localhost
+
+1. Change the IP address in the test code (e.g. [here](https://github.com/emp-toolkit/emp-ot/blob/master/test/shot.cpp#L8))
+
+2. run `./bin/[binary] 1 [port]` on one machine and 
   
-  `./bin/[binaries] 2 12345 [more opts]` on the other.
+   run `./bin/[binary] 2 [port]` on the other machine.
   
-  IP address is hardcoded in the test files. Please replace
-  SERVER_IP variable to the real ip.
+## Performance
+All numbers are based on single thread, measured in terms of OT per second.
 
-### Question
+### Localhost
+Communication through loopback. [c4.2xlarge](http://www.ec2instances.info/?filter=c4.2xlarge) is used.
+
+|                | OT            | COT          | ROT          |
+|----------------|---------------|--------------|--------------|
+| NPOT           | 7.3 thousand  |              |              |
+| SemiHonest OTe | 13.5 million  | 14 million   | 15 million   |
+| COOT           | 12.6 thousand |              |              |
+| Malicious OTe  | 10.5 million  | 10.8 million | 11.6 million |
+
+### Local Area Network
+
+Communication through 2.32 Gbps network with ping <= 0.2ms. Two [c4.2xlarge](http://www.ec2instances.info/?filter=c4.2xlarge) are used.
+
+|                | OT            | COT          | ROT          |
+|----------------|---------------|--------------|--------------|
+| NPOT           | 7.3 thousand  |              |              |
+| SemiHonest OTe | 6 million  | 8.9 million | 12 million |
+| COOT           | 12.5 thousand |              |              |
+| Malicious OTe  | 5.4 million  | 7.6 million | 9.7 million |
+
+## Usage
+
+
+## Question
 Please send email to wangxiao@cs.umd.edu
