@@ -56,7 +56,10 @@ All oblivious transfer protocols are implemented with network as a template. The
 
 ### A Simple Example for General OT
 
-```c++
+```cpp
+#include<emp-tool> // for NetIO, etc
+#include<emp-ot>   // for OTs
+
 block b0[length], b1[length];
 bool c[length];
 NetIO io(party==ALICE ? nullptr:"127.0.0.1", port); // Create a network with Bob connecting to 127.0.0.1
@@ -71,10 +74,7 @@ Note that `NPOT` can be replaced to `COOT`, `SHOTExtension` or `MOTExtension` (d
 ### Variantions
 
 Correlated OT and Random OT are supported for `*OTExtension`. See following as an example.
-```c++
-#include<emp-tool> // for NetIO, etc
-#include<emp-ot>   // for OTs
-
+```cpp
 block deltas[length], delta;
 
 SHOTExtension<NetIO> ote(&io); // create a semi honest OT extension
@@ -82,26 +82,26 @@ SHOTExtension<NetIO> ote(&io); // create a semi honest OT extension
 if (party == ALICE)
     ote.send_cot(b0, delta, length);
 else
-    np.recv_cot(b0, c, length);
+    ote.recv_cot(b0, c, length);
     
 //Random OT
 if (party == ALICE)
     ote.send_rot(b0, b1, length);
 else
-    np.recv_rot(b0, c, length);
+    ote.recv_rot(b0, c, length);
     
 MOTExtension<NetIO> mote(&io); // create a malicious OT extension
 //Correlated OT
 if (party == ALICE)
-    ote.send_cot(b0, deltas, length);
+    mote.send_cot(b0, deltas, length);
 else
-    np.recv_cot(b0, c, length);
+    mote.recv_cot(b0, c, length);
     
 //Random OT
 if (party == ALICE)
-    ote.send_rot(b0, b1, length);
+    mote.send_rot(b0, b1, length);
 else
-    np.recv_rot(b0, c, length); 
+    mote.recv_rot(b0, c, length); 
 ```
 Note that you can call `send` or `send_cot` or `send_rot` multiple times without repeating baseOT; however, the role (`send`/`recv`) cannot be reversed for the same object.
 
