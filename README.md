@@ -87,9 +87,10 @@ Variantions
 
 Correlated OT and Random OT are supported for `*OTExtension`. See following as an example.
 ```cpp
-block deltas[length], delta;
+block delta;
 
 SHOTExtension<NetIO> ote(&io); // create a semi honest OT extension
+
 //Correlated OT
 if (party == ALICE)
     ote.send_cot(b0, delta, length);
@@ -101,19 +102,16 @@ if (party == ALICE)
     ote.send_rot(b0, b1, length);
 else
     ote.recv_rot(b0, c, length);
-    
-MOTExtension<NetIO> mote(&io); // create a malicious OT extension
+```
+The above code also works for `MOTExtension<NetIO>`. However, cot no longer guarantee that same Delta is used. An additional interface is provided.
+
+```cpp
+block deltas[length];
 //Correlated OT
 if (party == ALICE)
-    mote.send_cot(b0, deltas, length);
+    ote.send_cot(b0, deltas, length);
 else
-    mote.recv_cot(b0, c, length);
-    
-//Random OT
-if (party == ALICE)
-    mote.send_rot(b0, b1, length);
-else
-    mote.recv_rot(b0, c, length); 
+    ote.recv_cot(b0, c, length);
 ```
 Note that you can call `send` or `send_cot` or `send_rot` multiple times without repeating baseOT; however, the role (`send`/`recv`) cannot be reversed for the same object.
 
