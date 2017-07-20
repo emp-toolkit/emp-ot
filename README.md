@@ -1,7 +1,10 @@
-# emp-ot [![Build Status](https://travis-ci.org/emp-toolkit/emp-ot.svg?branch=master)](https://travis-ci.org/emp-toolkit/emp-ot)
+emp-ot [![Build Status](https://travis-ci.org/emp-toolkit/emp-ot.svg?branch=master)](https://travis-ci.org/emp-toolkit/emp-ot)
+=====
 <img src="https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/art/logo-full.jpg" width=300px/>
 
-## Installation
+
+Installation
+=====
 
 1. Install prerequisites using instructions [here](https://github.com/emp-toolkit/emp-readme#detailed-installation).
 2. Install [emp-tool](https://github.com/emp-toolkit/emp-tool).
@@ -11,15 +14,18 @@
     2. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
     3. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX)
 
-## Test
+Test
+=====
 
-### Testing on localhost
+Testing on localhost
+-----
 
    `./run ./bin/[binary] 12345`
 
 with `[binary]=shot` to test semi-honest OTs and `[binary]=mot` for malicious OTs
    
-### Testing on localhost
+Testing on localhost
+-----
 
 1. Change the IP address in the test code (e.g. [here](https://github.com/emp-toolkit/emp-ot/blob/master/test/shot.cpp#L8))
 
@@ -27,10 +33,12 @@ with `[binary]=shot` to test semi-honest OTs and `[binary]=mot` for malicious OT
   
    run `./bin/[binary] 2 [port]` on the other machine.
   
-## Performance
+Performance
+=====
 All numbers are based on single thread, measured in terms of OT per second. Using three threads is expected to fill a 10Gbps network.
 
-### Localhost
+Localhost
+-----
 Communication through loopback. [c4.2xlarge](http://www.ec2instances.info/?filter=c4.2xlarge) is used.
 
 |                | OT            | COT          | ROT          |
@@ -40,7 +48,8 @@ Communication through loopback. [c4.2xlarge](http://www.ec2instances.info/?filte
 | COOT           | 12.6 thousand |              |              |
 | Malicious OTe  | 10.5 million  | 10.8 million | 11.6 million |
 
-### Local Area Network
+Local Area Network
+-----
 
 Communication through 2.32 Gbps network with ping <= 0.2ms. Two [c4.2xlarge](http://www.ec2instances.info/?filter=c4.2xlarge) are used.
 
@@ -51,10 +60,12 @@ Communication through 2.32 Gbps network with ping <= 0.2ms. Two [c4.2xlarge](htt
 | COOT           | 12.5 thousand |              |              |
 | Malicious OTe  | 5.4 million  | 7.6 million | 9.7 million |
 
-## Usage
+Usage
+=====
 All oblivious transfer protocols are implemented with network as a template. Therefore customized network implementation with [sending](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L14) and [receiving](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L17) can be easily hooked up with `emp-ot`. [`NetIO`](https://github.com/emp-toolkit/emp-tool/blob/stable/io/net_io_channel.h#L22) is used for all tests and examples in the following.
 
-### A Simple Example for General OT
+A Simple Example for General OT
+-----
 
 ```cpp
 #include<emp-tool> // for NetIO, etc
@@ -71,7 +82,8 @@ else
 ```
 Note that `NPOT` can be replaced to `COOT`, `SHOTExtension` or `MOTExtension` (default rho=40) without changing any other part of the code. In fact, `*OTExtension` calls baseOT internally so you should (almost) never need to call `NPOT` or `COOT` yourself.
 
-### Variantions
+Variantions
+-----
 
 Correlated OT and Random OT are supported for `*OTExtension`. See following as an example.
 ```cpp
@@ -105,13 +117,15 @@ else
 ```
 Note that you can call `send` or `send_cot` or `send_rot` multiple times without repeating baseOT; however, the role (`send`/`recv`) cannot be reversed for the same object.
 
-### More details
+More details
+-----
 - Base OTs are accelerated using ECC, from [relic](https://github.com/relic-toolkit/relic).
 - Inspired by Keller et al.[KOS15], F_COTe is split out [separately](https://github.com/emp-toolkit/emp-ot/blob/master/ot/ot_extension.h), from which semi-honest and malicious OT extension are built. Future works that optimize OT extension, but still uses IKNP can also be built on top of that. 
 - `MOTextension` also supports committing OT, which allows the sender to open *all* messages at a later stage. See [here](https://github.com/emp-toolkit/emp-ot/blob/master/ot/mextension_kos.h#L27) for more parameters in the constructor and [here](https://github.com/emp-toolkit/emp-ot/blob/master/ot/mextension_kos.h#L156) on how to open.
 - As part of `emp-toolkit`, it is being used in `emp-sh2pc`, `emp-m2pc`, and other projects that will be open sourced soon.
 
-## Citation
+Citation
+=====
 ```latex
 @misc{emp-toolkit,
    author = {Xiao Wang and Alex J. Malozemoff and Jonathan Katz},
@@ -121,5 +135,6 @@ Note that you can call `send` or `send_cot` or `send_rot` multiple times without
 }
 ```
 
-## Question
+Question
+=====
 Please send email to wangxiao@cs.umd.edu
