@@ -11,7 +11,6 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 	block *open_data = nullptr;
 	bool committing = false;
 	char dgst[Hash::DIGEST_SIZE];
-
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::send_pre;
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::recv_pre;
 	using OTExtension<IO, OTCO, MOTExtension_KOS>::block_s;
@@ -142,11 +141,37 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 		OTExtension<IO, OTCO, MOTExtension_KOS>::rot_recv_post(data, b, length);
 	}
 
+	void cot_send_post_new(block* data0, const block* delta, int length) {
+		const int bsize = AES_BATCH_SIZE;
+		block *pad = (block*)alloca(2*bsize*sizeof(block));
+		block *tmp = (block*)alloca(2*bsize*sizeof(block));
+		for(int i = 0; i < length; i+=bsize) {
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = qT[j];
+				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
+			}
+		pi.Hn(pad, pad, 2*i, 2*bsize, tmp);
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				data0[j] = pad[2*(j-i)];
+				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], delta[j]);
+				tmp[j-i] = xorBlocks(pad[2*(j-i)+1], pad[2*(j-i)]);
+			}
+			io->send_data(tmp, sizeof(block)*min(bsize,length-i));
+		}
+		delete[] qT;
+	}
+
+	void send_cot(block * data0, const block *delta, int length) {
+		send_pre(length);
+		if(!send_check(length))error("OT Extension check failed");
+		cot_send_post_new(data0, delta, length);
+	}
 	void send_cot(block * data0, block delta, int length) {
 		send_pre(length);
 		if(!send_check(length))error("OT Extension check failed");
 		OTExtension<IO, OTCO, MOTExtension_KOS>::cot_send_post(data0, delta, length);
 	}
+
 	void recv_cot(block* data, const bool* b, int length) {
 		recv_pre(b, length);
 		recv_check(b, length);
