@@ -1,5 +1,4 @@
 # emp-ot [![Build Status](https://travis-ci.org/emp-toolkit/emp-ot.svg?branch=master)](https://travis-ci.org/emp-toolkit/emp-ot)
-
 <img src="https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/art/logo-full.jpg" width=300px/>
 
 ## Installation
@@ -8,8 +7,9 @@
 2. Install [emp-tool](https://github.com/emp-toolkit/emp-tool).
 2. `git clone https://github.com/emp-toolkit/emp-ot.git`
 3. `cd emp-ot && cmake . && sudo make install`  
-    1. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
-    2. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX)
+    1. Alternatively, you can also `cd emp-ot && mkdir -p build && cd build && cmake .. && sudo make install` if out-of-source build is preferred.
+    2. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
+    3. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX)
 
 ## Test
 
@@ -52,9 +52,9 @@ Communication through 2.32 Gbps network with ping <= 0.2ms. Two [c4.2xlarge](htt
 | Malicious OTe  | 5.4 million  | 7.6 million | 9.7 million |
 
 ## Usage
-All Oblivious transfer protocol are implemented with network as a template. Therefore any network implementation with [sending](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L14) and [receiving](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L17) can be easily hooked up with `emp-ot`. In particular, [`NetIO`](https://github.com/emp-toolkit/emp-tool/blob/stable/io/net_io_channel.h#L22) is used for all test code and examples in the following.
+All oblivious transfer protocols are implemented with network as a template. Therefore customized network implementation with [sending](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L14) and [receiving](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L17) can be easily hooked up with `emp-ot`. [`NetIO`](https://github.com/emp-toolkit/emp-tool/blob/stable/io/net_io_channel.h#L22) is used for all tests and examples in the following.
 
-### A Simple Example
+### A Simple Example for General OT
 
 ```c++
 block b0[length], b1[length];
@@ -107,6 +107,16 @@ Note that you can call `send` or `send_cot` or `send_rot` multiple times without
 - Inspired by Keller et al.[KOS15], F_COTe is split out [separately](https://github.com/emp-toolkit/emp-ot/blob/master/ot/ot_extension.h), from which semi-honest and malicious OT extension are built. Future works that optimize OT extension, but still uses IKNP can also be built on top of that. 
 - `MOTextension` also supports committing OT, which allows the sender to open *all* messages at a later stage. See [here](https://github.com/emp-toolkit/emp-ot/blob/master/ot/mextension_kos.h#L27) for more parameters in the constructor and [here](https://github.com/emp-toolkit/emp-ot/blob/master/ot/mextension_kos.h#L156) on how to open.
 - As part of `emp-toolkit`, it is being used in `emp-sh2pc`, `emp-m2pc`, and other projects that will be open sourced soon.
+
+## Citation
+```latex
+@misc{emp-toolkit,
+   author = {Xiao Wang and Alex J. Malozemoff and Jonathan Katz},
+   title = {{EMP-toolkit: Efficient MultiParty computation toolkit}},
+   howpublished = {\url{https://github.com/emp-toolkit}},
+   year={2016}
+}
+```
 
 ## Question
 Please send email to wangxiao@cs.umd.edu
