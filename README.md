@@ -28,7 +28,7 @@ with `[binary]=shot` to test semi-honest OTs and `[binary]=mot` for malicious OT
    run `./bin/[binary] 2 [port]` on the other machine.
   
 ## Performance
-All numbers are based on single thread, measured in terms of OT per second.
+All numbers are based on single thread, measured in terms of OT per second. Using three threads is expected to fill a 10Gbps network.
 
 ### Localhost
 Communication through loopback. [c4.2xlarge](http://www.ec2instances.info/?filter=c4.2xlarge) is used.
@@ -52,7 +52,61 @@ Communication through 2.32 Gbps network with ping <= 0.2ms. Two [c4.2xlarge](htt
 | Malicious OTe  | 5.4 million  | 7.6 million | 9.7 million |
 
 ## Usage
+All Oblivious transfer protocol are implemented with network as a template. Therefore any network implementation with [sending](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L14) and [receiving](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L17) can be easily hooked up with `emp-ot`. In particular, [`NetIO`](https://github.com/emp-toolkit/emp-tool/blob/stable/io/net_io_channel.h#L22) is used for all test code and examples in the following.
 
+### A Simple Example
+
+```c++
+block b0[length], b1[length];
+bool c[length];
+NetIO io(party==ALICE ? nullptr:"127.0.0.1", port); // Create a network with Bob connecting to 127.0.0.1
+NPOT<NetIO> np(&io); // create a Naor Pinkas OT using the network above
+if (party == ALICE)
+    np.send(b0, b1, length); // ALICE is sender, with b0[i] and b1[i] as messages to send
+else
+    np.recv(b0, c, length);  // Bob is receiver, with c[i] as the choice bit and obtains b0[i] if c[i]==0 and b1[i] if c[i]==1
+```
+Note that `NPOT` can be replaced to `COOT`, `SHOTExtension` or `MOTExtension` (default rho=40) without changing any other part of the code. In fact, `*OTExtension` calls baseOT internally so you should (almost) never need to call `NPOT` or `COOT` yourself.
+
+### Variantions
+
+Correlated OT and Random OT are supported for `*OTExtension`. See following as an example.
+```c++
+block deltas[length], delta;
+
+SHOTExtension<NetIO> ote(&io); // create a semi honest OT extension
+//Correlated OT
+if (party == ALICE)
+    ote.send_cot(b0, delta, length);
+else
+    np.recv_cot(b0, c, length);
+    
+//Random OT
+if (party == ALICE)
+    ote.send_rot(b0, b1, length);
+else
+    np.recv_rot(b0, c, length);
+    
+MOTExtension<NetIO> mote(&io); // create a malicious OT extension
+//Correlated OT
+if (party == ALICE)
+    ote.send_cot(b0, deltas, length);
+else
+    np.recv_cot(b0, c, length);
+    
+//Random OT
+if (party == ALICE)
+    ote.send_rot(b0, b1, length);
+else
+    np.recv_rot(b0, c, length); 
+```
+Note that you can call `send` or `send_cot` or `send_rot` multiple times without repeating baseOT; however, the role (`send`/`recv`) cannot be reversed for the same object.
+
+### More details
+- Base OTs are accelerated using ECC, from [relic](https://github.com/relic-toolkit/relic).
+- Inspired by Keller et al.[KOS15], F_COTe is split out [separately](https://github.com/emp-toolkit/emp-ot/blob/master/ot/ot_extension.h), from which semi-honest and malicious OT extension are built. Future works that optimize OT extension, but still uses IKNP can also be built on top of that. 
+- `MOTextension` also supports committing OT, which allows the sender to open *all* messages at a later stage. See [here](https://github.com/emp-toolkit/emp-ot/blob/master/ot/mextension_kos.h#L27) for more parameters in the constructor and [here](https://github.com/emp-toolkit/emp-ot/blob/master/ot/mextension_kos.h#L156) on how to open.
+- As part of `emp-toolkit`, it is being used in `emp-sh2pc`, `emp-m2pc`, and other projects that will be open sourced soon.
 
 ## Question
 Please send email to wangxiao@cs.umd.edu
