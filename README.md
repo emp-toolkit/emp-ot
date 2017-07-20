@@ -72,6 +72,9 @@ Note that `NPOT` can be replaced to `COOT`, `SHOTExtension` or `MOTExtension` (d
 
 Correlated OT and Random OT are supported for `*OTExtension`. See following as an example.
 ```c++
+#include<emp-tool> // for NetIO, etc
+#include<emp-ot>   // for OTs
+
 block deltas[length], delta;
 
 SHOTExtension<NetIO> ote(&io); // create a semi honest OT extension
