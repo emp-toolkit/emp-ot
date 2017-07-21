@@ -19,8 +19,8 @@ set(CMAKE_BUILD_TYPE Release)
 endif(NOT CMAKE_BUILD_TYPE)
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
-FIND_PACKAGE(emp-tool)
-INCLUDE_DIRECTORIES(${EMP-TOOL_INCLUDE_DIRS})
+find_package(emp-tool REQUIRED)
+include_directories(${EMP-TOOL_INCLUDE_DIRS})
 
 macro (add_test _name)
 	add_executable(${_name} "test/${_name}.cpp" ${sources})
