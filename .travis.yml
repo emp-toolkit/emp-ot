@@ -11,6 +11,18 @@ matrix:
       dist: trusty
       sudo: required
       env: TYPE=Release
+      
+    - os: linux
+      dist: trusty
+      sudo: required
+      addons:
+        apt:
+          sources:
+            - llvm-toolchain-trusty
+          packages:
+            - clang-5.0
+      env:
+        - MATRIX_EVAL="CC=clang-5.0 && CXX=clang++-5.0"
 
 
 before_install:
