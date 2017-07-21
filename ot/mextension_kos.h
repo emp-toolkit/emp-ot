@@ -143,8 +143,8 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, ::MOTExtension_KOS> { publi
 
 	void cot_send_post_new(block* data0, const block* delta, int length) {
 		const int bsize = AES_BATCH_SIZE;
-		block *pad = (block*)alloca(2*bsize*sizeof(block));
-		block *tmp = (block*)alloca(2*bsize*sizeof(block));
+		block pad[2*bsize];
+		block tmp[2*bsize];
 		for(int i = 0; i < length; i+=bsize) {
 			for(int j = i; j < i+bsize and j < length; ++j) {
 				pad[2*(j-i)] = qT[j];
