@@ -64,7 +64,7 @@ Usage
 =====
 All oblivious transfer protocols are implemented with network as a template. Therefore customized network implementation with [sending](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L14) and [receiving](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L17) can be easily hooked up with `emp-ot`. [`NetIO`](https://github.com/emp-toolkit/emp-tool/blob/stable/io/net_io_channel.h#L22) is used for all tests and examples in the following.
 
-A Simple Example for General OT
+A Simple Example for String OT
 -----
 
 ```cpp
