@@ -1,5 +1,5 @@
-#include "emp-ot"
-#include <emp-tool>
+#include <emp-tool/emp-tool.h>
+#include "emp-ot/emp-ot.h"
 
 template<typename IO, template<typename>class T>
 double test_ot(IO * io, int party, int length) {
