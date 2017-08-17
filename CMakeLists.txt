@@ -18,7 +18,10 @@ set(CMAKE_C_FLAGS "-pthread -Wall -march=native -O3 -maes -mrdseed")
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=c++0x")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ggdb")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
-
+OPTION(USE_RANDOM_DEVICE "Option description" OFF)
+IF(USE_RANDOM_DEVICE)
+     ADD_DEFINITIONS(-DEMP_USE_RANDOM_DEVICE)
+ENDIF(USE_RANDOM_DEVICE)
 
 find_package(emp-tool REQUIRED)
 include_directories(${EMP-TOOL_INCLUDE_DIRS})
