@@ -68,8 +68,8 @@ A Simple Example for String OT
 -----
 
 ```cpp
-#include<emp-tool> // for NetIO, etc
-#include<emp-ot>   // for OTs
+#include<emp-tool/emp-tool.h> // for NetIO, etc
+#include<emp-ot/emp-ot.h>   // for OTs
 
 block b0[length], b1[length];
 bool c[length];
