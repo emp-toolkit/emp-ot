@@ -4,7 +4,7 @@
 /** @addtogroup OT
 	@{
 */
-
+namespace emp {
 template<typename IO>
 class OTNP: public OT<OTNP<IO>> { public:
 	int cnt;
@@ -101,4 +101,5 @@ class OTNP: public OT<OTNP<IO>> { public:
 
 };
 /**@}*/
+}
 #endif// OT_NP_H__

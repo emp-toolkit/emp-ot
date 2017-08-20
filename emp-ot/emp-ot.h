@@ -13,5 +13,5 @@
 #include "emp-ot/mextension_alsz.h"
 
 template<typename IO>
-using MOTExtension = MOTExtension_KOS<IO>;
+using MOTExtension = emp::MOTExtension_KOS<IO>;
 //typedef MOTExtension_ALSZ MOTExtension;

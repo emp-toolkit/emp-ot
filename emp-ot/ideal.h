@@ -4,7 +4,7 @@
 /** @addtogroup OT
     @{
   */
- 
+namespace emp { 
 template<typename IO> 
 class OTIdeal: public OT<OTIdeal<IO>> { public:
 	int cnt = 0;
@@ -31,4 +31,5 @@ class OTIdeal: public OT<OTIdeal<IO>> { public:
 	}
 };
 /**@}*/
+}
 #endif// OT_IDEAL_H__

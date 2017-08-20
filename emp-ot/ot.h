@@ -1,7 +1,7 @@
 #ifndef OT_H__
 #define OT_H__
 #include <emp-tool/emp-tool.h>
-
+namespace emp {
 template<typename T>
 class OT {
 public:
@@ -12,4 +12,5 @@ public:
 		static_cast<T*>(this)->recv_impl(data, b, length);
 	}
 };
+}
 #endif// OT_H__

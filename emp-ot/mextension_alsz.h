@@ -6,6 +6,7 @@
 /** @addtogroup OT
     @{
   */
+namespace emp {
 template<typename IO>
 class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ<IO>> { public:
 	OTCO<IO> * base_ot;
@@ -289,4 +290,5 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ<IO>> { public:
 	}
 };
   /**@}*/
+}
 #endif// OT_M_EXTENSION_ALSZ_H__

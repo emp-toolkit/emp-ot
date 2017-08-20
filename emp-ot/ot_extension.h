@@ -4,7 +4,7 @@
 /** @addtogroup OT
     @{
   */
-
+namespace emp {
 template<typename IO, template<typename> class BaseOT, template<typename> class OTE>
 class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 	BaseOT<IO> * base_ot;
@@ -224,4 +224,5 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 
 };
   /**@}*/
+}
 #endif// OT_EXTENSION_H__
