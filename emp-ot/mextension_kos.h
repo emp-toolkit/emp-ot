@@ -8,24 +8,24 @@
  */
 namespace emp {
 template<typename IO>
-class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
+class MOTExtension_KOS: public OTExtension<IO, OTCO, emp::MOTExtension_KOS> { public:
 	block *open_data = nullptr;
 	bool committing = false;
 	char dgst[Hash::DIGEST_SIZE];
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::send_pre;
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::block_s;
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::recv_pre;
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::io;
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::extended_r;
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::qT;
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::tT;
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::prg;
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::pi;
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::padded_length;
-	using OTExtension<IO, OTCO, MOTExtension_KOS>::block_size;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::send_pre;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::block_s;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::recv_pre;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::io;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::extended_r;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::qT;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::tT;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::prg;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::pi;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::padded_length;
+	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::block_size;
 
 	MOTExtension_KOS(IO * io, bool committing = false, int ssp = 40) :
-		OTExtension<IO, OTCO, MOTExtension_KOS>(io, ssp) {
+		OTExtension<IO, OTCO, emp::MOTExtension_KOS>(io, ssp) {
 			this->committing = committing;
 		}
 
@@ -121,7 +121,7 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 	void send_impl(const block* data0, const block* data1, int length) {
 		send_pre(length);
 		if(!send_check(length))	error("OT Extension check failed");
-		OTExtension<IO, OTCO, MOTExtension_KOS>::got_send_post(data0, data1, length);
+		OTExtension<IO, OTCO, emp::MOTExtension_KOS>::got_send_post(data0, data1, length);
 	}
 
 	void recv_impl(block* data, const bool* b, int length) {
@@ -133,13 +133,13 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 	void send_rot(block * data0, block * data1, int length) {
 		send_pre(length);
 		if(!send_check(length))error("OT Extension check failed");
-		OTExtension<IO, OTCO, MOTExtension_KOS>::rot_send_post(data0, data1, length);
+		OTExtension<IO, OTCO, emp::MOTExtension_KOS>::rot_send_post(data0, data1, length);
 	}
 
 	void recv_rot(block* data, const bool* b, int length) {
 		recv_pre(b, length);
 		recv_check(b, length);
-		OTExtension<IO, OTCO, MOTExtension_KOS>::rot_recv_post(data, b, length);
+		OTExtension<IO, OTCO, emp::MOTExtension_KOS>::rot_recv_post(data, b, length);
 	}
 
 	void cot_send_post_new(block* data0, const block* delta, int length) {
@@ -170,13 +170,13 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, MOTExtension_KOS> { public:
 	void send_cot(block * data0, block delta, int length) {
 		send_pre(length);
 		if(!send_check(length))error("OT Extension check failed");
-		OTExtension<IO, OTCO, MOTExtension_KOS>::cot_send_post(data0, delta, length);
+		OTExtension<IO, OTCO, emp::MOTExtension_KOS>::cot_send_post(data0, delta, length);
 	}
 
 	void recv_cot(block* data, const bool* b, int length) {
 		recv_pre(b, length);
 		recv_check(b, length);
-		OTExtension<IO, OTCO, MOTExtension_KOS>::cot_recv_post(data, b, length);
+		OTExtension<IO, OTCO, emp::MOTExtension_KOS>::cot_recv_post(data, b, length);
 	}
 
 	void open() {
