@@ -1,0 +1,16 @@
+machine:
+  xcode:
+    version: 9.0
+
+checkout:
+  post:
+   - git clone https://github.com/emp-toolkit/emp-readme.git
+   - bash ./emp-readme/scripts/install_packages.sh
+   - bash ./emp-readme/scripts/install_relic.sh
+   - bash ./emp-readme/scripts/install_emp-tool.sh
+
+test: 
+  override:
+   - cmake -DUSE_RANDOM_DEVICE=ON . && make
+   - ./run ./bin/mot 12345  
+   - ./run ./bin/shot 12345  
