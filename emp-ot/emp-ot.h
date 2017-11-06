@@ -12,6 +12,8 @@
 #include "emp-ot/mextension_kos.h"
 #include "emp-ot/mextension_alsz.h"
 
+#include "emp-ot/deltaot.h"
+
 template<typename IO>
 using MOTExtension = emp::MOTExtension_KOS<IO>;
 //typedef MOTExtension_ALSZ MOTExtension;
