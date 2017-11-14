@@ -25,6 +25,13 @@ public:
 			res = xorBlocks(res, pre_table[tmp[i] + (i<<8)]);
 		return res;
 	}
+
+	inline block bit_matrix_mul2(const uint8_t * input) {
+		block res = pre_table[input[0] + (0<<8)];
+		for(int i = 1; i < l/8; ++i)
+			res = xorBlocks(res, pre_table[input[i] + (i<<8)]);
+		return res;
+	}
 #pragma GCC pop_options
 
 	block *pre_table = nullptr;
@@ -35,7 +42,7 @@ public:
 	bool setup = false;
 	block *k0 = nullptr, *k1 = nullptr, *tmp = nullptr, *t = nullptr;
 	bool *s = nullptr, *extended_r = nullptr;
-	dblock *block_s, *tT = nullptr;
+	dblock block_s; uint8_t *tT = nullptr;
 	block Delta;
 	int l = 128, ssp, sspover8;
 	const static int block_size = 1024;
@@ -51,9 +58,8 @@ public:
 		this->k1 = aalloc<block>(l);
 		this->G0 = new PRG[l];
 		this->G1 = new PRG[l];
-		this->tT = (dblock*)aligned_alloc(32, 32*block_size);
+		this->tT = new uint8_t[32*block_size];
 		this->t = (block*)aligned_alloc(32, 32*block_size);
-		this->block_s = (dblock*)aligned_alloc(32, 32);
 		this->tmp = aalloc<block>(block_size/128);
 		memset(t, 0, block_size * 32);
 	}
@@ -87,15 +93,14 @@ public:
 		delete_array_null(G0);
 		delete_array_null(G1);
 		free(this->t);
-		free(this->tT);
+		delete[] this->tT;
 		free(k0);
 		free(k1);
 		free(tmp);
 		delete_array_null(extended_r);
-		free(block_s);
 	}
 
-	void bool_to256(const bool * in, dblock * res) {
+	void bool_to256(const bool * in, dblock & res) {
 		bool tmpB[256];
 		for(int i = 0; i < 256; ++i)tmpB[i] = false;
 		memcpy(tmpB, in, l);
@@ -103,7 +108,7 @@ public:
 		uint64_t t2 = bool_to64(tmpB+64);
 		uint64_t t3 = bool_to64(tmpB+128);
 		uint64_t t4 = bool_to64(tmpB+192);
-		*res = _mm256_set_epi64x(t4,t3,t2,t1);
+		res = _mm256_set_epi64x(t4,t3,t2,t1);
 	}
 
 	void setup_send(bool* in_s, block * in_k0 = nullptr) {
@@ -118,7 +123,7 @@ public:
 			G0[i].reseed(&k0[i]);
 
 		bool_to256(s, block_s);
-		Delta = bit_matrix_mul(*block_s);
+		Delta = bit_matrix_mul(block_s);
 	}
 
 	void setup_recv(block * in_k0 = nullptr, block * in_k1 =nullptr) {
@@ -150,9 +155,10 @@ public:
 				if (s[i])
 					xorBlocks_arr(t+(i*block_size/128), t+(i*block_size/128), tmp, block_size/128);
 			}
-			sse_trans((uint8_t *)(tT), (uint8_t*)t, 256, block_size);
+			sse_trans((uint8_t *)(tT), (uint8_t*)t, l, block_size);
+			uint8_t * tmp = (uint8_t*) tT;
 			for(int i = 0; i < block_size; ++i)
-				out[j*block_size + i] = bit_matrix_mul(tT[i]);
+				out[j*block_size + i] = bit_matrix_mul2(tmp +i*l/8);
 		}
 	}
 
@@ -182,10 +188,10 @@ public:
 				xorBlocks_arr(tmp, block_r+(j*block_size/128), tmp, block_size/128);
 				io->send_data(tmp, block_size/8);
 			}
-			sse_trans((uint8_t *)tT, (uint8_t*)t, 256, block_size);
-
+			sse_trans((uint8_t *)(tT), (uint8_t*)t, l, block_size);
+			uint8_t * tmp = (uint8_t*) tT;
 			for(int i = 0; i < block_size; ++i)
-				out[j*block_size + i] = bit_matrix_mul(tT[i]);
+				out[j*block_size + i] = bit_matrix_mul2(tmp + i*l/8);
 		}
 		free(block_r);
 		delete[] r2;

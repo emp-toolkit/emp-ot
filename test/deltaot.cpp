@@ -45,7 +45,9 @@ int main(int argc, char** argv) {
 			io->recv_block (&tmp, 1);
 			if(bb[i])
 				tmp = xorBlocks(tmp, Delta);
-			assert(memcmp(&t1[i], &tmp, 16)==0);
+			if(memcmp(&t1[i], &tmp, 16)!=0) {
+				error("Wrong Results\n");
+			}
 		}
 	}
 	return 0;
