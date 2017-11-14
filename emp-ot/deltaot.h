@@ -42,7 +42,7 @@ public:
 	bool setup = false;
 	block *k0 = nullptr, *k1 = nullptr, *tmp = nullptr, *t = nullptr;
 	bool *s = nullptr, *extended_r = nullptr;
-	dblock block_s; uint8_t *tT = nullptr;
+	dblock *block_s; uint8_t *tT = nullptr;
 	block Delta;
 	int l = 128, ssp, sspover8;
 	const static int block_size = 1024;
@@ -59,6 +59,7 @@ public:
 		this->G0 = new PRG[l];
 		this->G1 = new PRG[l];
 		this->t = (block*)aligned_alloc(32, 32*block_size);
+		this->block_s = (dblock*)aligned_alloc(32, 32);
 		this->tT = (uint8_t*)aligned_alloc(16, 32*block_size);
 		this->tmp = aalloc<block>(block_size/128);
 		memset(t, 0, block_size * 32);
@@ -95,12 +96,13 @@ public:
 		free(this->t);
 		free(this->tT);
 		free(k0);
+		free(block_s);
 		free(k1);
 		free(tmp);
 		delete_array_null(extended_r);
 	}
 
-	void bool_to256(const bool * in, dblock & res) {
+	void bool_to256(const bool * in, dblock * res) {
 		bool tmpB[256];
 		for(int i = 0; i < 256; ++i)tmpB[i] = false;
 		memcpy(tmpB, in, l);
@@ -108,7 +110,7 @@ public:
 		uint64_t t2 = bool_to64(tmpB+64);
 		uint64_t t3 = bool_to64(tmpB+128);
 		uint64_t t4 = bool_to64(tmpB+192);
-		res = _mm256_set_epi64x(t4,t3,t2,t1);
+		*res = _mm256_set_epi64x(t4,t3,t2,t1);
 	}
 
 	void setup_send(bool* in_s, block * in_k0 = nullptr) {
@@ -123,7 +125,7 @@ public:
 			G0[i].reseed(&k0[i]);
 
 		bool_to256(s, block_s);
-		Delta = bit_matrix_mul(block_s);
+		Delta = bit_matrix_mul(*block_s);
 	}
 
 	void setup_recv(block * in_k0 = nullptr, block * in_k1 =nullptr) {
