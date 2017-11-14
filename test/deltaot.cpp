@@ -14,6 +14,7 @@ int main(int argc, char** argv) {
 	block * t1 = new block[size];
 	bool* bb = new bool[size];
 	PRG prg;
+	prg.random_bool(tmp, 256);
 	block * pretable = DeltaOT::preTable(40);
 	NetIO *io = new NetIO(party==ALICE ? nullptr:"127.0.0.1", port);
 	DeltaOT * abit = new DeltaOT(io, pretable, 40);
