@@ -106,7 +106,7 @@ public:
 		*res = _mm256_set_epi64x(t4,t3,t2,t1);
 	}
 
-	void setup_send(bool* in_s, block * in_k0 = nullptr) {
+	void setup_send(const bool* in_s, block * in_k0 = nullptr) {
 		setup = true;
 		memcpy(s, in_s, l);
 		if(in_k0 != nullptr) {
