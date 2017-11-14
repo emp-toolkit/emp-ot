@@ -58,8 +58,8 @@ public:
 		this->k1 = aalloc<block>(l);
 		this->G0 = new PRG[l];
 		this->G1 = new PRG[l];
-		this->tT = new uint8_t[32*block_size];
 		this->t = (block*)aligned_alloc(32, 32*block_size);
+		this->tT = (uint8_t*)aligned_alloc(16, 32*block_size);
 		this->tmp = aalloc<block>(block_size/128);
 		memset(t, 0, block_size * 32);
 	}
@@ -93,7 +93,7 @@ public:
 		delete_array_null(G0);
 		delete_array_null(G1);
 		free(this->t);
-		delete[] this->tT;
+		free(this->tT);
 		free(k0);
 		free(k1);
 		free(tmp);
