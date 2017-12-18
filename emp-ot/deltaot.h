@@ -11,6 +11,7 @@ typedef __m256i dblock;
 #if defined(aligned_alloc)
 
 #else
+	// https://github.com/RoutingKit/RoutingKit/blob/master/src/bit_vector.cpp
 	void*aligned_alloc(uint8_t alignment, uint64_t size){
 		uint64_t potentially_unaligned_buffer = (uint64_t)malloc(size+alignment);
 		uint64_t aligned_buffer = ((potentially_unaligned_buffer + alignment - 1)/alignment) * alignment;
