@@ -8,7 +8,7 @@ namespace emp {
 typedef __m256i dblock;
 #define _mm256_set_m128i(v0, v1)  _mm256_insertf128_si256(_mm256_castsi128_si256(v1), (v0), 1)
 
-#if 1
+#if defined(aligned_alloc)
 
 #else
 	void*aligned_alloc(uint8_t alignment, uint64_t size){
@@ -28,9 +28,6 @@ typedef __m256i dblock;
 		}
 	}
 #endif
-
-
-
 
 template<typename T>
 	T* aalloc(int length) {
