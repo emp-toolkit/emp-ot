@@ -1,7 +1,9 @@
 #ifndef DELTA_OT_H__
 #define DELTA_OT_H__
+#include <stdlib.h>
 #include "co.h"
-#include <emp-tool/emp-tool.h>
+#include <boost/align/aligned_alloc.hpp>
+using boost::alignment::aligned_alloc;
 #include <immintrin.h>
 namespace emp {
 
