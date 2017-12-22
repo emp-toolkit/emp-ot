@@ -8,6 +8,28 @@ namespace emp {
 typedef __m256i dblock;
 #define _mm256_set_m128i(v0, v1)  _mm256_insertf128_si256(_mm256_castsi128_si256(v1), (v0), 1)
 
+#if defined(aligned_alloc)
+
+#else
+	// https://github.com/RoutingKit/RoutingKit/blob/master/src/bit_vector.cpp
+	void*aligned_alloc(uint8_t alignment, uint64_t size){
+		uint64_t potentially_unaligned_buffer = (uint64_t)malloc(size+alignment);
+		uint64_t aligned_buffer = ((potentially_unaligned_buffer + alignment - 1)/alignment) * alignment;
+		uint8_t*buffer = (uint8_t*)aligned_buffer;
+		*(buffer-1) = aligned_buffer - potentially_unaligned_buffer;
+		return buffer;
+	}
+
+	void aligned_free(void* ptr){
+		if(ptr){
+			uint8_t*buffer = (uint8_t*)ptr;
+			uint8_t shift = *(buffer-1);
+			buffer -= shift;
+			free(buffer);
+		}
+	}
+#endif
+
 template<typename T>
 	T* aalloc(int length) {
 		return (T*)aligned_alloc(sizeof(T), sizeof(T)*length);
@@ -16,8 +38,13 @@ template<typename T>
 class DeltaOT { 
 public:
 
-#pragma GCC push_options
-#pragma GCC optimize ("unroll-loops")
+#ifdef __GNUC__
+	#ifndef __clang__
+		#pragma GCC push_options
+		#pragma GCC optimize ("unroll-loops")
+	#endif
+#endif
+
 	inline block bit_matrix_mul(const __m256i& input) {
 		uint8_t * tmp = (uint8_t *) (&input);
 		block res = pre_table[tmp[0] + (0<<8)];
@@ -25,7 +52,12 @@ public:
 			res = xorBlocks(res, pre_table[tmp[i] + (i<<8)]);
 		return res;
 	}
-#pragma GCC pop_options
+
+#ifdef __GNUC_
+	#ifndef __clang___
+		#pragma GCC pop_options
+	#endif
+#endif
 
 	block *pre_table = nullptr;
 	NetIO * io = nullptr;
