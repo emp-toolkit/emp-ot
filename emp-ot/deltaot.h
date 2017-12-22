@@ -1,10 +1,10 @@
 #ifndef DELTA_OT_H__
 #define DELTA_OT_H__
-#include <stdlib.h>
+
 #include "co.h"
 #include <boost/align/aligned_alloc.hpp>
-using boost::alignment::aligned_alloc;
 #include <immintrin.h>
+
 namespace emp {
 
 typedef __m256i dblock;
@@ -12,7 +12,7 @@ typedef __m256i dblock;
 
 template<typename T>
 	T* aalloc(int length) {
-		return (T*)aligned_alloc(sizeof(T), sizeof(T)*length);
+		return (T*)boost::alignment::aligned_alloc(sizeof(T), sizeof(T)*length);
 	}
 
 class DeltaOT { 
@@ -53,15 +53,15 @@ public:
 		this->k1 = aalloc<block>(l);
 		this->G0 = new PRG[l];
 		this->G1 = new PRG[l];
-		this->tT = (dblock*)aligned_alloc(32, 32*block_size);
-		this->t = (block*)aligned_alloc(32, 32*block_size);
-		this->block_s = (dblock*)aligned_alloc(32, 32);
+		this->tT = (dblock*)boost::alignment::aligned_alloc(32, 32*block_size);
+		this->t = (block*)boost::alignment::aligned_alloc(32, 32*block_size);
+		this->block_s = (dblock*)boost::alignment::aligned_alloc(32, 32);
 		this->tmp = aalloc<block>(block_size/128);
 		memset(t, 0, block_size * 32);
 	}
 	static block * preTable(int ssp) {
 		block *pretable = aalloc<block>((1<<8) * 256/8);
-		dblock * R = (dblock*)aligned_alloc(32, 32*128);
+		dblock * R = (dblock*)boost::alignment::aligned_alloc(32, 32*128);
 		PRG prg2(fix_key);
 		prg2.random_data(R, 128*256/8);
 		uint64_t hi = 0ULL, lo = 0ULL;
