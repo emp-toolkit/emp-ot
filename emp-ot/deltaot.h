@@ -1,39 +1,20 @@
 #ifndef DELTA_OT_H__
 #define DELTA_OT_H__
 #include "co.h"
-#include <emp-tool/emp-tool.h>
+#include <boost/align/aligned_alloc.hpp>
 #include <immintrin.h>
 namespace emp {
 
 typedef __m256i dblock;
 #define _mm256_set_m128i(v0, v1)  _mm256_insertf128_si256(_mm256_castsi128_si256(v1), (v0), 1)
 
-#if defined(aligned_alloc)
-
-#else
-	// https://github.com/RoutingKit/RoutingKit/blob/master/src/bit_vector.cpp
-	void*aligned_alloc(uint8_t alignment, uint64_t size){
-		uint64_t potentially_unaligned_buffer = (uint64_t)malloc(size+alignment);
-		uint64_t aligned_buffer = ((potentially_unaligned_buffer + alignment - 1)/alignment) * alignment;
-		uint8_t*buffer = (uint8_t*)aligned_buffer;
-		*(buffer-1) = aligned_buffer - potentially_unaligned_buffer;
-		return buffer;
-	}
-
-	void aligned_free(void* ptr){
-		if(ptr){
-			uint8_t*buffer = (uint8_t*)ptr;
-			uint8_t shift = *(buffer-1);
-			buffer -= shift;
-			free(buffer);
-		}
-	}
-#endif
-
 template<typename T>
 	T* aalloc(int length) {
-		return (T*)aligned_alloc(sizeof(T), sizeof(T)*length);
+		return (T*)boost::alignment::aligned_alloc(sizeof(T), sizeof(T)*length);
 	}
+void afree(void* p) {
+	boost::alignment::aligned_free(p);
+}
 
 class DeltaOT { 
 public:
@@ -83,15 +64,15 @@ public:
 		this->k1 = aalloc<block>(l);
 		this->G0 = new PRG[l];
 		this->G1 = new PRG[l];
-		this->tT = (dblock*)aligned_alloc(32, 32*block_size);
-		this->t = (block*)aligned_alloc(32, 32*block_size);
-		this->block_s = (dblock*)aligned_alloc(32, 32);
+		this->tT = aalloc<dblock>(block_size);
+		this->t = (block*)aalloc<dblock>(block_size);
+		this->block_s = aalloc<dblock>(1);
 		this->tmp = aalloc<block>(block_size/128);
 		memset(t, 0, block_size * 32);
 	}
 	static block * preTable(int ssp) {
 		block *pretable = aalloc<block>((1<<8) * 256/8);
-		dblock * R = (dblock*)aligned_alloc(32, 32*128);
+		dblock * R = aalloc<dblock>(128);
 		PRG prg2(fix_key);
 		prg2.random_data(R, 128*256/8);
 		uint64_t hi = 0ULL, lo = 0ULL;
@@ -109,6 +90,7 @@ public:
 						pretable[j + (i<<8)] = xorBlocks(pretable[j+ (i<<8)], tR[i*8+k]);
 				}
 			}
+		afree(R);
 		return pretable;
 	}
 
@@ -118,13 +100,13 @@ public:
 		delete_array_null(s);
 		delete_array_null(G0);
 		delete_array_null(G1);
-		free(this->t);
-		free(this->tT);
-		free(k0);
-		free(k1);
-		free(tmp);
+		afree(this->t);
+		afree(this->tT);
+		afree(k0);
+		afree(k1);
+		afree(tmp);
 		delete_array_null(extended_r);
-		free(block_s);
+		afree(block_s);
 	}
 
 	void bool_to256(const bool * in, dblock * res) {
