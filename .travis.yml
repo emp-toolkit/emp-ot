@@ -5,11 +5,12 @@ matrix:
     - os: linux
       dist: trusty
       sudo: required
-      apt:
-        sources:
-          - ubuntu-toolchain-r-test
-        packages:
-          - g++-6
+      addon:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-6
       env:
         - TYPE=Debug
         - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
@@ -17,11 +18,12 @@ matrix:
     - os: linux
       dist: trusty
       sudo: required
-      apt:
-        sources:
-          - ubuntu-toolchain-r-test
-        packages:
-          - g++-6
+      addon:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-6
       env:
         - TYPE=Release
         - MATRIX_EVAL="CC=gcc-6 && CXX=g++-6"
