@@ -63,7 +63,7 @@ before_install:
   - bash ./emp-readme/scripts/install_emp-tool.sh
 
 script:
-  - cmake -DUSE_RANDOM_DEVICE=ON -DCMAKE_BUILD_TYPE=$TYPE . && make
+  - cmake -DCMAKE_BUILD_TYPE=$TYPE . && make
   - ./run ./bin/mot 12345  
   - ./run ./bin/shot 12345  
   - ./run ./bin/deltaot 12345  
