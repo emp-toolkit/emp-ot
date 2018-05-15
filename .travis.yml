@@ -66,4 +66,4 @@ script:
   - cmake -DCMAKE_BUILD_TYPE=$TYPE . && make
   - ./run ./bin/mot 12345  
   - ./run ./bin/shot 12345  
-  - ./run ./bin/deltaot 12345  
+#  - ./run ./bin/deltaot 12345  
