@@ -21,4 +21,4 @@ endmacro()
 
 add_test(shot)
 add_test(mot)
-#add_test(deltaot)
+add_test(deltaot)

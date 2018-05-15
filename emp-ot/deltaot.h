@@ -5,9 +5,6 @@
 #include <immintrin.h>
 namespace emp {
 
-typedef __m256i dblock;
-#define _mm256_set_m128i(v0, v1)  _mm256_insertf128_si256(_mm256_castsi128_si256(v1), (v0), 1)
-
 template<typename T>
 	T* aalloc(int length) {
 		return (T*)boost::alignment::aligned_alloc(sizeof(T), sizeof(T)*length);
@@ -26,8 +23,8 @@ public:
 	#endif
 #endif
 
-	inline block bit_matrix_mul(const __m256i& input) {
-		uint8_t * tmp = (uint8_t *) (&input);
+	inline block bit_matrix_mul(const block * input) {
+		uint8_t * tmp = (uint8_t *) (input);
 		block res = pre_table[tmp[0] + (0<<8)];
 		for(int i = 1; i < l/8; ++i)
 			res = xorBlocks(res, pre_table[tmp[i] + (i<<8)]);
@@ -48,7 +45,8 @@ public:
 	bool setup = false;
 	block *k0 = nullptr, *k1 = nullptr, *tmp = nullptr, *t = nullptr;
 	bool *s = nullptr, *extended_r = nullptr;
-	dblock *block_s, *tT = nullptr;
+	block  *tT = nullptr;
+	block block_s[2];
 	block Delta;
 	int l = 128, ssp, sspover8;
 	const static int block_size = 1024;
@@ -64,22 +62,21 @@ public:
 		this->k1 = aalloc<block>(l);
 		this->G0 = new PRG[l];
 		this->G1 = new PRG[l];
-		this->tT = aalloc<dblock>(block_size);
-		this->t = (block*)aalloc<dblock>(block_size);
-		this->block_s = aalloc<dblock>(1);
+		this->tT = aalloc<block>(block_size*2);
+		this->t = aalloc<block>(block_size*2);
 		this->tmp = aalloc<block>(block_size/128);
 		memset(t, 0, block_size * 32);
 	}
 	static block * preTable(int ssp) {
 		block *pretable = aalloc<block>((1<<8) * 256/8);
-		dblock * R = aalloc<dblock>(128);
+		block * R = aalloc<block>(128*2);
 		PRG prg2(fix_key);
 		prg2.random_data(R, 128*256/8);
 		uint64_t hi = 0ULL, lo = 0ULL;
 		if(ssp <=64) {hi=0;lo=((1ULL<<ssp)-1);}
-		dblock mask = _mm256_set_m128i(makeBlock(hi,lo), one_block());
+		block mask = makeBlock(hi,lo);
 		for(int i = 0; i < 128; ++i)
-			R[i] = _mm256_and_si256(R[i], mask);
+			R[2*i+1] = andBlocks(R[2*i+1], mask);
 		block tR[256];
 		sse_trans((uint8_t *)(tR), (uint8_t*)R, 128, 256);
 		for(int i = 0; i < 256/8; ++i)
@@ -106,18 +103,14 @@ public:
 		afree(k1);
 		afree(tmp);
 		delete_array_null(extended_r);
-		afree(block_s);
 	}
 
-	void bool_to256(const bool * in, dblock * res) {
+	void bool_to256(const bool * in, block res[2]) {
 		bool tmpB[256];
 		for(int i = 0; i < 256; ++i)tmpB[i] = false;
 		memcpy(tmpB, in, l);
-		uint64_t t1 = bool_to64(tmpB);
-		uint64_t t2 = bool_to64(tmpB+64);
-		uint64_t t3 = bool_to64(tmpB+128);
-		uint64_t t4 = bool_to64(tmpB+192);
-		*res = _mm256_set_epi64x(t4,t3,t2,t1);
+		res[0] = bool_to128(tmpB);
+		res[1] = bool_to128(tmpB+128);
 	}
 
 	void setup_send(const bool* in_s, block * in_k0 = nullptr) {
@@ -132,7 +125,7 @@ public:
 			G0[i].reseed(&k0[i]);
 
 		bool_to256(s, block_s);
-		Delta = bit_matrix_mul(*block_s);
+		Delta = bit_matrix_mul(block_s);
 	}
 
 	void setup_recv(block * in_k0 = nullptr, block * in_k1 =nullptr) {
@@ -166,7 +159,7 @@ public:
 			}
 			sse_trans((uint8_t *)(tT), (uint8_t*)t, 256, block_size);
 			for(int i = 0; i < block_size; ++i)
-				out[j*block_size + i] = bit_matrix_mul(tT[i]);
+				out[j*block_size + i] = bit_matrix_mul(tT+2*i);
 		}
 	}
 
@@ -199,7 +192,7 @@ public:
 			sse_trans((uint8_t *)tT, (uint8_t*)t, 256, block_size);
 
 			for(int i = 0; i < block_size; ++i)
-				out[j*block_size + i] = bit_matrix_mul(tT[i]);
+				out[j*block_size + i] = bit_matrix_mul(tT+2*i);
 		}
 		free(block_r);
 		delete[] r2;
