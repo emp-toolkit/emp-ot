@@ -4,6 +4,8 @@
 #include "emp-ot/ot.h"
 #include "emp-ot/ideal.h"
 
+#include "emp-ot/lattice.h"
+
 #include "emp-ot/co.h"
 #include "emp-ot/np.h"
 
