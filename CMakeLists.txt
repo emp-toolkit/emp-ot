@@ -17,11 +17,13 @@ install(DIRECTORY emp-ot DESTINATION include/)
 
 # Test cases
 set(WITH_NTL_LIBRARIES "${NTL_LIBRARIES} ${EMP-TOOL_LIBRARIES}")
-#MESSAGE(EMP-TOOL_LIBRARIES : ${EMP-TOOL_LIBRARIES})
-#MESSAGE(WITH_NTL_LIBRARIES : ${WITH_NTL_LIBRARIES})
+MESSAGE(EMP-TOOL_LIBRARIES : ${EMP-TOOL_LIBRARIES})
+MESSAGE(WITH_NTL_LIBRARIES : ${WITH_NTL_LIBRARIES})
+MESSAGE(NTL_LIBRARIES : ${NTL_LIBRARIES})
 macro (add_test _name)
 	# Why does this compile?!
 	add_test_with_lib(${_name} ${NTL_LIBRARIES})
+	#add_test_with_lib(${_name} ${EMP-TOOL_LIBRARIES})
 endmacro()
 
 add_test(shot)
