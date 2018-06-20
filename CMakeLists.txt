@@ -8,15 +8,20 @@ include(${CMAKE_FOLDER}/cmake/source_of_randomness.cmake)
 include(${CMAKE_FOLDER}/cmake/threading.cmake)
 
 find_package(emp-tool REQUIRED)
-include_directories(${EMP-TOOL_INCLUDE_DIRS})
+find_package(NTL REQUIRED)
+include_directories(${EMP-TOOL_INCLUDE_DIRS} ${NTL_INCLUDE_DIR})
 
 # Installation
 install(FILES cmake/emp-ot-config.cmake DESTINATION cmake/)
 install(DIRECTORY emp-ot DESTINATION include/)
 
 # Test cases
+set(WITH_NTL_LIBRARIES "${NTL_LIBRARIES} ${EMP-TOOL_LIBRARIES}")
+#MESSAGE(EMP-TOOL_LIBRARIES : ${EMP-TOOL_LIBRARIES})
+#MESSAGE(WITH_NTL_LIBRARIES : ${WITH_NTL_LIBRARIES})
 macro (add_test _name)
-	add_test_with_lib(${_name} ${EMP-TOOL_LIBRARIES})
+	# Why does this compile?!
+	add_test_with_lib(${_name} ${NTL_LIBRARIES})
 endmacro()
 
 add_test(shot)

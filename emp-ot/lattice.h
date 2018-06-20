@@ -1,6 +1,34 @@
 #ifndef OT_LATTICE_H__
 #define OT_LATTICE_H__
+#include <NTL/ZZ.h>
+#include <NTL/ZZ_p.h>
+#include <NTL/mat_ZZ_p.h>
+#include <NTL/vec_ZZ_p.h>
+
 #include "emp-ot/ot.h"
+
+
+struct LWEPublicKey {
+	long q;
+	long n;
+	long m;
+	NTL::Mat<NTL::ZZ_p> A;
+	NTL::Vec<NTL::ZZ_p> p;
+};
+
+struct LWEPrivateKey {
+	LWEPublicKey pk;
+	NTL::Vec<NTL::ZZ_p> s;
+};
+
+struct LWECiphertext {
+	NTL::Vec<NTL::ZZ_p> u;
+	NTL::ZZ_p c;
+};
+
+
+
+
 /** @addtogroup OT
     @{
   */
@@ -13,11 +41,13 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	block* tmp = nullptr;
 	PRG prg;
 	bool* branch = nullptr;
+	const long q = 1723, n = 608, m = 960;
 	//const int pkey_block_count = 8; // Number of 128 bit blocks for the public key
 
 
 	OTLattice(IO * io) {
 		this->io = io;
+		NTL::ZZ_p::init(NTL::conv<NTL::ZZ>(q));
 	}
 
 	bool* send_pre(int length) {
