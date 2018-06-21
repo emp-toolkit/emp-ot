@@ -4,6 +4,7 @@
 #include <NTL/ZZ_p.h>
 #include <NTL/mat_ZZ_p.h>
 #include <NTL/vec_ZZ_p.h>
+#include <Eigen/Dense>
 #include <cmath>  // std::log2, std::floor
 #include <vector>
 #include <iostream>  // debug printlns
@@ -26,10 +27,13 @@ bool DEBUG = 0;
 #define M 640
 namespace emp {
 
-using LWEPublicKey = NTL::Vec<NTL::ZZ_p>;
+typedef Eigen::Matrix<NTL::ZZ_p, Eigen::Dynamic, Eigen::Dynamic> MatrixModQ;
+typedef Eigen::Matrix<NTL::ZZ_p, Eigen::Dynamic, 1> VectorModQ;
+
+using LWEPublicKey = VectorModQ;
 using OTPublicKey  = LWEPublicKey;
 
-using LWESecretKey = NTL::Vec<NTL::ZZ_p>;
+using LWESecretKey = VectorModQ;
 using OTSecretKey  = LWESecretKey;
 
 using LWEKeypair   = struct { LWEPublicKey pk; LWESecretKey sk; };
@@ -39,29 +43,34 @@ using Branch     = int;
 using Plaintext  = int;
 
 struct LWECiphertext {
-	NTL::Vec<NTL::ZZ_p> u;
+	VectorModQ u;
 	NTL::ZZ_p c;
 };
+
 
 using OTCiphertext = LWECiphertext;
 template<typename IO>
 class OTLattice: public OT<OTLattice<IO>> { public:
 	IO* io = nullptr;
 
-	
+	/*
 	NTL::Mat<NTL::ZZ_p> A;
 	NTL::Mat<NTL::ZZ_p> AT; // A transpose is stored for speed
 	NTL::Vec<NTL::ZZ_p> v[2];
-
+	*/
+	MatrixModQ A;
+	MatrixModQ AT; // A transpose is stored for speed
+	VectorModQ v[2];
+	
 	// post: populates A, AT, v0, v1 using a fixed-key EMP-library PRG
 	//       and rejection sampling
 	void InitializeCrs() {
 		PRG crs_prg(fix_key);  // emp::fix_key is a library-specified constant
 
-		A.SetDims(N, M);
-		AT.SetDims(M, N);
-		v[0].SetLength(M);
-		v[1].SetLength(M);
+		A.resize(N, M);
+		AT.resize(M, N);
+		v[0].resize(M);
+		v[1].resize(M);
 
 		int rnd;  // to hold samples
 		// min # bits (resp. bytes) to hold q
@@ -78,8 +87,8 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 					// only sample less than
 					// the next-greater power of 2
 				} while (rnd >= Q);
-				A[i][j] = rnd;
-				AT[j][i] = rnd;
+				A(i, j) = rnd;
+				AT(j, i) = rnd;
 			}
 		}
 
@@ -91,7 +100,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 					crs_prg.random_data(&rnd, nbytes_q);
 					rnd &= ((1 << nbits_q) - 1);
 				} while (rnd >= Q);
-				v[vv][i] = rnd;
+				v[vv](i) = rnd;
 			}
 		}
 	}
@@ -100,19 +109,20 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	// TODO: not sure - how should we represent a single bit? bool?
 	//       (NB: NTL's documentation says many arithmetic operations
 	//            are faster with longs -- is this true?)
-	LWECiphertext LWEEnc(NTL::Vec<NTL::ZZ_p> &pk, Plaintext mu) {
-		NTL::Vec<NTL::ZZ_p> e;
-		e.SetLength(M);  // FIXME - use Gaussian instead of uniform{0,1}
+	LWECiphertext LWEEnc(VectorModQ &pk, Plaintext mu) {
+		//NTL::Vec<NTL::ZZ_p> e;
+		VectorModQ e;
+		e.resize(M);  // FIXME - use Gaussian instead of uniform{0,1}
 		long rnd;
 		for (int i = 0; i < M; ++i) {
 			NTL::RandomBnd(rnd, 2);  // set entry ~ Unif({0,1})
-			NTL::conv(e[i], rnd);
+			e(i) = NTL::conv<NTL::ZZ_p>(rnd);
 		}
-		NTL::Vec<NTL::ZZ_p> u = A*e;
-		NTL::ZZ_p c = pk*e + mu*Q/2;  // c := <p, e> + mu*floor(Q/2)
+		MatrixModQ u = A*e;
+		NTL::ZZ_p c = pk.dot(e) + mu*Q/2; // c := <p, e> + mu*floor(Q/2)
 
-		if (DEBUG)
-			std::cout << "(Debug) ciphertext: " << u << ", " << c << std::endl;
+		// if (DEBUG)
+		// 	std::cout << "(Debug) ciphertext: " << u << ", " << c << std::endl;
 		return {u, c};
 	}
 
@@ -123,7 +133,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	//       - 1 otherwise
 	bool LWEDec(LWESecretKey &sk, LWECiphertext &ct) {
 		int bprime;
-		NTL::conv(bprime, ct.c - sk*ct.u);
+		NTL::conv(bprime, ct.c - sk.dot(ct.u));
 		return bprime > Q/4 && bprime <= 3*Q/4;
 	}
 
@@ -133,14 +143,14 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	// TODO: change to sample from LWE noise distribution
 	//       (discretized Gaussian \bar{\Psi}_\alpha)
 	OTKeypair OTKeyGen(Branch sigma) {
-		NTL::Vec<NTL::ZZ_p> s, x;
-		x.SetLength(M);  // FIXME - use Gaussian instead of zeroes
-		NTL::random(s, N);
+		VectorModQ s, x;
+		x.resize(M);  // FIXME - use Gaussian instead of zeroes
+		s = VectorModQ::Random(N);
 		//NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
-		NTL::Vec<NTL::ZZ_p> pk = AT*s + x - v[sigma];
+		VectorModQ pk = AT*s + x - v[sigma];
 
-		if (DEBUG)
-			std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
+		// if (DEBUG)
+		// 	std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
 		return {pk, s};
 	}
 
@@ -193,11 +203,11 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 			int pk_array[M];
 			io->recv_data(pk_array, sizeof(int) * M);
 
-			// Convert the public key to an NTL vector
+			// Convert the public key to an Eigen vector (not eigenvector)
 			OTPublicKey pk;
-			pk.SetLength(M);
+			pk.resize(M);
 			for (int i = 0; i < M; ++i) {
-				pk[i] = NTL::conv<NTL::ZZ_p>(pk_array[i]);
+				pk(i) = NTL::conv<NTL::ZZ_p>(pk_array[i]);
 			}
 
 			if (DEBUG)
@@ -215,7 +225,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 			int serialized_cts[2][N+1] = {{0}};
 			for (int cti = 0; cti <= 1; ++cti) {
 				for (int ui = 0; ui < N; ++ui) {
-					NTL::conv(serialized_cts[cti][ui], ct[cti].u[ui]);
+					NTL::conv(serialized_cts[cti][ui], ct[cti].u(ui));
 				}
 				NTL::conv(serialized_cts[cti][N], ct[cti].c);
 			}
@@ -259,18 +269,18 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 			OTCiphertext ct[2];
 
 			for (int cti = 0; cti <= 1; ++cti) {
-				ct[cti].u.SetLength(N);
+				ct[cti].u.resize(N);
 				for (int ui = 0; ui < N; ++ui) {
-					NTL::conv(ct[cti].u[ui], serialized_cts[cti][ui]);
+					ct[cti].u(ui) = NTL::conv<NTL::ZZ_p>(serialized_cts[cti][ui]);
 				}
 				NTL::conv(ct[cti].c, serialized_cts[cti][N]);
 			}
 
-			if (DEBUG) {
-				std::cout << "Parsed serialized ciphertexts, receiving: " << std::endl
-					  << "Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
-					  << "Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
-			}
+			// if (DEBUG) {
+			// 	std::cout << "Parsed serialized ciphertexts, receiving: " << std::endl
+			// 		  << "Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
+			// 		  << "Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
+			// }
 
 			// Decrypt and output
 			// Plaintext OTDec(OTKey sk, OTCiphertext ct) {
