@@ -61,14 +61,21 @@ double test_bit_ot(IO * io, int party, int length) {
 	long long t = time_from(start);
 	if (party == BOB) {
     for (int i = 0; i < length; ++i) {
-      uint8_t received_value = _mm_extract_epi8(r[i], 15) & 1;
-      uint8_t expected_value;
+      // TODO - this wasn't working with _mm_extract_epi32(r[i], 3)
+      // and `int` types - why?
+      short received_value = _mm_extract_epi8(r[i], 15) & 1;
+      short expected_value;
       if (b[i]) {  // requested item 1
         expected_value = _mm_extract_epi8(b1[i], 15) & 1;
       } else {  // requested item 0
         expected_value = _mm_extract_epi8(b0[i], 15) & 1;
       }
-      assert(received_value == expected_value);
+      bool success = received_value == expected_value;
+      if (!success) {
+        std::cout << "(Test " << i << ") Received output " << received_value
+          << " didn't match expected " << expected_value << std::endl;
+      }
+      assert(success);
     }
   }
   std::cout << "Received outputs matched expected outputs." << std::endl;
