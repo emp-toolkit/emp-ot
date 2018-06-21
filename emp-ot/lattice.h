@@ -48,16 +48,18 @@ template<typename IO>
 class OTLattice: public OT<OTLattice<IO>> { public:
 	IO* io = nullptr;
 
-
+	
 	NTL::Mat<NTL::ZZ_p> A;
+	NTL::Mat<NTL::ZZ_p> AT; // A transpose is stored for speed
 	NTL::Vec<NTL::ZZ_p> v[2];
 
-	// post: populates A, v0, v1 using a fixed-key EMP-library PRG
+	// post: populates A, AT, v0, v1 using a fixed-key EMP-library PRG
 	//       and rejection sampling
 	void InitializeCrs() {
 		PRG crs_prg(fix_key);  // emp::fix_key is a library-specified constant
 
 		A.SetDims(N, M);
+		AT.SetDims(M, N);
 		v[0].SetLength(M);
 		v[1].SetLength(M);
 
@@ -66,7 +68,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		const int nbits_q = 1 + std::floor(std::log2(Q));
 		const int nbytes_q = 1 + std::floor(std::log2(Q)/8);
 
-		// populate A
+		// populate A and AT
 		for (int i = 0; i < N; ++i) {
 			for (int j = 0; j < M; ++j) {
 				do {
@@ -77,6 +79,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 					// the next-greater power of 2
 				} while (rnd >= Q);
 				A[i][j] = rnd;
+				AT[j][i] = rnd;
 			}
 		}
 
@@ -133,7 +136,8 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		NTL::Vec<NTL::ZZ_p> s, x;
 		x.SetLength(M);  // FIXME - use Gaussian instead of zeroes
 		NTL::random(s, N);
-		NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
+		//NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
+		NTL::Vec<NTL::ZZ_p> pk = AT*s + x - v[sigma];
 
 		if (DEBUG)
 			std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
