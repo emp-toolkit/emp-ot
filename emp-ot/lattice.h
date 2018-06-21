@@ -4,234 +4,243 @@
 #include <NTL/ZZ_p.h>
 #include <NTL/mat_ZZ_p.h>
 #include <NTL/vec_ZZ_p.h>
-#include <cmath>  // std::log2
-#include "emp-ot/ot.h"
+#include <cmath>  // std::log2, std::floor
 #include <vector>
-#include <iostream>
+#include <iostream>  // debugging
+#include "emp-ot/ot.h"
 
+/** @addtogroup OT
+    @{
+  */
+namespace emp {
 
+using LWEPublicKey = NTL::Vec<NTL::ZZ_p>;
+using OTPublicKey  = LWEPublicKey;
 
+using LWESecretKey = NTL::Vec<NTL::ZZ_p>;
+using OTSecretKey  = LWESecretKey;
 
-struct LWEPrivateKey {
-	NTL::Vec<NTL::ZZ_p> pk; // public key
-	NTL::Vec<NTL::ZZ_p> s;	// secret key
-};
+using LWEKeypair   = struct { LWEPublicKey pk; LWESecretKey sk; };
+using OTKeypair    = LWEKeypair;
+
+using Branch     = uint8_t;
+using Plaintext  = uint8_t;
 
 struct LWECiphertext {
 	NTL::Vec<NTL::ZZ_p> u;
 	NTL::ZZ_p c;
 };
 
-// struct OTRefStr
-// {
-// 	long q;
-// 	long n;
-// 	long m;
-// 	NTL::Mat<NTL::ZZ_p> A;
-// 	NTL::Vec<NTL::ZZ_p> v[2];
-// };
+using OTCiphertext = LWECiphertext;
 
-struct OTKey
-{
-	NTL::Vec<NTL::ZZ_p> pk;
-	NTL::Vec<NTL::ZZ_p> s;
-};
-
-
-
-
-/** @addtogroup OT
-    @{
-  */
-namespace emp { 
-template<typename IO> 
+template<typename IO>
 class OTLattice: public OT<OTLattice<IO>> { public:
-	int cnt = 0;
 	IO* io = nullptr;
+
 	// Note that for vector serialization, q must not be larger than MAXINT
-	const long q = 1723, n = 608, m = 960;
+	const uint64_t q = 100, n = 500, m = 600;  // DEBUG
+//	const uint64_t q = 1723, n = 608, m = 960;
 	NTL::Mat<NTL::ZZ_p> A;
 	NTL::Vec<NTL::ZZ_p> v[2];
 
-
-	// populate A, v0, v1 using a fixed-key PRG
-	// and rejection sampling (for now)
+	// post: populates A, v0, v1 using a fixed-key EMP-library PRG
+	//       and rejection sampling
 	void InitializeCrs() {
-		PRG crs_prg(fix_key);
+		PRG crs_prg(fix_key);  // emp::fix_key is a library-specified constant
 
 		A.SetDims(n, m);
 		v[0].SetLength(m);
 		v[1].SetLength(m);
 
-		long rnd;
-		const long nbits_q = 1 + std::floor(std::log2(q));
-		const long nbytes_q = 1 + std::floor(std::log2(q)/8);
+		uint64_t rnd;  // to hold samples
+    // min # bits (resp. bytes) to hold q
+		const size_t nbits_q = 1 + std::floor(std::log2(q));
+		const size_t nbytes_q = 1 + std::floor(std::log2(q)/8);
 
-		for (int i = 0; i < n; ++i) {
-			for (int j = 0; j < m; ++j) {
+    // populate A
+		for (size_t i = 0; i < n; ++i) {
+			for (size_t j = 0; j < m; ++j) {
 				do {
 					rnd = 0;
 					crs_prg.random_data(&rnd, nbytes_q);
-					rnd &= ((1 << nbits_q) - 1);
+					rnd &= ((1 << nbits_q) - 1);  // to minimize waste,
+                                        // only sample less than
+                                        // the next-greater power of 2
 				} while (rnd >= q);
 				A[i][j] = rnd;
 			}
 		}
 
-		for (int i = 0; i < n; ++i) {
-			do {
-				rnd = 0;
-				crs_prg.random_data(&rnd, nbytes_q);
-				rnd &= ((1 << nbits_q) - 1);
-			} while (rnd >= q);
-			v[0][i] = rnd;
-		}
-
-		for (int i = 0; i < n; ++i) {
-			do {
-				rnd = 0;
-				crs_prg.random_data(&rnd, nbytes_q);
-				rnd &= ((1 << nbits_q) - 1);
-			} while (rnd >= q);
-			v[1][i] = rnd;
-		}
+    // populate v0, v1
+    for (size_t vv = 0; vv <= 1; ++vv) {
+      for (size_t i = 0; i < n; ++i) {
+        do {
+          rnd = 0;
+          crs_prg.random_data(&rnd, nbytes_q);
+          rnd &= ((1 << nbits_q) - 1);
+        } while (rnd >= q);
+        v[vv][i] = rnd;
+      }
+    }
 	}
 
-
-	
-	void OTSetup() {
-		// Make this pseudorandom
-		random(A, n, m);
-		random(v[0], m);
-		random(v[1], m);
-	}
-
-	LWECiphertext LWEEnc(NTL::Vec<NTL::ZZ_p> &pk, bool b) {
+  // TODO: change to sample error from discrete Gaussian
+  // TODO: not sure - how should we represent a single bit? bool?
+  //       (NB: NTL's documentation says many arithmetic operations
+  //            are faster with longs -- is this true?)
+	LWECiphertext LWEEnc(NTL::Vec<NTL::ZZ_p> &pk, Plaintext mu) {
 		NTL::Vec<NTL::ZZ_p> e;
-		random(e, m); // discrete Gaussian over lattice
+    e.SetLength(m);  // FIXME - use Gaussian instead of uniform{0,1}
+    int64_t rnd;
+    for (size_t i = 0; i < m; ++i) {
+      NTL::RandomBnd(rnd, 2);  // set entry ~ Unif({0,1})
+      NTL::conv(e[i], rnd);
+    }
 		NTL::Vec<NTL::ZZ_p> u = A*e;
-		NTL::ZZ_p c = pk*e + b*q/2;
-		LWECiphertext ct = {u, c};
-		return ct;
+		NTL::ZZ_p c = pk*e + mu*q/2;  // c := <p, e> + mu*floor(q/2)
+    std::cout << "(Debug) ciphertext: " << u << ", " << c << std::endl;
+		return {u, c};
 	}
 
-	bool LWEDec(LWEPrivateKey &sk, LWECiphertext &ct) {
-		long bp;
-		conv(bp, ct.c - sk.s*ct.u);
-		return bp > q/4 && bp <= 3*q/4;
+  // pre : sk is of length n, ct is of the form (u, c) of length (n, 1)
+  // post: decrypts the ciphertext `ct` using the secret key `sk`
+  //       by computing b' := c - <sk, u> and returning
+  //       - 0 if b' is closer to 0 (mod q) than to q/2
+  //       - 1 otherwise
+	bool LWEDec(LWESecretKey &sk, LWECiphertext &ct) {
+		uint64_t bprime;
+    NTL::conv(bprime, ct.c - sk*ct.u);
+		return bprime > q/4 && bprime <= 3*q/4;
 	}
-	
-	OTKey OTKeyGen(int sigma) {
+
+  // pre : b (currently 0 or 1) is the request bit
+  // post: generates a key pair messy under branch (1 - b)
+  //       and decryptable under branch b
+  // TODO: change to sample from LWE noise distribution
+  //       (discretized Gaussian \bar{\Psi}_\alpha)
+	OTKeypair OTKeyGen(Branch sigma) {
 		NTL::Vec<NTL::ZZ_p> s, x;
-		random(s, n);
-		x.SetLength(m); // discrete Gaussian error
+		x.SetLength(m);  // FIXME - use Gaussian instead of zeroes
+    NTL::random(s, n);
 		NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
-		OTKey sk = {pk, s};
-		return sk;
+    std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
+    return {pk, s};
 	}
 
-	LWECiphertext OTEnc(NTL::Vec<NTL::ZZ_p> pk, int sigma, bool b) {
-		NTL::Vec<NTL::ZZ_p> p = pk + v[sigma];
-		LWECiphertext ct = LWEEnc(p, b);
-		return ct;
+  // pre : sigma indicates the branch to encrypt to
+	OTCiphertext OTEnc(OTPublicKey pk, Branch sigma, Plaintext msg) {
+    LWEPublicKey BranchPk = pk + v[sigma];
+		return LWEEnc(BranchPk, msg);
 	}
 
-	bool OTDec(OTKey sk, LWECiphertext ct) {
-		bool b = LWEDec(sk, ct);
-		return b;
+	Plaintext OTDec(OTSecretKey sk, OTCiphertext ct) {
+    return LWEDec(sk, ct);
 	}
 
-	OTLattice(IO * io) {
+	explicit OTLattice(IO * io) {
 		this->io = io;
 		NTL::ZZ_p::init(NTL::conv<NTL::ZZ>(q));
-		OTSetup();
+		InitializeCrs();
+    std::cout << "Initialized!" << std::endl;  // DEBUG
 	}
 
-	// std::vector<block> vector_serialize(NTL::Vec<NTL::ZZ_p> v) {
+  // (Note: When initializing an OT object, the EMP API doesn't explicitly
+  // specify whether it's in the role of sender or receiver; rather,
+  // it will call either `send_impl` or `recv_impl`, according to the
+  // protocol participant)
 
-	// 	int length = v.length();
-	// 	int nblocks = std::ceil(length / 4.0);
-	// 	std::vector<block> serialized(nblocks);
-
-
-	// 	// Fill the blocks that are guaranteed to have all four values
-	// 	for (int b = 0; b < nblocks - 1; b++) {
-	// 		serialized[b] = _mm_setr_epi32(v[4*b], v[4*b+1], v[4*b+2], v[4*b+3]);
-	// 	}
-
-	// 	// Fill the last block with the values that are left
-	// 	int lastBlock[4] = {0,0,0,0};
-	// 	for (int pos = 4 * (nblocks - 1); pos < length; pos++) {
-	// 		lastBlock[pos] = v[pos];
-	// 	}
-	// 	serialized[nblocks - 1] = _mm_setr_epi32(lastBlock[0], lastBlock[1],
-	// 	                                         lastBlock[2], lastBlock[3]);
-		
-	// 	return serialized;
-	// }
-
-	// NTL::Vec<NTL::ZZ_p> vector_deserialize(block* serialized, int length) {
-	// 	// Where length is the number of values, not the number of blocks
-	// 	NTL::Vec<NTL::ZZ_p> result;
-	// 	result.SetLength(length);
-
-	// 	for (int i = 0; i < length; i++) {
-	// 		result[i] = _mm_extract_epi32(block[i / 4], i % 4);
-	// 	}
-
-	// 	return result;
-	// }
-
+  // pre : `data0` and `data1` are the sender's two inputs
+  //       Usually, `length` indicates the length of each input,
+  //       in 128-bit blocks, but currently, since we're only
+  //       implementing bit OT, we interpret the LSB
+  //       of *data0 as the 0-indexed input
+  //       and the LSB of *data1 as the 1-indexed input
+  // post: waits for a public key `pk` from the receiver;
+  //       encrypts each input under the received key and the corresponding branch;
+  //       and sends the ciphertexts to the receiver
 	void send_impl(const block* data0, const block* data1, int length) {
-		// data0 and data1 are the sender's two secrets
-		// length is the length in blocks of each secret
-		cnt+=length;
-		bool secret0 = _mm_extract_epi32(*data0, 0) & 1;
-		bool secret1 = _mm_extract_epi32(*data1, 0) & 1;
+		Plaintext secret0 = _mm_extract_epi32(*data0, 0) & 1;
+		Plaintext secret1 = _mm_extract_epi32(*data1, 0) & 1;
 
-		// Receive the public key
+		// Receive the public key as a stream of `m` uint32's
 		uint32_t pk_array[m];
 		io->recv_data(pk_array, sizeof(uint32_t) * m);
 
 		// Convert the public key to an NTL vector
-		NTL::Vec<NTL::ZZ_p> pk;
+    OTPublicKey pk;
 		pk.SetLength(m);
-		for (int i = 0; i < m; i++) {
+		for (size_t i = 0; i < m; ++i) {
 			pk[i] = NTL::conv<NTL::ZZ_p>(pk_array[i]);
 		}
 
-		std::cout << "Sender recieved pk " << pk << endl;
-		
+    std::cout << "(Sender) Encrypting..." << std::endl;
 
+    // Encrypt the two inputs
+    OTCiphertext ct[2];
+    ct[0] = OTEnc(pk, 0, secret0);
+    ct[1] = OTEnc(pk, 1, secret1);
+
+    std::cout << "(Sender) Encrypted. Serializing ciphertexts..." << std::endl;
+
+    // Send to the receiver
+    uint64_t serialized_cts[2][n+1] = {0};
+    for (size_t cti = 0; cti <= 1; ++cti) {
+      for (size_t ui = 0; ui < n; ++ui) {
+        NTL::conv(serialized_cts[cti][ui], ct[cti].u[ui]);
+      }
+      NTL::conv(serialized_cts[cti][n], ct[cti].c);
+    }
+
+    std::cout << "(Sender) Serialized ciphertexts. Sending..." << std::endl;
+		io->send_data(serialized_cts, sizeof(uint64_t) * (2*(n+1)));
 	}
 
-	void recv_impl(block* data, const bool* b, int length) {
-		// data gets the received data from the sender
-		// b is the choice of which secret to receive
-		// length is the length in blocks of the received data
-
+  // pre : `out_data` indicates the location where the received value
+  //         will be stored;
+  //       `b` indicates the location of the choice of which secret to receive;
+  //       `length` would normally indicate the length, in blocks, of a data
+  //         element, but, since we're initially doing bit OT, this input is ignored
+	void recv_impl(block* out_data, const bool* b, int length) {
 		// Generate the public key from the choice bit b
-		OTKey sk = OTKeyGen(*b);
-		
+		OTKeypair keypair = OTKeyGen(*b);
+
 		// Convert the pkey to an int array so it can be sent
 		uint32_t pk_array[m];
-		for (int i = 0; i < m; i++) {
-			pk_array[i] = NTL::conv<uint32_t>(sk.pk[i]);
+		for (size_t i = 0; i < m; i++) {
+			pk_array[i] = NTL::conv<uint32_t>(keypair.pk[i]);
 		}
 
 		// Send the public key
 		io->send_data(pk_array, sizeof(uint32_t) * m);
 
-		std::cout << "Receiver sent pk " << sk.pk << endl;
+		std::cout << "(Receiver) Sent public key; waiting for ctexts" << std::endl;
 
-		//block choice = _mm_setr_epi32(0, 0, 0, *b);
-		//io->send_block(&choice, 1);
-		
-		
+    uint64_t serialized_cts[2][n+1] = {0};
+		io->recv_data(serialized_cts, sizeof(uint64_t) * (2*(n+1)));
 
-		
+    std::cout << "(Receiver) Received serialized ciphertexts." << std::endl;
+
+    // Parse serialized inputs into NTL objects
+    OTCiphertext ct[2];
+
+    for (size_t cti = 0; cti <= 1; ++cti) {
+      ct[cti].u.SetLength(n);
+      for (size_t ui = 0; ui < n; ++ui) {
+        NTL::conv(ct[cti].u[ui], serialized_cts[cti][ui]);
+      }
+      NTL::conv(ct[cti].c, serialized_cts[cti][n]);
+    }
+
+    std::cout << "Parsed serialized ciphertexts, receiving: " << std::endl
+      << "Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
+      << "Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
+
+    // Decrypt and output
+    // Plaintext OTDec(OTKey sk, OTCiphertext ct) {
+    Plaintext p = OTDec(keypair.sk, ct[*b]);  // choose ciphertext according to selection bit
+    *out_data = _mm_set_epi32(0, 0, 0, p);
 	}
 };
-/**@}*/
-}
+/**@}*/  // doxygen end of group
+}  // namespace emp
 #endif// OT_LATTICE_H__

@@ -1,4 +1,5 @@
 #include <emp-tool/emp-tool.h>
+#include <iostream>
 #include "emp-ot/emp-ot.h"
 using namespace emp;
 
@@ -32,6 +33,55 @@ double test_ot(IO * io, int party, int length) {
 	delete[] b;
 	return t;
 }
+
+// test BIT ot - only expecting to receive back same *bit* sent
+// length is the number of OT's, *not* the length of each message
+// (each message is usually one block--but, in this case, each
+// is a single bit: the LSB of each block)
+template<typename IO, template<typename>class T>
+double test_bit_ot(IO * io, int party, int length) {
+	block *b0 = new block[length], *b1 = new block[length], *r = new block[length];
+	PRG prg(fix_key);
+	prg.random_block(b0, length);
+	prg.random_block(b1, length);
+	bool *b = new bool[length];
+	prg.random_bool(b, length);
+
+	io->sync();
+	auto start = clock_start();
+	T<IO> * ot = new T<IO>(io);
+	if (party == ALICE) {
+    std::cout << "(Tester) attempting to send..." << std::endl;
+		ot->send(b0, b1, length);
+	} else {
+    std::cout << "(Tester) attempting to receive..." << std::endl;
+		ot->recv(r, b, length);
+	}
+	io->flush();
+	long long t = time_from(start);
+	if (party == BOB) {
+    for (int i = 0; i < length; ++i) {
+      uint8_t received_value = _mm_extract_epi8(r[i], 15) & 1;
+      uint8_t expected_value;
+      if (b[i]) {  // requested item 1
+        expected_value = _mm_extract_epi8(b1[i], 15) & 1;
+      } else {  // requested item 0
+        expected_value = _mm_extract_epi8(b0[i], 15) & 1;
+      }
+      assert(received_value == expected_value);
+    }
+  }
+  std::cout << "Received outputs matched expected outputs." << std::endl;
+	delete ot;
+	delete[] b0;
+	delete[] b1;
+	delete[] r;
+	delete[] b;
+	return t;
+}
+
+
+
 template<typename IO, template<typename>class T>
 double test_cot(NetIO * io, int party, int length) {
 	block *b0 = new block[length], *r = new block[length];
@@ -95,7 +145,7 @@ double test_rot(IO * io, int party, int length) {
 	if(party == ALICE) {
 			io->send_block(b0, length);
 			io->send_block(b1, length);
-	} else if(party == BOB)  {
+	} else if(party == BOB) {
 			io->recv_block(b0, length);
 			io->recv_block(b1, length);
 		for(int i = 0; i < length; ++i) {
