@@ -6,8 +6,10 @@
 #include <NTL/vec_ZZ_p.h>
 #include <cmath>  // std::log2, std::floor
 #include <vector>
-#include <iostream>  // debugging
+#include <iostream>  // debug printlns
 #include "emp-ot/ot.h"
+
+bool DEBUG = 0;
 
 /** @addtogroup OT
     @{
@@ -98,7 +100,9 @@ class OTLattice: public OT<OTLattice<IO>> { public:
     }
 		NTL::Vec<NTL::ZZ_p> u = A*e;
 		NTL::ZZ_p c = pk*e + mu*q/2;  // c := <p, e> + mu*floor(q/2)
-    std::cout << "(Debug) ciphertext: " << u << ", " << c << std::endl;
+
+    if (DEBUG)
+      std::cout << "(Debug) ciphertext: " << u << ", " << c << std::endl;
 		return {u, c};
 	}
 
@@ -123,7 +127,9 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		x.SetLength(m);  // FIXME - use Gaussian instead of zeroes
     NTL::random(s, n);
 		NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
-    std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
+
+    if (DEBUG)
+      std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
     return {pk, s};
 	}
 
@@ -141,7 +147,8 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		this->io = io;
 		NTL::ZZ_p::init(NTL::conv<NTL::ZZ>(q));
 		InitializeCrs();
-    std::cout << "Initialized!" << std::endl;  // DEBUG
+    if (DEBUG)
+      std::cout << "Initialized!" << std::endl;  // DEBUG
 	}
 
   // (Note: When initializing an OT object, the EMP API doesn't explicitly
@@ -149,101 +156,120 @@ class OTLattice: public OT<OTLattice<IO>> { public:
   // it will call either `send_impl` or `recv_impl`, according to the
   // protocol participant)
 
-  // pre : `data0` and `data1` are the sender's two inputs
-  //       Usually, `length` indicates the length of each input,
-  //       in 128-bit blocks, but currently, since we're only
-  //       implementing bit OT, we interpret the LSB
-  //       of *data0 as the 0-indexed input
-  //       and the LSB of *data1 as the 1-indexed input
+  // pre : `data0`[i] and `data1`[i] are the sender's two inputs
+  //       for the `i`th OT transmission
+  //       Since we're only implementing bit OT,
+  //       we interpret the LSB of data0[i]
+  //       as the `i`th 0-indexed input
+  //       and the LSB of data1[i] as the `i`th 1-indexed input
   // post: waits for a public key `pk` from the receiver;
   //       encrypts each input under the received key and the corresponding branch;
   //       and sends the ciphertexts to the receiver
 	void send_impl(const block* data0, const block* data1, int length) {
-		Plaintext secret0 = _mm_extract_epi32(*data0, 0) & 1;
-		Plaintext secret1 = _mm_extract_epi32(*data1, 0) & 1;
+    for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
+      if (ot_iter and (ot_iter % 5 == 4 or ot_iter == length - 1))
+        std::cout << ot_iter + 1 << ' ' << std::flush;
+      if (ot_iter == length - 1)
+        std::cout << std::endl << std::flush;
 
-    std::cout << "(Sender) Initialized with values x0=" << secret0
-      << ", x1=" << secret1 << std::endl;
+      Plaintext secret0 = _mm_extract_epi32(data0[ot_iter], 0) & 1;
+      Plaintext secret1 = _mm_extract_epi32(data1[ot_iter], 0) & 1;
 
-		// Receive the public key as a stream of `m` int32's
-		int pk_array[m];
-		io->recv_data(pk_array, sizeof(int) * m);
+      if (DEBUG)
+        std::cout << "(Sender, iteration " << ot_iter << ") Initialized with values x0=" << secret0 << ", x1=" << secret1 << std::endl;
 
-		// Convert the public key to an NTL vector
-    OTPublicKey pk;
-		pk.SetLength(m);
-		for (int i = 0; i < m; ++i) {
-			pk[i] = NTL::conv<NTL::ZZ_p>(pk_array[i]);
-		}
+      // Receive the public key as a stream of `m` int32's
+      int pk_array[m];
+      io->recv_data(pk_array, sizeof(int) * m);
 
-    std::cout << "(Sender) Encrypting..." << std::endl;
-
-    // Encrypt the two inputs
-    OTCiphertext ct[2];
-    ct[0] = OTEnc(pk, 0, secret0);
-    ct[1] = OTEnc(pk, 1, secret1);
-
-    std::cout << "(Sender) Encrypted. Serializing ciphertexts..." << std::endl;
-
-    // Send to the receiver
-    int serialized_cts[2][n+1] = {0};
-    for (int cti = 0; cti <= 1; ++cti) {
-      for (int ui = 0; ui < n; ++ui) {
-        NTL::conv(serialized_cts[cti][ui], ct[cti].u[ui]);
+      // Convert the public key to an NTL vector
+      OTPublicKey pk;
+      pk.SetLength(m);
+      for (int i = 0; i < m; ++i) {
+        pk[i] = NTL::conv<NTL::ZZ_p>(pk_array[i]);
       }
-      NTL::conv(serialized_cts[cti][n], ct[cti].c);
-    }
 
-    std::cout << "(Sender) Serialized ciphertexts. Sending..." << std::endl;
-		io->send_data(serialized_cts, sizeof(int) * (2*(n+1)));
+      if (DEBUG)
+        std::cout << "(Sender) Encrypting..." << std::endl;
+
+      // Encrypt the two inputs
+      OTCiphertext ct[2];
+      ct[0] = OTEnc(pk, 0, secret0);
+      ct[1] = OTEnc(pk, 1, secret1);
+
+      if (DEBUG)
+        std::cout << "(Sender) Encrypted. Serializing ciphertexts..." << std::endl;
+
+      // Send to the receiver
+      int serialized_cts[2][n+1] = {0};
+      for (int cti = 0; cti <= 1; ++cti) {
+        for (int ui = 0; ui < n; ++ui) {
+          NTL::conv(serialized_cts[cti][ui], ct[cti].u[ui]);
+        }
+        NTL::conv(serialized_cts[cti][n], ct[cti].c);
+      }
+
+      if (DEBUG)
+        std::cout << "(Sender) Serialized ciphertexts. Sending..." << std::endl;
+
+      io->send_data(serialized_cts, sizeof(int) * (2*(n+1)));
+    }
 	}
 
   // pre : `out_data` indicates the location where the received value
   //         will be stored;
   //       `b` indicates the location of the choice of which secret to receive;
-  //       `length` would normally indicate the length, in blocks, of a data
-  //         element, but, since we're initially doing bit OT, this input is ignored
+  //       `length` indicates the number of OT executions to be
+  //       performed
 	void recv_impl(block* out_data, const bool* b, int length) {
-		// Generate the public key from the choice bit b
-		OTKeypair keypair = OTKeyGen(*b);
+    for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
+      // Generate the public key from the choice bit b
+      OTKeypair keypair = OTKeyGen(b[ot_iter]);
 
-		// Convert the pkey to an int array so it can be sent
-		int pk_array[m];
-		for (int i = 0; i < m; i++) {
-			pk_array[i] = NTL::conv<int>(keypair.pk[i]);
-		}
-
-		// Send the public key
-		io->send_data(pk_array, sizeof(int) * m);
-
-		std::cout << "(Receiver) Sent public key; waiting for ctexts" << std::endl;
-
-    int serialized_cts[2][n+1] = {0};
-		io->recv_data(serialized_cts, sizeof(int) * (2*(n+1)));
-
-    std::cout << "(Receiver) Received serialized ciphertexts." << std::endl;
-
-    // Parse serialized inputs into NTL objects
-    OTCiphertext ct[2];
-
-    for (int cti = 0; cti <= 1; ++cti) {
-      ct[cti].u.SetLength(n);
-      for (int ui = 0; ui < n; ++ui) {
-        NTL::conv(ct[cti].u[ui], serialized_cts[cti][ui]);
+      // Convert the pkey to an int array so it can be sent
+      int pk_array[m];
+      for (int i = 0; i < m; i++) {
+        pk_array[i] = NTL::conv<int>(keypair.pk[i]);
       }
-      NTL::conv(ct[cti].c, serialized_cts[cti][n]);
+
+      // Send the public key
+      io->send_data(pk_array, sizeof(int) * m);
+
+      if (DEBUG)
+        std::cout << "(Receiver) Sent public key; waiting for ctexts" << std::endl;
+
+      int serialized_cts[2][n+1] = {0};
+      io->recv_data(serialized_cts, sizeof(int) * (2*(n+1)));
+
+      if (DEBUG)
+        std::cout << "(Receiver) Received serialized ciphertexts." << std::endl;
+
+      // Parse serialized inputs into NTL objects
+      OTCiphertext ct[2];
+
+      for (int cti = 0; cti <= 1; ++cti) {
+        ct[cti].u.SetLength(n);
+        for (int ui = 0; ui < n; ++ui) {
+          NTL::conv(ct[cti].u[ui], serialized_cts[cti][ui]);
+        }
+        NTL::conv(ct[cti].c, serialized_cts[cti][n]);
+      }
+
+      if (DEBUG) {
+        std::cout << "Parsed serialized ciphertexts, receiving: " << std::endl
+          << "Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
+          << "Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
+      }
+
+      // Decrypt and output
+      // Plaintext OTDec(OTKey sk, OTCiphertext ct) {
+      Plaintext p = OTDec(keypair.sk, ct[b[ot_iter]]);  // choose ciphertext according to selection bit
+
+      if (DEBUG)
+        std::cout << "(Receiver, iteration " << ot_iter << ") Decrypted branch " << b[ot_iter] << " to get plaintext " << p << std::endl;
+
+      out_data[ot_iter] = _mm_set_epi32(0, 0, 0, p);
     }
-
-    std::cout << "Parsed serialized ciphertexts, receiving: " << std::endl
-      << "Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
-      << "Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
-
-    // Decrypt and output
-    // Plaintext OTDec(OTKey sk, OTCiphertext ct) {
-    Plaintext p = OTDec(keypair.sk, ct[*b]);  // choose ciphertext according to selection bit
-
-    std::cout << "(Receiver) Decrypted branch " << *b << " to get plaintext " << p << std::endl;
-    *out_data = _mm_set_epi32(0, 0, 0, p);
 	}
 };
 /**@}*/  // doxygen end of group

@@ -51,29 +51,27 @@ double test_bit_ot(IO * io, int party, int length) {
 	auto start = clock_start();
 	T<IO> * ot = new T<IO>(io);
 	if (party == ALICE) {
-    std::cout << "(Tester) attempting to send..." << std::endl;
+//    std::cout << "(Tester) attempting to send..." << std::endl;
 		ot->send(b0, b1, length);
 	} else {
-    std::cout << "(Tester) attempting to receive..." << std::endl;
+//    std::cout << "(Tester) attempting to receive..." << std::endl;
 		ot->recv(r, b, length);
 	}
 	io->flush();
 	long long t = time_from(start);
 	if (party == BOB) {
     for (int i = 0; i < length; ++i) {
-      // TODO - this wasn't working with _mm_extract_epi32(r[i], 3)
-      // and `int` types - why?
-      short received_value = _mm_extract_epi8(r[i], 15) & 1;
-      short expected_value;
+      int received_value = _mm_extract_epi32(r[i], 0) & 1;
+      int expected_value;
       if (b[i]) {  // requested item 1
-        expected_value = _mm_extract_epi8(b1[i], 15) & 1;
+        expected_value = _mm_extract_epi32(b1[i], 0) & 1;
       } else {  // requested item 0
-        expected_value = _mm_extract_epi8(b0[i], 15) & 1;
+        expected_value = _mm_extract_epi32(b0[i], 0) & 1;
       }
       bool success = received_value == expected_value;
       if (!success) {
-        std::cout << "(Test " << i << ") Received output " << received_value
-          << " didn't match expected " << expected_value << std::endl;
+        std::cout << "(Test " << i << ") Receiver's output " << received_value
+          << " on branch " << b[i] << " didn't match expected " << expected_value << std::endl;
       }
       assert(success);
     }
