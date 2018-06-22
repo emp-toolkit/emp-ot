@@ -285,4 +285,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 };
 	/**@}*/  // doxygen end of group
 }  // namespace emp
+#undef N
+#undef M
+#undef Q
 #endif// OT_LATTICE_H__
