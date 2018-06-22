@@ -52,6 +52,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	NTL::Mat<NTL::ZZ_p> A;
 	NTL::Mat<NTL::ZZ_p> AT; // A transpose is stored for speed
 	NTL::Vec<NTL::ZZ_p> v[2];
+	NTL::Vec<NTL::ZZ_p> tmpN;
 
 	// post: populates A, AT, v0, v1 using a fixed-key EMP-library PRG
 	//       and rejection sampling
@@ -62,6 +63,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		AT.SetDims(M, N);
 		v[0].SetLength(M);
 		v[1].SetLength(M);
+		tmpN.SetLength(N);
 
 		int rnd;  // to hold samples
 		// min # bits (resp. bytes) to hold q
@@ -108,7 +110,8 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 			NTL::RandomBnd(rnd, 2);  // set entry ~ Unif({0,1})
 			NTL::conv(e[i], rnd);
 		}
-		NTL::Vec<NTL::ZZ_p> u = A*e;
+		NTL::Vec<NTL::ZZ_p> u;
+		mul(u, A, e);
 		NTL::ZZ_p c = pk*e + mu*Q/2;  // c := <p, e> + mu*floor(Q/2)
 
 		if (DEBUG)
@@ -137,7 +140,8 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		x.SetLength(M);  // FIXME - use Gaussian instead of zeroes
 		NTL::random(s, N);
 		//NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
-		NTL::Vec<NTL::ZZ_p> pk = AT*s + x - v[sigma];
+		mul(tmpN, AT, s);
+		NTL::Vec<NTL::ZZ_p> pk = tmpN + x - v[sigma];
 
 		if (DEBUG)
 			std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
