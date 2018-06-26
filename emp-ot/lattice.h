@@ -19,14 +19,11 @@ bool DEBUG = 0;
 // Parameters for LWE
 // N and M are the matrix dimensions
 // Q is the modulus
-// Note that for vector serialization, Q must not be larger than MAXINT
 // See https://frodokem.org/files/FrodoKEM-specification-20171130.pdf
 // page 16, 21-23
-#define Q 65536
-//#define N 640
-//#define M 640
-#define N 8
-#define M 8
+#define Q 65536 // max of uint16_t is the implicit modulus.
+#define N 640
+#define M 640
 namespace emp {
 
 typedef Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic> MatrixModQ;
@@ -305,6 +302,6 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		}
 	}
 };
-	/**@}*/  // doxygen end of group
+/**@}*/  // doxygen end of group
 }  // namespace emp
 #endif// OT_LATTICE_H__
