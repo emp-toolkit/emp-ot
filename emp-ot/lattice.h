@@ -22,13 +22,15 @@ bool DEBUG = 0;
 // Note that for vector serialization, Q must not be larger than MAXINT
 // See https://frodokem.org/files/FrodoKEM-specification-20171130.pdf
 // page 16, 21-23
-#define Q 32768
-#define N 640
-#define M 640
+#define Q 65536
+//#define N 640
+//#define M 640
+#define N 8
+#define M 8
 namespace emp {
 
-typedef Eigen::Matrix<NTL::ZZ_p, Eigen::Dynamic, Eigen::Dynamic> MatrixModQ;
-typedef Eigen::Matrix<NTL::ZZ_p, Eigen::Dynamic, 1> VectorModQ;
+typedef Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic> MatrixModQ;
+typedef Eigen::Matrix<uint16_t, Eigen::Dynamic, 1> VectorModQ;
 
 using LWEPublicKey = VectorModQ;
 using OTPublicKey  = LWEPublicKey;
@@ -42,9 +44,15 @@ using OTKeypair    = LWEKeypair;
 using Branch     = int;
 using Plaintext  = int;
 
-struct LWECiphertext {
+class LWECiphertext {
+public:
+	LWECiphertext(VectorModQ uinit, uint16_t cinit) : u(uinit), c(cinit) {
+	}
+	LWECiphertext() {
+		u.resize(M);
+	}
 	VectorModQ u;
-	NTL::ZZ_p c;
+	uint16_t c;
 };
 
 
@@ -116,13 +124,13 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		long rnd;
 		for (int i = 0; i < M; ++i) {
 			NTL::RandomBnd(rnd, 2);  // set entry ~ Unif({0,1})
-			e(i) = NTL::conv<NTL::ZZ_p>(rnd);
+			e(i) = (uint16_t) rnd;
 		}
-		MatrixModQ u = A*e;
-		NTL::ZZ_p c = pk.dot(e) + mu*Q/2; // c := <p, e> + mu*floor(Q/2)
+		VectorModQ u = A*e;
+		uint16_t c = pk.dot(e) + mu*Q/2; // c := <p, e> + mu*floor(Q/2)
 
-		// if (DEBUG)
-		// 	std::cout << "(Debug) ciphertext: " << u << ", " << c << std::endl;
+		if (DEBUG)
+			std::cout << "(Debug) ciphertext: " << u << ", " << c << std::endl;
 		return {u, c};
 	}
 
@@ -132,8 +140,9 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	//       - 0 if b' is closer to 0 (mod Q) than to Q/2
 	//       - 1 otherwise
 	bool LWEDec(LWESecretKey &sk, LWECiphertext &ct) {
-		int bprime;
-		NTL::conv(bprime, ct.c - sk.dot(ct.u));
+		uint16_t bprime;
+		bprime = ct.c - sk.dot(ct.u);
+		//std::cout << "bprime: " <<  bprime << endl;
 		return bprime > Q/4 && bprime <= 3*Q/4;
 	}
 
@@ -143,10 +152,12 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	// TODO: change to sample from LWE noise distribution
 	//       (discretized Gaussian \bar{\Psi}_\alpha)
 	OTKeypair OTKeyGen(Branch sigma) {
-		VectorModQ s, x;
-		x.resize(M);  // FIXME - use Gaussian instead of zeroes
+		VectorModQ s;
+		VectorModQ x = VectorModQ::Zero(M); // FIXME - use Gaussian instead of zeroes
+
 		s = VectorModQ::Random(N);
 		//NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
+		
 		VectorModQ pk = AT*s + x - v[sigma];
 
 		// if (DEBUG)
@@ -166,7 +177,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 
 	explicit OTLattice(IO * io) {
 		this->io = io;
-		NTL::ZZ_p::init(NTL::conv<NTL::ZZ>(Q));
+		//NTL::ZZ_p::init(NTL::conv<NTL::ZZ>(Q));
 		InitializeCrs();
 		if (DEBUG)
 			std::cout << "Initialized!" << std::endl;  // DEBUG
@@ -188,7 +199,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	//       and sends the ciphertexts to the receiver
 	void send_impl(const block* data0, const block* data1, int length) {
 		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-			if (ot_iter and (ot_iter % 5 == 4 or ot_iter == length - 1))
+			if (ot_iter and (ot_iter % 5000 == 4999 or ot_iter == length - 1))
 				std::cout << ot_iter + 1 << ' ' << std::flush;
 			if (ot_iter == length - 1)
 				std::cout << std::endl << std::flush;
@@ -200,14 +211,14 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 				std::cout << "(Sender, iteration " << ot_iter << ") Initialized with values x0=" << secret0 << ", x1=" << secret1 << std::endl;
 
 			// Receive the public key as a stream of `m` int32's
-			int pk_array[M];
-			io->recv_data(pk_array, sizeof(int) * M);
+			uint16_t pk_array[M];
+			io->recv_data(pk_array, sizeof(uint16_t) * M);
 
 			// Convert the public key to an Eigen vector (not eigenvector)
 			OTPublicKey pk;
 			pk.resize(M);
 			for (int i = 0; i < M; ++i) {
-				pk(i) = NTL::conv<NTL::ZZ_p>(pk_array[i]);
+				pk(i) = pk_array[i];
 			}
 
 			if (DEBUG)
@@ -222,18 +233,19 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 				std::cout << "(Sender) Encrypted. Serializing ciphertexts..." << std::endl;
 
 			// Send to the receiver
-			int serialized_cts[2][N+1] = {{0}};
+			uint16_t serialized_cts[2][N+1] = {{0}};
 			for (int cti = 0; cti <= 1; ++cti) {
 				for (int ui = 0; ui < N; ++ui) {
-					NTL::conv(serialized_cts[cti][ui], ct[cti].u(ui));
+					serialized_cts[cti][ui] = ct[cti].u(ui);
+					
 				}
-				NTL::conv(serialized_cts[cti][N], ct[cti].c);
+				serialized_cts[cti][N] = ct[cti].c;
 			}
 
 			if (DEBUG)
 				std::cout << "(Sender) Serialized ciphertexts. Sending..." << std::endl;
 
-			io->send_data(serialized_cts, sizeof(int) * (2*(N+1)));
+			io->send_data(serialized_cts, sizeof(uint16_t) * (2*(N+1)));
 		}
 	}
 
@@ -248,19 +260,19 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 			OTKeypair keypair = OTKeyGen(b[ot_iter]);
 
 			// Convert the pkey to an int array so it can be sent
-			int pk_array[M];
+			uint16_t pk_array[M];
 			for (int i = 0; i < M; i++) {
-				pk_array[i] = NTL::conv<int>(keypair.pk[i]);
+				pk_array[i] = keypair.pk(i);
 			}
 
 			// Send the public key
-			io->send_data(pk_array, sizeof(int) * M);
+			io->send_data(pk_array, sizeof(uint16_t) * M);
 
 			if (DEBUG)
 				std::cout << "(Receiver) Sent public key; waiting for ctexts" << std::endl;
 
-			int serialized_cts[2][N+1] = {{0}};
-			io->recv_data(serialized_cts, sizeof(int) * (2*(N+1)));
+			uint16_t serialized_cts[2][N+1] = {{0}};
+			io->recv_data(serialized_cts, sizeof(uint16_t) * (2*(N+1)));
 
 			if (DEBUG)
 				std::cout << "(Receiver) Received serialized ciphertexts." << std::endl;
@@ -271,9 +283,9 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 			for (int cti = 0; cti <= 1; ++cti) {
 				ct[cti].u.resize(N);
 				for (int ui = 0; ui < N; ++ui) {
-					ct[cti].u(ui) = NTL::conv<NTL::ZZ_p>(serialized_cts[cti][ui]);
+					ct[cti].u(ui) = serialized_cts[cti][ui];
 				}
-				NTL::conv(ct[cti].c, serialized_cts[cti][N]);
+				ct[cti].c = serialized_cts[cti][N];
 			}
 
 			// if (DEBUG) {
