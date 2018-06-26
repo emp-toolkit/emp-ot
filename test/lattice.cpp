@@ -3,7 +3,7 @@
 using namespace std;
 
 int main(int argc, char** argv) {
-  int N_TESTS = 50000;
+  int N_TESTS = 5000;
   int port, party;
   parse_party_and_port(argv, 2, &party, &port);
   NetIO * io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);

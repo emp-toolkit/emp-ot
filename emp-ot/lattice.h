@@ -9,6 +9,13 @@
 #include <vector>
 #include <iostream>  // debug printlns
 #include "emp-ot/ot.h"
+extern "C" {
+	//https://github.com/malb/dgs
+	#include <dgs/dgs_gauss.h>
+}
+
+
+
 
 bool DEBUG = 0;
 
@@ -24,7 +31,9 @@ bool DEBUG = 0;
 #define Q 65536 // max of uint16_t is the implicit modulus.
 #define N 640
 #define M 640
+#define SIGMA 7 // something I made up.
 namespace emp {
+
 
 typedef Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic> MatrixModQ;
 typedef Eigen::Matrix<uint16_t, Eigen::Dynamic, 1> VectorModQ;
@@ -58,15 +67,11 @@ template<typename IO>
 class OTLattice: public OT<OTLattice<IO>> { public:
 	IO* io = nullptr;
 
-	/*
-	NTL::Mat<NTL::ZZ_p> A;
-	NTL::Mat<NTL::ZZ_p> AT; // A transpose is stored for speed
-	NTL::Vec<NTL::ZZ_p> v[2];
-	*/
 	MatrixModQ A;
 	MatrixModQ AT; // A transpose is stored for speed
 	VectorModQ v[2];
-	
+	dgs_disc_gauss_dp_t *discrete_gaussian;
+
 	// post: populates A, AT, v0, v1 using a fixed-key EMP-library PRG
 	//       and rejection sampling
 	void InitializeCrs() {
@@ -118,17 +123,18 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		//NTL::Vec<NTL::ZZ_p> e;
 		VectorModQ e;
 		e.resize(M);  // FIXME - use Gaussian instead of uniform{0,1}
-		long rnd;
 		for (int i = 0; i < M; ++i) {
-			NTL::RandomBnd(rnd, 2);  // set entry ~ Unif({0,1})
-			e(i) = (uint16_t) rnd;
+			e(i) = (uint16_t) discrete_gaussian->call(discrete_gaussian);
 		}
+		
 		VectorModQ u = A*e;
 		uint16_t c = pk.dot(e) + mu*Q/2; // c := <p, e> + mu*floor(Q/2)
 
 		if (DEBUG)
 			std::cout << "(Debug) ciphertext: " << u << ", " << c << std::endl;
 		return {u, c};
+		//std::cout << "Discrete Gaussian Sample: " << discrete_gaussian->call(discrete_gaussian) << std::endl;
+
 	}
 
 	// pre : sk is of length n, ct is of the form (u, c) of length (n, 1)
@@ -176,6 +182,11 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		this->io = io;
 		//NTL::ZZ_p::init(NTL::conv<NTL::ZZ>(Q));
 		InitializeCrs();
+
+		// Sigma, c, tau, algorithm
+		// c is the center
+		// I think tau determines accuracy? I'm not sure.
+		discrete_gaussian = dgs_disc_gauss_dp_init(SIGMA, 0, 100, DGS_DISC_GAUSS_UNIFORM_TABLE);
 		if (DEBUG)
 			std::cout << "Initialized!" << std::endl;  // DEBUG
 	}
@@ -196,7 +207,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	//       and sends the ciphertexts to the receiver
 	void send_impl(const block* data0, const block* data1, int length) {
 		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-			if (ot_iter and (ot_iter % 5000 == 4999 or ot_iter == length - 1))
+			if (ot_iter and (ot_iter % 500 == 499 or ot_iter == length - 1))
 				std::cout << ot_iter + 1 << ' ' << std::flush;
 			if (ot_iter == length - 1)
 				std::cout << std::endl << std::flush;
