@@ -68,17 +68,15 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	IO* io = nullptr;
 
 	MatrixModQ A;
-	MatrixModQ AT; // A transpose is stored for speed
 	VectorModQ v[2];
 	dgs_disc_gauss_dp_t *discrete_gaussian;
 
-	// post: populates A, AT, v0, v1 using a fixed-key EMP-library PRG
+	// post: populates A, v0, v1 using a fixed-key EMP-library PRG
 	//       and rejection sampling
 	void InitializeCrs() {
 		PRG crs_prg(fix_key);  // emp::fix_key is a library-specified constant
 
 		A.resize(N, M);
-		AT.resize(M, N);
 		v[0].resize(M);
 		v[1].resize(M);
 
@@ -87,7 +85,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		const int nbits_q = 1 + std::floor(std::log2(Q));
 		const int nbytes_q = 1 + std::floor(std::log2(Q)/8);
 
-		// populate A and AT
+		// populate A
 		for (int i = 0; i < N; ++i) {
 			for (int j = 0; j < M; ++j) {
 				do {
@@ -98,7 +96,6 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 					// the next-greater power of 2
 				} while (rnd >= Q);
 				A(i, j) = rnd;
-				AT(j, i) = rnd;
 			}
 		}
 
@@ -161,7 +158,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		s = VectorModQ::Random(N);
 		//NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
 		
-		VectorModQ pk = AT*s + x - v[sigma];
+		VectorModQ pk = A.transpose()*s + x - v[sigma];
 
 		// if (DEBUG)
 		// 	std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
@@ -185,7 +182,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 
 		// Sigma, c, tau, algorithm
 		// c is the center
-		// I think tau determines accuracy? I'm not sure.
+		// tau is the cutoff of the gaussian?
 		discrete_gaussian = dgs_disc_gauss_dp_init(SIGMA, 0, 100, DGS_DISC_GAUSS_UNIFORM_TABLE);
 		if (DEBUG)
 			std::cout << "Initialized!" << std::endl;  // DEBUG
