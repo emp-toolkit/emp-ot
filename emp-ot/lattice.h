@@ -1,9 +1,5 @@
 #ifndef OT_LATTICE_H__
 #define OT_LATTICE_H__
-#include <NTL/ZZ.h>
-#include <NTL/ZZ_p.h>
-#include <NTL/mat_ZZ_p.h>
-#include <NTL/vec_ZZ_p.h>
 #include <Eigen/Dense>
 #include <cmath>  // std::log2, std::floor
 #include <vector>
