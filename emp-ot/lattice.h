@@ -4,10 +4,18 @@
 #include <NTL/ZZ_p.h>
 #include <NTL/mat_ZZ_p.h>
 #include <NTL/vec_ZZ_p.h>
+#include <Eigen/Dense>
 #include <cmath>  // std::log2, std::floor
 #include <vector>
 #include <iostream>  // debug printlns
 #include "emp-ot/ot.h"
+extern "C" {
+	//https://github.com/malb/dgs
+	#include <dgs/dgs_gauss.h>
+}
+
+
+
 
 bool DEBUG = 0;
 
@@ -18,18 +26,45 @@ bool DEBUG = 0;
 // Parameters for LWE
 // N and M are the matrix dimensions
 // Q is the modulus
-// Note that for vector serialization, Q must not be larger than MAXINT
 // See https://frodokem.org/files/FrodoKEM-specification-20171130.pdf
 // page 16, 21-23
-#define Q 32768
+#define Q 65536 // max of uint16_t is the implicit modulus.
 #define N 640
 #define M 640
+#define ENC_SIGMA 7 // something I made up.
 namespace emp {
 
-using LWEPublicKey = NTL::Vec<NTL::ZZ_p>;
+class DiscretizedGaussian {
+public:
+	dgs_disc_gauss_dp_t *discrete_gaussian;
+
+	explicit DiscretizedGaussian(int sigma) {
+		// An approximation for a discretized gaussian with standard distribution sigma
+		// centered at zero mapped to integers [0, Q)
+		// Cutoff
+		discrete_gaussian = dgs_disc_gauss_dp_init(sigma, 0, 80, DGS_DISC_GAUSS_UNIFORM_TABLE);
+	}
+	uint16_t sample() {
+		// Samples a uint16_t from the discretized gaussian
+		// Where Q is the maximum value of a uint16_t
+		int presample = discrete_gaussian->call(discrete_gaussian) % Q;
+		if (presample < 0) {
+			// presample = Q - |presample|
+			presample += Q;
+		}
+		return (uint16_t) presample;
+	}
+};
+
+	
+
+typedef Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic> MatrixModQ;
+typedef Eigen::Matrix<uint16_t, Eigen::Dynamic, 1> VectorModQ;
+
+using LWEPublicKey = VectorModQ;
 using OTPublicKey  = LWEPublicKey;
 
-using LWESecretKey = NTL::Vec<NTL::ZZ_p>;
+using LWESecretKey = VectorModQ;
 using OTSecretKey  = LWESecretKey;
 
 using LWEKeypair   = struct { LWEPublicKey pk; LWESecretKey sk; };
@@ -38,39 +73,42 @@ using OTKeypair    = LWEKeypair;
 using Branch     = int;
 using Plaintext  = int;
 
-struct LWECiphertext {
-	NTL::Vec<NTL::ZZ_p> u;
-	NTL::ZZ_p c;
+class LWECiphertext {
+public:
+	LWECiphertext(VectorModQ uinit, uint16_t cinit) : u(uinit), c(cinit) {
+	}
+	LWECiphertext() {
+		u.resize(M);
+	}
+	VectorModQ u;
+	uint16_t c;
 };
+
 
 using OTCiphertext = LWECiphertext;
 template<typename IO>
 class OTLattice: public OT<OTLattice<IO>> { public:
 	IO* io = nullptr;
 
-	
-	NTL::Mat<NTL::ZZ_p> A;
-	NTL::Mat<NTL::ZZ_p> AT; // A transpose is stored for speed
-	NTL::Vec<NTL::ZZ_p> v[2];
-	NTL::Vec<NTL::ZZ_p> tmpN;
-
-	// post: populates A, AT, v0, v1 using a fixed-key EMP-library PRG
+	MatrixModQ A;
+	VectorModQ v[2];
+	dgs_disc_gauss_dp_t *enc_discrete_gaussian;
+	DiscretizedGaussian keygen_discretized_gaussian = DiscretizedGaussian(20); // 5 chosen for testing;
+	// post: populates A, v0, v1 using a fixed-key EMP-library PRG
 	//       and rejection sampling
 	void InitializeCrs() {
 		PRG crs_prg(fix_key);  // emp::fix_key is a library-specified constant
 
-		A.SetDims(N, M);
-		AT.SetDims(M, N);
-		v[0].SetLength(M);
-		v[1].SetLength(M);
-		tmpN.SetLength(N);
+		A.resize(N, M);
+		v[0].resize(M);
+		v[1].resize(M);
 
 		int rnd;  // to hold samples
 		// min # bits (resp. bytes) to hold q
 		const int nbits_q = 1 + std::floor(std::log2(Q));
 		const int nbytes_q = 1 + std::floor(std::log2(Q)/8);
 
-		// populate A and AT
+		// populate A
 		for (int i = 0; i < N; ++i) {
 			for (int j = 0; j < M; ++j) {
 				do {
@@ -80,8 +118,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 					// only sample less than
 					// the next-greater power of 2
 				} while (rnd >= Q);
-				A[i][j] = rnd;
-				AT[j][i] = rnd;
+				A(i, j) = rnd;
 			}
 		}
 
@@ -93,7 +130,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 					crs_prg.random_data(&rnd, nbytes_q);
 					rnd &= ((1 << nbits_q) - 1);
 				} while (rnd >= Q);
-				v[vv][i] = rnd;
+				v[vv](i) = rnd;
 			}
 		}
 	}
@@ -102,21 +139,22 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	// TODO: not sure - how should we represent a single bit? bool?
 	//       (NB: NTL's documentation says many arithmetic operations
 	//            are faster with longs -- is this true?)
-	LWECiphertext LWEEnc(NTL::Vec<NTL::ZZ_p> &pk, Plaintext mu) {
-		NTL::Vec<NTL::ZZ_p> e;
-		e.SetLength(M);  // FIXME - use Gaussian instead of uniform{0,1}
-		long rnd;
+	LWECiphertext LWEEnc(VectorModQ &pk, Plaintext mu) {
+		//NTL::Vec<NTL::ZZ_p> e;
+		VectorModQ e;
+		e.resize(M);  // FIXME - use Gaussian instead of uniform{0,1}
 		for (int i = 0; i < M; ++i) {
-			NTL::RandomBnd(rnd, 2);  // set entry ~ Unif({0,1})
-			NTL::conv(e[i], rnd);
+			e(i) = (uint16_t) enc_discrete_gaussian->call(enc_discrete_gaussian);
 		}
-		NTL::Vec<NTL::ZZ_p> u;
-		mul(u, A, e);
-		NTL::ZZ_p c = pk*e + mu*Q/2;  // c := <p, e> + mu*floor(Q/2)
+		
+		VectorModQ u = A*e;
+		uint16_t c = pk.dot(e) + mu*Q/2; // c := <p, e> + mu*floor(Q/2)
 
 		if (DEBUG)
 			std::cout << "(Debug) ciphertext: " << u << ", " << c << std::endl;
 		return {u, c};
+		//std::cout << "Discrete Gaussian Sample: " << enc_discrete_gaussian->call(enc_discrete_gaussian) << std::endl;
+
 	}
 
 	// pre : sk is of length n, ct is of the form (u, c) of length (n, 1)
@@ -125,8 +163,9 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	//       - 0 if b' is closer to 0 (mod Q) than to Q/2
 	//       - 1 otherwise
 	bool LWEDec(LWESecretKey &sk, LWECiphertext &ct) {
-		int bprime;
-		NTL::conv(bprime, ct.c - sk*ct.u);
+		uint16_t bprime;
+		bprime = ct.c - sk.dot(ct.u);
+		//std::cout << "bprime: " <<  bprime << endl;
 		return bprime > Q/4 && bprime <= 3*Q/4;
 	}
 
@@ -136,15 +175,21 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	// TODO: change to sample from LWE noise distribution
 	//       (discretized Gaussian \bar{\Psi}_\alpha)
 	OTKeypair OTKeyGen(Branch sigma) {
-		NTL::Vec<NTL::ZZ_p> s, x;
-		x.SetLength(M);  // FIXME - use Gaussian instead of zeroes
-		NTL::random(s, N);
-		//NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
-		mul(tmpN, AT, s);
-		NTL::Vec<NTL::ZZ_p> pk = tmpN + x - v[sigma];
+		VectorModQ s;
+		//VectorModQ x = VectorModQ::Zero(M); // FIXME - use Gaussian instead of zeroes
+		VectorModQ x;
+		x.resize(M);
+		for (int i = 0; i < M; i++) {
+			x(i) = keygen_discretized_gaussian.sample();
+		}
 
-		if (DEBUG)
-			std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
+		s = VectorModQ::Random(N);
+		//NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
+		
+		VectorModQ pk = A.transpose()*s + x - v[sigma];
+
+		// if (DEBUG)
+		// 	std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
 		return {pk, s};
 	}
 
@@ -160,8 +205,14 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 
 	explicit OTLattice(IO * io) {
 		this->io = io;
-		NTL::ZZ_p::init(NTL::conv<NTL::ZZ>(Q));
+		//NTL::ZZ_p::init(NTL::conv<NTL::ZZ>(Q));
 		InitializeCrs();
+
+		// Sigma, c, tau, algorithm
+		// c is the center
+		// tau * sigma is the cutoff of the gaussian?
+		enc_discrete_gaussian = dgs_disc_gauss_dp_init(ENC_SIGMA, 0, 12, DGS_DISC_GAUSS_UNIFORM_TABLE);
+		//keygen_discretized_gaussian = 
 		if (DEBUG)
 			std::cout << "Initialized!" << std::endl;  // DEBUG
 	}
@@ -182,7 +233,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	//       and sends the ciphertexts to the receiver
 	void send_impl(const block* data0, const block* data1, int length) {
 		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-			if (ot_iter and (ot_iter % 5 == 4 or ot_iter == length - 1))
+			if (ot_iter and (ot_iter % 500 == 499 or ot_iter == length - 1))
 				std::cout << ot_iter + 1 << ' ' << std::flush;
 			if (ot_iter == length - 1)
 				std::cout << std::endl << std::flush;
@@ -194,14 +245,14 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 				std::cout << "(Sender, iteration " << ot_iter << ") Initialized with values x0=" << secret0 << ", x1=" << secret1 << std::endl;
 
 			// Receive the public key as a stream of `m` int32's
-			int pk_array[M];
-			io->recv_data(pk_array, sizeof(int) * M);
+			uint16_t pk_array[M];
+			io->recv_data(pk_array, sizeof(uint16_t) * M);
 
-			// Convert the public key to an NTL vector
+			// Convert the public key to an Eigen vector (not eigenvector)
 			OTPublicKey pk;
-			pk.SetLength(M);
+			pk.resize(M);
 			for (int i = 0; i < M; ++i) {
-				pk[i] = NTL::conv<NTL::ZZ_p>(pk_array[i]);
+				pk(i) = pk_array[i];
 			}
 
 			if (DEBUG)
@@ -216,18 +267,19 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 				std::cout << "(Sender) Encrypted. Serializing ciphertexts..." << std::endl;
 
 			// Send to the receiver
-			int serialized_cts[2][N+1] = {{0}};
+			uint16_t serialized_cts[2][N+1] = {{0}};
 			for (int cti = 0; cti <= 1; ++cti) {
 				for (int ui = 0; ui < N; ++ui) {
-					NTL::conv(serialized_cts[cti][ui], ct[cti].u[ui]);
+					serialized_cts[cti][ui] = ct[cti].u(ui);
+					
 				}
-				NTL::conv(serialized_cts[cti][N], ct[cti].c);
+				serialized_cts[cti][N] = ct[cti].c;
 			}
 
 			if (DEBUG)
 				std::cout << "(Sender) Serialized ciphertexts. Sending..." << std::endl;
 
-			io->send_data(serialized_cts, sizeof(int) * (2*(N+1)));
+			io->send_data(serialized_cts, sizeof(uint16_t) * (2*(N+1)));
 		}
 	}
 
@@ -242,19 +294,19 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 			OTKeypair keypair = OTKeyGen(b[ot_iter]);
 
 			// Convert the pkey to an int array so it can be sent
-			int pk_array[M];
+			uint16_t pk_array[M];
 			for (int i = 0; i < M; i++) {
-				pk_array[i] = NTL::conv<int>(keypair.pk[i]);
+				pk_array[i] = keypair.pk(i);
 			}
 
 			// Send the public key
-			io->send_data(pk_array, sizeof(int) * M);
+			io->send_data(pk_array, sizeof(uint16_t) * M);
 
 			if (DEBUG)
 				std::cout << "(Receiver) Sent public key; waiting for ctexts" << std::endl;
 
-			int serialized_cts[2][N+1] = {{0}};
-			io->recv_data(serialized_cts, sizeof(int) * (2*(N+1)));
+			uint16_t serialized_cts[2][N+1] = {{0}};
+			io->recv_data(serialized_cts, sizeof(uint16_t) * (2*(N+1)));
 
 			if (DEBUG)
 				std::cout << "(Receiver) Received serialized ciphertexts." << std::endl;
@@ -263,18 +315,18 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 			OTCiphertext ct[2];
 
 			for (int cti = 0; cti <= 1; ++cti) {
-				ct[cti].u.SetLength(N);
+				ct[cti].u.resize(N);
 				for (int ui = 0; ui < N; ++ui) {
-					NTL::conv(ct[cti].u[ui], serialized_cts[cti][ui]);
+					ct[cti].u(ui) = serialized_cts[cti][ui];
 				}
-				NTL::conv(ct[cti].c, serialized_cts[cti][N]);
+				ct[cti].c = serialized_cts[cti][N];
 			}
 
-			if (DEBUG) {
-				std::cout << "Parsed serialized ciphertexts, receiving: " << std::endl
-					  << "Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
-					  << "Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
-			}
+			// if (DEBUG) {
+			// 	std::cout << "Parsed serialized ciphertexts, receiving: " << std::endl
+			// 		  << "Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
+			// 		  << "Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
+			// }
 
 			// Decrypt and output
 			// Plaintext OTDec(OTKey sk, OTCiphertext ct) {
@@ -286,8 +338,9 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 			out_data[ot_iter] = _mm_set_epi32(0, 0, 0, p);
 		}
 	}
+
 };
-	/**@}*/  // doxygen end of group
+/**@}*/  // doxygen end of group
 }  // namespace emp
 #undef N
 #undef M

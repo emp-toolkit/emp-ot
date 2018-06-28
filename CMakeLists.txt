@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.8.11)
+cmake_minimum_required (VERSION 3.0)
 project (emp-ot)
 set(NAME "emp-ot")
 
@@ -9,7 +9,9 @@ include(${CMAKE_FOLDER}/cmake/threading.cmake)
 
 find_package(emp-tool REQUIRED)
 find_package(NTL REQUIRED)
-include_directories(${EMP-TOOL_INCLUDE_DIRS} ${NTL_INCLUDE_DIR})
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(dgs REQUIRED)
+include_directories(${EMP-TOOL_INCLUDE_DIRS} ${NTL_INCLUDE_DIR} ${EIGEN3_INCLUDE_DIR} ${DGS_INCLUDE_DIR})
 
 # Installation
 install(FILES cmake/emp-ot-config.cmake DESTINATION cmake/)
@@ -31,3 +33,5 @@ add_test(mot)
 add_test(deltaot)
 add_test(ideal)
 add_test(lattice)
+target_link_libraries(lattice Eigen3::Eigen)
+target_link_libraries(lattice dgs)
