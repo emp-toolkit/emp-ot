@@ -31,9 +31,32 @@ bool DEBUG = 0;
 #define Q 65536 // max of uint16_t is the implicit modulus.
 #define N 640
 #define M 640
-#define SIGMA 7 // something I made up.
+#define ENC_SIGMA 7 // something I made up.
 namespace emp {
 
+class DiscretizedGaussian {
+public:
+	dgs_disc_gauss_dp_t *discrete_gaussian;
+
+	explicit DiscretizedGaussian(int sigma) {
+		// An approximation for a discretized gaussian with standard distribution sigma
+		// centered at zero mapped to integers [0, Q)
+		// Cutoff
+		discrete_gaussian = dgs_disc_gauss_dp_init(sigma, 0, 80, DGS_DISC_GAUSS_UNIFORM_TABLE);
+	}
+	uint16_t sample() {
+		// Samples a uint16_t from the discretized gaussian
+		// Where Q is the maximum value of a uint16_t
+		int presample = discrete_gaussian->call(discrete_gaussian) % Q;
+		if (presample < 0) {
+			// presample = Q - |presample|
+			presample += Q;
+		}
+		return (uint16_t) presample;
+	}
+};
+
+	
 
 typedef Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic> MatrixModQ;
 typedef Eigen::Matrix<uint16_t, Eigen::Dynamic, 1> VectorModQ;
@@ -69,8 +92,8 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 
 	MatrixModQ A;
 	VectorModQ v[2];
-	dgs_disc_gauss_dp_t *discrete_gaussian;
-
+	dgs_disc_gauss_dp_t *enc_discrete_gaussian;
+	DiscretizedGaussian keygen_discretized_gaussian = DiscretizedGaussian(20); // 5 chosen for testing;
 	// post: populates A, v0, v1 using a fixed-key EMP-library PRG
 	//       and rejection sampling
 	void InitializeCrs() {
@@ -121,7 +144,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		VectorModQ e;
 		e.resize(M);  // FIXME - use Gaussian instead of uniform{0,1}
 		for (int i = 0; i < M; ++i) {
-			e(i) = (uint16_t) discrete_gaussian->call(discrete_gaussian);
+			e(i) = (uint16_t) enc_discrete_gaussian->call(enc_discrete_gaussian);
 		}
 		
 		VectorModQ u = A*e;
@@ -130,7 +153,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 		if (DEBUG)
 			std::cout << "(Debug) ciphertext: " << u << ", " << c << std::endl;
 		return {u, c};
-		//std::cout << "Discrete Gaussian Sample: " << discrete_gaussian->call(discrete_gaussian) << std::endl;
+		//std::cout << "Discrete Gaussian Sample: " << enc_discrete_gaussian->call(enc_discrete_gaussian) << std::endl;
 
 	}
 
@@ -153,7 +176,12 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 	//       (discretized Gaussian \bar{\Psi}_\alpha)
 	OTKeypair OTKeyGen(Branch sigma) {
 		VectorModQ s;
-		VectorModQ x = VectorModQ::Zero(M); // FIXME - use Gaussian instead of zeroes
+		//VectorModQ x = VectorModQ::Zero(M); // FIXME - use Gaussian instead of zeroes
+		VectorModQ x;
+		x.resize(M);
+		for (int i = 0; i < M; i++) {
+			x(i) = keygen_discretized_gaussian.sample();
+		}
 
 		s = VectorModQ::Random(N);
 		//NTL::Vec<NTL::ZZ_p> pk = transpose(A)*s + x - v[sigma];
@@ -182,8 +210,9 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 
 		// Sigma, c, tau, algorithm
 		// c is the center
-		// tau is the cutoff of the gaussian?
-		discrete_gaussian = dgs_disc_gauss_dp_init(SIGMA, 0, 100, DGS_DISC_GAUSS_UNIFORM_TABLE);
+		// tau * sigma is the cutoff of the gaussian?
+		enc_discrete_gaussian = dgs_disc_gauss_dp_init(ENC_SIGMA, 0, 12, DGS_DISC_GAUSS_UNIFORM_TABLE);
+		//keygen_discretized_gaussian = 
 		if (DEBUG)
 			std::cout << "Initialized!" << std::endl;  // DEBUG
 	}
@@ -309,6 +338,7 @@ class OTLattice: public OT<OTLattice<IO>> { public:
 			out_data[ot_iter] = _mm_set_epi32(0, 0, 0, p);
 		}
 	}
+
 };
 /**@}*/  // doxygen end of group
 }  // namespace emp
