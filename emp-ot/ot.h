@@ -1,5 +1,6 @@
 #ifndef OT_H__
 #define OT_H__
+#define EMP_USE_RANDOM_DEVICE 1  // FIXME REMOVE
 #include <emp-tool/emp-tool.h>
 namespace emp {
 template<typename T>

@@ -26,6 +26,7 @@ double test_ot(IO * io, int party, int length) {
 		if (b[i]) assert(block_cmp(&r[i], &b1[i], 1));
 		else assert(block_cmp(&r[i], &b0[i], 1));
 	}
+  std::cout << "Tests passed.\n";
 	delete ot;
 	delete[] b0;
 	delete[] b1;
