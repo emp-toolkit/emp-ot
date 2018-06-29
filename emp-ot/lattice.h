@@ -206,9 +206,10 @@ class OTLattice: public OT<OTLattice<IO>> {
   //       encrypts each input under the received key and the corresponding branch;
   //       and sends the ciphertexts to the receiver
   void send_impl(const block* data0, const block* data1, int length) {
+    std::cout << "OTs complete (" << PARAM_L << " bits each): ";
     for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-      if (ot_iter and (ot_iter % 500 == 499 or ot_iter == length - 1))
-        std::cout << ot_iter + 1 << ' ' << std::flush;
+      if (!(ot_iter % (length / 10)))
+        std::cout << ot_iter << " (" << (ot_iter / (length/10))*10 << "%)... " << std::flush;
       if (ot_iter == length - 1)
         std::cout << std::endl << std::flush;
 
@@ -244,11 +245,10 @@ class OTLattice: public OT<OTLattice<IO>> {
     }
   }
 
-  // pre : `out_data` indicates the location where the received value
+  // pre : `out_data` indicates the location where the received values
   //         will be stored;
   //       `b` indicates the location of the choice of which secret to receive;
-  //       `length` indicates the number of OT executions to be
-  //       performed
+  //       `length` indicates the number of OT executions to be performed
   void recv_impl(block* out_data, const bool* b, int length) {
     for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
       // Generate the public key from the choice bit b
