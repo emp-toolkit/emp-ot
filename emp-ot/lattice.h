@@ -1,8 +1,7 @@
 #ifndef OT_LATTICE_H__
 #define OT_LATTICE_H__
-
 extern "C" {
-	#include <dgs/dgs_gauss.h>
+#include <dgs/dgs_gauss.h>
 }
 #include <Eigen/Dense>
 
@@ -17,8 +16,8 @@ extern "C" {
 constexpr bool DEBUG = 0;
 
 /** @addtogroup OT
-    @{
-*/
+  @{
+  */
 
 constexpr int PARAM_Q = 100;
 constexpr int PARAM_N = 500;
@@ -64,12 +63,11 @@ void SampleBounded(uint16_t &dst, uint16_t bound, PRG& sample_prg) {
     rnd = 0;
     sample_prg.random_data(&rnd, nbytes_q);
     rnd &= ((1 << nbits_q) - 1);  // to minimize waste,
-                                  // only sample less than
-                                  // the next-greater power of 2
+    // only sample less than
+    // the next-greater power of 2
   } while (bound != 0 and rnd >= bound);
   dst = rnd;
 }
-
 // post: returns a uniform matrix mod Q generated using rejection sampling
 //       with values drawn from the given PRG
 MatrixModQ UniformMatrixModQ(int n, int m, PRG &sample_prg) {
@@ -87,11 +85,11 @@ class OTLattice: public OT<OTLattice<IO>> {
  public:
   IO* io = nullptr;
   PRG prg;  // hack; can't initialize without fix_key without _rdrand
-                     // must re-seed in order to get dynamic-seeded PRG
+  // must re-seed in order to get dynamic-seeded PRG
   std::random_device rd;
 
-	MatrixModQ A;
-	MatrixModQ v[2];
+  MatrixModQ A;
+  MatrixModQ v[2];
 
   // post: returns an appropriate (for passing to LWEEnc) object
   //       representing the given plaintext
@@ -107,6 +105,7 @@ class OTLattice: public OT<OTLattice<IO>> {
     a[1] = _mm_extract_epi32(raw_plaintext, 2);
     a[2] = _mm_extract_epi32(raw_plaintext, 1);
     a[3] = _mm_extract_epi32(raw_plaintext, 0);
+
 
     for (int i = 0; i < 4; ++i) {
       for (int j = 0; j < 32; ++j) {  // within each int, go right to left
@@ -135,8 +134,8 @@ class OTLattice: public OT<OTLattice<IO>> {
   //       (discretized Gaussian \bar{\Psi}_\alpha)
   LWEKeypair OTKeyGen(Branch sigma) {
     LWESecretKey S = UniformMatrixModQ(PARAM_M, PARAM_L, prg);
-    MatrixModQ X = MatrixModQ::Zero(PARAM_M, PARAM_L); // FIXME - use Gaussian instead of zeroes
-    LWEPublicKey pk = A.transpose()*S + X - v[sigma];
+    MatrixModQ E = MatrixModQ::Zero(PARAM_M, PARAM_L); // FIXME - use Gaussian instead of zeroes
+    LWEPublicKey pk = A.transpose()*S + E - v[sigma];
 
     // if (DEBUG)
     // 	std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
@@ -163,11 +162,11 @@ class OTLattice: public OT<OTLattice<IO>> {
   Plaintext OTDec(LWESecretKey &sk, LWECiphertext &ct) {
     Plaintext muprime = ct.c - (sk.transpose() * ct.u);
     for (int i = 0; i < PARAM_L; ++i) {
+      muprime(i) %= PARAM_Q;
       muprime(i) = muprime(i) > PARAM_Q/4 && muprime(i) <= 3*PARAM_Q/4;
     }
     return muprime;
   }
-
 
   // post: populates A, v0, v1 using a fixed-key EMP-library PRG
   //       and rejection sampling
@@ -180,111 +179,114 @@ class OTLattice: public OT<OTLattice<IO>> {
     v[1] = UniformMatrixModQ(PARAM_M, PARAM_L, crs_prg);
   }
 
-	explicit OTLattice(IO * io) {
-		this->io = io;
-		InitializeCrs();
+  // post: initializes the view of one participant of the lattice-based
+  //       OT protocol by drawing a CRS using a fixed PRG seed
+  //       and preparing a PRG to draw (nondeterministically) random bits
+  //       for the LWE noise and secret
+  explicit OTLattice(IO * io) {
+    this->io = io;
+    InitializeCrs();
     ReseedPrg(prg, rd);
 
     // dgs_disc_gauss_dp_init(stdev, center, cutoff # of stdevs, algorithm)
-    //		lwe_error_dist = dgs_disc_gauss_dp_init(PARAM_ALPHA * PARAM_N, 0, 12, DGS_DISC_GAUSS_UNIFORM_TABLE);
+    // lwe_error_dist = dgs_disc_gauss_dp_init(PARAM_ALPHA * PARAM_N, 0, 12, DGS_DISC_GAUSS_UNIFORM_TABLE);
 
-		if (DEBUG)
-			std::cout << "Initialized!" << std::endl;  // DEBUG
-	}
+    if (DEBUG)
+      std::cout << "Initialized!" << std::endl;  // DEBUG
+  }
 
-	// (Note: When initializing an OT object, the EMP API doesn't explicitly
-	// specify whether it's in the role of sender or receiver; rather,
-	// it will call either `send_impl` or `recv_impl`, according to the
-	// protocol participant)
+  // (Note: When initializing an OT object, the EMP API doesn't explicitly
+  // specify whether it's in the role of sender or receiver; rather,
+  // it will call either `send_impl` or `recv_impl`, according to the
+  // protocol participant)
 
-	// pre : `data0`[i] and `data1`[i] are the sender's two inputs
-	//       for the `i`th OT transmission
-	// post: waits for a public key `pk` from the receiver;
-	//       encrypts each input under the received key and the corresponding branch;
-	//       and sends the ciphertexts to the receiver
-	void send_impl(const block* data0, const block* data1, int length) {
-		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-			if (ot_iter and (ot_iter % 500 == 499 or ot_iter == length - 1))
-				std::cout << ot_iter + 1 << ' ' << std::flush;
-			if (ot_iter == length - 1)
-				std::cout << std::endl << std::flush;
+  // pre : `data0`[i] and `data1`[i] are the sender's two inputs
+  //       for the `i`th OT transmission
+  // post: waits for a public key `pk` from the receiver;
+  //       encrypts each input under the received key and the corresponding branch;
+  //       and sends the ciphertexts to the receiver
+  void send_impl(const block* data0, const block* data1, int length) {
+    for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
+      if (ot_iter and (ot_iter % 500 == 499 or ot_iter == length - 1))
+        std::cout << ot_iter + 1 << ' ' << std::flush;
+      if (ot_iter == length - 1)
+        std::cout << std::endl << std::flush;
 
-			Plaintext secret0 = EncodePlaintext(data0[ot_iter]);
-			Plaintext secret1 = EncodePlaintext(data1[ot_iter]);
+      Plaintext secret0 = EncodePlaintext(data0[ot_iter]);
+      Plaintext secret1 = EncodePlaintext(data1[ot_iter]);
 
-			if (DEBUG)
-				std::cerr << "(Sender, iteration " << ot_iter << ") Initialized with values x0=" << secret0 << ", x1=" << secret1 << std::endl;
+      if (DEBUG)
+        std::cerr << "(Sender, iteration " << ot_iter << ") Initialized with values x0=" << secret0 << ", x1=" << secret1 << std::endl;
 
-			// Receive the public key as a stream of `l*m` int32's
-			uint16_t pk_array[PARAM_M * PARAM_L];
-			io->recv_data(pk_array, sizeof(pk_array[0]) * PARAM_M * PARAM_L);
-      Eigen::Map<MatrixModQ> pk {pk_array, PARAM_M, PARAM_L};
+      uint16_t pk_array[PARAM_M * PARAM_L];
+      io->recv_data(pk_array, sizeof(pk_array[0]) * PARAM_M * PARAM_L);
+      Eigen::Map<MatrixModQ> pk {pk_array, PARAM_M, PARAM_L};  // interpret memory as matrix
 
-			if (DEBUG)
-				std::cerr << "(Sender) Encrypting..." << std::endl;
+      if (DEBUG)
+        std::cerr << "(Sender) Encrypting..." << std::endl;
 
-			// Encrypt the two inputs
-			LWECiphertext ct[2];
-			ct[0] = OTEnc(pk, 0, secret0);
-			ct[1] = OTEnc(pk, 1, secret1);
+      // Encrypt the two inputs
+      LWECiphertext ct[2];
+      ct[0] = OTEnc(pk, 0, secret0);
+      ct[1] = OTEnc(pk, 1, secret1);
 
-			if (DEBUG)
-				std::cerr << "(Sender) Encrypted. Sending ciphertexts..." << std::endl;
-			if (DEBUG) {
-				std::cerr << "Sending Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
-					  << "Sending Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
-			}
+      if (DEBUG)
+        std::cerr << "(Sender) Encrypted. Sending ciphertexts..." << std::endl;
+      if (DEBUG) {
+        std::cerr << "Sending Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
+          << "Sending Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
+      }
 
       for (int i = 0; i <= 1; ++i) {
         io->send_data(ct[i].u.data(), sizeof(uint16_t) * ct[i].u.size());
         io->send_data(ct[i].c.data(), sizeof(uint16_t) * ct[i].c.size());
       }
-		}
-	}
+    }
+  }
 
-	// pre : `out_data` indicates the location where the received value
-	//         will be stored;
-	//       `b` indicates the location of the choice of which secret to receive;
-	//       `length` indicates the number of OT executions to be
-	//       performed
-	void recv_impl(block* out_data, const bool* b, int length) {
-		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-			// Generate the public key from the choice bit b
-			LWEKeypair keypair = OTKeyGen(b[ot_iter]);
+  // pre : `out_data` indicates the location where the received value
+  //         will be stored;
+  //       `b` indicates the location of the choice of which secret to receive;
+  //       `length` indicates the number of OT executions to be
+  //       performed
+  void recv_impl(block* out_data, const bool* b, int length) {
+    for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
+      // Generate the public key from the choice bit b
+      LWEKeypair keypair = OTKeyGen(b[ot_iter]);
 
-			// Send the public key
-			io->send_data(keypair.pk.data(), sizeof(uint16_t) * keypair.pk.size());
+      // Send the public key
+      io->send_data(keypair.pk.data(), sizeof(uint16_t) * keypair.pk.size());
 
-			if (DEBUG)
-				std::cerr << "(Receiver) Sent public key; waiting for ctexts" << std::endl;
+      if (DEBUG)
+        std::cerr << "(Receiver) Sent public key; waiting for ctexts" << std::endl;
 
       uint16_t ct_array[2*(PARAM_N+PARAM_L)];
-			io->recv_data(ct_array, sizeof(uint16_t) * (2*(PARAM_N+PARAM_L)));
+      io->recv_data(ct_array, sizeof(uint16_t) * (2*(PARAM_N+PARAM_L)));
 
       LWECiphertext ct[2];
 
       ct[0] = LWECiphertext {
         Eigen::Map<VectorModQ> {ct_array, PARAM_N, 1},
-        Eigen::Map<VectorModQ> {ct_array + PARAM_N, PARAM_L, 1}
+          Eigen::Map<VectorModQ> {ct_array + PARAM_N, PARAM_L, 1}
       };
 
       ct[1] = LWECiphertext {
         Eigen::Map<VectorModQ> {ct_array + PARAM_N + PARAM_L, PARAM_N, 1},
-        Eigen::Map<VectorModQ> {ct_array + PARAM_N + (PARAM_N + PARAM_L), PARAM_L, 1}
+          Eigen::Map<VectorModQ> {ct_array + PARAM_N + (PARAM_N + PARAM_L), PARAM_L, 1}
       };
 
-			if (DEBUG)
-				std::cerr << "(Receiver) Received serialized ciphertexts." << std::endl;
+      if (DEBUG)
+        std::cerr << "(Receiver) Received serialized ciphertexts." << std::endl;
 
-			Plaintext p = OTDec(keypair.sk, ct[b[ot_iter]]);  // choose ciphertext according to selection bit
+      Plaintext p = OTDec(keypair.sk, ct[b[ot_iter]]);  // choose ciphertext according to selection bit
 
-			if (DEBUG)
-				std::cerr << "(Receiver, iteration " << ot_iter << ") Decrypted branch " << b[ot_iter] << " to get plaintext " << p << std::endl;
+      if (DEBUG)
+        std::cerr << "(Receiver, iteration " << ot_iter << ") Decrypted branch " << b[ot_iter] << " to get plaintext " << p << std::endl;
 
-			out_data[ot_iter] = DecodePlaintext(p);
-		}
-	}
+      out_data[ot_iter] = DecodePlaintext(p);
+    }
+  }
 };
 /**@}*/  // doxygen end of group
 }  // namespace emp
-#endif// OT_LATTICE_H__
+#endif  // OT_LATTICE_H__
