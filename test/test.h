@@ -22,9 +22,13 @@ double test_ot(IO * io, int party, int length) {
 	}
 	io->flush();
 	long long t = time_from(start);
-	if(party == BOB) for(int i = 0; i < length; ++i) {
-		if (b[i]) assert(block_cmp(&r[i], &b1[i], 1));
-		else assert(block_cmp(&r[i], &b0[i], 1));
+	if (party == BOB) {
+    for (int i = 0; i < length; ++i) {
+      if (b[i])
+        assert(block_cmp(&r[i], &b1[i], 1));
+      else
+        assert(block_cmp(&r[i], &b0[i], 1));
+    }
 	}
   std::cout << "Tests passed.\n";
 	delete ot;
@@ -39,8 +43,10 @@ double test_ot(IO * io, int party, int length) {
 // length is the number of OT's, *not* the length of each message
 // (each message is usually one block--but, in this case, each
 // is a single bit: the LSB of each block)
-template<typename IO, template<typename>class T>
+template<typename IO, template<typename, int>class T, int N_BITS>
 double test_bit_ot(IO * io, int party, int length) {
+  if (party == ALICE) 
+    std::cout << "Testing: " << length << " many " << N_BITS << "-bit OT's\n";
 	block *b0 = new block[length], *b1 = new block[length], *r = new block[length];
 	PRG prg(fix_key);
 	prg.random_block(b0, length);
@@ -50,34 +56,67 @@ double test_bit_ot(IO * io, int party, int length) {
 
 	io->sync();
 	auto start = clock_start();
-	T<IO> * ot = new T<IO>(io);
+	T<IO, N_BITS> * ot = new T<IO, N_BITS>(io);
 	if (party == ALICE) {
-//    std::cout << "(Tester) attempting to send..." << std::endl;
 		ot->send(b0, b1, length);
 	} else {
-//    std::cout << "(Tester) attempting to receive..." << std::endl;
 		ot->recv(r, b, length);
 	}
 	io->flush();
 	long long t = time_from(start);
 	if (party == BOB) {
+    int failures = 0;
+   nextcmp:
     for (int i = 0; i < length; ++i) {
-      int received_value = _mm_extract_epi32(r[i], 0) & 1;
-      int expected_value;
-      if (b[i]) {  // requested item 1
-        expected_value = _mm_extract_epi32(b1[i], 0) & 1;
-      } else {  // requested item 0
-        expected_value = _mm_extract_epi32(b0[i], 0) & 1;
+      int received[4];
+      received[0] = _mm_extract_epi32(r[i], 0);
+      received[1] = _mm_extract_epi32(r[i], 1);
+      received[2] = _mm_extract_epi32(r[i], 2);
+      received[3] = _mm_extract_epi32(r[i], 3);
+      int expected[4];
+      if (b[i] == 0) {  // requested item 0
+        expected[0] = _mm_extract_epi32(b0[i], 0);
+        expected[1] = _mm_extract_epi32(b0[i], 1);
+        expected[2] = _mm_extract_epi32(b0[i], 2);
+        expected[3] = _mm_extract_epi32(b0[i], 3);
+      } else { // b[i] == 1
+        expected[0] = _mm_extract_epi32(b1[i], 0);
+        expected[1] = _mm_extract_epi32(b1[i], 1);
+        expected[2] = _mm_extract_epi32(b1[i], 2);
+        expected[3] = _mm_extract_epi32(b1[i], 3);
       }
-      bool success = received_value == expected_value;
-      if (!success) {
-        std::cout << "(Test " << i << ") Receiver's output " << received_value
-          << " on branch " << b[i] << " didn't match expected " << expected_value << std::endl;
+
+      std::cout << std::hex;
+
+      for (int subblk = 0; subblk < std::ceil(N_BITS / 32.0); ++subblk) {
+        int n_remaining_bits = N_BITS - (subblk * 32);
+        if (n_remaining_bits >= 32) {
+          if (received[subblk] != expected[subblk]) {
+            std::cout << "Failure: Got quarter-block " << received[subblk] << " on branch " << b[i]
+              << " but expected " << expected[subblk] << std::endl;
+            ++failures;
+            goto nextcmp;
+          }
+        } else {
+          unsigned mask;
+          if (n_remaining_bits == 31)
+            mask = -1;
+          else
+            mask = (1 << n_remaining_bits) - 1;
+          if ((received[subblk] & mask) != (expected[subblk] & mask)) {
+            std::cout << "Failure: Got quarter-block " << (received[subblk] & mask) << " on branch " << b[i]
+              << " but expected " << (expected[subblk] & mask) << std::endl;
+            ++failures;
+          }
+        }
       }
-      assert(success);
+    }
+    if (!failures) {
+      std::cout << "Passed " << std::dec << length << " tests.\n";
+    } else {
+      std::cout << std::dec << "Failed " << failures << " of " << length << " tests.\n";
     }
   }
-  std::cout << "Received outputs matched expected outputs." << std::endl;
 	delete ot;
 	delete[] b0;
 	delete[] b1;

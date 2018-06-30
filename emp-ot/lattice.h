@@ -5,29 +5,29 @@ extern "C" {
 }
 #include <Eigen/Dense>
 
+#include <algorithm>  // std::min
 #include <cmath>  // std::log2, std::floor
 #include <iostream>  // debug printlns
-#include <memory> // unique_ptr
 #include <random> // random_device (for reseeding)
 #include <vector>
 
 #include "emp-ot/ot.h"
 
-constexpr bool DEBUG = 0;
+constexpr int DEBUG = 0;  // 2: print ctexts, 1: minimal debug info
 
 /** @addtogroup OT
   @{
   */
 
-constexpr int PARAM_Q = 100;
-constexpr int PARAM_N = 500;
-constexpr int PARAM_M = 700;
-constexpr int PARAM_L = 128;  // Message length
-constexpr double PARAM_R = 7.0;
-constexpr double PARAM_ALPHA = 1.0 / (PARAM_M * PARAM_M * PARAM_M);
+constexpr int PARAM_Q = 1024;
+constexpr int PARAM_N = 300;
+constexpr int PARAM_M = PARAM_N * std::log2(PARAM_Q);
+// PARAM_L is a template parameter
 
-using MatrixModQ = Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic>;
-using VectorModQ = Eigen::Matrix<uint16_t, Eigen::Dynamic, 1>;
+using int_mod_q = uint16_t;
+
+using MatrixModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, Eigen::Dynamic>;
+using VectorModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, 1>;
 
 using LWEPublicKey = MatrixModQ;
 using LWESecretKey = MatrixModQ;
@@ -39,17 +39,10 @@ struct LWECiphertext { VectorModQ u; VectorModQ c; };
 
 namespace emp {
 
-// post: uses SystemRandom to reseed the given PRG
-void ReseedPrg(PRG& prg_to_reseed, std::random_device &rd) {
-  auto seed = std::unique_ptr<__m128i>(new __m128i);
-  *seed = _mm_set_epi32(rd(), rd(), rd(), rd());
-  prg_to_reseed.reseed(reinterpret_cast<void*>(seed.get()), 0);
-}
-
 // post: sets `dst` to a random integer between
 //       0 and `bound` - 1 (inclusive) through
 //       rejection sampling, using the given EMP PRG
-void SampleBounded(uint16_t &dst, uint16_t bound, PRG& sample_prg) {
+void SampleBounded(int_mod_q &dst, int_mod_q bound, PRG& sample_prg) {
   int nbits_q, nbytes_q;
   if (!bound) {
     nbytes_q = sizeof(dst);
@@ -58,7 +51,7 @@ void SampleBounded(uint16_t &dst, uint16_t bound, PRG& sample_prg) {
     nbits_q = 1 + std::floor(std::log2(bound));
     nbytes_q = 1 + std::floor(std::log2(bound)/8);
   }
-  uint16_t rnd;
+  int_mod_q rnd;
   do {
     rnd = 0;
     sample_prg.random_data(&rnd, nbytes_q);
@@ -68,6 +61,7 @@ void SampleBounded(uint16_t &dst, uint16_t bound, PRG& sample_prg) {
   } while (bound != 0 and rnd >= bound);
   dst = rnd;
 }
+
 // post: returns a uniform matrix mod Q generated using rejection sampling
 //       with values drawn from the given PRG
 MatrixModQ UniformMatrixModQ(int n, int m, PRG &sample_prg) {
@@ -80,13 +74,11 @@ MatrixModQ UniformMatrixModQ(int n, int m, PRG &sample_prg) {
   return to_return;
 }
 
-template<typename IO>
-class OTLattice: public OT<OTLattice<IO>> {
+template<typename IO, int PARAM_L>
+class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
  public:
   IO* io = nullptr;
-  PRG prg;  // hack; can't initialize without fix_key without _rdrand
-  // must re-seed in order to get dynamic-seeded PRG
-  std::random_device rd;
+  PRG prg;  // FIXME for testing
 
   MatrixModQ A;
   MatrixModQ v[2];
@@ -94,9 +86,9 @@ class OTLattice: public OT<OTLattice<IO>> {
   // post: returns an appropriate (for passing to LWEEnc) object
   //       representing the given plaintext
   //       In particular, this implementation interprets the given plaintext `p`
-  //       as an array of four 32-bit integers and encodes the number as a
-  //       byte array which preserves the numbers' order and encodes them in a
-  //       big-endian manner
+  //       as an array of four length-32 bitstrings, takes the `PARAM_L`
+  //       many least-significant bits, and places them (in increasing significance
+  //       order) in the resulting vector.
   Plaintext EncodePlaintext(block raw_plaintext) {
     VectorModQ to_return(PARAM_L);
     int a[4];
@@ -106,10 +98,11 @@ class OTLattice: public OT<OTLattice<IO>> {
     a[2] = _mm_extract_epi32(raw_plaintext, 1);
     a[3] = _mm_extract_epi32(raw_plaintext, 0);
 
-
-    for (int i = 0; i < 4; ++i) {
-      for (int j = 0; j < 32; ++j) {  // within each int, go right to left
-        to_return((32*i) + (31-j)) = (a[i] & (1 << j)) >> j;
+    // iterate over ints right to left;
+    // within each int, iterate over bits right to left
+    for (int i = 0; i <= PARAM_L / 32; ++i) {
+      for (int j = 0; j < std::min(32, PARAM_L - (32*i)); ++j) {
+        to_return((32*i) + j) = (a[3-i] & (1 << j)) >> j;
       }
     }
     return to_return;
@@ -119,9 +112,9 @@ class OTLattice: public OT<OTLattice<IO>> {
   //       encoded plaintext
   block DecodePlaintext(const Plaintext& encoded_plaintext) {
     int a[4] {0};
-    for (int i = 0; i < 4; ++i) {  // iterate over ints LTR
-      for (int j = 0; j < 32; ++j) {
-        a[i] |= encoded_plaintext((32*i) + (31-j)) << j;
+    for (int i = 0; i <= PARAM_L / 32; ++i) {
+      for (int j = 0; j < std::min(32, PARAM_L - (32*i)); ++j) {
+        a[3-i] |= encoded_plaintext((32*i) + j) << j;
       }
     }
     return _mm_set_epi32(a[0], a[1], a[2], a[3]);
@@ -133,24 +126,24 @@ class OTLattice: public OT<OTLattice<IO>> {
   // TODO: change to sample from LWE noise distribution
   //       (discretized Gaussian \bar{\Psi}_\alpha)
   LWEKeypair OTKeyGen(Branch sigma) {
-    LWESecretKey S = UniformMatrixModQ(PARAM_M, PARAM_L, prg);
+    LWESecretKey S = UniformMatrixModQ(PARAM_N, PARAM_L, prg);
     MatrixModQ E = MatrixModQ::Zero(PARAM_M, PARAM_L); // FIXME - use Gaussian instead of zeroes
     LWEPublicKey pk = A.transpose()*S + E - v[sigma];
 
-    // if (DEBUG)
-    // 	std::cout << "(Receiver) Debug: pk = " << pk << ", sk = " << s << endl;
+    if (DEBUG >= 2)
+     	std::cout << "(Receiver) Debug: A = " << A << ", pk = " << pk << ", sk = " << S << endl;
     return {pk, S};
   }
 
   // TODO: change to sample error from discrete Gaussian, rather than Unif(0,1)
   LWECiphertext OTEnc(const LWEPublicKey &pk, Branch sigma, const Plaintext &mu) {
-    LWEPublicKey BranchPk {pk + v[sigma]};
+    LWEPublicKey branch_pk {pk + v[sigma]};
     VectorModQ x(PARAM_M);
     for (int i = 0; i < PARAM_M; ++i) {
       SampleBounded(x(i), 2, prg);  // Unif({0,1}^m)
     }
     VectorModQ u = A*x;
-    VectorModQ c = (pk.transpose() * x) + (PARAM_Q / 2)*mu;
+    VectorModQ c = (branch_pk.transpose() * x) + ((PARAM_Q / 2)*mu);
     return {u, c};
   }
 
@@ -172,7 +165,6 @@ class OTLattice: public OT<OTLattice<IO>> {
   //       and rejection sampling
   void InitializeCrs() {
     PRG crs_prg(fix_key);  // emp::fix_key is a library-specified constant
-    prg = PRG {fix_key};
 
     A = UniformMatrixModQ(PARAM_N, PARAM_M, crs_prg);
     v[0] = UniformMatrixModQ(PARAM_M, PARAM_L, crs_prg);
@@ -186,13 +178,6 @@ class OTLattice: public OT<OTLattice<IO>> {
   explicit OTLattice(IO * io) {
     this->io = io;
     InitializeCrs();
-    ReseedPrg(prg, rd);
-
-    // dgs_disc_gauss_dp_init(stdev, center, cutoff # of stdevs, algorithm)
-    // lwe_error_dist = dgs_disc_gauss_dp_init(PARAM_ALPHA * PARAM_N, 0, 12, DGS_DISC_GAUSS_UNIFORM_TABLE);
-
-    if (DEBUG)
-      std::cout << "Initialized!" << std::endl;  // DEBUG
   }
 
   // (Note: When initializing an OT object, the EMP API doesn't explicitly
@@ -207,19 +192,22 @@ class OTLattice: public OT<OTLattice<IO>> {
   //       and sends the ciphertexts to the receiver
   void send_impl(const block* data0, const block* data1, int length) {
     std::cout << "OTs complete (" << PARAM_L << " bits each): ";
+    int tenths_complete = 0;
     for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-      if (!(ot_iter % (length / 10)))
-        std::cout << ot_iter << " (" << (ot_iter / (length/10))*10 << "%)... " << std::flush;
+      if (length > 10 and ot_iter > tenths_complete * length/10) {
+        ++tenths_complete;
+        std::cout << ot_iter << " (" << 10*(tenths_complete -1)<< "%)... " << std::flush;
+      }
       if (ot_iter == length - 1)
         std::cout << std::endl << std::flush;
 
       Plaintext secret0 = EncodePlaintext(data0[ot_iter]);
       Plaintext secret1 = EncodePlaintext(data1[ot_iter]);
 
-      if (DEBUG)
-        std::cerr << "(Sender, iteration " << ot_iter << ") Initialized with values x0=" << secret0 << ", x1=" << secret1 << std::endl;
+      if (DEBUG > 1)
+        std::cerr << "(Sender, iteration " << ot_iter << ") Encoded values x0=" << secret0 << ", x1=" << secret1 << std::endl;
 
-      uint16_t pk_array[PARAM_M * PARAM_L];
+      int_mod_q pk_array[PARAM_M * PARAM_L];
       io->recv_data(pk_array, sizeof(pk_array[0]) * PARAM_M * PARAM_L);
       Eigen::Map<MatrixModQ> pk {pk_array, PARAM_M, PARAM_L};  // interpret memory as matrix
 
@@ -231,16 +219,16 @@ class OTLattice: public OT<OTLattice<IO>> {
       ct[0] = OTEnc(pk, 0, secret0);
       ct[1] = OTEnc(pk, 1, secret1);
 
-      if (DEBUG)
+      if (DEBUG == 1)
         std::cerr << "(Sender) Encrypted. Sending ciphertexts..." << std::endl;
-      if (DEBUG) {
+      if (DEBUG >= 2) {
         std::cerr << "Sending Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
           << "Sending Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
       }
 
       for (int i = 0; i <= 1; ++i) {
-        io->send_data(ct[i].u.data(), sizeof(uint16_t) * ct[i].u.size());
-        io->send_data(ct[i].c.data(), sizeof(uint16_t) * ct[i].c.size());
+        io->send_data(ct[i].u.data(), sizeof(int_mod_q) * ct[i].u.size());
+        io->send_data(ct[i].c.data(), sizeof(int_mod_q) * ct[i].c.size());
       }
     }
   }
@@ -255,13 +243,13 @@ class OTLattice: public OT<OTLattice<IO>> {
       LWEKeypair keypair = OTKeyGen(b[ot_iter]);
 
       // Send the public key
-      io->send_data(keypair.pk.data(), sizeof(uint16_t) * keypair.pk.size());
+      io->send_data(keypair.pk.data(), sizeof(int_mod_q) * keypair.pk.size());
 
       if (DEBUG)
         std::cerr << "(Receiver) Sent public key; waiting for ctexts" << std::endl;
 
-      uint16_t ct_array[2*(PARAM_N+PARAM_L)];
-      io->recv_data(ct_array, sizeof(uint16_t) * (2*(PARAM_N+PARAM_L)));
+      int_mod_q ct_array[2*(PARAM_N+PARAM_L)];
+      io->recv_data(ct_array, sizeof(int_mod_q) * (2*(PARAM_N+PARAM_L)));
 
       LWECiphertext ct[2];
 
@@ -275,12 +263,13 @@ class OTLattice: public OT<OTLattice<IO>> {
           Eigen::Map<VectorModQ> {ct_array + PARAM_N + (PARAM_N + PARAM_L), PARAM_L, 1}
       };
 
-      if (DEBUG)
-        std::cerr << "(Receiver) Received serialized ciphertexts." << std::endl;
+      if (DEBUG >= 2) {
+        std::cerr << "Received ciphertext " << b[ot_iter] << ": (u=" << ct[b[ot_iter]].u << ",\nc=" << ct[b[ot_iter]].c << ")\n";
+      }
 
       Plaintext p = OTDec(keypair.sk, ct[b[ot_iter]]);  // choose ciphertext according to selection bit
 
-      if (DEBUG)
+      if (DEBUG > 1)
         std::cerr << "(Receiver, iteration " << ot_iter << ") Decrypted branch " << b[ot_iter] << " to get plaintext " << p << std::endl;
 
       out_data[ot_iter] = DecodePlaintext(p);
