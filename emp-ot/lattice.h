@@ -22,6 +22,11 @@ constexpr int PARAM_N = 300;
 constexpr int PARAM_M = PARAM_N * 10; // 10 = log2(1024)
 // PARAM_L is a template parameter
 
+constexpr double ALPHA = 0.1;
+constexpr double PARAM_R = 0.1;
+constexpr double STD_KEYGEN = ALPHA * PARAM_Q;
+constexpr double STD_ENC = ALPHA * PARAM_R;
+
 using int_mod_q = uint16_t;
 
 using MatrixModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, Eigen::Dynamic>;
@@ -60,6 +65,8 @@ void SampleBounded(int_mod_q &dst, int_mod_q bound, PRG& sample_prg) {
   dst = rnd;
 }
 
+
+
 // post: returns a uniform matrix mod Q generated using rejection sampling
 //       with values drawn from the given PRG
 MatrixModQ UniformMatrixModQ(int n, int m, PRG &sample_prg) {
@@ -72,6 +79,16 @@ MatrixModQ UniformMatrixModQ(int n, int m, PRG &sample_prg) {
   return to_return;
 }
 
+MatrixModQ DGSMatrixModQ(int n, int m, PRG &sample_prg, double sigma, double c, size_t tau) {
+	MatrixModQ to_return(n, m);
+	for (int i = 0; i < n; ++i) {
+		for (int j = 0; j < m; ++j) {
+			to_return(i, j) = sample_prg.dgs_sample(sigma, c, tau) % PARAM_Q;
+		}
+	}
+	return to_return;
+}
+	
 template<typename IO, int PARAM_L>
 class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
  public:
@@ -125,9 +142,10 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
   //       (discretized Gaussian \bar{\Psi}_\alpha)
   LWEKeypair OTKeyGen(Branch sigma) {
     LWESecretKey S = UniformMatrixModQ(PARAM_N, PARAM_L, prg);
-    MatrixModQ E = MatrixModQ::Zero(PARAM_M, PARAM_L); // FIXME - use Gaussian instead of zeroes
+    //MatrixModQ E = MatrixModQ::Zero(PARAM_M, PARAM_L); // FIXME - use Gaussian instead of zeroes
+    MatrixModQ E = DGSMatrixModQ(PARAM_M, PARAM_L, prg, STD_KEYGEN, 0, 12);
     LWEPublicKey pk = A.transpose()*S + E - v[sigma];
-
+    
     if (DEBUG >= 2)
      	std::cout << "(Receiver) Debug: A = " << A << ", pk = " << pk << ", sk = " << S << endl;
     return {pk, S};
@@ -138,7 +156,9 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
     LWEPublicKey branch_pk {pk + v[sigma]};
     VectorModQ x(PARAM_M);
     for (int i = 0; i < PARAM_M; ++i) {
-      SampleBounded(x(i), 2, prg);  // Unif({0,1}^m)
+	    //SampleBounded(x(i), 2, prg);  // Unif({0,1}^m)
+	    // standard deviation, center, tau
+	    x(i) = prg.dgs_sample(STD_ENC, 0, 12); // works as expected with uint16_t
     }
     VectorModQ u = A*x;
     VectorModQ c = (branch_pk.transpose() * x) + ((PARAM_Q / 2)*mu);
