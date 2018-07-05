@@ -9,8 +9,7 @@ include(${CMAKE_FOLDER}/cmake/threading.cmake)
 
 find_package(emp-tool REQUIRED)
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
-find_package(dgs REQUIRED)
-include_directories(${EMP-TOOL_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${DGS_INCLUDE_DIR})
+include_directories(${EMP-TOOL_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR})
 
 # Installation
 install(FILES cmake/emp-ot-config.cmake DESTINATION cmake/)
@@ -27,5 +26,4 @@ add_test(deltaot)
 add_test(ideal)
 add_test(lattice)
 target_link_libraries(lattice Eigen3::Eigen)
-target_link_libraries(lattice dgs)
 SET_TARGET_PROPERTIES(lattice PROPERTIES COMPILE_DEFINITIONS "EMP_USE_RANDOM_DEVICE")

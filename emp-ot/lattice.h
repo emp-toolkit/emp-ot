@@ -1,8 +1,5 @@
 #ifndef OT_LATTICE_H__
 #define OT_LATTICE_H__
-extern "C" {
-#include <dgs/dgs_gauss.h>
-}
 #include <Eigen/Dense>
 
 #include <algorithm>  // std::min
@@ -21,7 +18,8 @@ constexpr int DEBUG = 0;  // 2: print ctexts, 1: minimal debug info
 
 constexpr int PARAM_Q = 1024;
 constexpr int PARAM_N = 300;
-constexpr int PARAM_M = PARAM_N * std::log2(PARAM_Q);
+//constexpr int PARAM_M = PARAM_N * std::log2(PARAM_Q); // Clang doesn't like std::log2
+constexpr int PARAM_M = PARAM_N * 10; // 10 = log2(1024)
 // PARAM_L is a template parameter
 
 using int_mod_q = uint16_t;
