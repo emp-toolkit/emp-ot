@@ -16,18 +16,17 @@ constexpr int DEBUG = 0;  // 2: print ctexts, 1: minimal debug info
   @{
   */
 
-constexpr int PARAM_Q = 1024;
-constexpr int PARAM_N = 300;
-//constexpr int PARAM_M = PARAM_N * std::log2(PARAM_Q); // Clang doesn't like std::log2
-constexpr int PARAM_M = PARAM_N * 10; // 10 = log2(1024)
+constexpr long PARAM_Q = 1443109011456000;
+constexpr int PARAM_N = 1500;
+constexpr int PARAM_M = 151175;
 // PARAM_L is a template parameter
 
-constexpr double ALPHA = 0.1;
-constexpr double PARAM_R = 0.1;
-constexpr double STD_KEYGEN = ALPHA * PARAM_Q;
-constexpr double STD_ENC = ALPHA * PARAM_R;
+//constexpr double ALPHA = 2.1234174964658868 / std::pow(10, 14);
+constexpr double STD_KEYGEN = 3064322924233260; // ALPHA * PARAM_Q
+constexpr double STD_ENC = 1808896782.4249659;
 
-using int_mod_q = uint16_t;
+
+using int_mod_q = uint64_t;
 
 using MatrixModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, Eigen::Dynamic>;
 using VectorModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, 1>;
@@ -158,7 +157,7 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
     for (int i = 0; i < PARAM_M; ++i) {
 	    //SampleBounded(x(i), 2, prg);  // Unif({0,1}^m)
 	    // standard deviation, center, tau
-	    x(i) = prg.dgs_sample(STD_ENC, 0, 12); // works as expected with uint16_t
+	    x(i) = prg.dgs_sample(STD_ENC, 0, 12) % PARAM_Q; 
     }
     VectorModQ u = A*x;
     VectorModQ c = (branch_pk.transpose() * x) + ((PARAM_Q / 2)*mu);
