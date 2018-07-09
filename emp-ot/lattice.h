@@ -182,17 +182,13 @@ public:
 	}
 
 	// pre: crs_prg has been initialized with a shared seed from coinflip
-	// post: populates A using coinflip PRG and rejection sampling
+	// post: populates A using rejection sampling
 	void InitializeCrs() {
-		//PRG crs_prg(fix_key);  // emp::fix_key is a library-specified constant
-		//crs_prg(fix_key); //
-
 		A = UniformMatrixModQ(PARAM_N, PARAM_M, crs_prg);
-
 	}
 
 	// pre: crs_prg has been initialized with a shared seed from coinflip
-	// post: populates v0, v1 using EMP-library PRG and rejection sampling
+	// post: populates v0, v1 rejection sampling
 	void GenerateCrsVectors() {
 		v[0] = UniformMatrixModQ(PARAM_M, PARAM_L, crs_prg);
 		v[1] = UniformMatrixModQ(PARAM_M, PARAM_L, crs_prg);
@@ -229,17 +225,15 @@ public:
 		// Get whether the receiver accepts the sender's block
 		bool success;
 		io->recv_data(&success, sizeof(bool));
+		std::cout << "Received coinflip status" << std::endl;
 		if (success) {
-			//std::cout << "Coinflip success" << endl;
 			// Initialize the prg with the seed (rand_sender (xor) rand_receiver)
 			block seed = xorBlocks(rand_sender, rand_receiver);
 			crs_prg.reseed(&seed);
-			//crs_prg.reseed(fix_key);
 		}
 		else {
 			error("Coinflip Failed\n");
 		}
-
 	}
 
 	// Post: Initializes crs_prg with a random seed shared with the other party
@@ -267,7 +261,6 @@ public:
 			// Then the strings are not equal and the sender is not following the protocol.
 			bool success = false;
 			io->send_data(&success, sizeof(bool));
-			
 			error("Coinflip Failed\n");
 		}
 		else {
@@ -276,8 +269,10 @@ public:
 			// Initialize the prg with the seed (rand_sender (xor) rand_receiver)
 			block seed = xorBlocks(rand_sender, rand_receiver);
 			crs_prg.reseed(&seed);
-			//crs_prg.reseed(fix_key);
 		}
+		// Since this function ends with an io->send,
+		// Make sure all messages are actually sent by flushing the IO.
+		io->flush(); 
 	}
 
 
