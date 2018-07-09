@@ -225,7 +225,6 @@ public:
 		// Get whether the receiver accepts the sender's block
 		bool success;
 		io->recv_data(&success, sizeof(bool));
-		std::cout << "Received coinflip status" << std::endl;
 		if (success) {
 			// Initialize the prg with the seed (rand_sender (xor) rand_receiver)
 			block seed = xorBlocks(rand_sender, rand_receiver);
@@ -294,7 +293,6 @@ public:
 			InitializeCrs();
 			initialized = true;
 		}
-		GenerateCrsVectors();
 
 		std::cout << "OTs complete (" << PARAM_L << " bits each): ";
 		int tenths_complete = 0;
@@ -305,6 +303,9 @@ public:
 			}
 			if (ot_iter == length - 1)
 				std::cout << std::endl << std::flush;
+
+			// Generate new v1, v2 every time
+			GenerateCrsVectors();
 
 			Plaintext secret0 = EncodePlaintext(data0[ot_iter]);
 			Plaintext secret1 = EncodePlaintext(data1[ot_iter]);
@@ -348,9 +349,11 @@ public:
 			InitializeCrs();
 			initialized = true;
 		}
-		GenerateCrsVectors();
 
 		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
+			// Generate new v1, v2 every time
+			GenerateCrsVectors();
+
 			// Generate the public key from the choice bit b
 			LWEKeypair keypair = OTKeyGen(b[ot_iter]);
 
