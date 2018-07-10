@@ -9,24 +9,34 @@
 #include <vector>
 #include "emp-ot/ot.h"
 
+#include <boost/function.hpp>
+#include <boost/bind.hpp>
+#include <boost/math/constants/constants.hpp>
+#include <boost/random/normal_distribution.hpp>
+#include <boost/random/random_device.hpp>
+
 constexpr int DEBUG = 0;  // 2: print ctexts, 1: minimal debug info
 
 /** @addtogroup OT
     @{
 */
 
+// PARAM_L is a template parameter
 constexpr long PARAM_Q = 2251799813685248; // 2 ^ 51
 constexpr int PARAM_N = 1500;
 constexpr int PARAM_M = 151175;
-// PARAM_L is a template parameter
+constexpr double PARAM_ALPHA = 3.0e-13;
+constexpr double STDEV = PARAM_ALPHA / boost::math::constants::root_two_pi<double>();
 
 //constexpr double ALPHA = 2.1234174964658868 / std::pow(10, 14);
 //constexpr double STD_KEYGEN = 3064322924233260; // (ALPHA * PARAM_Q)
 //constexpr double STD_KEYGEN = 1222487975280004; // (ALPHA * PARAM_Q) / sqrt(2*pi)
-constexpr double STD_KEYGEN = 277;
 constexpr double STD_ENC = 1808896782.4249659;
 
-
+using boost::math::constants::root_two_pi;
+using boost::math::lround;
+using boost::random::random_device;
+using boost::random::normal_distribution;
 
 using int_mod_q = uint64_t;
 
@@ -66,8 +76,6 @@ void SampleBounded(int_mod_q &dst, int_mod_q bound, PRG& sample_prg) {
 	dst = rnd;
 }
 
-
-
 // post: returns a uniform matrix mod Q generated using rejection sampling
 //       with values drawn from the given PRG
 MatrixModQ UniformMatrixModQ(int n, int m, PRG &sample_prg) {
@@ -80,11 +88,21 @@ MatrixModQ UniformMatrixModQ(int n, int m, PRG &sample_prg) {
 	return to_return;
 }
 
+random_device RD;
+function<double()> SampleStandardGaussian = boost::bind(normal_distribution<>(0, 1), boost::ref(RD));
+
+long SampleDiscreteGaussian() {
+	double e = SampleStandardGaussian() * STDEV;
+	e = fmod(e, 1) * PARAM_Q;
+	return lround(e) % PARAM_Q;
+}
+
+// post: returns a matrix mod Q with values drawn from a discrete Gaussian
 MatrixModQ DGSMatrixModQ(int n, int m, PRG &sample_prg, double sigma, double c, size_t tau) {
 	MatrixModQ to_return(n, m);
 	for (int i = 0; i < n; ++i) {
 		for (int j = 0; j < m; ++j) {
-			to_return(i, j) = sample_prg.dgs_sample(sigma, c, tau) % PARAM_Q;
+			to_return(i, j) = SampleDiscreteGaussian();
 		}
 	}
 	return to_return;
