@@ -68,26 +68,26 @@ void SampleBounded(int_mod_q &dst, int_mod_q bound, PRG& sample_prg) {
 
 
 
-// post: returns a uniform matrix mod Q generated using rejection sampling
-//       with values drawn from the given PRG
-MatrixModQ UniformMatrixModQ(int n, int m, PRG &sample_prg) {
-	MatrixModQ to_return(n, m);
+// post: populates the matrix mod Q "result" with uniform values
+//	 from the given PRG generated using rejection sampling
+void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
+	int n = result.rows();
+	int m = result.cols();
 	for (int i = 0; i < n; ++i) {
 		for (int j = 0; j < m; ++j) {
-			SampleBounded(to_return(i, j), PARAM_Q, sample_prg);
+			SampleBounded(result(i, j), PARAM_Q, sample_prg);
 		}
 	}
-	return to_return;
 }
 
-MatrixModQ DGSMatrixModQ(int n, int m, PRG &sample_prg, double sigma, double c, size_t tau) {
-	MatrixModQ to_return(n, m);
+void DGSMatrixModQ(MatrixModQ &result, PRG &sample_prg, double sigma, double c, size_t tau) {
+	int n = result.rows();
+	int m = result.cols();
 	for (int i = 0; i < n; ++i) {
 		for (int j = 0; j < m; ++j) {
-			to_return(i, j) = sample_prg.dgs_sample(sigma, c, tau) % PARAM_Q;
+			result(i, j) = sample_prg.dgs_sample(sigma, c, tau) % PARAM_Q;
 		}
 	}
-	return to_return;
 }
 
 template<typename IO, int PARAM_L>
@@ -143,9 +143,13 @@ public:
 	// TODO: change to sample from LWE noise distribution
 	//       (discretized Gaussian \bar{\Psi}_\alpha)
 	LWEKeypair OTKeyGen(Branch sigma) {
-		LWESecretKey S = UniformMatrixModQ(PARAM_N, PARAM_L, prg);
-		//MatrixModQ E = MatrixModQ::Zero(PARAM_M, PARAM_L); // FIXME - use Gaussian instead of zeroes
-		MatrixModQ E = DGSMatrixModQ(PARAM_M, PARAM_L, prg, STD_KEYGEN, 0, 12);
+		LWESecretKey S = MatrixModQ();
+		S.resize(PARAM_N, PARAM_L);
+		UniformMatrixModQ(S, prg);
+
+		MatrixModQ E = MatrixModQ();
+		E.resize(PARAM_M, PARAM_L);
+		DGSMatrixModQ(E, prg, STD_KEYGEN, 0, 12);
 		LWEPublicKey pk = A.transpose()*S + E - v[sigma];
 
 		if (DEBUG >= 2)
@@ -184,14 +188,14 @@ public:
 	// pre: crs_prg has been initialized with a shared seed from coinflip
 	// post: populates A using rejection sampling
 	void InitializeCrs() {
-		A = UniformMatrixModQ(PARAM_N, PARAM_M, crs_prg);
+		UniformMatrixModQ(A, crs_prg);
 	}
 
 	// pre: crs_prg has been initialized with a shared seed from coinflip
 	// post: populates v0, v1 rejection sampling
 	void GenerateCrsVectors() {
-		v[0] = UniformMatrixModQ(PARAM_M, PARAM_L, crs_prg);
-		v[1] = UniformMatrixModQ(PARAM_M, PARAM_L, crs_prg);
+		UniformMatrixModQ(v[0], crs_prg);
+		UniformMatrixModQ(v[1], crs_prg);
 	}
 
 	// post: initializes the view of one participant of the lattice-based
@@ -201,6 +205,9 @@ public:
 	explicit OTLattice(IO * io) {
 		this->io = io;
 		initialized = false;
+		A.resize(PARAM_N, PARAM_M);
+		v[0].resize(PARAM_M, PARAM_L);
+		v[1].resize(PARAM_M, PARAM_L);
 	}
 
 
