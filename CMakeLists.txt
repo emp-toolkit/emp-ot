@@ -7,9 +7,12 @@ include(${CMAKE_FOLDER}/cmake/common.cmake)
 include(${CMAKE_FOLDER}/cmake/source_of_randomness.cmake)
 include(${CMAKE_FOLDER}/cmake/threading.cmake)
 
+
+
 find_package(emp-tool REQUIRED)
+find_package(Boost 1.67 REQUIRED random)
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
-include_directories(${EMP-TOOL_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR})
+include_directories(${EMP-TOOL_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${Boost_INCLUDE_DIRS})
 
 # Installation
 install(FILES cmake/emp-ot-config.cmake DESTINATION cmake/)
@@ -25,5 +28,6 @@ add_test(mot)
 add_test(deltaot)
 add_test(ideal)
 add_test(lattice)
-target_link_libraries(lattice Eigen3::Eigen)
+#message(BOOST: ${Boost_LIBRARIES})
+target_link_libraries(lattice Eigen3::Eigen ${Boost_LIBRARIES})
 SET_TARGET_PROPERTIES(lattice PROPERTIES COMPILE_DEFINITIONS "EMP_USE_RANDOM_DEVICE")

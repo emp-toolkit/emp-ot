@@ -9,24 +9,34 @@
 #include <vector>
 #include "emp-ot/ot.h"
 
+#include <boost/function.hpp>
+#include <boost/bind.hpp>
+#include <boost/math/constants/constants.hpp>
+#include <boost/random/normal_distribution.hpp>
+#include <boost/random/random_device.hpp>
+
 constexpr int DEBUG = 0;  // 2: print ctexts, 1: minimal debug info
 
 /** @addtogroup OT
     @{
 */
 
-constexpr long PARAM_Q = 2251799813685248; // 2 ^ 51
-constexpr int PARAM_N = 1500;
-constexpr int PARAM_M = 151175;
 // PARAM_L is a template parameter
+constexpr long PARAM_Q = 140737488355000; // 2 ** 47
+constexpr int PARAM_N = 1600;
+constexpr int PARAM_M = 150494;
+constexpr double PARAM_ALPHA = 2.59894264322e-13;
 
-//constexpr double ALPHA = 2.1234174964658868 / std::pow(10, 14);
-//constexpr double STD_KEYGEN = 3064322924233260; // (ALPHA * PARAM_Q)
-//constexpr double STD_KEYGEN = 1222487975280004; // (ALPHA * PARAM_Q) / sqrt(2*pi)
-constexpr double STD_KEYGEN = 277;
-constexpr double STD_ENC = 1808896782.4249659;
+// For the Discretized Gaussian
+constexpr double STDEV = PARAM_ALPHA / boost::math::constants::root_two_pi<double>();
 
 
+constexpr double STD_ENC = 125878741.823; // Standard deviation of encryption DGS. Known as r
+
+using boost::math::constants::root_two_pi;
+using boost::math::lround;
+using boost::random::random_device;
+using boost::random::normal_distribution;
 
 using int_mod_q = uint64_t;
 
@@ -73,8 +83,8 @@ void SampleBounded(int_mod_q &dst, int_mod_q bound, PRG& sample_prg) {
 void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
 	int n = result.rows();
 	int m = result.cols();
-	for (int i = 0; i < n; ++i) {
-		for (int j = 0; j < m; ++j) {
+	for (int j = 0; j < m; ++j) {
+		for (int i = 0; i < n; ++i) {
 			SampleBounded(result(i, j), PARAM_Q, sample_prg);
 		}
 	}
@@ -89,6 +99,26 @@ void DGSMatrixModQ(MatrixModQ &result, PRG &sample_prg, double sigma, double c, 
 		}
 	}
 }
+
+random_device RD;
+boost::function<double()> SampleStandardGaussian = boost::bind(normal_distribution<>(0, 1), boost::ref(RD));
+
+long SampleDiscretizedGaussian() {
+	double e = SampleStandardGaussian() * STDEV;
+	e = fmod(e, 1) * PARAM_Q;
+	return lround(e) % PARAM_Q;
+}
+
+void DiscretizedGaussianMatrixModQ(MatrixModQ &result) {
+	int n = result.rows();
+	int m = result.cols();
+	for (int i = 0; i < n; ++i) {
+		for (int j = 0; j < m; ++j) {
+			result(i, j) = SampleDiscretizedGaussian();
+		}
+	}
+}
+
 
 template<typename IO, int PARAM_L>
 class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
@@ -149,7 +179,7 @@ public:
 
 		MatrixModQ E = MatrixModQ();
 		E.resize(PARAM_M, PARAM_L);
-		DGSMatrixModQ(E, prg, STD_KEYGEN, 0, 12);
+		DiscretizedGaussianMatrixModQ(E);
 		LWEPublicKey pk = A.transpose()*S + E - v[sigma];
 
 		if (DEBUG >= 2)
