@@ -5,8 +5,6 @@
 #include <algorithm>  // std::min
 #include <cmath>  // std::log2, std::floor
 #include <iostream>  // debug printlns
-#include <random> // random_device (for reseeding)
-#include <vector>
 #include "emp-ot/ot.h"
 
 #include <boost/function.hpp>
@@ -15,23 +13,20 @@
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/random_device.hpp>
 
-constexpr int DEBUG = 0;  // 2: print ctexts, 1: minimal debug info
+constexpr int DEBUG = 0;  // 2: print ciphertexsts, 1: minimal debug info
 
 /** @addtogroup OT
     @{
 */
 
-// PARAM_L is a template parameter
+// Parameters
 constexpr long PARAM_Q = 140737488355000; // 2 ** 47
 constexpr int PARAM_N = 1600;
 constexpr int PARAM_M = 150494;
 constexpr double PARAM_ALPHA = 2.59894264322e-13;
-
-// For the Discretized Gaussian
+constexpr double PARAM_R = 125878741.823; 
+// For the Discretized Gaussian (TODO rename to be something more descriptive?)
 constexpr double STDEV = PARAM_ALPHA / boost::math::constants::root_two_pi<double>();
-
-
-constexpr double STD_ENC = 125878741.823; // Standard deviation of encryption DGS. Known as r
 
 using boost::math::constants::root_two_pi;
 using boost::math::lround;
@@ -53,33 +48,20 @@ struct LWECiphertext { VectorModQ u; VectorModQ c; };
 
 namespace emp {
 
+// pre: dst is zeroed, bound is of the form 2**k where 8 divides k
+//      bound *must* be a power of 2
 // post: sets `dst` to a random integer between
 //       0 and `bound` - 1 (inclusive) through
 //       rejection sampling, using the given EMP PRG
 void SampleBounded(int_mod_q &dst, int_mod_q bound, PRG& sample_prg) {
-	int nbits_q, nbytes_q;
-	if (!bound) {
-		nbytes_q = sizeof(dst);
-		nbits_q = 8*nbytes_q;
-	} else {
-		nbits_q = 1 + std::floor(std::log2(bound));
-		nbytes_q = 1 + std::floor(std::log2(bound)/8);
-	}
-	int_mod_q rnd;
-	do {
-		rnd = 0;
-		sample_prg.random_data(&rnd, nbytes_q);
-		rnd &= ((1 << nbits_q) - 1);  // to minimize waste,
-		// only sample less than
-		// the next-greater power of 2
-	} while (bound != 0 and rnd >= bound);
-	dst = rnd;
+  int_mod_q bound_mask = bound - 1;
+  int nbytes_bound = 1 + std::floor(std::log2(bound)/8);
+  sample_prg.random_data(&dst, nbytes_bound);
+  dst &= bound_mask;
 }
 
-
-
 // post: populates the matrix mod Q "result" with uniform values
-//	 from the given PRG generated using rejection sampling
+//	     from the given PRG generated using rejection sampling
 void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
 	int n = result.rows();
 	int m = result.cols();
@@ -194,7 +176,7 @@ public:
 		for (int i = 0; i < PARAM_M; ++i) {
 			//SampleBounded(x(i), 2, prg);  // Unif({0,1}^m)
 			// standard deviation, center, tau
-			x(i) = prg.dgs_sample(STD_ENC, 0, 12) % PARAM_Q; 
+			x(i) = prg.dgs_sample(PARAM_R, 0, 12) % PARAM_Q; 
 		}
 		VectorModQ u = A*x;
 		VectorModQ c = (branch_pk.transpose() * x) + ((PARAM_Q / 2)*mu);
