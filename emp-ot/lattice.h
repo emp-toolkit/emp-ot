@@ -42,8 +42,8 @@ using LWEPublicKey = MatrixModQ;
 using LWESecretKey = MatrixModQ;
 struct LWEKeypair { LWEPublicKey pk; LWESecretKey sk; };
 
-using Branch     = int;
-using Plaintext  = VectorModQ;
+using Branch = int;
+using Plaintext = VectorModQ;
 struct LWECiphertext { VectorModQ u; VectorModQ c; };
 
 namespace emp {
@@ -54,10 +54,10 @@ namespace emp {
 //       0 and `bound` - 1 (inclusive) through
 //       rejection sampling, using the given EMP PRG
 void SampleBounded(int_mod_q &dst, int_mod_q bound, PRG& sample_prg) {
-  int_mod_q bound_mask = bound - 1;
-  int nbytes_bound = 1 + std::floor(std::log2(bound)/8);
-  sample_prg.random_data(&dst, nbytes_bound);
-  dst &= bound_mask;
+	int_mod_q bound_mask = bound - 1;
+	int nbytes_bound = 1 + std::floor((std::log2(bound)-1)/8);
+	sample_prg.random_data(&dst, nbytes_bound);
+	dst &= bound_mask;
 }
 
 // post: populates the matrix mod Q "result" with uniform values
@@ -68,16 +68,6 @@ void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
 	for (int j = 0; j < m; ++j) {
 		for (int i = 0; i < n; ++i) {
 			SampleBounded(result(i, j), PARAM_Q, sample_prg);
-		}
-	}
-}
-
-void DGSMatrixModQ(MatrixModQ &result, PRG &sample_prg, double sigma, double c, size_t tau) {
-	int n = result.rows();
-	int m = result.cols();
-	for (int i = 0; i < n; ++i) {
-		for (int j = 0; j < m; ++j) {
-			result(i, j) = sample_prg.dgs_sample(sigma, c, tau) % PARAM_Q;
 		}
 	}
 }
@@ -100,7 +90,6 @@ void DiscretizedGaussianMatrixModQ(MatrixModQ &result) {
 		}
 	}
 }
-
 
 template<typename IO, int PARAM_L>
 class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
