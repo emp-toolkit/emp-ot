@@ -2,14 +2,20 @@
 #define OT_LATTICE_H__
 #include <Eigen/Dense>
 
+#include <boost/timer/timer.hpp>
+#include <string> // std::string, for timer formatting
+
 #include <algorithm>  // std::min
-#include <cmath>  // std::log2, std::floor
+#include <cmath>  // std::log2, std::floor, std::fmod
+
 #include <iostream>  // debug printlns
+
 #include "emp-ot/ot.h"
 
 #include <boost/function.hpp>
 #include <boost/bind.hpp>
 #include <boost/math/constants/constants.hpp>
+#include <boost/math/special_functions/round.hpp>
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/random_device.hpp>
 
@@ -25,13 +31,8 @@ constexpr int PARAM_N = 1600;
 constexpr int PARAM_M = 150494;
 constexpr double PARAM_ALPHA = 2.59894264322e-13;
 constexpr double PARAM_R = 125878741.823; 
-// For the Discretized Gaussian (TODO rename to be something more descriptive?)
+// For the Discretized Gaussian
 constexpr double STDEV = PARAM_ALPHA / boost::math::constants::root_two_pi<double>();
-
-using boost::math::constants::root_two_pi;
-using boost::math::lround;
-using boost::random::random_device;
-using boost::random::normal_distribution;
 
 using int_mod_q = uint64_t;
 
@@ -82,13 +83,15 @@ void DGSMatrixModQ(MatrixModQ &result, PRG &sample_prg, double sigma, double c, 
 	}
 }
 
-random_device RD;
-boost::function<double()> SampleStandardGaussian = boost::bind(normal_distribution<>(0, 1), boost::ref(RD));
+boost::random::random_device RD;
+boost::function<double()> SampleStandardGaussian = boost::bind(
+    boost::random::normal_distribution<>(0, 1),
+    boost::ref(RD));
 
 long SampleDiscretizedGaussian() {
 	double e = SampleStandardGaussian() * STDEV;
-	e = fmod(e, 1) * PARAM_Q;
-	return lround(e) % PARAM_Q;
+	e = std::fmod(e, 1) * PARAM_Q;
+	return boost::math::lround(e) % PARAM_Q;
 }
 
 void DiscretizedGaussianMatrixModQ(MatrixModQ &result) {
@@ -101,16 +104,16 @@ void DiscretizedGaussianMatrixModQ(MatrixModQ &result) {
 	}
 }
 
-
 template<typename IO, int PARAM_L>
 class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
-public:
+ public:
 	IO* io = nullptr;
-	PRG prg;  // FIXME for testing
-	PRG crs_prg; // PRG with a seed shared between the sender and receiver
+	PRG prg;
+	PRG crs_prg;  // PRG with a seed shared between the sender and receiver
 	MatrixModQ A;
 	MatrixModQ v[2];
-	bool initialized; // Whether or not coinflip has been run and crs_prg has been seeded
+	bool initialized;  // Whether or not coinflip has been run and crs_prg has been seeded
+  boost::timer::cpu_timer cpu_timer;
 
 	// post: returns an appropriate (for passing to LWEEnc) object
 	//       representing the given plaintext
@@ -152,8 +155,6 @@ public:
 	// pre : sigma (currently 0 or 1) is the request bit
 	// post: generates a key pair messy under branch (1 - sigma)
 	//       and decryptable under branch sigma
-	// TODO: change to sample from LWE noise distribution
-	//       (discretized Gaussian \bar{\Psi}_\alpha)
 	LWEKeypair OTKeyGen(Branch sigma) {
 		LWESecretKey S = MatrixModQ();
 		S.resize(PARAM_N, PARAM_L);
@@ -169,14 +170,12 @@ public:
 		return {pk, S};
 	}
 
-	// TODO: change to sample error from discrete Gaussian, rather than Unif(0,1)
 	LWECiphertext OTEnc(const LWEPublicKey &pk, Branch sigma, const Plaintext &mu) {
 		LWEPublicKey branch_pk {pk + v[sigma]};
 		VectorModQ x(PARAM_M);
 		for (int i = 0; i < PARAM_M; ++i) {
-			//SampleBounded(x(i), 2, prg);  // Unif({0,1}^m)
 			// standard deviation, center, tau
-			x(i) = prg.dgs_sample(PARAM_R, 0, 12) % PARAM_Q; 
+			x(i) = prg.dgs_sample(PARAM_R, 0, 12);
 		}
 		VectorModQ u = A*x;
 		VectorModQ c = (branch_pk.transpose() * x) + ((PARAM_Q / 2)*mu);
@@ -222,7 +221,6 @@ public:
 		v[1].resize(PARAM_M, PARAM_L);
 	}
 
-
 	// Post: Initializes crs_prg with a random seed shared with the other party
 	void sender_coinflip() {
 		// Generate a random block
@@ -248,8 +246,7 @@ public:
 			// Initialize the prg with the seed (rand_sender (xor) rand_receiver)
 			block seed = xorBlocks(rand_sender, rand_receiver);
 			crs_prg.reseed(&seed);
-		}
-		else {
+		} else {
 			error("Coinflip Failed\n");
 		}
 	}
@@ -307,22 +304,16 @@ public:
 	//       encrypts each input under the received key and the corresponding branch;
 	//       and sends the ciphertexts to the receiver
 	void send_impl(const block* data0, const block* data1, int length) {
-		if (! initialized) {
-			sender_coinflip(); // should only happen once
-			InitializeCrs();
-			initialized = true;
-		}
+    if (!initialized) {
+      sender_coinflip(); // should only happen once
+      InitializeCrs();
+      initialized = true;
+    }
 
-		std::cout << "OTs complete (" << PARAM_L << " bits each): ";
-		int tenths_complete = 0;
+    std::cerr << "Sender CRS:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+
 		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-			if (length > 10 and ot_iter > tenths_complete * length/10) {
-				++tenths_complete;
-				std::cout << ot_iter << " (" << 10*(tenths_complete -1)<< "%)... " << std::flush;
-			}
-			if (ot_iter == length - 1)
-				std::cout << std::endl << std::flush;
-
+      cpu_timer.start();
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
 
@@ -355,6 +346,8 @@ public:
 				io->send_data(ct[i].u.data(), sizeof(int_mod_q) * ct[i].u.size());
 				io->send_data(ct[i].c.data(), sizeof(int_mod_q) * ct[i].c.size());
 			}
+      std::cerr << "Sender, iteration " << ot_iter << ": \t"
+        << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 		}
 	}
 
@@ -369,7 +362,15 @@ public:
 			initialized = true;
 		}
 
+    std::cerr << "Receiver CRS:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+
+    std::cout << "(Lattice OT 1, sender: performing " << length << " OTs): ";
 		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
+      std::cout << ot_iter + 1 << "... " << std::flush;
+      if (ot_iter == length - 1)
+        std::cout << std::endl;
+
+      cpu_timer.start();
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
 
@@ -407,6 +408,8 @@ public:
 				std::cerr << "(Receiver, iteration " << ot_iter << ") Decrypted branch " << b[ot_iter] << " to get plaintext " << p << std::endl;
 
 			out_data[ot_iter] = DecodePlaintext(p);
+      std::cerr << "Receiver, iteration " << ot_iter << ": \t"
+        << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 		}
 	}
 };
