@@ -47,6 +47,27 @@ using Branch = int;
 using Plaintext = VectorModQ;
 struct LWECiphertext { VectorModQ u; VectorModQ c; };
 
+// wraps EMP to sample an integer type 
+// (works for sure with short, int, long) 
+// providing an interface acceptable to
+// std::normal_distribution
+class LongAESWrapper {
+ public:
+  typedef unsigned long result_type;
+  emp::PRG prg;
+  result_type min() {
+    return std::numeric_limits<result_type>::min();
+  }
+  result_type max() {
+    return std::numeric_limits<result_type>::max();
+  }
+  result_type operator()() {
+    result_type outp = 0;
+    prg.random_data(&outp, sizeof(result_type));
+    return outp;
+  }
+};
+
 namespace emp {
 
 // pre: dst is zeroed, bound is of the form 2**k where 8 divides k
@@ -73,10 +94,10 @@ void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
 	}
 }
 
-boost::random::random_device RD;
+LongAESWrapper law;
 boost::function<double()> SampleStandardGaussian = boost::bind(
     boost::random::normal_distribution<>(0, 1),
-    boost::ref(RD));
+    boost::ref(law));
 
 long SampleDiscretizedGaussian() {
 	double e = SampleStandardGaussian() * STDEV;
@@ -150,10 +171,17 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 		S.resize(PARAM_N, PARAM_L);
 		UniformMatrixModQ(S, prg);
 
-		MatrixModQ E = MatrixModQ();
-		E.resize(PARAM_M, PARAM_L);
-		DiscretizedGaussianMatrixModQ(E);
-		LWEPublicKey pk = A.transpose()*S + E - v[sigma];
+    std::cerr << "Keygen after S:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+
+		MatrixModQ pk = MatrixModQ();
+		pk.resize(PARAM_M, PARAM_L);
+		DiscretizedGaussianMatrixModQ(pk);
+    std::cerr << "Keygen after E:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+
+    pk -= v[sigma];
+    pk += (S.transpose()*A).transpose();
+
+    std::cerr << "Keygen after arithmetic:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
 		if (DEBUG >= 2)
 			std::cout << "(Receiver) Debug: A = " << A << ", pk = " << pk << ", sk = " << S << endl;
@@ -165,10 +193,12 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 		VectorModQ x(PARAM_M);
 		for (int i = 0; i < PARAM_M; ++i) {
 			// standard deviation, center, tau
-			x(i) = prg.dgs_sample(PARAM_R, 0, 12);
+			x(i) = prg.dgs_sample(PARAM_R, 0, 2);
 		}
+    std::cerr << "Enc after sample:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 		VectorModQ u = A*x;
 		VectorModQ c = (branch_pk.transpose() * x) + ((PARAM_Q / 2)*mu);
+    std::cerr << "Enc after arithmetic:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 		return {u, c};
 	}
 
@@ -312,6 +342,7 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 
 			int_mod_q pk_array[PARAM_M * PARAM_L];
 			io->recv_data(pk_array, sizeof(pk_array[0]) * PARAM_M * PARAM_L);
+
 			Eigen::Map<MatrixModQ> pk {pk_array, PARAM_M, PARAM_L};  // interpret memory as matrix
 
 			if (DEBUG)
@@ -321,6 +352,8 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 			LWECiphertext ct[2];
 			ct[0] = OTEnc(pk, 0, secret0);
 			ct[1] = OTEnc(pk, 1, secret1);
+
+    std::cerr << "Sender after enc:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
 			if (DEBUG == 1)
 				std::cerr << "(Sender) Encrypted. Sending ciphertexts..." << std::endl;
@@ -360,9 +393,10 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
       cpu_timer.start();
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
-
 			// Generate the public key from the choice bit b
 			LWEKeypair keypair = OTKeyGen(b[ot_iter]);
+
+    std::cerr << "Receiver after keygen:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
 			// Send the public key
 			io->send_data(keypair.pk.data(), sizeof(int_mod_q) * keypair.pk.size());
@@ -372,7 +406,6 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 
 			int_mod_q ct_array[2*(PARAM_N+PARAM_L)];
 			io->recv_data(ct_array, sizeof(int_mod_q) * (2*(PARAM_N+PARAM_L)));
-
 			LWECiphertext ct[2];
 
 			ct[0] = LWECiphertext {
