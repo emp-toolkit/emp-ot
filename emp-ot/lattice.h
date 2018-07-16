@@ -32,7 +32,8 @@ constexpr int PARAM_M = 150494;
 constexpr double PARAM_ALPHA = 2.59894264322e-13;
 constexpr double PARAM_R = 125878741.823; 
 // For the Discretized Gaussian
-constexpr double STDEV = PARAM_ALPHA / boost::math::constants::root_two_pi<double>();
+constexpr double LWE_ERROR_STDEV = PARAM_Q * PARAM_ALPHA / boost::math::constants::root_two_pi<double>();
+constexpr double R_STDEV = PARAM_R / boost::math::constants::root_two_pi<double>();
 
 using int_mod_q = uint64_t;
 
@@ -99,18 +100,17 @@ boost::function<double()> SampleStandardGaussian = boost::bind(
     boost::random::normal_distribution<>(0, 1),
     boost::ref(law));
 
-long SampleDiscretizedGaussian() {
-	double e = SampleStandardGaussian() * STDEV;
-	e = std::fmod(e, 1) * PARAM_Q;
+long SampleDiscretizedGaussian(double stdev) {
+	double e = SampleStandardGaussian() * stdev;
 	return boost::math::lround(e) % PARAM_Q;
 }
 
-void DiscretizedGaussianMatrixModQ(MatrixModQ &result) {
+void DiscretizedGaussianMatrixModQ(MatrixModQ &result, double stdev) {
 	int n = result.rows();
 	int m = result.cols();
-	for (int i = 0; i < n; ++i) {
-		for (int j = 0; j < m; ++j) {
-			result(i, j) = SampleDiscretizedGaussian();
+  for (int j = 0; j < m; ++j) {  // j, i loop order because column-major
+    for (int i = 0; i < n; ++i) {
+			result(i, j) = SampleDiscretizedGaussian(stdev);
 		}
 	}
 }
@@ -174,8 +174,8 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
     std::cerr << "Keygen after S:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
 		MatrixModQ pk = MatrixModQ();
-		pk.resize(PARAM_M, PARAM_L);
-		DiscretizedGaussianMatrixModQ(pk);
+    pk.resize(PARAM_M, PARAM_L);
+		DiscretizedGaussianMatrixModQ(pk, LWE_ERROR_STDEV);
     std::cerr << "Keygen after E:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
     pk -= v[sigma];
@@ -191,10 +191,11 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	LWECiphertext OTEnc(const LWEPublicKey &pk, Branch sigma, const Plaintext &mu) {
 		LWEPublicKey branch_pk {pk + v[sigma]};
 		VectorModQ x(PARAM_M);
-		for (int i = 0; i < PARAM_M; ++i) {
-			// standard deviation, center, tau
-			x(i) = prg.dgs_sample(PARAM_R, 0, 2);
-		}
+    for (int i = 0; i < PARAM_M; ++i) {
+      x(i) = SampleDiscretizedGaussian(R_STDEV);
+    }
+		//DiscretizedGaussianMatrixModQ(x, R_STDEV);
+
     std::cerr << "Enc after sample:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 		VectorModQ u = A*x;
 		VectorModQ c = (branch_pk.transpose() * x) + ((PARAM_Q / 2)*mu);
