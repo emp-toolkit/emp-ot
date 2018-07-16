@@ -2,7 +2,6 @@
 #define OT_LATTICE_H__
 #include <Eigen/Dense>
 
-#include <boost/timer/timer.hpp>
 #include <string> // std::string, for timer formatting
 
 #include <algorithm>  // std::min
@@ -53,20 +52,20 @@ struct LWECiphertext { VectorModQ u; VectorModQ c; };
 /// providing an interface acceptable to
 /// std::normal_distribution
 class LongAESWrapper {
- public:
-  typedef unsigned long result_type;
-  emp::PRG prg;
-  result_type min() {
-    return std::numeric_limits<result_type>::min();
-  }
-  result_type max() {
-    return std::numeric_limits<result_type>::max();
-  }
-  result_type operator()() {
-    result_type outp = 0;
-    prg.random_data(&outp, sizeof(result_type));
-    return outp;
-  }
+public:
+	typedef unsigned long result_type;
+	emp::PRG prg;
+	result_type min() {
+		return std::numeric_limits<result_type>::min();
+	}
+	result_type max() {
+		return std::numeric_limits<result_type>::max();
+	}
+	result_type operator()() {
+		result_type outp = 0;
+		prg.random_data(&outp, sizeof(result_type));
+		return outp;
+	}
 };
 
 namespace emp {
@@ -102,8 +101,8 @@ void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
 
 LongAESWrapper law;
 boost::function<double()> SampleStandardGaussian = boost::bind(
-    boost::random::normal_distribution<>(0, 1),
-    boost::ref(law));
+							       boost::random::normal_distribution<>(0, 1),
+							       boost::ref(law));
 
 /// @param stdev The standard deviation of the discretized gaussian
 /// \post Returns a sample from the discretized gaussian of standard
@@ -120,8 +119,8 @@ long SampleDiscretizedGaussian(double stdev) {
 void DiscretizedGaussianMatrixModQ(MatrixModQ &result, double stdev) {
 	int n = result.rows();
 	int m = result.cols();
-  for (int j = 0; j < m; ++j) {  // j, i loop order because column-major
-    for (int i = 0; i < n; ++i) {
+	for (int j = 0; j < m; ++j) {  // j, i loop order because column-major
+		for (int i = 0; i < n; ++i) {
 			result(i, j) = SampleDiscretizedGaussian(stdev);
 		}
 	}
@@ -129,14 +128,13 @@ void DiscretizedGaussianMatrixModQ(MatrixModQ &result, double stdev) {
 
 template<typename IO, int PARAM_L>
 class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
- public:
+public:
 	IO* io = nullptr; ///< The `emp::IOChannel<T>` used for communication.
 	PRG prg; ///< `emp::PRG` with a random seed.
 	PRG crs_prg; ///< `emp::PRG` with a seed shared between the sender and receiver for CRS generation.
 	MatrixModQ A; ///< The `PARAM_N` by `PARAM_M` matrix that represents the lattice.
 	MatrixModQ v[2]; ///< The two vectors that correspond to the two encryption branches.
 	bool initialized;  ///< Whether or not coinflip has been run, `crs_prg` has been seeded, and `A` has been generated.
-	boost::timer::cpu_timer cpu_timer;
 
 	/// @param raw_plaintext A block of plaintext to encode
 	/// \post Returns an appropriate (for passing to LWEEnc) object
@@ -184,16 +182,12 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 		S.resize(PARAM_N, PARAM_L);
 		UniformMatrixModQ(S, prg);
 
-    std::cerr << "Keygen after S:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
 		MatrixModQ pk(PARAM_M, PARAM_L);
 		DiscretizedGaussianMatrixModQ(pk, LWE_ERROR_STDEV);
-    std::cerr << "Keygen after E:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
-    pk.noalias() -= v[sigma];
-    pk.noalias() += (S.transpose()*A).transpose();
-
-    std::cerr << "Keygen after arithmetic:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+		pk.noalias() -= v[sigma];
+		pk.noalias() += (S.transpose()*A).transpose();
 
 		if (DEBUG >= 2)
 			std::cout << "(Receiver) Debug: A = " << A << ", pk = " << pk << ", sk = " << S << endl;
@@ -211,15 +205,13 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	LWECiphertext OTEnc(const LWEPublicKey &pk, Branch sigma, const Plaintext &mu) {
 		LWEPublicKey branch_pk {pk + v[sigma]};
 		VectorModQ x(PARAM_M);
-    for (int i = 0; i < PARAM_M; ++i) {
-      x(i) = SampleDiscretizedGaussian(R_STDEV);
-    }
+		for (int i = 0; i < PARAM_M; ++i) {
+			x(i) = SampleDiscretizedGaussian(R_STDEV);
+		}
 		//DiscretizedGaussianMatrixModQ(x, R_STDEV);
 
-    std::cerr << "Enc after sample:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 		VectorModQ u = A*x;
 		VectorModQ c = (branch_pk.transpose() * x) + ((PARAM_Q / 2)*mu);
-    std::cerr << "Enc after arithmetic:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 		return {u, c};
 	}
 
@@ -346,16 +338,16 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	///       encrypts each input under the received key and the corresponding branch
 	///       and sends the ciphertexts to the receiver.
 	void send_impl(const block* data0, const block* data1, int length) {
-    if (!initialized) {
-      sender_coinflip(); // should only happen once
-      InitializeCrs();
-      initialized = true;
-    }
+		if (!initialized) {
+			sender_coinflip(); // should only happen once
+			InitializeCrs();
+			initialized = true;
+		}
 
-    std::cerr << "Sender CRS:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+
 
 		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-      cpu_timer.start();
+
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
 
@@ -378,7 +370,7 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 			ct[0] = OTEnc(pk, 0, secret0);
 			ct[1] = OTEnc(pk, 1, secret1);
 
-    std::cerr << "Sender after enc:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+
 
 			if (DEBUG == 1)
 				std::cerr << "(Sender) Encrypted. Sending ciphertexts..." << std::endl;
@@ -391,8 +383,6 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 				io->send_data(ct[i].u.data(), sizeof(int_mod_q) * ct[i].u.size());
 				io->send_data(ct[i].c.data(), sizeof(int_mod_q) * ct[i].c.size());
 			}
-      std::cerr << "Sender, iteration " << ot_iter << ": \t"
-        << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 		}
 	}
 
@@ -406,21 +396,17 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 			initialized = true;
 		}
 
-    std::cerr << "Receiver CRS:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
-
-    std::cout << "(Lattice OT 1, sender: performing " << length << " OTs): ";
+		// std::cout << "(Lattice OT 1, sender: performing " << length << " OTs): ";
 		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-      std::cout << ot_iter + 1 << "... " << std::flush;
-      if (ot_iter == length - 1)
-        std::cout << std::endl;
+			// std::cout << ot_iter + 1 << "... " << std::flush;
+			// if (ot_iter == length - 1)
+			// 	std::cout << std::endl;
 
-      cpu_timer.start();
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
 			// Generate the public key from the choice bit b
 			LWEKeypair keypair = OTKeyGen(b[ot_iter]);
 
-    std::cerr << "Receiver after keygen:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
 			// Send the public key
 			io->send_data(keypair.pk.data(), sizeof(int_mod_q) * keypair.pk.size());
@@ -438,8 +424,8 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 			};
 
 			ct[1] = LWECiphertext {
-			                       Eigen::Map<VectorModQ> {ct_array + PARAM_N + PARAM_L, PARAM_N, 1},
-			                       Eigen::Map<VectorModQ> {ct_array + PARAM_N + (PARAM_N + PARAM_L), PARAM_L, 1}
+					       Eigen::Map<VectorModQ> {ct_array + PARAM_N + PARAM_L, PARAM_N, 1},
+					       Eigen::Map<VectorModQ> {ct_array + PARAM_N + (PARAM_N + PARAM_L), PARAM_L, 1}
 			};
 
 			if (DEBUG >= 2) {
@@ -452,11 +438,10 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 				std::cerr << "(Receiver, iteration " << ot_iter << ") Decrypted branch " << b[ot_iter] << " to get plaintext " << p << std::endl;
 
 			out_data[ot_iter] = DecodePlaintext(p);
-      std::cerr << "Receiver, iteration " << ot_iter << ": \t"
-        << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+
 		}
 	}
 };
-/**@}*/  // doxygen end of group
+	/**@}*/  // doxygen end of group
 }  // namespace emp
 #endif  // OT_LATTICE_H__
