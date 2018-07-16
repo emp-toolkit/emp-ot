@@ -71,6 +71,9 @@ class LongAESWrapper {
 
 namespace emp {
 
+/// @param dst The int_mod_q to write the sample to
+/// @param bound One more than the largest integer sampleable
+/// @param sample_prg The PRG to sample from
 /// \pre \p dst is zeroed, bound is of the form `2**k` where 8 divides `k`
 ///      \p bound *must* be a power of 2.
 /// \post Sets \p dst to a random integer between
@@ -83,6 +86,8 @@ void SampleBounded(int_mod_q &dst, int_mod_q bound, PRG& sample_prg) {
 	dst &= bound_mask;
 }
 
+/// @param result The matrix that is written to
+/// @param sample_prg The PRG to sample from
 /// \post Populates the matrix mod Q \p result with uniform values
 ///	     from the given PRG generated using rejection sampling.
 void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
@@ -100,11 +105,16 @@ boost::function<double()> SampleStandardGaussian = boost::bind(
     boost::random::normal_distribution<>(0, 1),
     boost::ref(law));
 
+/// @param stdev The standard deviation of the discretized gaussian
+/// \post Returns a sample from the discretized gaussian of standard
+/// distribution \p stdev centered around zero.
 long SampleDiscretizedGaussian(double stdev) {
 	double e = SampleStandardGaussian() * stdev;
 	return boost::math::lround(e) % PARAM_Q;
 }
 
+/// @param result The matrix that is written to
+/// @param stdev The standard deviation of the discretized gaussian
 /// \post Populates the matrix mod Q \p result with values from
 ///	the discretized gaussian of standard distribution \p stdev
 void DiscretizedGaussianMatrixModQ(MatrixModQ &result, double stdev) {
@@ -128,6 +138,7 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	bool initialized;  ///< Whether or not coinflip has been run and crs_prg has been seeded.
 	boost::timer::cpu_timer cpu_timer;
 
+	/// @param raw_plaintext A block of plaintext to encode
 	/// \post Returns an appropriate (for passing to LWEEnc) object
 	///       representing the given plaintext \p raw_plaintext.
 	///       In particular, this implementation interprets the given plaintext `p`
@@ -152,7 +163,7 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 		}
 		return to_return;
 	}
-
+	/// @param encoded_plaintext The plaintext to be decoded
 	/// \post Returns the raw plaintext corresponding to \p encoded_plaintext.
 	block DecodePlaintext(const Plaintext& encoded_plaintext) {
 		int a[4] {0};
@@ -164,7 +175,8 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 		return _mm_set_epi32(a[0], a[1], a[2], a[3]);
 	}
 
-	/// \pre \p sigma (currently 0 or 1) is the request bit.
+	/// @param sigma The request bit.
+	/// \pre \p sigma is 0 or 1.
 	/// \post Generates a key pair messy under branch `(1 - sigma)`
 	///       and decryptable under branch \p sigma.
 	LWEKeypair OTKeyGen(Branch sigma) {
@@ -188,6 +200,14 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 		return {pk, S};
 	}
 
+
+
+	/// @param pk The public key used for encryption
+	/// @param sigma The branch to encrypt on
+	/// @param mu The plaintext to encrypt
+	/// \pre Sigma is 0 or 1.
+	/// \post Returns the ciphertext corresponding to encrypting \p mu with \p pk
+	///       on branch \p sigma.
 	LWECiphertext OTEnc(const LWEPublicKey &pk, Branch sigma, const Plaintext &mu) {
 		LWEPublicKey branch_pk {pk + v[sigma]};
 		VectorModQ x(PARAM_M);
@@ -203,6 +223,8 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 		return {u, c};
 	}
 
+	/// @param sk The secret key
+	/// @param ct The ciphertext
 	/// \pre \p sk is of length `n`, \p ct is of the form `(u, c)` of length `(n, 1)`
 	/// \post Decrypts the ciphertext \p ct using the secret key \p sk
 	///       by computing \f$ b' := c - \langle sk, u \rangle \f$ and returning
@@ -218,18 +240,19 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	}
 
 	/// \pre `crs_prg` has been initialized with a shared seed from coinflip.
-	/// \post Populates `A` uniformly using rejection sampling.
+	/// \post Populates `A` uniformly using rejection sampling with PRG `crs_prg`.
 	void InitializeCrs() {
 		UniformMatrixModQ(A, crs_prg);
 	}
 
 	/// \pre `crs_prg` has been initialized with a shared seed from coinflip
-	/// \post populates `v0`, `v1` uniformly using rejection sampling.
+	/// \post populates `v0`, `v1` uniformly using rejection sampling with PRG `crs_prg`.
 	void GenerateCrsVectors() {
 		UniformMatrixModQ(v[0], crs_prg);
 		UniformMatrixModQ(v[1], crs_prg);
 	}
 
+	/// @param io The instance of the IO used for communication.
 	/// \post Initializes the view of one participant of the lattice-based
 	///       OT protocol.
 	explicit OTLattice(IO * io) {
@@ -314,6 +337,9 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	// it will call either `send_impl` or `recv_impl`, according to the
 	// protocol participant)
 
+	/// @param data0 The first secret
+	/// @param data1 The second secret
+	/// @param length The number of OTs to perform
 	/// \pre `data0[i]` and `data1[i]` are the sender's two inputs
 	///       for the `i`th OT transmission.
 	/// \post Waits for a public key `pk` from the receiver;
@@ -370,10 +396,9 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 		}
 	}
 
-	/// \pre \p out_data indicates the location where the received values
-	///         will be stored;
-	///       \p b indicates the location of the choice of which secret to receive;
-	///       \p length indicates the number of OT executions to be performed.
+	/// @param out_data Where the results of the OTs are stored
+	/// @param b b The location of the choice of which secret to receive
+	/// @param length The number of OT executions to be performed.
 	void recv_impl(block* out_data, const bool* b, int length) {
 		if (! initialized) {
 			receiver_coinflip(); // should only happen once
