@@ -134,8 +134,8 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	PRG prg; ///< `emp::PRG` with a random seed.
 	PRG crs_prg; ///< `emp::PRG` with a seed shared between the sender and receiver for CRS generation.
 	MatrixModQ A; ///< The `PARAM_N` by `PARAM_M` matrix that represents the lattice.
-	MatrixModQ v[2]; ///< The two vectors that determine the encryption branch.
-	bool initialized;  ///< Whether or not coinflip has been run and crs_prg has been seeded.
+	MatrixModQ v[2]; ///< The two vectors that correspond to the two encryption branches.
+	bool initialized;  ///< Whether or not coinflip has been run, `crs_prg` has been seeded, and `A` has been generated.
 	boost::timer::cpu_timer cpu_timer;
 
 	/// @param raw_plaintext A block of plaintext to encode
