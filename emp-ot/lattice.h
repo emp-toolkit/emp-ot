@@ -174,13 +174,12 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 
     std::cerr << "Keygen after S:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
-		MatrixModQ pk = MatrixModQ();
-    pk.resize(PARAM_M, PARAM_L);
+		MatrixModQ pk(PARAM_M, PARAM_L);
 		DiscretizedGaussianMatrixModQ(pk, LWE_ERROR_STDEV);
     std::cerr << "Keygen after E:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
-    pk -= v[sigma];
-    pk += (S.transpose()*A).transpose();
+    pk.noalias() -= v[sigma];
+    pk.noalias() += (S.transpose()*A).transpose();
 
     std::cerr << "Keygen after arithmetic:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
