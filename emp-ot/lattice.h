@@ -246,7 +246,7 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	}
 
 	/// \pre `crs_prg` has been initialized with a shared seed from coinflip
-	/// \post populates `v0`, `v1` uniformly using rejection sampling with PRG `crs_prg`.
+	/// \post Populates `v0`, `v1` uniformly using rejection sampling with PRG `crs_prg`.
 	void GenerateCrsVectors() {
 		UniformMatrixModQ(v[0], crs_prg);
 		UniformMatrixModQ(v[1], crs_prg);
