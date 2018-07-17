@@ -24,12 +24,12 @@ constexpr int DEBUG = 0;  // 2: print ciphertexsts, 1: minimal debug info
     @{
 */
 
-// Parameters
-constexpr long PARAM_Q = 140737488355000; ///< Modulus: 2 ** 47
-constexpr int PARAM_N = 1600; ///< Number of rows of `A`
-constexpr int PARAM_M = 150494; ///< Number of columns of `A`
-constexpr double PARAM_ALPHA = 2.59894264322e-13;
-constexpr double PARAM_R = 125878741.823;
+// Using Enumeration Parameters
+constexpr long PARAM_Q = 35184372088832; ///< Modulus: 2 ** 45
+constexpr int PARAM_N = 1101; ///< Number of rows of `A`
+constexpr int PARAM_M = 99180; ///< Number of columns of `A`
+constexpr double PARAM_ALPHA = 6.8501144e-13;
+constexpr double PARAM_R = 61969606;
 // For the Discretized Gaussian
 constexpr double LWE_ERROR_STDEV = PARAM_Q * PARAM_ALPHA / boost::math::constants::root_two_pi<double>();
 constexpr double R_STDEV = PARAM_R / boost::math::constants::root_two_pi<double>(); ///< Standard deviation of the discretized Gaussian
