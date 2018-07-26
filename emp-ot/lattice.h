@@ -78,12 +78,12 @@ namespace emp {
 void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
 	int n = result.rows();
 	int m = result.cols();
-	int_mod_q values[n*m];
-	sample_prg.random_data(&values, n*m*8);
+	int_mod_q values[m];
 	int_mod_q mask = PARAM_Q - 1;
-	for (int j = 0; j < m; ++j) {
-		for (int i = 0; i < n; ++i) {
-			result(i, j) = values[j*m+i] & mask;
+	for (int i = 0; i < n; ++i) {
+		sample_prg.random_data(&values, m*sizeof(values[0]));
+		for (int j = 0; j < m; ++j) {
+			result(i, j) = values[j] & mask;
 		}
 	}
 }
