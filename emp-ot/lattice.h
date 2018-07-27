@@ -70,31 +70,19 @@ public:
 
 namespace emp {
 
-/// @param dst The int_mod_q to write the sample to
-/// @param bound One more than the largest integer sampleable
-/// @param sample_prg The PRG to sample from
-/// \pre \p dst is zeroed, bound is of the form `2**k` where 8 divides `k`
-///      \p bound *must* be a power of 2.
-/// \post Sets \p dst to a random integer between
-///       0 and `bound - 1` (inclusive) through
-///       rejection sampling, using the given EMP PRG.
-void SampleBounded(int_mod_q &dst, int_mod_q bound, PRG& sample_prg) {
-	int_mod_q bound_mask = bound - 1;
-	int nbytes_bound = 1 + std::floor((std::log2(bound)-1)/8);
-	sample_prg.random_data(&dst, nbytes_bound);
-	dst &= bound_mask;
-}
-
 /// @param result The matrix that is written to
 /// @param sample_prg The PRG to sample from
 /// \post Populates the matrix mod Q \p result with uniform values
-///	     from the given PRG generated using rejection sampling.
+///	     from the given PRG.
 void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
 	int n = result.rows();
 	int m = result.cols();
-	for (int j = 0; j < m; ++j) {
-		for (int i = 0; i < n; ++i) {
-			SampleBounded(result(i, j), PARAM_Q, sample_prg);
+	int_mod_q values[m];
+	int_mod_q mask = PARAM_Q - 1;
+	for (int i = 0; i < n; ++i) {
+		sample_prg.random_data(&values, m*sizeof(values[0]));
+		for (int j = 0; j < m; ++j) {
+			result(i, j) = values[j] & mask;
 		}
 	}
 }
