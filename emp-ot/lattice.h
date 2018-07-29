@@ -150,7 +150,7 @@ public:
 			a[1] = _mm_extract_epi32(raw_plaintext[batch], 2);
 			a[2] = _mm_extract_epi32(raw_plaintext[batch], 1);
 			a[3] = _mm_extract_epi32(raw_plaintext[batch], 0);
-
+			
 			// iterate over ints right to left;
 			// within each int, iterate over bits right to left
 			for (int i = 0; i <= PARAM_L / 32; ++i) {
@@ -408,9 +408,10 @@ public:
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
 
-			Plaintext secret0 = EncodePlaintext(&data0[ot_iter], batch_size);
-			Plaintext secret1 = EncodePlaintext(&data1[ot_iter], batch_size);
+			Plaintext secret0 = EncodePlaintext(&data0[ot_iter * BATCH_SIZE], batch_size);
+			Plaintext secret1 = EncodePlaintext(&data1[ot_iter * BATCH_SIZE], batch_size);
 
+			//std::cout << "secret0: " << secret0 << std::endl;
 			if (DEBUG > 1)
 				std::cerr << "(Sender, iteration " << ot_iter << ") Encoded values x0=" << secret0 << ", x1=" << secret1 << std::endl;
 
@@ -467,7 +468,6 @@ public:
 		int batch_count = make_batch_count(length);		
 
 		std::cout << "(Lattice OT 1, sender: performing " << length << " OTs): ";
-		//std::cout << "batch_count: " << batch_count << std::endl;
 		for (int ot_iter = 0; ot_iter < batch_count; ++ot_iter) {
 			int batch_size = std::min(BATCH_SIZE, length - BATCH_SIZE * ot_iter);
 			std::cout << ot_iter + 1 << "... " << std::flush;
