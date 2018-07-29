@@ -17,6 +17,7 @@
 #include <boost/function.hpp>
 #include <boost/math/constants/constants.hpp>
 #include <boost/math/special_functions/round.hpp>
+#include <boost/multiprecision/cpp_int.hpp>
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/random_device.hpp>
 
@@ -33,6 +34,7 @@ constexpr int PARAM_N = 670;    ///< Number of rows of `A`
 constexpr int PARAM_M = 85888;  ///< Number of columns of `A`
 constexpr double PARAM_ALPHA = 5.626e-12;
 constexpr double PARAM_R = 7.876e7;
+constexpr int PARAM_ALPHABET_SIZE = 2;
 // For the Discretized Gaussian
 constexpr double LWE_ERROR_STDEV =
     2.0 * ((int_mod_q)1 << (PARAM_LOGQ - 1)) * PARAM_ALPHA /
@@ -88,11 +90,10 @@ namespace emp {
 void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
   int n = result.rows();
   int m = result.cols();
-  int_mod_q values[m];
-  for (int i = 0; i < n; ++i) {
-    sample_prg.random_data(&values, m * sizeof(values[0]));
-    for (int j = 0; j < m; ++j) {
-      result(i, j) = values[j] & MOD_Q_MASK;
+  sample_prg.random_data(result.data(), m * n * sizeof(result(0, 0)));
+  for (int j = 0; j < m; ++j) {
+    for (int i = 0; i < n; ++i) {
+      result(i, j) &= MOD_Q_MASK;
     }
   }
 }
@@ -134,8 +135,6 @@ public:
       A; ///< The `PARAM_N` by `PARAM_M` matrix that represents the lattice.
   MatrixModQ
       v[2]; ///< The two vectors that correspond to the two encryption branches.
-  bool initialized; ///< Whether or not coinflip has been run, `crs_prg` has
-                    /// been seeded, and `A` has been generated.
   boost::timer::cpu_timer cpu_timer;
 
   /// @param raw_plaintext A block of plaintext to encode
@@ -148,33 +147,52 @@ public:
   ///       significance
   ///       order) in the resulting vector.
   Plaintext EncodePlaintext(block raw_plaintext) {
-    VectorModQ to_return(PARAM_L);
-    int a[4];
-    // indices given to _mm_extract_epi32 start from the *right*
-    a[0] = _mm_extract_epi32(raw_plaintext, 3);
-    a[1] = _mm_extract_epi32(raw_plaintext, 2);
-    a[2] = _mm_extract_epi32(raw_plaintext, 1);
-    a[3] = _mm_extract_epi32(raw_plaintext, 0);
+    VectorModQ res(PARAM_L);
+    int res_idx = 0;
 
-    // iterate over ints right to left;
-    // within each int, iterate over bits right to left
-    for (int i = 0; i <= PARAM_L / 32; ++i) {
-      for (int j = 0; j < std::min(32, PARAM_L - (32 * i)); ++j) {
-        to_return((32 * i) + j) = (a[3 - i] & (1 << j)) >> j;
+    uint64_t plaintext[2];
+    plaintext[0] = raw_plaintext[0];
+    plaintext[1] = raw_plaintext[1];
+
+    // # of encoded-message slots required to hold *half*
+    // of a 128-bit message
+    int lhalf = (int)(1 + (64 / log2(PARAM_ALPHABET_SIZE)));
+
+    int n_encoded = 0;
+    for (int half = 0; half <= 1; ++half) {
+      vector<int_mod_q> reversed_values;
+      int j = n_encoded;
+      for (; j < min(PARAM_L, n_encoded + lhalf); ++j) {
+        reversed_values.push_back(plaintext[half] % PARAM_ALPHABET_SIZE);
+        plaintext[half] /= PARAM_ALPHABET_SIZE;
       }
+      for (int k = reversed_values.size() - 1; k >= 0; --k) {
+        res[res_idx] = reversed_values[k];
+        ++res_idx;
+      }
+      n_encoded = j;
     }
-    return to_return;
+
+    return res;
   }
+
   /// @param encoded_plaintext The plaintext to be decoded
   /// \post Returns the raw plaintext corresponding to \p encoded_plaintext.
   block DecodePlaintext(const Plaintext &encoded_plaintext) {
-    int a[4]{0};
-    for (int i = 0; i <= PARAM_L / 32; ++i) {
-      for (int j = 0; j < std::min(32, PARAM_L - (32 * i)); ++j) {
-        a[3 - i] |= encoded_plaintext((32 * i) + j) << j;
+    emp::block to_return = _mm_set_epi32(0, 0, 0, 0);
+
+    int i = 0;
+    int lhalf = (int)ceil(64 / log2(PARAM_ALPHABET_SIZE));
+
+    for (int half = 0; half <= 1; ++half) {
+      for (int j = i; j < min(PARAM_L, i + lhalf); ++j) {
+        to_return[half] =
+            (to_return[half] * PARAM_ALPHABET_SIZE) + encoded_plaintext[j];
       }
+      i = min(PARAM_L, i + lhalf);
     }
-    return _mm_set_epi32(a[0], a[1], a[2], a[3]);
+
+    return to_return;
   }
 
   /// @param sigma The request bit.
@@ -222,14 +240,16 @@ public:
     for (int i = 0; i < PARAM_M; ++i) {
       x(i) = SampleDiscretizedGaussian(R_STDEV);
     }
-    // DiscretizedGaussianMatrixModQ(x, R_STDEV);
 
     std::cerr << "Enc after sample:\t"
               << boost::timer::format(cpu_timer.elapsed(), 3,
                                       std::string("%w\tseconds\n"));
     VectorModQ u = A * x;
-    VectorModQ c =
-        (branch_pk.transpose() * x) + (((int_mod_q)1 << (PARAM_LOGQ - 1)) * mu);
+    // c = ((pk+vsigma).T)*x  + floor(mu*q/|Alphabet|)
+    // factor of 2 corrects by the fact that we're only multiplying by
+    // q/2, not by q, before dividing by the alphabet size
+    VectorModQ c = (branch_pk.transpose() * x) +
+                   mu * ((((int_mod_q)1 << (PARAM_LOGQ - 1))));
     std::cerr << "Enc after arithmetic:\t"
               << boost::timer::format(cpu_timer.elapsed(), 3,
                                       std::string("%w\tseconds\n"));
@@ -271,7 +291,6 @@ public:
   ///       OT protocol.
   explicit OTLattice(IO *io) {
     this->io = io;
-    initialized = false;
     A.resize(PARAM_N, PARAM_M);
     v[0].resize(PARAM_M, PARAM_L);
     v[1].resize(PARAM_M, PARAM_L);
@@ -364,11 +383,8 @@ public:
   ///       branch
   ///       and sends the ciphertexts to the receiver.
   void send_impl(const block *data0, const block *data1, int length) {
-    if (!initialized) {
-      sender_coinflip(); // should only happen once
-      InitializeCrs();
-      initialized = true;
-    }
+    sender_coinflip(); // should only happen once
+    InitializeCrs();
 
     std::cerr << "Sender CRS:\t"
               << boost::timer::format(cpu_timer.elapsed(), 3,
@@ -428,11 +444,8 @@ public:
   /// @param b b The location of the choice of which secret to receive
   /// @param length The number of OT executions to be performed.
   void recv_impl(block *out_data, const bool *b, int length) {
-    if (!initialized) {
-      receiver_coinflip(); // should only happen once
-      InitializeCrs();
-      initialized = true;
-    }
+    receiver_coinflip(); // should only happen once
+    InitializeCrs();
 
     std::cerr << "Receiver CRS:\t"
               << boost::timer::format(cpu_timer.elapsed(), 3,
