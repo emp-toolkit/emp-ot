@@ -20,7 +20,7 @@
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/random_device.hpp>
 
-constexpr int DEBUG = 0; // 2: print ciphertexsts, 1: minimal debug info
+constexpr int DEBUG = 0; // 2: print ciphertexts, 1: minimal debug info
 
 /** @addtogroup OT
     @{
@@ -29,12 +29,20 @@ constexpr int DEBUG = 0; // 2: print ciphertexsts, 1: minimal debug info
 // Using Enumeration Parameters
 using int_mod_q = uint64_t;
 constexpr uint64_t PARAM_LOGQ = 64; ///< Modulus
-constexpr int PARAM_N = 670;        ///< Number of rows of `A`
-constexpr int PARAM_M = 85888;      ///< Number of columns of `A`
-constexpr double PARAM_ALPHA = 5.626e-12;
-constexpr double PARAM_R = 7.876e7;
-constexpr int PARAM_ALPHABET_SIZE = 2;
-// For the Discretized Gaussian
+constexpr int PARAM_N = 1300;       ///< Number of rows of `A`
+constexpr int PARAM_M = 166528;     ///< Number of columns of `A`
+constexpr double PARAM_ALPHA = 4.332e-16;
+constexpr double PARAM_R = 1.136e8;
+constexpr int PARAM_ALPHABET_SIZE =
+    8192; ///< Should work even if not a power of 2
+// constexpr uint64_t PARAM_LOGQ = 64; ///< Modulus
+// constexpr int PARAM_N = 670;        ///< Number of rows of `A`
+// constexpr int PARAM_M = 85888;      ///< Number of columns of `A`
+// constexpr double PARAM_ALPHA = 5.626e-12;
+// constexpr double PARAM_R = 7.876e7;
+// constexpr int PARAM_ALPHABET_SIZE = 2; ///< Should work even if not a power
+// of 2
+//// For the Discretized Gaussian
 constexpr double LWE_ERROR_STDEV =
     2.0 * ((int_mod_q)1 << (PARAM_LOGQ - 1)) * PARAM_ALPHA /
     boost::math::constants::root_two_pi<double>();
@@ -58,7 +66,7 @@ struct LWEKeypair {
 using Branch = int;
 using Plaintext = VectorModQ;
 struct LWECiphertext {
-  VectorModQ u;
+  MatrixModQ U;
   VectorModQ c;
 };
 
@@ -85,7 +93,6 @@ namespace emp {
 /// @param sample_prg The PRG to sample from
 /// \post Populates the matrix mod Q \p result with uniform values
 ///	     from the given PRG.
-// TODO optimization: can do this directly, without the extra copying
 void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
   int n = result.rows();
   int m = result.cols();
@@ -123,8 +130,8 @@ void DiscretizedGaussianMatrixModQ(MatrixModQ &result, double stdev) {
   }
 }
 
-template <typename IO, int PARAM_L>
-class OTLattice : public OT<OTLattice<IO, PARAM_L>> {
+template <typename IO, int NUM_BITS_PER_SENDER_INPUT>
+class OTLattice : public OT<OTLattice<IO, NUM_BITS_PER_SENDER_INPUT>> {
 public:
   IO *io = nullptr; ///< The `emp::IOChannel<T>` used for communication.
   PRG prg;          ///< `emp::PRG` with a random seed.
@@ -135,6 +142,9 @@ public:
   MatrixModQ
       v[2]; ///< The two vectors that correspond to the two encryption branches.
   boost::timer::cpu_timer cpu_timer;
+
+  int PARAM_L =
+      lround(ceil(NUM_BITS_PER_SENDER_INPUT / log2(PARAM_ALPHABET_SIZE)));
 
   /// @param raw_plaintext A block of plaintext to encode
   /// \post Returns an appropriate (for passing to LWEEnc) object
@@ -199,15 +209,14 @@ public:
   /// \post Generates a key pair messy under branch `(1 - sigma)`
   ///       and decryptable under branch \p sigma.
   LWEKeypair OTKeyGen(Branch sigma) {
-    LWESecretKey S = MatrixModQ();
-    S.resize(PARAM_N, PARAM_L);
+    MatrixModQ S(PARAM_N, 1);
     UniformMatrixModQ(S, prg);
 
     std::cerr << "Keygen after S:\t"
               << boost::timer::format(cpu_timer.elapsed(), 3,
                                       std::string("%w\tseconds\n"));
 
-    MatrixModQ pk(PARAM_M, PARAM_L);
+    MatrixModQ pk(PARAM_M, 1);
     DiscretizedGaussianMatrixModQ(pk, LWE_ERROR_STDEV);
     std::cerr << "Keygen after E:\t"
               << boost::timer::format(cpu_timer.elapsed(), 3,
@@ -235,19 +244,24 @@ public:
   LWECiphertext OTEnc(const LWEPublicKey &pk, Branch sigma,
                       const Plaintext &mu) {
     LWEPublicKey branch_pk{pk + v[sigma]};
-    VectorModQ x(PARAM_M);
-    for (int i = 0; i < PARAM_M; ++i) {
-      x(i) = SampleDiscretizedGaussian(R_STDEV);
-    }
+    MatrixModQ X(PARAM_M, PARAM_L);
+    DiscretizedGaussianMatrixModQ(X, R_STDEV);
 
     std::cerr << "Enc after sample:\t"
               << boost::timer::format(cpu_timer.elapsed(), 3,
                                       std::string("%w\tseconds\n"));
-    VectorModQ u = A * x;
+    MatrixModQ U = A * X;
+    std::cerr << "Enc after U = A*X:\t"
+              << boost::timer::format(cpu_timer.elapsed(), 3,
+                                      std::string("%w\tseconds\n"));
     // c = ((pk+vsigma).T)*x  + floor(mu*q/|Alphabet|)
     // factor of 2 corrects by the fact that we're only multiplying by
     // q/2, not by q, before dividing by the alphabet size
-    VectorModQ c = (branch_pk.transpose() * x);
+    VectorModQ c{X.transpose() * branch_pk};
+
+    std::cerr << "Enc after c = (pk+vsig).T * X:\t"
+              << boost::timer::format(cpu_timer.elapsed(), 3,
+                                      std::string("%w\tseconds\n"));
     for (int i = 0; i < PARAM_L; ++i) {
       c(i) =
           c(i) +
@@ -256,7 +270,7 @@ public:
     std::cerr << "Enc after arithmetic:\t"
               << boost::timer::format(cpu_timer.elapsed(), 3,
                                       std::string("%w\tseconds\n"));
-    return {u, c};
+    return {U, c};
   }
 
   /// @param sk The secret key
@@ -268,7 +282,7 @@ public:
   ///       - 0 if b' is closer to `0 (mod Q)` than to `Q/2`
   ///       - 1 otherwise
   Plaintext OTDec(LWESecretKey &sk, LWECiphertext &ct) {
-    Plaintext muprime = ct.c - (sk.transpose() * ct.u);
+    Plaintext muprime = ct.c - (ct.U.transpose() * sk);
 
     for (int i = 0; i < PARAM_L; ++i) {
       int_mod_q value = muprime(i);
@@ -299,8 +313,8 @@ public:
   explicit OTLattice(IO *io) {
     this->io = io;
     A.resize(PARAM_N, PARAM_M);
-    v[0].resize(PARAM_M, PARAM_L);
-    v[1].resize(PARAM_M, PARAM_L);
+    v[0].resize(PARAM_M, 1);
+    v[1].resize(PARAM_M, 1);
   }
 
   /// \post Initializes `crs_prg` with a random seed shared with the other
@@ -402,19 +416,24 @@ public:
       // Generate new v1, v2 every time
       GenerateCrsVectors();
 
+      std::cout << "Sender values before encoding " << std::hex
+                << data0[ot_iter][0] << data0[ot_iter][1] << ", "
+                << data1[ot_iter][0] << data1[ot_iter][1] << std::dec
+                << std::endl;
       Plaintext secret0 = EncodePlaintext(data0[ot_iter]);
       Plaintext secret1 = EncodePlaintext(data1[ot_iter]);
 
-      if (DEBUG > 1)
-        std::cerr << "(Sender, iteration " << ot_iter
-                  << ") Encoded values x0=" << secret0 << ", x1=" << secret1
-                  << std::endl;
+      if (DEBUG > 0)
+        std::cout << "(Sender, iteration " << ot_iter
+                  << ") Encoded values x0=\n"
+                  << secret0 << ", x1=\n"
+                  << secret1 << std::endl;
 
-      int_mod_q pk_array[PARAM_M * PARAM_L];
-      io->recv_data(pk_array, sizeof(pk_array[0]) * PARAM_M * PARAM_L);
+      int_mod_q pk_array[PARAM_M];
+      io->recv_data(pk_array, sizeof(pk_array[0]) * PARAM_M);
 
-      Eigen::Map<MatrixModQ> pk{pk_array, PARAM_M,
-                                PARAM_L}; // interpret memory as matrix
+      Eigen::Map<VectorModQ> pk{pk_array,
+                                PARAM_M}; // interpret memory as matrix
 
       if (DEBUG)
         std::cerr << "(Sender) Encrypting..." << std::endl;
@@ -422,24 +441,26 @@ public:
       // Encrypt the two inputs
       LWECiphertext ct[2];
       ct[0] = OTEnc(pk, 0, secret0);
-      ct[1] = OTEnc(pk, 1, secret1);
-
-      std::cerr << "Sender after enc:\t"
+      std::cerr << "Sender after enc 0:\t"
                 << boost::timer::format(cpu_timer.elapsed(), 3,
                                         std::string("%w\tseconds\n"));
-
       if (DEBUG == 1)
-        std::cerr << "(Sender) Encrypted. Sending ciphertexts..." << std::endl;
-      if (DEBUG >= 2) {
-        std::cerr << "Sending Ciphertext 0: (" << ct[0].u << ", " << ct[0].c
-                  << ")\n"
-                  << "Sending Ciphertext 1: (" << ct[1].u << ", " << ct[1].c
-                  << ")\n";
-      }
+        std::cerr << "(Sender) Encrypted ciphertext 0. Sending..." << std::endl;
+      io->send_data(ct[0].U.data(), sizeof(int_mod_q) * PARAM_N * PARAM_L);
+      io->send_data(ct[0].c.data(), sizeof(int_mod_q) * PARAM_L);
 
-      for (int i = 0; i <= 1; ++i) {
-        io->send_data(ct[i].u.data(), sizeof(int_mod_q) * ct[i].u.size());
-        io->send_data(ct[i].c.data(), sizeof(int_mod_q) * ct[i].c.size());
+      ct[1] = OTEnc(pk, 1, secret1);
+      std::cerr << "Sender after enc 0:\t"
+                << boost::timer::format(cpu_timer.elapsed(), 3,
+                                        std::string("%w\tseconds\n"));
+      if (DEBUG == 1)
+        std::cerr << "(Sender) Encrypted ciphertext 1. Sending..." << std::endl;
+      io->send_data(ct[1].U.data(), sizeof(int_mod_q) * PARAM_N * PARAM_L);
+      io->send_data(ct[1].c.data(), sizeof(int_mod_q) * PARAM_L);
+
+      if (DEBUG > 1) {
+        std::cout << "Sender: sent ciphertext 0:\n" << ct[0].c << std::endl;
+        std::cout << "Sender: sent ciphertext 1:\n" << ct[1].c << std::endl;
       }
       std::cerr << "Sender, iteration " << ot_iter << ": \t"
                 << boost::timer::format(cpu_timer.elapsed(), 3,
@@ -477,38 +498,51 @@ public:
       // Send the public key
       io->send_data(keypair.pk.data(), sizeof(int_mod_q) * keypair.pk.size());
 
-      if (DEBUG)
+      if (DEBUG > 0)
         std::cerr << "(Receiver) Sent public key; waiting for ctexts"
                   << std::endl;
 
-      int_mod_q ct_array[2 * (PARAM_N + PARAM_L)];
-      io->recv_data(ct_array, sizeof(int_mod_q) * (2 * (PARAM_N + PARAM_L)));
+      int_mod_q ct_array[2 * ((PARAM_N * PARAM_L) + PARAM_L)];
       LWECiphertext ct[2];
 
-      ct[0] =
-          LWECiphertext{Eigen::Map<VectorModQ>{ct_array, PARAM_N, 1},
-                        Eigen::Map<VectorModQ>{ct_array + PARAM_N, PARAM_L, 1}};
+      io->recv_data(ct_array,
+                    sizeof(int_mod_q) * ((PARAM_N * PARAM_L) + PARAM_L));
 
+      ct[0] = LWECiphertext{
+          Eigen::Map<MatrixModQ>{ct_array, PARAM_N, PARAM_L},
+          Eigen::Map<VectorModQ>{ct_array + (PARAM_N * PARAM_L), PARAM_L, 1}};
+
+      io->recv_data(ct_array + (PARAM_N * PARAM_L) + PARAM_L,
+                    sizeof(int_mod_q) * ((PARAM_N * PARAM_L) + PARAM_L));
       ct[1] = LWECiphertext{
-          Eigen::Map<VectorModQ>{ct_array + PARAM_N + PARAM_L, PARAM_N, 1},
-          Eigen::Map<VectorModQ>{ct_array + PARAM_N + (PARAM_N + PARAM_L),
+          Eigen::Map<MatrixModQ>{ct_array + (PARAM_N * PARAM_L) + PARAM_L,
+                                 PARAM_N, PARAM_L},
+          Eigen::Map<VectorModQ>{ct_array + (2 * (PARAM_N * PARAM_L)) + PARAM_L,
                                  PARAM_L, 1}};
 
+      if (DEBUG > 1) {
+        std::cout << "Receiver: Got ciphertext:\n"
+                  << ct[b[ot_iter]].c << std::endl;
+      }
+
       if (DEBUG >= 2) {
-        std::cerr << "Received ciphertext " << b[ot_iter]
-                  << ": (u=" << ct[b[ot_iter]].u << ",\nc=" << ct[b[ot_iter]].c
-                  << ")\n";
+        std::cerr << "Ciphertext " << b[ot_iter] << ": (u=" << ct[b[ot_iter]].U
+                  << ",\nc=" << ct[b[ot_iter]].c << ")\n";
       }
 
       Plaintext p =
           OTDec(keypair.sk,
                 ct[b[ot_iter]]); // choose ciphertext according to selection bit
 
-      if (DEBUG > 1)
-        std::cerr << "(Receiver, iteration " << ot_iter << ") Decrypted branch "
-                  << b[ot_iter] << " to get plaintext " << p << std::endl;
+      if (DEBUG >= 1)
+        std::cout << "(Receiver, iteration " << ot_iter << ") Decrypted branch "
+                  << b[ot_iter] << " to get plaintext: " << std::endl
+                  << p << std::endl;
 
       out_data[ot_iter] = DecodePlaintext(p);
+      std::cout << "Receiver value after decoding " << std::hex
+                << out_data[ot_iter][0] << out_data[ot_iter][1] << std::dec
+                << std::endl;
       std::cerr << "Receiver, iteration " << ot_iter << ": \t"
                 << boost::timer::format(cpu_timer.elapsed(), 3,
                                         std::string("%w\tseconds\n"));

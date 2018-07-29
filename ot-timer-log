@@ -1,0 +1,18 @@
+Receiver CRS:	1.804	seconds
+Keygen after S:	0.003	seconds
+Keygen after E:	0.013	seconds
+Sender CRS:	1.832	seconds
+Keygen after arithmetic:	0.270	seconds
+Receiver after keygen:	0.270	seconds
+Enc after sample:	0.348	seconds
+Enc after U = A*X:	2.320	seconds
+Enc after c = (pk+vsig).T * X:	2.323	seconds
+Enc after arithmetic:	2.323	seconds
+Sender after enc 0:	2.324	seconds
+Enc after sample:	2.423	seconds
+Enc after U = A*X:	4.383	seconds
+Enc after c = (pk+vsig).T * X:	4.386	seconds
+Enc after arithmetic:	4.386	seconds
+Sender after enc 0:	4.386	seconds
+Sender, iteration 0: 	4.386	seconds
+Receiver, iteration 0: 	4.414	seconds
