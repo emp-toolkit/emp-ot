@@ -9,7 +9,7 @@ using namespace std;
 int main(int argc, char** argv) {
   constexpr int N_BITS = 1;
   static_assert(N_BITS <= 128 and N_BITS >= 1, "Bits per OT must be between 1 and 128 (inclusive).");
-	int N_TESTS = 20 / (std::floor(std::pow(N_BITS, 0.5)));  // heuristically reduce # of tests for longer msgs
+	int N_TESTS = 150 / (std::floor(std::pow(N_BITS, 0.5)));  // heuristically reduce # of tests for longer msgs
 	int port, party;
 	parse_party_and_port(argv, 2, &party, &port);
 	NetIO * io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
