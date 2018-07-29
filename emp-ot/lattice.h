@@ -25,10 +25,14 @@ constexpr int DEBUG = 0;  // 2: print ciphertexsts, 1: minimal debug info
     @{
 */
 
+constexpr int BATCH_SIZE = 128; ///< The number of OTs to perform at a time
 // Using Enumeration Parameters
 constexpr long PARAM_Q = 35184372088832; ///< Modulus: 2 ** 45
 constexpr int PARAM_N = 1101; ///< Number of rows of `A`
 constexpr int PARAM_M = 99180; ///< Number of columns of `A`
+//constexpr int PARAM_N = 10; ///< Number of rows of `A`
+//constexpr int PARAM_M = 180; ///< Number of columns of `A`
+
 constexpr double PARAM_ALPHA = 6.8501144e-13;
 constexpr double PARAM_R = 61969606;
 // For the Discretized Gaussian
@@ -45,28 +49,32 @@ using LWESecretKey = MatrixModQ;
 struct LWEKeypair { LWEPublicKey pk; LWESecretKey sk; };
 
 using Branch = int;
-using Plaintext = VectorModQ;
-struct LWECiphertext { VectorModQ u; VectorModQ c; };
+//using Plaintext = VectorModQ;
+// Where the columns correspond to batches of OTs
+// and the entries of a column correspond to the bits in a single OT (currently 1. max 128)
+using Plaintext = MatrixModQ;  // Couldn't this just be a bit matrix?
+
+struct LWECiphertext { MatrixModQ u; VectorModQ c; };
 
 /// Wraps EMP to sample an integer type 
 /// (works for sure with short, int, long) 
 /// providing an interface acceptable to
 /// std::normal_distribution
 class LongAESWrapper {
- public:
-  typedef unsigned long result_type;
-  emp::PRG prg;
-  result_type min() {
-    return std::numeric_limits<result_type>::min();
-  }
-  result_type max() {
-    return std::numeric_limits<result_type>::max();
-  }
-  result_type operator()() {
-    result_type outp = 0;
-    prg.random_data(&outp, sizeof(result_type));
-    return outp;
-  }
+public:
+	typedef unsigned long result_type;
+	emp::PRG prg;
+	result_type min() {
+		return std::numeric_limits<result_type>::min();
+	}
+	result_type max() {
+		return std::numeric_limits<result_type>::max();
+	}
+	result_type operator()() {
+		result_type outp = 0;
+		prg.random_data(&outp, sizeof(result_type));
+		return outp;
+	}
 };
 
 namespace emp {
@@ -90,8 +98,8 @@ void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
 
 LongAESWrapper law;
 boost::function<double()> SampleStandardGaussian = boost::bind(
-    boost::random::normal_distribution<>(0, 1),
-    boost::ref(law));
+							       boost::random::normal_distribution<>(0, 1),
+							       boost::ref(law));
 
 /// @param stdev The standard deviation of the discretized gaussian
 /// \post Returns a sample from the discretized gaussian of standard
@@ -117,7 +125,7 @@ void DiscretizedGaussianMatrixModQ(MatrixModQ &result, double stdev) {
 
 template<typename IO, int PARAM_L>
 class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
- public:
+public:
 	IO* io = nullptr; ///< The `emp::IOChannel<T>` used for communication.
 	PRG prg; ///< `emp::PRG` with a random seed.
 	PRG crs_prg; ///< `emp::PRG` with a seed shared between the sender and receiver for CRS generation.
@@ -133,55 +141,67 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	///       as an array of four length-32 bitstrings, takes the `PARAM_L`
 	///       many least-significant bits, and places them (in increasing significance
 	///       order) in the resulting vector.
-	Plaintext EncodePlaintext(block raw_plaintext) {
-		VectorModQ to_return(PARAM_L);
+	Plaintext EncodePlaintext(const block* raw_plaintext, int batch_size) {
+		Plaintext to_return(PARAM_L, batch_size); // MatrixModQ
 		int a[4];
-		// indices given to _mm_extract_epi32 start from the *right*
-		a[0] = _mm_extract_epi32(raw_plaintext, 3);
-		a[1] = _mm_extract_epi32(raw_plaintext, 2);
-		a[2] = _mm_extract_epi32(raw_plaintext, 1);
-		a[3] = _mm_extract_epi32(raw_plaintext, 0);
+		for (int batch = 0; batch < batch_size; batch++) {
+			// indices given to _mm_extract_epi32 start from the *right*
+			a[0] = _mm_extract_epi32(raw_plaintext[batch], 3);
+			a[1] = _mm_extract_epi32(raw_plaintext[batch], 2);
+			a[2] = _mm_extract_epi32(raw_plaintext[batch], 1);
+			a[3] = _mm_extract_epi32(raw_plaintext[batch], 0);
 
-		// iterate over ints right to left;
-		// within each int, iterate over bits right to left
-		for (int i = 0; i <= PARAM_L / 32; ++i) {
-			for (int j = 0; j < std::min(32, PARAM_L - (32*i)); ++j) {
-				to_return((32*i) + j) = (a[3-i] & (1 << j)) >> j;
+			// iterate over ints right to left;
+			// within each int, iterate over bits right to left
+			for (int i = 0; i <= PARAM_L / 32; ++i) {
+				for (int j = 0; j < std::min(32, PARAM_L - (32*i)); ++j) {
+					to_return((32*i) + j, batch) = (a[3-i] & (1 << j)) >> j;
+				}
 			}
 		}
 		return to_return;
 	}
 	/// @param encoded_plaintext The plaintext to be decoded
 	/// \post Returns the raw plaintext corresponding to \p encoded_plaintext.
-	block DecodePlaintext(const Plaintext& encoded_plaintext) {
-		int a[4] {0};
-		for (int i = 0; i <= PARAM_L / 32; ++i) {
-			for (int j = 0; j < std::min(32, PARAM_L - (32*i)); ++j) {
-				a[3-i] |= encoded_plaintext((32*i) + j) << j;
+	void DecodePlaintext(block* to_return, const Plaintext& encoded_plaintext, int batch_size) {
+
+		for (int batch = 0; batch < batch_size; batch++) {
+			int a[4] {0};
+			for (int i = 0; i <= PARAM_L / 32; ++i) {
+				for (int j = 0; j < std::min(32, PARAM_L - (32*i)); ++j) {
+					a[3-i] |= encoded_plaintext((32*i) + j, batch) << j;
+				}
 			}
+			//std::cout << a[0] << " " << a[1] << " " << a[2] << " " << a[3] << std::endl;
+			to_return[batch] = _mm_set_epi32(a[0], a[1], a[2], a[3]);	
 		}
-		return _mm_set_epi32(a[0], a[1], a[2], a[3]);
 	}
 
 	/// @param sigma The request bit.
 	/// \pre \p sigma is 0 or 1.
 	/// \post Generates a key pair messy under branch `(1 - sigma)`
 	///       and decryptable under branch \p sigma.
-	LWEKeypair OTKeyGen(Branch sigma) {
+	LWEKeypair OTKeyGen(const bool *sigma, int batch_size) {
 		LWESecretKey S = MatrixModQ();
-		S.resize(PARAM_N, PARAM_L);
+		S.resize(PARAM_N, batch_size);
 		UniformMatrixModQ(S, prg);
 
-    std::cerr << "Keygen after S:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+		std::cerr << "Keygen after S:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
-		MatrixModQ pk(PARAM_M, PARAM_L);
+		LWEPublicKey pk(PARAM_M, batch_size);
 		DiscretizedGaussianMatrixModQ(pk, LWE_ERROR_STDEV);
-    std::cerr << "Keygen after E:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+		std::cerr << "Keygen after E:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+		
+		for (int col = 0; col < batch_size; col++) {
+			// std::cout << "PK Col size: " << pk.rows() << std::endl;
+			// std::cout << "V Col size: " << v[sigma[col]].rows() << std::endl;
+			// std::cout << "Which v: " << sigma[col] << std::endl;			
+			// std::cout << "Which col: " << col << std::endl;
+			pk.col(col).noalias() -= v[sigma[col]].col(col);
+		}
+		pk.noalias() += (S.transpose()*A).transpose();
 
-    pk.noalias() -= v[sigma];
-    pk.noalias() += (S.transpose()*A).transpose();
-
-    std::cerr << "Keygen after arithmetic:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+		std::cerr << "Keygen after arithmetic:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
 		if (DEBUG >= 2)
 			std::cout << "(Receiver) Debug: A = " << A << ", pk = " << pk << ", sk = " << S << endl;
@@ -196,18 +216,24 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	/// \pre Sigma is 0 or 1.
 	/// \post Returns the ciphertext corresponding to encrypting \p mu with \p pk
 	///       on branch \p sigma.
-	LWECiphertext OTEnc(const LWEPublicKey &pk, Branch sigma, const Plaintext &mu) {
+	LWECiphertext OTEnc(const LWEPublicKey &pk, Branch sigma, const Plaintext &mu, int batch_size) {
 		LWEPublicKey branch_pk {pk + v[sigma]};
-		VectorModQ x(PARAM_M);
-    for (int i = 0; i < PARAM_M; ++i) {
-      x(i) = SampleDiscretizedGaussian(R_STDEV);
-    }
-		//DiscretizedGaussianMatrixModQ(x, R_STDEV);
+		// REFACTOR THIS (maybe) VVV
+		MatrixModQ X(PARAM_M, batch_size);
+		for (int row = 0; row < PARAM_M; row++) {
+			for (int col = 0; col < batch_size; col++) {
+				X(row, col) = SampleDiscretizedGaussian(R_STDEV);
+			}
+		}
+		
+		std::cerr << "Enc after sample:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+		MatrixModQ u = A*X;
+		VectorModQ c(batch_size);
 
-    std::cerr << "Enc after sample:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
-		VectorModQ u = A*x;
-		VectorModQ c = (branch_pk.transpose() * x) + ((PARAM_Q / 2)*mu);
-    std::cerr << "Enc after arithmetic:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+		for (int b = 0; b < batch_size; b++) {
+			c(b) = branch_pk.col(b).dot(X.col(b)) + ((PARAM_Q / 2)*mu(b));
+		}
+		std::cerr << "Enc after arithmetic:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 		return {u, c};
 	}
 
@@ -218,12 +244,32 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	///       by computing \f$ b' := c - \langle sk, u \rangle \f$ and returning
 	///       - 0 if b' is closer to `0 (mod Q)` than to `Q/2`
 	///       - 1 otherwise
-	Plaintext OTDec(LWESecretKey &sk, LWECiphertext &ct) {
-		Plaintext muprime = ct.c - (sk.transpose() * ct.u);
-		for (int i = 0; i < PARAM_L; ++i) {
-			muprime(i) %= PARAM_Q;
-			muprime(i) = muprime(i) > PARAM_Q/4 && muprime(i) <= 3*PARAM_Q/4;
+	Plaintext OTDec(LWESecretKey &sk, LWECiphertext *ct, const bool *b, int batch_size) {
+		Plaintext muprime(PARAM_L, batch_size); // Each column is an OT of some number of bits (1 right now)
+		//std::cout << "muprime: ";
+		for (int i = 0; i < batch_size; i++) {
+			// std::cout << "c size: " << ct[i].c.size() << std::endl;
+			// std::cout << "sk col size: " << sk.rows() << std::endl;
+			// std::cout << "u col size: " << ct[i].u.rows() << std::endl;
+			// std::cout << "batch: " << i << std::endl;
+			muprime(0, i) = ct[b[i]].c(i) - sk.col(i).dot(ct[b[i]].u.col(i));
+			//muprime = ct.c - (sk.transpose() * ct.u);
+				
+			// Maybe map a function over the elements instead of using a for loop?
+			// See https://stackoverflow.com/questions/33786662/apply-function-to-all-eigen-matrix-element
+			for (int j = 0; j < PARAM_L; ++j) {
+				muprime(j, i) %= PARAM_Q;
+				muprime(j, i) = muprime(j, i) > PARAM_Q/4 && muprime(j, i) <= 3*PARAM_Q/4;
+				//std::cout << muprime(j, i) << " ";
+			}
 		}
+		//std::cout << std::endl;
+
+		// std::cout << "Choices: ";
+		// for (int i = 0; i < batch_size; i++) {
+		// 	std::cout << (int) b[i] << " ";
+		// }
+		// std::cout << std::endl;
 		return muprime;
 	}
 
@@ -247,8 +293,7 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 		this->io = io;
 		initialized = false;
 		A.resize(PARAM_N, PARAM_M);
-		v[0].resize(PARAM_M, PARAM_L);
-		v[1].resize(PARAM_M, PARAM_L);
+
 	}
 
 	/// \post Initializes `crs_prg` with a random seed shared with the other party.
@@ -320,6 +365,14 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 		io->flush(); 
 	}
 
+	int make_batch_count(int length) {
+		int batch_count = length / BATCH_SIZE;
+		if (length % BATCH_SIZE  > 0) {
+			batch_count ++;
+		}
+		return batch_count;
+	}
+	
 	// (Note: When initializing an OT object, the EMP API doesn't explicitly
 	// specify whether it's in the role of sender or receiver; rather,
 	// it will call either `send_impl` or `recv_impl`, according to the
@@ -334,53 +387,68 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 	///       encrypts each input under the received key and the corresponding branch
 	///       and sends the ciphertexts to the receiver.
 	void send_impl(const block* data0, const block* data1, int length) {
-    if (!initialized) {
-      sender_coinflip(); // should only happen once
-      InitializeCrs();
-      initialized = true;
-    }
+		if (!initialized) {
+			sender_coinflip(); // should only happen once
+			InitializeCrs();
+			initialized = true;
+		}
+		
+		
+		std::cerr << "Sender CRS:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
-    std::cerr << "Sender CRS:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+		int batch_count = make_batch_count(length);
+		for (int ot_iter = 0; ot_iter < batch_count; ++ot_iter) {
+			int batch_size = std::min(BATCH_SIZE, length - BATCH_SIZE * ot_iter);
 
-		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-      cpu_timer.start();
+			//std::cout << "Batch: " << ot_iter << std::endl;
+			v[0].resize(PARAM_M, batch_size);
+			v[1].resize(PARAM_M, batch_size);
+			
+			cpu_timer.start();
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
 
-			Plaintext secret0 = EncodePlaintext(data0[ot_iter]);
-			Plaintext secret1 = EncodePlaintext(data1[ot_iter]);
+			Plaintext secret0 = EncodePlaintext(&data0[ot_iter], batch_size);
+			Plaintext secret1 = EncodePlaintext(&data1[ot_iter], batch_size);
 
 			if (DEBUG > 1)
 				std::cerr << "(Sender, iteration " << ot_iter << ") Encoded values x0=" << secret0 << ", x1=" << secret1 << std::endl;
 
-			int_mod_q pk_array[PARAM_M * PARAM_L];
-			io->recv_data(pk_array, sizeof(pk_array[0]) * PARAM_M * PARAM_L);
+			// This might cause problems for large BATCH_SIZE
+			// Too big for the stack I think. FIX ME. ALSO OPTIMIZE
+			int_mod_q *pk_array = new int_mod_q[PARAM_M * batch_size];
+			//std::cout << "pk size expected: " << sizeof(pk_array[0]) * PARAM_M * batch_size << std::endl;
+			io->recv_data(pk_array, sizeof(pk_array[0]) * PARAM_M * batch_size);
 
-			Eigen::Map<MatrixModQ> pk {pk_array, PARAM_M, PARAM_L};  // interpret memory as matrix
+			Eigen::Map<MatrixModQ> pk {pk_array, PARAM_M, batch_size};  // interpret memory as matrix
 
 			if (DEBUG)
 				std::cerr << "(Sender) Encrypting..." << std::endl;
 
 			// Encrypt the two inputs
 			LWECiphertext ct[2];
-			ct[0] = OTEnc(pk, 0, secret0);
-			ct[1] = OTEnc(pk, 1, secret1);
+			ct[0] = OTEnc(pk, 0, secret0, batch_size);
+			ct[1] = OTEnc(pk, 1, secret1, batch_size);
 
-    std::cerr << "Sender after enc:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+			std::cerr << "Sender after enc:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
 			if (DEBUG == 1)
 				std::cerr << "(Sender) Encrypted. Sending ciphertexts..." << std::endl;
 			if (DEBUG >= 2) {
-				std::cerr << "Sending Ciphertext 0: (" << ct[0].u << ", " << ct[0].c << ")\n"
-					  << "Sending Ciphertext 1: (" << ct[1].u << ", " << ct[1].c << ")\n";
+				std::cerr << "Sending Ciphertext 0: (" << ct[0].u << "\nc:" << ct[0].c << ")\n"
+					  << "Sending Ciphertext 1: (" << ct[1].u << "\nc:" << ct[1].c << ")\n";
 			}
+			
 
+			// Send the ciphertexts
 			for (int i = 0; i <= 1; ++i) {
 				io->send_data(ct[i].u.data(), sizeof(int_mod_q) * ct[i].u.size());
 				io->send_data(ct[i].c.data(), sizeof(int_mod_q) * ct[i].c.size());
 			}
-      std::cerr << "Sender, iteration " << ot_iter << ": \t"
-        << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+			std::cerr << "Sender, iteration " << ot_iter << ": \t"
+				  << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+
+			delete [] pk_array;
 		}
 	}
 
@@ -394,54 +462,68 @@ class OTLattice: public OT<OTLattice<IO, PARAM_L>> {
 			initialized = true;
 		}
 
-    std::cerr << "Receiver CRS:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+		std::cerr << "Receiver CRS:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
-    std::cout << "(Lattice OT 1, sender: performing " << length << " OTs): ";
-		for (int ot_iter = 0; ot_iter < length; ++ot_iter) {
-      std::cout << ot_iter + 1 << "... " << std::flush;
-      if (ot_iter == length - 1)
-        std::cout << std::endl;
+		int batch_count = make_batch_count(length);		
 
-      cpu_timer.start();
+		std::cout << "(Lattice OT 1, sender: performing " << length << " OTs): ";
+		//std::cout << "batch_count: " << batch_count << std::endl;
+		for (int ot_iter = 0; ot_iter < batch_count; ++ot_iter) {
+			int batch_size = std::min(BATCH_SIZE, length - BATCH_SIZE * ot_iter);
+			std::cout << ot_iter + 1 << "... " << std::flush;
+			if (ot_iter == length - 1)
+				std::cout << std::endl;
+
+
+			cpu_timer.start();
+
+			v[0].resize(PARAM_M, batch_size);
+			v[1].resize(PARAM_M, batch_size);
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
-			// Generate the public key from the choice bit b
-			LWEKeypair keypair = OTKeyGen(b[ot_iter]);
+			// std::cout << "Batch size: " << batch_size << std::endl;
+			// std::cout << "V0 Col size: " << v[0].rows() << std::endl;
 
-    std::cerr << "Receiver after keygen:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+
+			// std::cout << "Branch pointer offset: " << ot_iter * BATCH_SIZE << std::endl;
+			// std::cout << "Branch value: " << (Branch) b[ot_iter * BATCH_SIZE] << std::endl;
+			// Generate the public key from the choice bit b
+			LWEKeypair keypair = OTKeyGen(&b[ot_iter * BATCH_SIZE], batch_size);
+
+			std::cerr << "Receiver after keygen:\t" << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 
 			// Send the public key
+			// FIX ME: Not sure if this is correct
+			//std::cout << "pk size: " << sizeof(int_mod_q) * keypair.pk.size() << std::endl;
 			io->send_data(keypair.pk.data(), sizeof(int_mod_q) * keypair.pk.size());
 
 			if (DEBUG)
 				std::cerr << "(Receiver) Sent public key; waiting for ctexts" << std::endl;
 
-			int_mod_q ct_array[2*(PARAM_N+PARAM_L)];
-			io->recv_data(ct_array, sizeof(int_mod_q) * (2*(PARAM_N+PARAM_L)));
+			// Receive the ciphertexts
+			int_mod_q ct_array[2][PARAM_N * batch_size + batch_size];
 			LWECiphertext ct[2];
+			for (int i = 0; i <= 1; ++i) {
+				io->recv_data(ct_array[i], sizeof(int_mod_q) * (PARAM_N * batch_size + batch_size));
+				ct[i] = LWECiphertext {
+				                       Eigen::Map<MatrixModQ> {ct_array[i], PARAM_N, batch_size},
+				                       Eigen::Map<VectorModQ> {ct_array[i] + PARAM_N * batch_size, batch_size, 1}
+				};
+				if (DEBUG >= 2) {
+					std::cerr << "Received ciphertext " << i << ": (u=" << ct[i].u << ",\nc=" << ct[i].c << ")\n";
+				}
 
-			ct[0] = LWECiphertext {
-					       Eigen::Map<VectorModQ> {ct_array, PARAM_N, 1},
-					       Eigen::Map<VectorModQ> {ct_array + PARAM_N, PARAM_L, 1}
-			};
-
-			ct[1] = LWECiphertext {
-			                       Eigen::Map<VectorModQ> {ct_array + PARAM_N + PARAM_L, PARAM_N, 1},
-			                       Eigen::Map<VectorModQ> {ct_array + PARAM_N + (PARAM_N + PARAM_L), PARAM_L, 1}
-			};
-
-			if (DEBUG >= 2) {
-				std::cerr << "Received ciphertext " << b[ot_iter] << ": (u=" << ct[b[ot_iter]].u << ",\nc=" << ct[b[ot_iter]].c << ")\n";
 			}
 
-			Plaintext p = OTDec(keypair.sk, ct[b[ot_iter]]);  // choose ciphertext according to selection bit
+
+			Plaintext p = OTDec(keypair.sk, ct, &b[ot_iter * BATCH_SIZE], batch_size);
 
 			if (DEBUG > 1)
 				std::cerr << "(Receiver, iteration " << ot_iter << ") Decrypted branch " << b[ot_iter] << " to get plaintext " << p << std::endl;
 
-			out_data[ot_iter] = DecodePlaintext(p);
-      std::cerr << "Receiver, iteration " << ot_iter << ": \t"
-        << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
+			DecodePlaintext(&out_data[ot_iter * BATCH_SIZE], p, batch_size);
+			std::cerr << "Receiver, iteration " << ot_iter << ": \t"
+				  << boost::timer::format(cpu_timer.elapsed(), 3, std::string("%w\tseconds\n"));
 		}
 	}
 };
