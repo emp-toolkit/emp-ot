@@ -17,7 +17,6 @@
 #include <boost/function.hpp>
 #include <boost/math/constants/constants.hpp>
 #include <boost/math/special_functions/round.hpp>
-#include <boost/multiprecision/cpp_int.hpp>
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/random_device.hpp>
 
@@ -29,9 +28,9 @@ constexpr int DEBUG = 0; // 2: print ciphertexsts, 1: minimal debug info
 
 // Using Enumeration Parameters
 using int_mod_q = uint64_t;
-constexpr long PARAM_LOGQ = 64; ///< Modulus
-constexpr int PARAM_N = 670;    ///< Number of rows of `A`
-constexpr int PARAM_M = 85888;  ///< Number of columns of `A`
+constexpr uint64_t PARAM_LOGQ = 64; ///< Modulus
+constexpr int PARAM_N = 670;        ///< Number of rows of `A`
+constexpr int PARAM_M = 85888;      ///< Number of columns of `A`
 constexpr double PARAM_ALPHA = 5.626e-12;
 constexpr double PARAM_R = 7.876e7;
 constexpr int PARAM_ALPHABET_SIZE = 2;
@@ -248,8 +247,12 @@ public:
     // c = ((pk+vsigma).T)*x  + floor(mu*q/|Alphabet|)
     // factor of 2 corrects by the fact that we're only multiplying by
     // q/2, not by q, before dividing by the alphabet size
-    VectorModQ c = (branch_pk.transpose() * x) +
-                   mu * ((((int_mod_q)1 << (PARAM_LOGQ - 1))));
+    VectorModQ c = (branch_pk.transpose() * x);
+    for (int i = 0; i < PARAM_L; ++i) {
+      c(i) =
+          c(i) +
+          (mu(i) << (PARAM_LOGQ - (uint64_t)ceil(log2(PARAM_ALPHABET_SIZE))));
+    }
     std::cerr << "Enc after arithmetic:\t"
               << boost::timer::format(cpu_timer.elapsed(), 3,
                                       std::string("%w\tseconds\n"));
@@ -266,10 +269,14 @@ public:
   ///       - 1 otherwise
   Plaintext OTDec(LWESecretKey &sk, LWECiphertext &ct) {
     Plaintext muprime = ct.c - (sk.transpose() * ct.u);
-    int_mod_q q_over_four{(int_mod_q)1 << (PARAM_LOGQ - 2)};
+
     for (int i = 0; i < PARAM_L; ++i) {
-      muprime(i) &= MOD_Q_MASK;
-      muprime(i) = muprime(i) > q_over_four && muprime(i) <= 3 * q_over_four;
+      int_mod_q value = muprime(i);
+      value +=
+          ((int_mod_q)1 << (PARAM_LOGQ - 1ul -
+                            (unsigned long)ceil(log2(PARAM_ALPHABET_SIZE))));
+      muprime(i) = value >> (PARAM_LOGQ -
+                             (unsigned long)ceil(log2(PARAM_ALPHABET_SIZE)));
     }
     return muprime;
   }
