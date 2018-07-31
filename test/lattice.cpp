@@ -10,7 +10,7 @@ int main(int argc, char **argv) {
 	constexpr int N_BITS = 128;
 	static_assert(N_BITS <= 128 and N_BITS >= 1,
 	              "Bits per OT must be between 1 and 128 (inclusive).");
-	int N_TESTS = 7;
+	int N_TESTS = 5;
 	//  int N_TESTS =
 	//      5 / (std::floor(std::pow(
 	//              N_BITS, 0.5))); // heuristically reduce # of tests for longer

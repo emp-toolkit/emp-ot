@@ -263,24 +263,16 @@ public:
 
 		MatrixModQ X(PARAM_M, PARAM_L * batch_size);
 		DiscretizedGaussianMatrixModQ(X, R_STDEV);
-		//MatrixModQ XTest = X.block(0, 0, PARAM_M, PARAM_L);
 		std::cerr << "Enc after sample:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 
 		MatrixModQ U = A * X; // Should be N x (L * batch_size)
-		//MatrixModQ UTest = A * XTest;
 		std::cerr << "Enc after U = A*X:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
-
-
-		// if (U.block(0,0,PARAM_N,PARAM_L) != UTest) {
-		// 	std::cout << "U doesn't match" << std::endl;
-		// }
 		
 		MatrixModQ C(PARAM_L, batch_size);
-		//MatrixModQ CTest;
 		for (int batch = 0; batch < batch_size; batch++) {
 			
 			// c = ((pk+vsigma).T)*x  + floor(mu*q/|Alphabet|)
@@ -288,47 +280,19 @@ public:
 			// q/2, not by q, before dividing by the alphabet size
 			MatrixModQ SubX = X.block(0, PARAM_L * batch, PARAM_M, PARAM_L);
 			C.col(batch) = SubX.transpose() * branch_pk.col(batch);
-
-			// if (batch == 0) {
-			// 	CTest = XTest.transpose() * branch_pk.col(0);
-			// 	std::cout << "Checking if CTest == C.col(0) before shifting"<< std::endl;
-			// 	if (CTest != C.col(0)) {
-			// 		std::cout << "They don't match" << std::endl;
-			// 		std::cout << "C.col(0): " << C.col(0) << std::endl;
-			// 		std::cout << "CTest: " << CTest << std::endl;
-			// 	}
-			// }
 			
 			for (int i = 0; i < PARAM_L; ++i) {
 				C(i, batch) = C(i, batch) +
 					(mu(i, batch) << (PARAM_LOGQ - (uint64_t)ceil(log2(PARAM_ALPHABET_SIZE))));
 			}
-			std::cerr << "Enc after arithmetic:\t"
-			          << boost::timer::format(cpu_timer.elapsed(), 3,
-			                                  std::string("%w\tseconds\n"));
+			// std::cerr << "Enc after arithmetic:\t"
+			//           << boost::timer::format(cpu_timer.elapsed(), 3,
+			//                                   std::string("%w\tseconds\n"));
 		}
-		
-		// for (int i = 0; i < PARAM_L; ++i) {
-		// 	CTest(i) = CTest(i) +
-		// 		(mu(i, 0) << (PARAM_LOGQ - (uint64_t)ceil(log2(PARAM_ALPHABET_SIZE))));
-		// }
-
 		
 		std::cerr << "Enc after c = (pk+vsig).T * X:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
-
-		// std::cout << "CTest col size: " << CTest.rows() << std::endl;
-		// std::cout << "C col size: " << C.rows() << std::endl;
-		// std::cout << "Checking if CTest == C.col(0) after shifting"<< std::endl;
-		// if (C.col(0) == CTest) {
-		// 	std::cout << "They match" << std::endl;
-		// }
-		// else {
-		// 	std::cout << "They don't match" << std::endl;
-		// 	std::cout << "C.col(0): " << C.col(0) << std::endl;
-		// 	std::cout << "CTest: " << CTest << std::endl;
-		// }
 
 		return {U, C};
 	}
@@ -619,6 +583,9 @@ public:
 			int_mod_q *ct_array[2] = {ct_array0, ct_array1};
 			LWECiphertext ct[2];
 			//std::cout << "Expect to receive " << ct_array_len << std::endl;
+			// Should this sending and receiving of the ciphertext be refactored?
+			// Ciphertext could be a class that has send and receive methods
+			// that handle all of the communication.
 			for (int i = 0; i <= 1; ++i) {
 				//ct[i].U = new MatrixModQ[batch_size];
 
