@@ -71,11 +71,12 @@ struct LWEKeypair {
 using Branch = int;
 using Plaintext = MatrixModQ;
 
-// This is probably very broken
 struct LWECiphertext {
-	MatrixModQ *U;
+	// batch_size many PARAM_N by PARAM_L matrices concatenated together: N x (batch_size * L)
+	MatrixModQ U;
 	MatrixModQ C;
 };
+
 
 /// Wraps EMP to sample an integer type 
 /// (works for sure with short, int, long) 
@@ -103,10 +104,10 @@ namespace emp {
 void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
 	int n = result.rows();
 	int m = result.cols();
-  sample_prg.random_data(result.data(), m * n * sizeof(result(0, 0)));
-		for (int j = 0; j < m; ++j) {
-    for (int i = 0; i < n; ++i) {
-      result(i, j) &= MOD_Q_MASK;
+	sample_prg.random_data(result.data(), m * n * sizeof(result(0, 0)));
+	for (int j = 0; j < m; ++j) {
+		for (int i = 0; i < n; ++i) {
+			result(i, j) &= MOD_Q_MASK;
 		}
 	}
 }
@@ -259,28 +260,45 @@ public:
 	                    const Plaintext &mu, int batch_size) {
 		
 		LWEPublicKey branch_pk{pk + v[sigma]};
-		MatrixModQ X(PARAM_M, PARAM_L);
-		MatrixModQ *U = new MatrixModQ[batch_size];
+
+		MatrixModQ X(PARAM_M, PARAM_L * batch_size);
+		DiscretizedGaussianMatrixModQ(X, R_STDEV);
+		//MatrixModQ XTest = X.block(0, 0, PARAM_M, PARAM_L);
+		std::cerr << "Enc after sample:\t"
+		          << boost::timer::format(cpu_timer.elapsed(), 3,
+		                                  std::string("%w\tseconds\n"));
+
+		MatrixModQ U = A * X; // Should be N x (L * batch_size)
+		//MatrixModQ UTest = A * XTest;
+		std::cerr << "Enc after U = A*X:\t"
+		          << boost::timer::format(cpu_timer.elapsed(), 3,
+		                                  std::string("%w\tseconds\n"));
+
+
+		// if (U.block(0,0,PARAM_N,PARAM_L) != UTest) {
+		// 	std::cout << "U doesn't match" << std::endl;
+		// }
+		
 		MatrixModQ C(PARAM_L, batch_size);
+		//MatrixModQ CTest;
 		for (int batch = 0; batch < batch_size; batch++) {
-			DiscretizedGaussianMatrixModQ(X, R_STDEV);
 			
-			std::cerr << "Enc after sample:\t"
-			          << boost::timer::format(cpu_timer.elapsed(), 3,
-			                                  std::string("%w\tseconds\n"));
-			U[batch] = A * X;
-			std::cerr << "Enc after U = A*X:\t"
-			          << boost::timer::format(cpu_timer.elapsed(), 3,
-			                                  std::string("%w\tseconds\n"));
 			// c = ((pk+vsigma).T)*x  + floor(mu*q/|Alphabet|)
 			// factor of 2 corrects by the fact that we're only multiplying by
 			// q/2, not by q, before dividing by the alphabet size
-			
-			C.col(batch) = X.transpose() * branch_pk.col(batch);
+			MatrixModQ SubX = X.block(0, PARAM_L * batch, PARAM_M, PARAM_L);
+			C.col(batch) = SubX.transpose() * branch_pk.col(batch);
 
-			std::cerr << "Enc after c = (pk+vsig).T * X:\t"
-			          << boost::timer::format(cpu_timer.elapsed(), 3,
-			                                  std::string("%w\tseconds\n"));
+			// if (batch == 0) {
+			// 	CTest = XTest.transpose() * branch_pk.col(0);
+			// 	std::cout << "Checking if CTest == C.col(0) before shifting"<< std::endl;
+			// 	if (CTest != C.col(0)) {
+			// 		std::cout << "They don't match" << std::endl;
+			// 		std::cout << "C.col(0): " << C.col(0) << std::endl;
+			// 		std::cout << "CTest: " << CTest << std::endl;
+			// 	}
+			// }
+			
 			for (int i = 0; i < PARAM_L; ++i) {
 				C(i, batch) = C(i, batch) +
 					(mu(i, batch) << (PARAM_LOGQ - (uint64_t)ceil(log2(PARAM_ALPHABET_SIZE))));
@@ -289,6 +307,29 @@ public:
 			          << boost::timer::format(cpu_timer.elapsed(), 3,
 			                                  std::string("%w\tseconds\n"));
 		}
+		
+		// for (int i = 0; i < PARAM_L; ++i) {
+		// 	CTest(i) = CTest(i) +
+		// 		(mu(i, 0) << (PARAM_LOGQ - (uint64_t)ceil(log2(PARAM_ALPHABET_SIZE))));
+		// }
+
+		
+		std::cerr << "Enc after c = (pk+vsig).T * X:\t"
+		          << boost::timer::format(cpu_timer.elapsed(), 3,
+		                                  std::string("%w\tseconds\n"));
+
+		// std::cout << "CTest col size: " << CTest.rows() << std::endl;
+		// std::cout << "C col size: " << C.rows() << std::endl;
+		// std::cout << "Checking if CTest == C.col(0) after shifting"<< std::endl;
+		// if (C.col(0) == CTest) {
+		// 	std::cout << "They match" << std::endl;
+		// }
+		// else {
+		// 	std::cout << "They don't match" << std::endl;
+		// 	std::cout << "C.col(0): " << C.col(0) << std::endl;
+		// 	std::cout << "CTest: " << CTest << std::endl;
+		// }
+
 		return {U, C};
 	}
 
@@ -303,7 +344,10 @@ public:
 	Plaintext OTDec(LWESecretKey &sk, LWECiphertext *ct, const bool *b, int batch_size) {
 		Plaintext muprime(PARAM_L, batch_size); // Each column is the result of an OT
 		for (int batch = 0; batch < batch_size; batch++) {
-			muprime.col(batch) = ct[b[batch]].C.col(batch) - (ct[b[batch]].U[batch].transpose() * sk.col(batch));
+			MatrixModQ SubU = ct[b[batch]].U.block(0, batch * PARAM_L, PARAM_N, PARAM_L);
+			//std::cout << "Ut dims: " << SubU.cols() << " x " << SubU.rows() << std::endl;
+			//std::cout << "U: " << SubU << std::endl;
+			muprime.col(batch) = ct[b[batch]].C.col(batch) - (SubU.transpose() * sk.col(batch));
 
 			for (int i = 0; i < PARAM_L; ++i) {
 				int_mod_q value = muprime(i, batch);
@@ -492,12 +536,13 @@ public:
 				std::cerr << "(Sender) Encrypted ciphertexts. Sending..." << std::endl;
 
 			//std::cout << "Expect to send: " << batch_size * PARAM_N * PARAM_L + batch_size * PARAM_L << std::endl;
+			
+			// std::cout << "U0 send[0,0]: " << ct[0].U(0,0) << std::endl;
+			// std::cout << "C0 recv[0,0]: " << ct[0].C(0,0) << std::endl;
+			// std::cout << "U1 send[0,0]: " << ct[1].U(0,0) << std::endl;
+			// std::cout << "C1 recv[0,0]: " << ct[1].C(0,0) << std::endl;
 			for (int i = 0; i <= 1; ++i) {
-				for (int batch_index = 0; batch_index < batch_size; batch_index++) {
-					//std::cout << "U size " << ct[i].U[batch_index].size() << std::endl;
-					io->send_data(ct[i].U[batch_index].data(),
-					              sizeof(int_mod_q) * PARAM_N * PARAM_L);
-				}
+				io->send_data(ct[i].U.data(), sizeof(int_mod_q) * PARAM_N * PARAM_L * batch_size);
 				io->send_data(ct[i].C.data(), sizeof(int_mod_q) * PARAM_L * batch_size);
 				//std::cout << "Sent all data" << std::endl;
 
@@ -513,8 +558,6 @@ public:
 			                                  std::string("%w\tseconds\n"));
 
 			delete [] pk_array;
-			delete [] ct[0].U;
-			delete [] ct[1].U;
 		}
 	}
 
@@ -568,8 +611,8 @@ public:
 				          << std::endl;
 
 			// Receive the ciphertexts
-			int Udim = PARAM_N * PARAM_L;
-			int ct_array_len = Udim * batch_size + PARAM_L * batch_size;
+			int Udim = PARAM_N * PARAM_L * batch_size;
+			int ct_array_len = Udim + PARAM_L * batch_size;
 
 			int_mod_q *ct_array0 = new int_mod_q[ct_array_len];
 			int_mod_q *ct_array1 = new int_mod_q[ct_array_len];
@@ -577,15 +620,11 @@ public:
 			LWECiphertext ct[2];
 			//std::cout << "Expect to receive " << ct_array_len << std::endl;
 			for (int i = 0; i <= 1; ++i) {
-				ct[i].U = new MatrixModQ[batch_size];
+				//ct[i].U = new MatrixModQ[batch_size];
 
 				io->recv_data(ct_array[i], sizeof(int_mod_q) * ct_array_len);
-				for (int batch_index = 0; batch_index < batch_size; batch_index++) {
-					ct[i].U[batch_index] = Eigen::Map<MatrixModQ>
-						{ct_array[i] + batch_index * Udim, PARAM_N, PARAM_L};
-				}
-
-				ct[i].C = Eigen::Map<MatrixModQ> {ct_array[i] + Udim * batch_size, PARAM_L, batch_size};
+				ct[i].U = Eigen::Map<MatrixModQ> {ct_array[i], PARAM_N, PARAM_L * batch_size};
+				ct[i].C = Eigen::Map<MatrixModQ> {ct_array[i] + Udim, PARAM_L, batch_size};
 			
 				if (DEBUG > 1) {
 				                std::cout << "Receiver: Got ciphertext:\n"
@@ -598,6 +637,10 @@ public:
 				}
 			}
 
+			// std::cout << "U0 recv[0,0]: " << ct[0].U(0,0) << std::endl;
+			// std::cout << "C0 recv[0,0]: " << ct[0].C(0,0) << std::endl;
+			// std::cout << "U1 recv[0,0]: " << ct[1].U(0,0) << std::endl;
+			// std::cout << "C1 recv[0,0]: " << ct[1].C(0,0) << std::endl;
 			Plaintext p = OTDec(keypair.sk, ct, &b[ot_iter * BATCH_SIZE], batch_size);
 			if (DEBUG >= 1) 
 				std::cout << "(Receiver, iteration " << ot_iter << ") Decrypted branch "
@@ -613,8 +656,6 @@ public:
 			          << boost::timer::format(cpu_timer.elapsed(), 3,
 			                                  std::string("%w\tseconds\n"));
 
-			delete [] ct[0].U;
-			delete [] ct[1].U;
 		}
 	}
 };
