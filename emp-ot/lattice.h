@@ -25,7 +25,7 @@ constexpr int DEBUG = 0; // 2: print ciphertexts, 1: minimal debug info
     @{
 */
 
-constexpr int BATCH_SIZE = 20; ///< The number of OTs to perform at a time.
+constexpr int BATCH_SIZE = 32; ///< The number of OTs to perform at a time.
 // Using Enumeration Parameters
 using int_mod_q = uint64_t;
 constexpr uint64_t PARAM_LOGQ = 64; ///< $\log_2(Modulus)$
