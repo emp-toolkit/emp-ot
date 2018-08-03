@@ -26,10 +26,10 @@ constexpr int DEBUG = 0; // 2: print ciphertexts, 1: minimal debug info
     @{
 */
 
-constexpr int BATCH_SIZE = 4; ///< The number of OTs to perform at a time. Change this to 128 or something for speedup
+constexpr int BATCH_SIZE = 4; ///< The number of OTs to perform at a time.
 // Using Enumeration Parameters
 using int_mod_q = uint64_t;
-constexpr uint64_t PARAM_LOGQ = 64; ///< Modulus
+constexpr uint64_t PARAM_LOGQ = 64; ///< $\log_2(Modulus)$
 constexpr int PARAM_N = 1300;       ///< Number of rows of `A`
 constexpr int PARAM_M = 166528;     ///< Number of columns of `A`
 constexpr double PARAM_ALPHA = 4.332e-16;
@@ -55,13 +55,11 @@ constexpr int_mod_q MOD_Q_MASK = PARAM_LOGQ == 8 * sizeof(int_mod_q)
                                      : ((int_mod_q)1 << PARAM_LOGQ) - 1;
 
 using MatrixModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, Eigen::Dynamic>;
-using VectorModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, 1>;
+//using VectorModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, 1>;
 
 
 using LWEPublicKey = MatrixModQ;
 using LWESecretKey = MatrixModQ;
-//typedef MatrixModQ* LWEPublicKey;
-//typedef MatrixModQ* LWESecretKey;
 
 struct LWEKeypair {
   LWEPublicKey pk;
@@ -121,7 +119,7 @@ boost::function<double()> SampleStandardGaussian =
 /// distribution \p stdev centered around zero.
 long SampleDiscretizedGaussian(double stdev) {
 	double e = SampleStandardGaussian() * stdev;
-  return boost::math::lround(e) & MOD_Q_MASK; // = mod q
+	return boost::math::lround(e) & MOD_Q_MASK; // = mod q
 }
 
 /// @param result The matrix that is written to
@@ -143,7 +141,7 @@ class OTLattice : public OT<OTLattice<IO, NUM_BITS_PER_SENDER_INPUT>> {
 public:
 	IO *io = nullptr; ///< The `emp::IOChannel<T>` used for communication.
 	PRG prg; ///< `emp::PRG` with a random seed.
-	PRG crs_prg;      ///< `emp::PRG` with a seed shared between the sender and
+	PRG crs_prg;  ///< `emp::PRG` with a seed shared between the sender and
 	/// receiver for CRS generation.
 	MatrixModQ
 	A; ///< The `PARAM_N` by `PARAM_M` matrix that represents the lattice.
@@ -154,15 +152,17 @@ public:
 	int PARAM_L =
 		lround(ceil(NUM_BITS_PER_SENDER_INPUT / log2(PARAM_ALPHABET_SIZE)));
 
-	/// @param raw_plaintext A block of plaintext to encode
+	/// @param raw_plaintext A pointer to `batch_size` many blocks
+	///        of plaintext to encode
+	/// @param batch_size The number of plaintexts in this batch
 	/// \post Returns an appropriate (for passing to LWEEnc) object
-	///       representing the given plaintext \p raw_plaintext.
-	///       In particular, this implementation interprets the given plaintext
+	///       representing the given plaintexts \p raw_plaintext.
+	///       In particular, this implementation interprets each given plaintext
 	///       `p`
 	///       as an array of four length-32 bitstrings, takes the `PARAM_L`
 	///       many least-significant bits, and places them (in increasing
 	///       significance
-	///       order) in the resulting vector.
+	///       order) in the corresponding column of the resulting matrix.
 	Plaintext EncodePlaintext(const block* raw_plaintext, int batch_size) {
 		Plaintext res(PARAM_L, batch_size);
 		for (int batch = 0; batch < batch_size; batch++) {
@@ -173,7 +173,7 @@ public:
 
 			// # of encoded-message slots required to hold *half*
 			// of a 128-bit message
-			int lhalf = (int)(1 + (64 / log2(PARAM_ALPHABET_SIZE)));
+			int lhalf = (int)(ceil(64 / log2(PARAM_ALPHABET_SIZE)));
 
 			int n_encoded = 0;
 			for (int half = 0; half <= 1; ++half) {
@@ -194,8 +194,12 @@ public:
 		return res;
 	}
 
-	/// @param encoded_plaintext The plaintext to be decoded
-	/// \post Returns the raw plaintext corresponding to \p encoded_plaintext.
+	/// @param to_return A pointer to the blocks that the plaintext will be written to
+	/// @param encoded_plaintext The plaintexts to be decoded
+	/// \pre  The number of columns in \p encoded_plaintext equals the number of
+	///       blocks pointed to by \p to_return.
+	/// \post For each encoded plaintext, writes the raw plaintext corresponding to it
+	///       in the corresponding block in \p to_return
 	void DecodePlaintext(block* to_return, const Plaintext& encoded_plaintext, int batch_size) {
 		for (int batch = 0; batch < batch_size; batch++) {
 			to_return[batch] = _mm_set_epi32(0, 0, 0, 0);
@@ -213,10 +217,11 @@ public:
 		}
 	}
 
-	/// @param sigma The request bit.
-	/// \pre \p sigma is 0 or 1.
-	/// \post Generates a key pair messy under branch `(1 - sigma)`
-	///       and decryptable under branch \p sigma.
+	/// @param sigma points to an array of \p batch_size many request bits,
+	///        one for each OT in the batch.
+	/// \pre The length of \p sigma is \p batch_size.
+	/// \post For each bit `b` in \p sigma, generates a key pair messy
+	///       under branch `(1 - b)` and decryptable under branch `b`.
 	LWEKeypair OTKeyGen(const bool *sigma, int batch_size) {
 		LWESecretKey S(PARAM_N, batch_size);
 		UniformMatrixModQ(S, prg);
@@ -250,25 +255,26 @@ public:
 		return {pk, S};
 	}
 
-	/// @param pk The public key used for encryption
+	/// @param pk The matrix of public keys used for encryption
 	/// @param sigma The branch to encrypt on
-	/// @param mu The plaintext to encrypt
+	/// @param mu The matrix of plaintexts to encrypt
+	/// @param batch_size The number of OTs that are in the batch.
 	/// \pre Sigma is 0 or 1.
-	/// \post Returns the ciphertext corresponding to encrypting \p mu with \p pk
-	///       on branch \p sigma.
+	/// \post Returns the ciphertexts corresponding to encrypting each \p mu with
+	///       corresponding \p pk on branch \p sigma.
 	LWECiphertext OTEnc(const LWEPublicKey &pk, Branch sigma,
 	                    const Plaintext &mu, int batch_size) {
 		
 		LWEPublicKey branch_pk{pk + v[sigma]};
 
-		MatrixModQ X(PARAM_M, PARAM_L * batch_size);
-		DiscretizedGaussianMatrixModQ(X, R_STDEV);
+		MatrixModQ E(PARAM_M, PARAM_L * batch_size);
+		DiscretizedGaussianMatrixModQ(E, R_STDEV);
 		std::cerr << "Enc after sample:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 
-		MatrixModQ U = A * X; // Should be N x (L * batch_size)
-		std::cerr << "Enc after U = A*X:\t"
+		MatrixModQ U = A * E; // Should be N x (L * batch_size)
+		std::cerr << "Enc after U = A*E:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 		
@@ -278,8 +284,8 @@ public:
 			// c = ((pk+vsigma).T)*x  + floor(mu*q/|Alphabet|)
 			// factor of 2 corrects by the fact that we're only multiplying by
 			// q/2, not by q, before dividing by the alphabet size
-			MatrixModQ SubX = X.block(0, PARAM_L * batch, PARAM_M, PARAM_L);
-			C.col(batch) = SubX.transpose() * branch_pk.col(batch);
+			MatrixModQ SubE = E.block(0, PARAM_L * batch, PARAM_M, PARAM_L);
+			C.col(batch) = SubE.transpose() * branch_pk.col(batch);
 			
 			for (int i = 0; i < PARAM_L; ++i) {
 				C(i, batch) = C(i, batch) +
@@ -290,21 +296,21 @@ public:
 			//                                   std::string("%w\tseconds\n"));
 		}
 		
-		std::cerr << "Enc after c = (pk+vsig).T * X:\t"
+		std::cerr << "Enc after c = (pk+vsig).T * E:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 
 		return {U, C};
 	}
 
-	/// @param sk The secret key
-	/// @param ct The ciphertext
-	/// \pre \p sk is of length `n`, \p ct is of the form `(u, c)` of length `(n,
-	/// 1)`
-	/// \post Decrypts the ciphertext \p ct using the secret key \p sk
-	///       by computing \f$ b' := c - \langle sk, u \rangle \f$ and returning
-	///       - 0 if b' is closer to `0 (mod Q)` than to `Q/2`
-	///       - 1 otherwise
+	/// @param sk The matrix of secret keys
+	/// @param ct A pointer to ciphertexts
+	/// \pre \p sk has `batch_size` many columns, \p ct has batch_size many ciphertexts
+	///      \p b is of length batch_size
+	/// \post Decrypts each ciphertext in \p ct  using the corresponding secret key SK in \p sk
+	///       by computing \f$ b' := c - \langle SK, u \rangle \f$ and
+	///       determining which partition of the modspace the result falls into.
+	///       see the implementation document for more details.
 	Plaintext OTDec(LWESecretKey &sk, LWECiphertext *ct, const bool *b, int batch_size) {
 		Plaintext muprime(PARAM_L, batch_size); // Each column is the result of an OT
 		for (int batch = 0; batch < batch_size; batch++) {
@@ -372,7 +378,7 @@ public:
 			block seed = xorBlocks(rand_sender, rand_receiver);
 			crs_prg.reseed(&seed);
 		} else {
-			error("Coinflip Failed\n");
+			error("Coinflip Failed");
 		}
 	}
 
@@ -400,11 +406,11 @@ public:
 		Hash::hash_once(computed_sender_dgst, &rand_sender, sizeof(block));
 		if (std::strncmp(received_sender_dgst, computed_sender_dgst,
 		                 Hash::DIGEST_SIZE) != 0) {
-			// Then the strings are not equal and the sender is not following the
-			// protocol.
+			// Then the strings are not equal
+			// and the sender is not following the protocol.
 			bool success = false;
 			io->send_data(&success, sizeof(bool));
-			error("Coinflip Failed\n");
+			error("Coinflip Failed");
 		} else {
 			bool success = true;
 			io->send_data(&success, sizeof(bool));
@@ -436,8 +442,8 @@ public:
 	/// \pre `data0[i]` and `data1[i]` are the sender's two inputs
 	///       for the `i`th OT transmission.
 	/// \post Waits for a public key `pk` from the receiver;
-  ///       encrypts each input under the received key and the corresponding
-  ///       branch
+	///       encrypts each input under the received key and the corresponding
+	///       branch
 	///       and sends the ciphertexts to the receiver.
 	void send_impl(const block *data0, const block *data1, int length) {
 		sender_coinflip(); // should only happen once
@@ -451,19 +457,12 @@ public:
 		for (int ot_iter = 0; ot_iter < batch_count; ++ot_iter) {
 			int batch_size = std::min(BATCH_SIZE, length - BATCH_SIZE * ot_iter);
 
-			//std::cout << "Batch: " << ot_iter << std::endl;
 			v[0].resize(PARAM_M, batch_size);
 			v[1].resize(PARAM_M, batch_size);
 			
 			cpu_timer.start();
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
-
-			// Fix me:
-			// std::cout << "Sender values before encoding " << std::hex
-			//           << data0[ot_iter][0] << data0[ot_iter][1] << ", "
-			//           << data1[ot_iter][0] << data1[ot_iter][1] << std::dec
-			//           << std::endl;
 
 			Plaintext secret0 = EncodePlaintext(&data0[ot_iter * BATCH_SIZE], batch_size);
 			Plaintext secret1 = EncodePlaintext(&data1[ot_iter * BATCH_SIZE], batch_size);
@@ -474,11 +473,8 @@ public:
 				          << secret0 << ", x1=\n"
 				          << secret1 << std::endl;
 
-			// This might cause problems for large BATCH_SIZE
-			// Too big for the stack I think. FIX ME. ALSO OPTIMIZE
 			int_mod_q *pk_array = new int_mod_q[PARAM_M * batch_size];
 
-			//std::cout << "Expected pk size: " << PARAM_M * batch_size << std::endl;
 			io->recv_data(pk_array, sizeof(int_mod_q) * PARAM_M * batch_size);
 			
 			Eigen::Map<MatrixModQ> pk{pk_array,
@@ -499,16 +495,9 @@ public:
 			if (DEBUG == 1)
 				std::cerr << "(Sender) Encrypted ciphertexts. Sending..." << std::endl;
 
-			//std::cout << "Expect to send: " << batch_size * PARAM_N * PARAM_L + batch_size * PARAM_L << std::endl;
-			
-			// std::cout << "U0 send[0,0]: " << ct[0].U(0,0) << std::endl;
-			// std::cout << "C0 recv[0,0]: " << ct[0].C(0,0) << std::endl;
-			// std::cout << "U1 send[0,0]: " << ct[1].U(0,0) << std::endl;
-			// std::cout << "C1 recv[0,0]: " << ct[1].C(0,0) << std::endl;
 			for (int i = 0; i <= 1; ++i) {
 				io->send_data(ct[i].U.data(), sizeof(int_mod_q) * PARAM_N * PARAM_L * batch_size);
 				io->send_data(ct[i].C.data(), sizeof(int_mod_q) * PARAM_L * batch_size);
-				//std::cout << "Sent all data" << std::endl;
 
 			}
 			
@@ -552,12 +541,6 @@ public:
 			v[1].resize(PARAM_M, batch_size);
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
-			// std::cout << "Batch size: " << batch_size << std::endl;
-			// std::cout << "V0 Col size: " << v[0].rows() << std::endl;
-
-
-			// std::cout << "Branch pointer offset: " << ot_iter * BATCH_SIZE << std::endl;
-			// std::cout << "Branch value: " << (Branch) b[ot_iter * BATCH_SIZE] << std::endl;
 			// Generate the public key from the choice bit b
 			LWEKeypair keypair = OTKeyGen(&b[ot_iter * BATCH_SIZE], batch_size);
 
@@ -582,10 +565,7 @@ public:
 			int_mod_q *ct_array1 = new int_mod_q[ct_array_len];
 			int_mod_q *ct_array[2] = {ct_array0, ct_array1};
 			LWECiphertext ct[2];
-			//std::cout << "Expect to receive " << ct_array_len << std::endl;
-			// Should this sending and receiving of the ciphertext be refactored?
-			// Ciphertext could be a class that has send and receive methods
-			// that handle all of the communication.
+
 			for (int i = 0; i <= 1; ++i) {
 				//ct[i].U = new MatrixModQ[batch_size];
 
@@ -604,10 +584,6 @@ public:
 				}
 			}
 
-			// std::cout << "U0 recv[0,0]: " << ct[0].U(0,0) << std::endl;
-			// std::cout << "C0 recv[0,0]: " << ct[0].C(0,0) << std::endl;
-			// std::cout << "U1 recv[0,0]: " << ct[1].U(0,0) << std::endl;
-			// std::cout << "C1 recv[0,0]: " << ct[1].C(0,0) << std::endl;
 			Plaintext p = OTDec(keypair.sk, ct, &b[ot_iter * BATCH_SIZE], batch_size);
 			if (DEBUG >= 1) 
 				std::cout << "(Receiver, iteration " << ot_iter << ") Decrypted branch "
@@ -615,9 +591,6 @@ public:
 				          << p << std::endl;
 
 			DecodePlaintext(&out_data[ot_iter * BATCH_SIZE], p, batch_size);
-			// std::cout << "Receiver value after decoding " << std::hex
-			//           << out_data[ot_iter][0] << out_data[ot_iter][1] << std::dec
-			//           << std::endl;
 
 			std::cerr << "Receiver, iteration " << ot_iter << ": \t"
 			          << boost::timer::format(cpu_timer.elapsed(), 3,
