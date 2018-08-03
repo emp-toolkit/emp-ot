@@ -36,3 +36,6 @@ install_manifest.txt
 
 # Emacs
 *~
+
+# CMake generated .h files
+emp-ot/latticeInclude.h

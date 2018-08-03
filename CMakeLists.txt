@@ -10,7 +10,8 @@ include(${CMAKE_FOLDER}/cmake/threading.cmake)
 
 find_package(emp-tool REQUIRED)
 find_package(Boost 1.58 REQUIRED random timer)
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+#find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(Eigen3 3.3 NO_MODULE)
 include_directories(${EMP-TOOL_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${Boost_INCLUDE_DIRS})
 
 # Installation
@@ -26,9 +27,25 @@ add_test(shot)
 add_test(mot)
 add_test(deltaot)
 add_test(ideal)
-add_test(lattice)
-target_link_libraries(lattice Eigen3::Eigen ${Boost_LIBRARIES})
-if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  target_compile_options(lattice PUBLIC -fext-numeric-literals)
-endif()
-SET_TARGET_PROPERTIES(lattice PROPERTIES COMPILE_DEFINITIONS "EMP_USE_RANDOM_DEVICE")
+
+
+
+
+if (EIGEN3_FOUND)
+  message(STATUS "Found Eigen3 -> Lattice OT will be available")
+  set(INCLUDE_LATTICE_OT ON)
+  add_test(lattice)
+  target_link_libraries(lattice Eigen3::Eigen)
+
+  if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(lattice PUBLIC -fext-numeric-literals)
+  endif()
+  
+  SET_TARGET_PROPERTIES(lattice PROPERTIES COMPILE_DEFINITIONS "EMP_USE_RANDOM_DEVICE")
+else(EIGEN3_FOUND)
+  message(STATUS "Did not find Eigen3 -> Lattice OT will not be available")
+  set(INCLUDE_LATTICE_OT OFF)
+
+endif(EIGEN3_FOUND)
+
+configure_file(${CMAKE_SOURCE_DIR}/emp-ot/latticeInclude.h.in ${CMAKE_SOURCE_DIR}/emp-ot/latticeInclude.h @ONLY)

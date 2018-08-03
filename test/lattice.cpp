@@ -1,4 +1,5 @@
 #include "test/test.h"
+#include "emp-ot/lattice.h"
 #include <cmath>
 #include <iostream>
 #ifndef EMP_USE_RANDOM_DEVICE
