@@ -35,13 +35,6 @@ constexpr double PARAM_ALPHA = 4.332e-16;
 constexpr double PARAM_R = 1.136e8;
 constexpr int PARAM_ALPHABET_SIZE =
     8192; ///< Should work even if not a power of 2
-// constexpr uint64_t PARAM_LOGQ = 64; ///< Modulus
-// constexpr int PARAM_N = 670;        ///< Number of rows of `A`
-// constexpr int PARAM_M = 85888;      ///< Number of columns of `A`
-// constexpr double PARAM_ALPHA = 5.626e-12;
-// constexpr double PARAM_R = 7.876e7;
-// constexpr int PARAM_ALPHABET_SIZE = 2; ///< Should work even if not a power
-// of 2
 //// For the Discretized Gaussian
 constexpr double LWE_ERROR_STDEV =
     2.0 * ((int_mod_q)1 << (PARAM_LOGQ - 1)) * PARAM_ALPHA /
@@ -54,8 +47,6 @@ constexpr int_mod_q MOD_Q_MASK = PARAM_LOGQ == 8 * sizeof(int_mod_q)
                                      : ((int_mod_q)1 << PARAM_LOGQ) - 1;
 
 using MatrixModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, Eigen::Dynamic>;
-//using VectorModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, 1>;
-
 
 using LWEPublicKey = MatrixModQ;
 using LWESecretKey = MatrixModQ;
@@ -532,7 +523,6 @@ public:
 				          << p << std::endl;
 
 			DecodePlaintext(&out_data[ot_iter * BATCH_SIZE], p, batch_size);
-
 		}
 	}
 };
