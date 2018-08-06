@@ -9,8 +9,8 @@ include(${CMAKE_FOLDER}/cmake/source_of_randomness.cmake)
 include(${CMAKE_FOLDER}/cmake/threading.cmake)
 
 find_package(emp-tool REQUIRED)
-find_package(Boost 1.58 REQUIRED random timer)
 #find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(Boost 1.58 COMPONENTS random)
 find_package(Eigen3 3.3 NO_MODULE)
 include_directories(${EMP-TOOL_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${Boost_INCLUDE_DIRS})
 
@@ -29,23 +29,40 @@ add_test(deltaot)
 add_test(ideal)
 
 
+#message(STATUS eigen found: ${EIGEN3_FOUND})
+#message(STATUS boost found: ${BOOST_RANDOM_LIBRARY})
 
+# get_cmake_property(_variableNames VARIABLES)
+# list (SORT _variableNames)
+# foreach (_variableName ${_variableNames})
+#     message(STATUS "${_variableName}=${${_variableName}}")
+# endforeach()
 
-if (EIGEN3_FOUND)
-  message(STATUS "Found Eigen3 -> Lattice OT will be available")
+if (Boost_RANDOM_FOUND AND EIGEN3_FOUND)
+  message(STATUS "Found Eigen3 and boost random -> Lattice OT will be available")
   set(INCLUDE_LATTICE_OT ON)
   add_test(lattice)
   target_link_libraries(lattice Eigen3::Eigen)
 
   if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(lattice PUBLIC -fext-numeric-literals)
-  endif()
+  endif (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   
   SET_TARGET_PROPERTIES(lattice PROPERTIES COMPILE_DEFINITIONS "EMP_USE_RANDOM_DEVICE")
-else(EIGEN3_FOUND)
-  message(STATUS "Did not find Eigen3 -> Lattice OT will not be available")
+else(Boost_RANDOM_FOUND AND EIGEN3_FOUND)
+
+  message(STATUS "Not all dependencies met for lattice OT. Lattice OT will not be available. This does not affect other OT implementations. See install_packages_lattice.sh.")
+  if (NOT Boost_RANDOM_FOUND)
+    message(STATUS "Missing Boost random")
+  endif (NOT Boost_RANDOM_FOUND)
+
+  if (NOT EIGEN3_FOUND)
+    message(STATUS "Missing Eigen3")
+  endif (NOT EIGEN3_FOUND)
+  
+
   set(INCLUDE_LATTICE_OT OFF)
 
-endif(EIGEN3_FOUND)
+endif(Boost_RANDOM_FOUND AND EIGEN3_FOUND)
 
 configure_file(${CMAKE_SOURCE_DIR}/emp-ot/latticeInclude.h.in ${CMAKE_SOURCE_DIR}/emp-ot/latticeInclude.h @ONLY)

@@ -2,8 +2,6 @@
 #define OT_LATTICE_H__
 #include <Eigen/Dense>
 
-#include <string> // std::string, for timer formatting
-
 #include <algorithm>  // std::min
 #include <cmath>  // std::log2, std::floor, std::fmod
 
