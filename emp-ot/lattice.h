@@ -26,16 +26,16 @@ constexpr int DEBUG = 0; // 2: print ciphertexts, 1: minimal debug info
     @{
 */
 
-constexpr int BATCH_SIZE = 4; ///< The number of OTs to perform at a time.
+constexpr int BATCH_SIZE = 32; ///< The number of OTs to perform at a time.
 // Using Enumeration Parameters
 using int_mod_q = uint64_t;
 constexpr uint64_t PARAM_LOGQ = 64; ///< $\log_2(Modulus)$
-constexpr int PARAM_N = 1300;       ///< Number of rows of `A`
-constexpr int PARAM_M = 166528;     ///< Number of columns of `A`
-constexpr double PARAM_ALPHA = 4.332e-16;
-constexpr double PARAM_R = 1.136e8;
+constexpr int PARAM_N = 1000;       ///< Number of rows of `A`
+constexpr int PARAM_M = 128128;     ///< Number of columns of `A`
+constexpr double PARAM_ALPHA = 2.133e-14;
+constexpr double PARAM_R = 8.363e7;
 constexpr int PARAM_ALPHABET_SIZE =
-    8192; ///< Should work even if not a power of 2
+    256; ///< Should work even if not a power of 2
 // constexpr uint64_t PARAM_LOGQ = 64; ///< Modulus
 // constexpr int PARAM_N = 670;        ///< Number of rows of `A`
 // constexpr int PARAM_M = 85888;      ///< Number of columns of `A`
@@ -449,10 +449,12 @@ public:
 		sender_coinflip(); // should only happen once
 		InitializeCrs();
 		
-		std::cerr << "Sender CRS:\t"
+		std::cerr << "Sender A matrix:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 
+		std::cout << "Length: " << length << std::endl;
+		
 		int batch_count = make_batch_count(length);
 		for (int ot_iter = 0; ot_iter < batch_count; ++ot_iter) {
 			int batch_size = std::min(BATCH_SIZE, length - BATCH_SIZE * ot_iter);
@@ -463,6 +465,10 @@ public:
 			cpu_timer.start();
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
+			std::cerr << "Sender v0, v1:\t"
+		          << boost::timer::format(cpu_timer.elapsed(), 3,
+		                                  std::string("%w\tseconds\n"));
+
 
 			Plaintext secret0 = EncodePlaintext(&data0[ot_iter * BATCH_SIZE], batch_size);
 			Plaintext secret1 = EncodePlaintext(&data1[ot_iter * BATCH_SIZE], batch_size);
@@ -521,7 +527,7 @@ public:
 		receiver_coinflip(); // should only happen once
 		InitializeCrs();
 
-		std::cerr << "Receiver CRS:\t"
+		std::cerr << "Receiver A matrix:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 
@@ -534,13 +540,18 @@ public:
 			if (ot_iter == length - 1)
 				std::cout << std::endl;
 
-
+			std::cerr << "Batch size: " << batch_size << std::endl;
 			cpu_timer.start();
 
 			v[0].resize(PARAM_M, batch_size);
 			v[1].resize(PARAM_M, batch_size);
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
+
+			std::cerr << "Receiver v0, v1:\t"
+		          << boost::timer::format(cpu_timer.elapsed(), 3,
+		                                  std::string("%w\tseconds\n"));
+
 			// Generate the public key from the choice bit b
 			LWEKeypair keypair = OTKeyGen(&b[ot_iter * BATCH_SIZE], batch_size);
 
