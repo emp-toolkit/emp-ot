@@ -27,12 +27,12 @@ constexpr int BATCH_SIZE = 32; ///< The number of OTs to perform at a time.
 // Using Enumeration Parameters
 using int_mod_q = uint64_t;
 constexpr uint64_t PARAM_LOGQ = 64; ///< $\log_2(Modulus)$
-constexpr int PARAM_N = 1300;       ///< Number of rows of `A`
-constexpr int PARAM_M = 166528;     ///< Number of columns of `A`
-constexpr double PARAM_ALPHA = 4.332e-16;
-constexpr double PARAM_R = 1.136e8;
+constexpr int PARAM_N = 1000;       ///< Number of rows of `A`
+constexpr int PARAM_M = 128128;     ///< Number of columns of `A`
+constexpr double PARAM_ALPHA = 2.133e-14;
+constexpr double PARAM_R = 8.363e7;
 constexpr int PARAM_ALPHABET_SIZE =
-    8192; ///< Should work even if not a power of 2
+	256; ///< Should work even if not a power of 2
 //// For the Discretized Gaussian
 constexpr double LWE_ERROR_STDEV =
     2.0 * ((int_mod_q)1 << (PARAM_LOGQ - 1)) * PARAM_ALPHA /
