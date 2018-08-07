@@ -14,10 +14,12 @@ if (LATTICEOT)
   message(STATUS "Building with support for lattice OT")
   find_package(Eigen3 3.3 REQUIRED NO_MODULE)
   find_package(Boost 1.58 REQUIRED COMPONENTS random)
+  include_directories(${EMP-TOOL_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${Boost_INCLUDE_DIRS})
+else (LATTICEOT)
+  include_directories(${EMP-TOOL_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
 endif (LATTICEOT)
-  
 
-include_directories(${EMP-TOOL_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR} ${Boost_INCLUDE_DIRS})
+
 
 # Installation
 install(FILES cmake/emp-ot-config.cmake DESTINATION cmake/)
