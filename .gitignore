@@ -39,3 +39,6 @@ install_manifest.txt
 
 # CMake generated .h files
 emp-ot/latticeInclude.h
+
+# Eigen source
+eigen/
