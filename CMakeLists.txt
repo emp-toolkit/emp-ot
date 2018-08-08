@@ -27,7 +27,12 @@ install(DIRECTORY emp-ot DESTINATION include/)
 
 # Test cases
 macro (add_test _name)
-	add_test_with_lib(${_name} ${EMP-TOOL_LIBRARIES})
+  add_test_with_lib(${_name} ${EMP-TOOL_LIBRARIES})
+
+  if (LATTICEOT AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(${_name} PUBLIC -fext-numeric-literals)
+  endif (LATTICEOT AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+
 endmacro()
 
 add_test(shot)
@@ -39,11 +44,6 @@ if (LATTICEOT)
   set(INCLUDE_LATTICE_OT ON)
   add_test(lattice)
   target_link_libraries(lattice Eigen3::Eigen)
-
-  if (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(lattice PUBLIC -fext-numeric-literals)
-  endif (NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  
   SET_TARGET_PROPERTIES(lattice PROPERTIES COMPILE_DEFINITIONS "EMP_USE_RANDOM_DEVICE")
 else(LATTICEOT)
   set(INCLUDE_LATTICE_OT OFF)
