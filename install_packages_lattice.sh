@@ -19,5 +19,13 @@ else
 		sudo apt-get install -y libboost1.58-dev
 		sudo apt-get install -y libboost-{random,timer,system}-dev
 	fi
-	sudo apt-get install -y libeigen3-dev || echo "libeigen3-dev not found in apt. You may need to add Universe to /etc/apt/sources.list and rerun this script."
+	mkdir eigen &&
+	    cd eigen &&
+	    curl -L http://bitbucket.org/eigen/eigen/get/3.3.5.tar.bz2 | tar xj --strip-components 1 &&
+	    mkdir build &&
+	    cd build &&
+	    cmake .. &&
+	    make -j &&
+	    sudo make install
+	
 fi
