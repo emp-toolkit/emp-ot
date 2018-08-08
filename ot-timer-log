@@ -1,40 +1,122 @@
-Receiver A matrix:	1.467	seconds
-Batch size: 3
-Receiver v0, v1:	0.002	seconds
-Keygen after S:	0.002	seconds
-Sender A matrix:	1.471	seconds
-Sender v0, v1:	0.001	seconds
-Keygen after E:	0.090	seconds
-Keygen after arithmetic:	0.638	seconds
-Receiver after keygen:	0.639	seconds
-(Receiver) Sent public key; waiting for ctexts
-(Sender) Encrypting...
-Enc after sample:	1.783	seconds
-Enc after U = A*E:	6.712	seconds
-Enc after c = (pk+vsig).T * E:	6.732	seconds
-Enc after sample:	7.373	seconds
-Enc after U = A*E:	12.287	seconds
-Enc after c = (pk+vsig).T * E:	12.303	seconds
-Sender after enc 0:	12.304	seconds
-(Sender) Encrypted ciphertexts. Sending...
-Sender, iteration 0: 	12.304	seconds
-Sender v0, v1:	0.001	seconds
-Receiver, iteration 0: 	12.310	seconds
-Batch size: 3
-Receiver v0, v1:	0.001	seconds
-Keygen after S:	0.001	seconds
-Keygen after E:	0.087	seconds
-Keygen after arithmetic:	0.637	seconds
-Receiver after keygen:	0.638	seconds
-(Receiver) Sent public key; waiting for ctexts
-(Sender) Encrypting...
-Enc after sample:	1.281	seconds
-Enc after U = A*E:	6.217	seconds
-Enc after c = (pk+vsig).T * E:	6.233	seconds
-Enc after sample:	6.871	seconds
-Enc after U = A*E:	11.807	seconds
-Enc after c = (pk+vsig).T * E:	11.822	seconds
-Sender after enc 0:	11.823	seconds
-(Sender) Encrypted ciphertexts. Sending...
-Sender, iteration 1: 	11.823	seconds
-Receiver, iteration 1: 	11.822	seconds
+Sender A matrix:	0.356	seconds
+Receiver A matrix:	0.358	seconds
+Sender v0, v1:	0.011	seconds
+Receiver v0, v1:	0.012	seconds
+Keygen after S:	0.012	seconds
+Keygen after E:	0.117	seconds
+Keygen after arithmetic:	0.409	seconds
+Receiver after keygen:	0.411	seconds
+Enc after sample:	0.527	seconds
+Enc after U = A*E:	0.947	seconds
+Enc after c = (pk+v_sigma).T * E:	0.949	seconds
+Enc after sample:	1.004	seconds
+Enc after U = A*E:	1.424	seconds
+Enc after c = (pk+v_sigma).T * E:	1.426	seconds
+Sender after enc 0:	1.426	seconds
+Sender, iteration 0: 	1.426	seconds
+Sender v0, v1:	0.009	seconds
+Receiver, iteration 0: 	1.435	seconds
+Receiver v0, v1:	0.010	seconds
+Keygen after S:	0.010	seconds
+Keygen after E:	0.114	seconds
+Keygen after arithmetic:	0.406	seconds
+Receiver after keygen:	0.407	seconds
+Enc after sample:	0.504	seconds
+Enc after U = A*E:	0.896	seconds
+Enc after c = (pk+v_sigma).T * E:	0.898	seconds
+Enc after sample:	0.950	seconds
+Enc after U = A*E:	1.366	seconds
+Enc after c = (pk+v_sigma).T * E:	1.368	seconds
+Sender after enc 0:	1.368	seconds
+Sender, iteration 1: 	1.368	seconds
+Sender v0, v1:	0.009	seconds
+Receiver, iteration 1: 	1.369	seconds
+Receiver v0, v1:	0.010	seconds
+Keygen after S:	0.010	seconds
+Keygen after E:	0.060	seconds
+Keygen after arithmetic:	0.354	seconds
+Receiver after keygen:	0.355	seconds
+Enc after sample:	0.423	seconds
+Enc after U = A*E:	0.829	seconds
+Enc after c = (pk+v_sigma).T * E:	0.831	seconds
+Enc after sample:	0.883	seconds
+Enc after U = A*E:	1.302	seconds
+Enc after c = (pk+v_sigma).T * E:	1.304	seconds
+Sender after enc 0:	1.304	seconds
+Sender, iteration 2: 	1.304	seconds
+Sender v0, v1:	0.009	seconds
+Receiver, iteration 2: 	1.305	seconds
+Receiver v0, v1:	0.010	seconds
+Keygen after S:	0.010	seconds
+Keygen after E:	0.060	seconds
+Keygen after arithmetic:	0.352	seconds
+Receiver after keygen:	0.353	seconds
+Enc after sample:	0.421	seconds
+Enc after U = A*E:	0.842	seconds
+Enc after c = (pk+v_sigma).T * E:	0.844	seconds
+Enc after sample:	0.895	seconds
+Enc after U = A*E:	1.317	seconds
+Enc after c = (pk+v_sigma).T * E:	1.319	seconds
+Sender after enc 0:	1.319	seconds
+Sender, iteration 3: 	1.319	seconds
+Sender v0, v1:	0.009	seconds
+Receiver, iteration 3: 	1.319	seconds
+Receiver v0, v1:	0.010	seconds
+Keygen after S:	0.010	seconds
+Keygen after E:	0.060	seconds
+Keygen after arithmetic:	0.351	seconds
+Receiver after keygen:	0.352	seconds
+Enc after sample:	0.420	seconds
+Enc after U = A*E:	0.819	seconds
+Enc after c = (pk+v_sigma).T * E:	0.821	seconds
+Enc after sample:	0.873	seconds
+Enc after U = A*E:	1.292	seconds
+Enc after c = (pk+v_sigma).T * E:	1.294	seconds
+Sender after enc 0:	1.294	seconds
+Sender, iteration 4: 	1.294	seconds
+Sender v0, v1:	0.009	seconds
+Receiver, iteration 4: 	1.295	seconds
+Receiver v0, v1:	0.010	seconds
+Keygen after S:	0.010	seconds
+Keygen after E:	0.060	seconds
+Keygen after arithmetic:	0.351	seconds
+Receiver after keygen:	0.351	seconds
+Enc after sample:	0.420	seconds
+Enc after U = A*E:	0.840	seconds
+Enc after c = (pk+v_sigma).T * E:	0.842	seconds
+Enc after sample:	0.894	seconds
+Enc after U = A*E:	1.314	seconds
+Enc after c = (pk+v_sigma).T * E:	1.316	seconds
+Sender after enc 0:	1.316	seconds
+Sender, iteration 5: 	1.317	seconds
+Sender v0, v1:	0.009	seconds
+Receiver, iteration 5: 	1.316	seconds
+Receiver v0, v1:	0.010	seconds
+Keygen after S:	0.010	seconds
+Keygen after E:	0.060	seconds
+Keygen after arithmetic:	0.351	seconds
+Receiver after keygen:	0.352	seconds
+Enc after sample:	0.420	seconds
+Enc after U = A*E:	0.841	seconds
+Enc after c = (pk+v_sigma).T * E:	0.843	seconds
+Enc after sample:	0.894	seconds
+Enc after U = A*E:	1.314	seconds
+Enc after c = (pk+v_sigma).T * E:	1.316	seconds
+Sender after enc 0:	1.316	seconds
+Sender, iteration 6: 	1.316	seconds
+Sender v0, v1:	0.004	seconds
+Receiver, iteration 6: 	1.311	seconds
+Receiver v0, v1:	0.004	seconds
+Keygen after S:	0.004	seconds
+Keygen after E:	0.020	seconds
+Keygen after arithmetic:	0.153	seconds
+Receiver after keygen:	0.153	seconds
+Enc after sample:	0.177	seconds
+Enc after U = A*E:	0.413	seconds
+Enc after c = (pk+v_sigma).T * E:	0.414	seconds
+Enc after sample:	0.429	seconds
+Enc after U = A*E:	0.679	seconds
+Enc after c = (pk+v_sigma).T * E:	0.679	seconds
+Sender after enc 0:	0.679	seconds
+Sender, iteration 7: 	0.680	seconds
+Receiver, iteration 7: 	0.675	seconds

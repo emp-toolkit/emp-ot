@@ -1,6 +1,6 @@
 #ifndef OT_LATTICE_H__
 #define OT_LATTICE_H__
-#include <Eigen/Dense>
+#include <Eigen/Dense>  // for linear algebra routines
 
 #include <boost/timer/timer.hpp>
 #include <string> // std::string, for timer formatting
@@ -20,29 +20,29 @@
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/random_device.hpp>
 
-constexpr int DEBUG = 1; // 2: print ciphertexts, 1: minimal debug info
+constexpr int DEBUG = 0; // 2: print ciphertexts, 1: minimal debug info
 
 /** @addtogroup OT
     @{
 */
 
-constexpr int BATCH_SIZE = 3; ///< The number of OTs to perform at a time.
-// Using Sieve Parameters
+constexpr int BATCH_SIZE = 10; ///< The number of OTs to perform at a time.
 using int_mod_q = uint64_t;
-constexpr uint64_t PARAM_LOGQ = 64; ///< $\log_2(Modulus)$
-constexpr int PARAM_N = 1500;       ///< Number of rows of `A`
-constexpr int PARAM_M = 192128;     ///< Number of columns of `A`
-constexpr double PARAM_ALPHA = 2.606e-15;
-constexpr double PARAM_R = 1.342e8;
-constexpr int PARAM_ALPHABET_SIZE =
-    1024; ///< Should work even if not a power of 2
-// constexpr uint64_t PARAM_LOGQ = 64; ///< Modulus
-// constexpr int PARAM_N = 670;        ///< Number of rows of `A`
-// constexpr int PARAM_M = 85888;      ///< Number of columns of `A`
-// constexpr double PARAM_ALPHA = 5.626e-12;
-// constexpr double PARAM_R = 7.876e7;
-// constexpr int PARAM_ALPHABET_SIZE = 2; ///< Should work even if not a power
-// of 2
+// Parameters for 128-bit OT
+//constexpr uint64_t PARAM_LOGQ = 64; ///< $\log_2(Modulus)$
+//constexpr int PARAM_N = 1000;       ///< Number of rows of `A`
+//constexpr int PARAM_M = 128128;     ///< Number of columns of `A`
+//constexpr double PARAM_ALPHA = 2.133e-14;
+//constexpr double PARAM_R = 8.363e7;
+//constexpr int PARAM_ALPHABET_SIZE =
+//    256;
+// Parameters for single-bit OT
+constexpr uint64_t PARAM_LOGQ = 64; ///< Modulus
+constexpr int PARAM_N = 670;        ///< Number of rows of `A`
+constexpr int PARAM_M = 85888;      ///< Number of columns of `A`
+constexpr double PARAM_ALPHA = 5.626e-12;
+constexpr double PARAM_R = 7.876e7;
+constexpr int PARAM_ALPHABET_SIZE = 2; 
 //// For the Discretized Gaussian
 constexpr double LWE_ERROR_STDEV =
     2.0 * ((int_mod_q)1 << (PARAM_LOGQ - 1)) * PARAM_ALPHA /
@@ -56,7 +56,6 @@ constexpr int_mod_q MOD_Q_MASK = (PARAM_LOGQ == 8 * sizeof(int_mod_q))
 
 using MatrixModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, Eigen::Dynamic>;
 //using VectorModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, 1>;
-
 
 using LWEPublicKey = MatrixModQ;
 using LWESecretKey = MatrixModQ;
@@ -102,12 +101,8 @@ namespace emp {
 void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
 	uint64_t n = result.rows();
 	uint64_t m = result.cols();
-	// if the matrix is small enough, sample it in one shot
-	for (uint64_t i = 0; i < n*m; i += std::min(n*m - i, 20000000ul)) {
-		sample_prg.random_data(result.data() + i, (int)std::min(n*m - i, 20000000ul*sizeof(int_mod_q)));
-	}
 	for (uint64_t j = 0; j < m; ++j) {
-	//	sample_prg.random_data(&result(0, j), n*sizeof(int_mod_q));
+		sample_prg.random_data(&result(0, j), n*sizeof(int_mod_q));
 		for (uint64_t i = 0; i < n; ++i) {
 			result(i, j) &= MOD_Q_MASK;
 		}
@@ -176,7 +171,7 @@ public:
 			plaintext[1] = raw_plaintext[batch][1];
 
 			if (DEBUG > 0)
-				std::cout << std::hex << "Encoding plaintext (b=" << batch << "): " << plaintext[1] << " " << plaintext[0] << std::dec << std::endl; 
+				std::cout << std::hex << "Encoding plaintext (idx within batch=" << batch << "): " << plaintext[1] << " " << plaintext[0] << std::dec << std::endl; 
 
 			int bits_encoded = 0;
 			int bits_per_val = log2(PARAM_ALPHABET_SIZE);
@@ -250,7 +245,7 @@ public:
 			}
 
 			if (DEBUG > 0)
-				std::cout << "Decoded plaintext (b=" << batch << "): " << std::hex << ptext1 << " " << ptext0 << std::dec << std::endl;
+				std::cout << "Decoded plaintext (idx within batch=" << batch << "): " << std::hex << ptext1 << " " << ptext0 << std::dec << std::endl;
 			to_return[batch][0] = ptext0;
 			to_return[batch][1] = ptext1;
 		}
@@ -275,12 +270,12 @@ public:
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 		
-		for (int col = 0; col < batch_size; col++) {
+		for (int batch = 0; batch < batch_size; batch++) {
 			// std::cout << "PK Col size: " << pk.rows() << std::endl;
 			// std::cout << "V Col size: " << v[sigma[col]].rows() << std::endl;
 			// std::cout << "Which v: " << sigma[col] << std::endl;			
 			// std::cout << "Which col: " << col << std::endl;
-			pk.col(col).noalias() -= v[sigma[col]].col(col);
+			pk.col(batch).noalias() -= v[sigma[batch]].col(batch);
 		}
 		pk.noalias() += (S.transpose()*A).transpose();
 
@@ -288,7 +283,7 @@ public:
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 
-		if (DEBUG >= 2)
+		if (DEBUG >= 3)
 			std::cout << "(Receiver) Debug: A = " << A << ", pk = " << pk
 			          << ", sk = " << S << endl;
 		return {pk, S};
@@ -319,23 +314,17 @@ public:
 		
 		MatrixModQ C(PARAM_L, batch_size);
 		for (int batch = 0; batch < batch_size; batch++) {
-			
 			// c = ((pk+vsigma).T)*x  + floor(mu*q/|Alphabet|)
-			// factor of 2 corrects by the fact that we're only multiplying by
-			// q/2, not by q, before dividing by the alphabet size
 			MatrixModQ SubE = E.block(0, PARAM_L * batch, PARAM_M, PARAM_L);
 			C.col(batch) = SubE.transpose() * branch_pk.col(batch);
 			
 			for (int i = 0; i < PARAM_L; ++i) {
 				C(i, batch) = C(i, batch) +
-					(mu(i, batch) << (PARAM_LOGQ - (uint64_t)ceil(log2(PARAM_ALPHABET_SIZE))));
+					(mu(i, batch) << (PARAM_LOGQ - (uint64_t)log2(PARAM_ALPHABET_SIZE)));
 			}
-			// std::cerr << "Enc after arithmetic:\t"
-			//           << boost::timer::format(cpu_timer.elapsed(), 3,
-			//                                   std::string("%w\tseconds\n"));
 		}
 		
-		std::cerr << "Enc after c = (pk+vsig).T * E:\t"
+		std::cerr << "Enc after c = (pk+v_sigma).T * E:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 
@@ -352,18 +341,19 @@ public:
 	///       see the implementation document for more details.
 	Plaintext OTDec(LWESecretKey &sk, LWECiphertext *ct, const bool *b, int batch_size) {
 		Plaintext muprime(PARAM_L, batch_size); // Each column is the result of an OT
+
 		for (int batch = 0; batch < batch_size; batch++) {
 			MatrixModQ SubU = ct[b[batch]].U.block(0, batch * PARAM_L, PARAM_N, PARAM_L);
 			//std::cout << "Ut dims: " << SubU.cols() << " x " << SubU.rows() << std::endl;
 			//std::cout << "U: " << SubU << std::endl;
-			muprime.col(batch) = ct[b[batch]].C.col(batch) - (SubU.transpose() * sk.col(batch));
+			muprime.col(batch) = ct[b[batch]].C.col(batch) - (sk.col(batch).transpose() * SubU);
 
 			for (int i = 0; i < PARAM_L; ++i) {
 				int_mod_q value = muprime(i, batch);
 				value += ((int_mod_q)1 << (PARAM_LOGQ - 1ul -
-				                           (unsigned long)ceil(log2(PARAM_ALPHABET_SIZE))));
+				                           (unsigned long)log2(PARAM_ALPHABET_SIZE)));
 				muprime(i, batch) = value >> (PARAM_LOGQ -
-				                       (unsigned long)ceil(log2(PARAM_ALPHABET_SIZE)));
+				                       (unsigned long)log2(PARAM_ALPHABET_SIZE));
 			}
 		}
 		return muprime;
@@ -387,7 +377,6 @@ public:
 	explicit OTLattice(IO *io) {
 		this->io = io;
 		A.resize(PARAM_N, PARAM_M);
-
 	}
 
 	/// \post Initializes `crs_prg` with a random seed shared with the other
@@ -459,9 +448,11 @@ public:
 		}
 		// Since this function ends with an io->send,
 		// Make sure all messages are actually sent by flushing the IO.
-		io->flush(); 
+		io->flush();
 	}
 
+	// make_batch_count takes in a number of OT executions to perform
+	// and returns the number of batches it will take to perform the executions.
 	int make_batch_count(int length) {
 		int batch_count = length / BATCH_SIZE;
 		if (length % BATCH_SIZE  > 0) {
@@ -485,32 +476,58 @@ public:
 	///       branch
 	///       and sends the ciphertexts to the receiver.
 	void send_impl(const block *data0, const block *data1, int length) {
-		sender_coinflip(); // should only happen once
+		sender_coinflip();
 		InitializeCrs();
 		
 		std::cerr << "Sender A matrix:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 
-		std::cout << "Length: " << length << std::endl;
-		
 		int batch_count = make_batch_count(length);
 		for (int ot_iter = 0; ot_iter < batch_count; ++ot_iter) {
-			int batch_size = std::min(BATCH_SIZE, length - BATCH_SIZE * ot_iter);
+			int batch_size = std::min(BATCH_SIZE, length - (BATCH_SIZE * ot_iter));
+			if (DEBUG)
+				std::cout << "Size of this batch=" << batch_size << std::endl;
 
 			v[0].resize(PARAM_M, batch_size);
 			v[1].resize(PARAM_M, batch_size);
 			
 			cpu_timer.start();
+
 			// Generate new v1, v2 every time
 			GenerateCrsVectors();
+			if (DEBUG) {
+				for (int vidx = 0; vidx <= 1; ++vidx) {
+					std::cout << "First and last 5 of sender v" << vidx << ":";
+					for (int i = 0; i < 5; ++i) {
+						std::cout << " " << v[vidx](i, 0);
+					}
+					std::cout << "\n Last 5:";
+					for (int i = 0; i < 5; ++i) {
+						std::cout << " " << v[vidx](PARAM_M - 5 + i, batch_size - 1);
+					}
+					std::cout << std::endl;
+				}	
+			}
+
 			std::cerr << "Sender v0, v1:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 
-
+			if (DEBUG > 0)
+				std::cout << "Batch index " << ot_iter << ": \n";
 			Plaintext secret0 = EncodePlaintext(&data0[ot_iter * BATCH_SIZE], batch_size);
 			Plaintext secret1 = EncodePlaintext(&data1[ot_iter * BATCH_SIZE], batch_size);
+
+			// Sanity check: make sure they decode to the original values
+			// TODO: Remove before final version
+			if (DEBUG) {
+			block tmp[batch_size];
+			std::cout << "Temporary sanity check: should decode to the pre-encoding branch-0 ptexts\n";
+			DecodePlaintext(tmp, secret0, batch_size);
+			std::cout << "Temporary sanity check: should decode to the pre-encoding branch-1 ptexts\n";
+			DecodePlaintext(tmp, secret1, batch_size);
+			}
 
 			if (DEBUG > 0)
 				std::cout << "(Sender, iteration " << ot_iter
@@ -543,19 +560,23 @@ public:
 			for (int i = 0; i <= 1; ++i) {
 				io->send_data(ct[i].U.data(), sizeof(int_mod_q) * PARAM_N * PARAM_L * batch_size);
 				io->send_data(ct[i].C.data(), sizeof(int_mod_q) * PARAM_L * batch_size);
-
 			}
-			
 
 			if (DEBUG > 1) {
-				std::cout << "Sender: sent ciphertext 0:\n" << ct[0].C << std::endl;
+				std::cout << "Sender: sent ciphertext 0:\n" << ct[0].C << std::endl
+					<< "First 5 entries of first col of U: ";
+				for (int i = 0; i < 5; ++i) std::cout << ct[0].U(i,0) << " ";
+				std::cout << std::endl;
 				std::cout << "Sender: sent ciphertext 1:\n" << ct[1].C << std::endl;
+				for (int i = 0; i < 5; ++i) std::cout << ct[1].U(i,0) << " ";
+				std::cout << std::endl;
 			}
+
 			std::cerr << "Sender, iteration " << ot_iter << ": \t"
 			          << boost::timer::format(cpu_timer.elapsed(), 3,
 			                                  std::string("%w\tseconds\n"));
 
-			delete [] pk_array;
+			delete[] pk_array;
 		}
 	}
 
@@ -570,22 +591,41 @@ public:
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
 		                                  std::string("%w\tseconds\n"));
 
-		int batch_count = make_batch_count(length);		
+		// batch_count is the number of batches to perform
+		int batch_count = make_batch_count(length);
 
 		std::cout << "(Lattice OT 1, sender: performing " << length << " OTs): ";
 		for (int ot_iter = 0; ot_iter < batch_count; ++ot_iter) {
+			// batch_size is the size of the current batch
 			int batch_size = std::min(BATCH_SIZE, length - BATCH_SIZE * ot_iter);
-			std::cout << ot_iter + 1 << "... " << std::flush;
+			std::cout << (BATCH_SIZE*ot_iter) + 1 << "... " << std::flush;
 			if (ot_iter == length - 1)
 				std::cout << std::endl;
 
-			std::cerr << "Batch size: " << batch_size << std::endl;
 			cpu_timer.start();
 
 			v[0].resize(PARAM_M, batch_size);
 			v[1].resize(PARAM_M, batch_size);
-			// Generate new v1, v2 every time
+
+			// Generate a new v0 and v1 for each execution within the batch
+			// (Collections of `batch_size` many v0 and v1 vectors are 
+			// represented as matrices of dimension M by `batch_size`.)
 			GenerateCrsVectors();
+
+			// Temporary; TODO remove before final submission
+			if (DEBUG) {
+				for (int vidx = 0; vidx <= 1; ++vidx) {
+					std::cout << "First and last 5 of receiver v" << vidx << ":";
+					for (int i = 0; i < 5; ++i) {
+						std::cout << " " << v[vidx](i, 0);
+					}
+					std::cout << "\n Last 5:";
+					for (int i = 0; i < 5; ++i) {
+						std::cout << " " << v[vidx](PARAM_M - 5 + i, batch_size - 1);
+					}
+					std::cout << std::endl;
+				}	
+			}
 
 			std::cerr << "Receiver v0, v1:\t"
 		          << boost::timer::format(cpu_timer.elapsed(), 3,
@@ -599,8 +639,7 @@ public:
 			                                  std::string("%w\tseconds\n"));
 
 			// Send the public key
-			// FIX ME: Not sure if this is correct
-			//std::cout << "pk size: " << keypair.pk.size() << std::endl;
+			// FIXME (@Matthew): Not sure if this is correct
 			io->send_data(keypair.pk.data(), sizeof(int_mod_q) * PARAM_M * batch_size);
 
 			if (DEBUG > 0)
@@ -617,20 +656,14 @@ public:
 			LWECiphertext ct[2];
 
 			for (int i = 0; i <= 1; ++i) {
-				//ct[i].U = new MatrixModQ[batch_size];
-
 				io->recv_data(ct_array[i], sizeof(int_mod_q) * ct_array_len);
 				ct[i].U = Eigen::Map<MatrixModQ> {ct_array[i], PARAM_N, PARAM_L * batch_size};
 				ct[i].C = Eigen::Map<MatrixModQ> {ct_array[i] + Udim, PARAM_L, batch_size};
-			
 				if (DEBUG > 1) {
-				                std::cout << "Receiver: Got ciphertext:\n"
-				                << ct[b[ot_iter]].C << std::endl;
-				}
-
-				if (DEBUG >= 2) {
-				                 std::cerr << "Ciphertext " << b[ot_iter] << ": (u=" << ct[b[ot_iter]].U
-				                 << ",\nc=" << ct[b[ot_iter]].C << ")\n";
+						std::cout << "Receiver: Got ciphertext " << i << "C=\n" << ct[i].C << std::endl;
+						std::cout << "First 5 entries of first col of U:";
+						for (int j = 0; j < 5; ++j) std::cout << ct[i].U(j,0) << " ";
+						std::cout << std::endl;
 				}
 			}
 
@@ -646,6 +679,9 @@ public:
 			          << boost::timer::format(cpu_timer.elapsed(), 3,
 			                                  std::string("%w\tseconds\n"));
 
+
+			delete []ct_array0;
+			delete []ct_array1;
 		}
 	}
 };
