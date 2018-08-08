@@ -20,22 +20,22 @@
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/random_device.hpp>
 
-constexpr int DEBUG = 0; // 2: print ciphertexts, 1: minimal debug info
+constexpr int DEBUG = 1; // 2: print ciphertexts, 1: minimal debug info
 
 /** @addtogroup OT
     @{
 */
 
-constexpr int BATCH_SIZE = 32; ///< The number of OTs to perform at a time.
-// Using Enumeration Parameters
+constexpr int BATCH_SIZE = 3; ///< The number of OTs to perform at a time.
+// Using Sieve Parameters
 using int_mod_q = uint64_t;
 constexpr uint64_t PARAM_LOGQ = 64; ///< $\log_2(Modulus)$
-constexpr int PARAM_N = 1000;       ///< Number of rows of `A`
-constexpr int PARAM_M = 128128;     ///< Number of columns of `A`
-constexpr double PARAM_ALPHA = 2.133e-14;
-constexpr double PARAM_R = 8.363e7;
+constexpr int PARAM_N = 1500;       ///< Number of rows of `A`
+constexpr int PARAM_M = 192128;     ///< Number of columns of `A`
+constexpr double PARAM_ALPHA = 2.606e-15;
+constexpr double PARAM_R = 1.342e8;
 constexpr int PARAM_ALPHABET_SIZE =
-    256; ///< Should work even if not a power of 2
+    1024; ///< Should work even if not a power of 2
 // constexpr uint64_t PARAM_LOGQ = 64; ///< Modulus
 // constexpr int PARAM_N = 670;        ///< Number of rows of `A`
 // constexpr int PARAM_M = 85888;      ///< Number of columns of `A`
@@ -50,9 +50,9 @@ constexpr double LWE_ERROR_STDEV =
 constexpr double R_STDEV =
     PARAM_R / boost::math::constants::root_two_pi<
                   double>(); ///< Standard deviation of the discretized Gaussian
-constexpr int_mod_q MOD_Q_MASK = PARAM_LOGQ == 8 * sizeof(int_mod_q)
+constexpr int_mod_q MOD_Q_MASK = (PARAM_LOGQ == 8 * sizeof(int_mod_q))
                                      ? std::numeric_limits<int_mod_q>::max()
-                                     : ((int_mod_q)1 << PARAM_LOGQ) - 1;
+                                     : ((int_mod_q)2 << (PARAM_LOGQ-1)) - 1;
 
 using MatrixModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, Eigen::Dynamic>;
 //using VectorModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, 1>;
@@ -100,11 +100,15 @@ namespace emp {
 /// \post Populates the matrix mod Q \p result with uniform values
 ///	     from the given PRG.
 void UniformMatrixModQ(MatrixModQ &result, PRG &sample_prg) {
-	int n = result.rows();
-	int m = result.cols();
-	sample_prg.random_data(result.data(), m * n * sizeof(result(0, 0)));
-	for (int j = 0; j < m; ++j) {
-		for (int i = 0; i < n; ++i) {
+	uint64_t n = result.rows();
+	uint64_t m = result.cols();
+	// if the matrix is small enough, sample it in one shot
+	for (uint64_t i = 0; i < n*m; i += std::min(n*m - i, 20000000ul)) {
+		sample_prg.random_data(result.data() + i, (int)std::min(n*m - i, 20000000ul*sizeof(int_mod_q)));
+	}
+	for (uint64_t j = 0; j < m; ++j) {
+	//	sample_prg.random_data(&result(0, j), n*sizeof(int_mod_q));
+		for (uint64_t i = 0; i < n; ++i) {
 			result(i, j) &= MOD_Q_MASK;
 		}
 	}
@@ -171,23 +175,40 @@ public:
 			plaintext[0] = raw_plaintext[batch][0];
 			plaintext[1] = raw_plaintext[batch][1];
 
-			// # of encoded-message slots required to hold *half*
-			// of a 128-bit message
-			int lhalf = (int)(ceil(64 / log2(PARAM_ALPHABET_SIZE)));
+			if (DEBUG > 0)
+				std::cout << std::hex << "Encoding plaintext (b=" << batch << "): " << plaintext[1] << " " << plaintext[0] << std::dec << std::endl; 
 
-			int n_encoded = 0;
-			for (int half = 0; half <= 1; ++half) {
-				vector<int_mod_q> reversed_values;
-				int j = n_encoded;
-				for (; j < min(PARAM_L, n_encoded + lhalf); ++j) {
-					reversed_values.push_back(plaintext[half] % PARAM_ALPHABET_SIZE);
-					plaintext[half] /= PARAM_ALPHABET_SIZE;
+			int bits_encoded = 0;
+			int bits_per_val = log2(PARAM_ALPHABET_SIZE);
+			uint64_t value_mask = (1ul << (unsigned)bits_per_val) - 1ul;
+			int_mod_q tmp = 0;  // used for temporarily storing partial value overlapping the halves
+
+			// encode bits from the first half -- raw_plaintext[0] gives the *lower-order* 64 bits
+			while (bits_encoded < 64 and (bits_encoded / bits_per_val) < PARAM_L) {
+				if (bits_encoded + bits_per_val <= 64) {  // case 1: can encode full value
+					res(res_idx++, batch) = (plaintext[0] >> bits_encoded) & value_mask;
+					bits_encoded += bits_per_val;
+				} else {  // case 2: must encode partial value, getting rest from second plaintext
+					tmp = plaintext[0] >> (bits_encoded);
+					break;
 				}
-				for (int k = reversed_values.size() - 1; k >= 0; --k) {
-					res(res_idx, batch) = reversed_values[k];
-					++res_idx;
-				}
-				n_encoded = j;
+			}
+
+			// if necessary, and if we haven't encoded enough bits already, handle partial number
+			int bits_encoded_second_half = 0;
+			if (64 % bits_per_val != 0 and (bits_encoded / bits_per_val) < PARAM_L) {
+				bits_encoded_second_half = bits_per_val - (64 % bits_per_val);
+				auto beginning_of_second_half = plaintext[1] & ((1ul << (unsigned)bits_encoded_second_half) - 1ul);
+				tmp |= beginning_of_second_half << (unsigned)(64 % bits_per_val);
+				res(res_idx++, batch) = tmp;
+				bits_encoded = 64;
+			}
+
+			// encode as many bits of the second half as necessary (if any)
+			// raw_plaintext[1] gives the *higher-order* 64 bits
+			while ((bits_encoded + bits_encoded_second_half) / bits_per_val < PARAM_L) {
+				res(res_idx++, batch) = (plaintext[1] >> bits_encoded_second_half) & value_mask;
+				bits_encoded_second_half += bits_per_val;
 			}
 		}
 
@@ -202,18 +223,36 @@ public:
 	///       in the corresponding block in \p to_return
 	void DecodePlaintext(block* to_return, const Plaintext& encoded_plaintext, int batch_size) {
 		for (int batch = 0; batch < batch_size; batch++) {
-			to_return[batch] = _mm_set_epi32(0, 0, 0, 0);
-
-			int i = 0;
-			int lhalf = (int)ceil(64 / log2(PARAM_ALPHABET_SIZE));
-
-			for (int half = 0; half <= 1; ++half) {
-				for (int j = i; j < min(PARAM_L, i + lhalf); ++j) {
-					to_return[batch][half] =
-						(to_return[batch][half] * PARAM_ALPHABET_SIZE) + encoded_plaintext(j, batch);
+			//ptext0 will be the lower-order 64 bits, ptext1 the higher-order 64
+			uint64_t ptext0{0}, ptext1{0};
+			auto bits_per_value = static_cast<unsigned>(log2(PARAM_ALPHABET_SIZE));
+			
+			unsigned bits_decoded = 0;
+			for (int i = 0; i < PARAM_L; ++i) {
+				if (bits_decoded < 64 and bits_decoded + bits_per_value <= 64) {
+					// case 1: handle value solely in lower-order 64 bits 
+					ptext0 |= encoded_plaintext(i, batch) << bits_decoded;
+				} else if (bits_decoded < 64 and bits_decoded + bits_per_value > 64) {
+					// case 2: handle value straddling the two halves
+					auto current = encoded_plaintext(i, batch);
+					ptext0 |= (current & ((1ul << unsigned(64 - bits_decoded)) - 1ul)) << bits_decoded;
+					current >>= unsigned(64 - bits_decoded);
+					ptext1 = current;
+				} else if (bits_decoded < 128 and bits_decoded + bits_per_value <= 128) {
+					// case 3: handle usual case, with value solely in higher-order 64 bits
+					ptext1 |= encoded_plaintext(i, batch) << (bits_decoded - 64);
+				} else {
+					// case 4: value solely in higher-order bits, but not enough space
+					auto current = encoded_plaintext(i, batch);
+					ptext1 |= (current & ((1ul << unsigned(128 - bits_decoded)) - 1ul)) << (bits_decoded - 64);	
 				}
-				i = min(PARAM_L, i + lhalf);
+				bits_decoded += bits_per_value;
 			}
+
+			if (DEBUG > 0)
+				std::cout << "Decoded plaintext (b=" << batch << "): " << std::hex << ptext1 << " " << ptext0 << std::dec << std::endl;
+			to_return[batch][0] = ptext0;
+			to_return[batch][1] = ptext1;
 		}
 	}
 

@@ -1,34 +1,40 @@
-Receiver A matrix:	1.085	seconds
-Batch size: 32
-Sender A matrix:	1.095	seconds
-Receiver v0, v1:	0.073	seconds
-Keygen after S:	0.074	seconds
-Sender v0, v1:	0.077	seconds
-Keygen after E:	0.259	seconds
-Keygen after arithmetic:	1.803	seconds
-Receiver after keygen:	1.812	seconds
-Enc after sample:	4.731	seconds
-Enc after U = A*E:	25.268	seconds
-Enc after c = (pk+vsig).T * E:	25.463	seconds
-Enc after sample:	28.346	seconds
-Enc after U = A*E:	48.915	seconds
-Enc after c = (pk+vsig).T * E:	49.108	seconds
-Sender after enc 0:	49.136	seconds
-Sender, iteration 0: 	49.143	seconds
-Sender v0, v1:	0.037	seconds
-Receiver, iteration 0: 	49.196	seconds
-Batch size: 32
-Receiver v0, v1:	0.037	seconds
-Keygen after S:	0.037	seconds
-Keygen after E:	0.206	seconds
-Keygen after arithmetic:	1.642	seconds
-Receiver after keygen:	1.652	seconds
-Enc after sample:	4.566	seconds
-Enc after U = A*E:	25.118	seconds
-Enc after c = (pk+vsig).T * E:	25.314	seconds
-Enc after sample:	28.215	seconds
-Enc after U = A*E:	48.766	seconds
-Enc after c = (pk+vsig).T * E:	48.957	seconds
-Sender after enc 0:	48.985	seconds
-Sender, iteration 1: 	48.991	seconds
-Receiver, iteration 1: 	48.953	seconds
+Receiver A matrix:	1.467	seconds
+Batch size: 3
+Receiver v0, v1:	0.002	seconds
+Keygen after S:	0.002	seconds
+Sender A matrix:	1.471	seconds
+Sender v0, v1:	0.001	seconds
+Keygen after E:	0.090	seconds
+Keygen after arithmetic:	0.638	seconds
+Receiver after keygen:	0.639	seconds
+(Receiver) Sent public key; waiting for ctexts
+(Sender) Encrypting...
+Enc after sample:	1.783	seconds
+Enc after U = A*E:	6.712	seconds
+Enc after c = (pk+vsig).T * E:	6.732	seconds
+Enc after sample:	7.373	seconds
+Enc after U = A*E:	12.287	seconds
+Enc after c = (pk+vsig).T * E:	12.303	seconds
+Sender after enc 0:	12.304	seconds
+(Sender) Encrypted ciphertexts. Sending...
+Sender, iteration 0: 	12.304	seconds
+Sender v0, v1:	0.001	seconds
+Receiver, iteration 0: 	12.310	seconds
+Batch size: 3
+Receiver v0, v1:	0.001	seconds
+Keygen after S:	0.001	seconds
+Keygen after E:	0.087	seconds
+Keygen after arithmetic:	0.637	seconds
+Receiver after keygen:	0.638	seconds
+(Receiver) Sent public key; waiting for ctexts
+(Sender) Encrypting...
+Enc after sample:	1.281	seconds
+Enc after U = A*E:	6.217	seconds
+Enc after c = (pk+vsig).T * E:	6.233	seconds
+Enc after sample:	6.871	seconds
+Enc after U = A*E:	11.807	seconds
+Enc after c = (pk+vsig).T * E:	11.822	seconds
+Sender after enc 0:	11.823	seconds
+(Sender) Encrypted ciphertexts. Sending...
+Sender, iteration 1: 	11.823	seconds
+Receiver, iteration 1: 	11.822	seconds
