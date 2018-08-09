@@ -143,4 +143,6 @@ Question
 Please send email to wangxiao@cs.umd.edu
 
 ## Acknowledgement
+Lattice-based OT is contributed by David Van Cleve, Matthew Soulanille, and William Wang.
+
 This work was supported in part by the National Science Foundation under Awards #1111599 and #1563722.
