@@ -7,6 +7,7 @@
 
 #include <algorithm>  // std::min
 #include <cmath>  // std::log2, std::floor, std::fmod
+
 #include <limits>   // std::numeric_limits
 
 #include "emp-ot/ot.h"
@@ -41,6 +42,7 @@ constexpr int PARAM_ALPHABET_SIZE = 256;
 // constexpr double PARAM_R = 7.876e7;
 // constexpr int PARAM_ALPHABET_SIZE = 2; 
 
+
 constexpr double LWE_ERROR_STDEV = 
     2.0 * ((int_mod_q)1 << (PARAM_LOGQ - 1)) * PARAM_ALPHA /
     boost::math::constants::root_two_pi<double>();  ///< Standard deviation of the key-generation rounded Gaussian
@@ -52,6 +54,7 @@ constexpr int_mod_q MOD_Q_MASK = (PARAM_LOGQ == 8 * sizeof(int_mod_q))
                                      : ((int_mod_q)2 << (PARAM_LOGQ-1)) - 1;
 
 using MatrixModQ = Eigen::Matrix<int_mod_q, Eigen::Dynamic, Eigen::Dynamic>;
+
 using LWEPublicKey = MatrixModQ;
 using LWESecretKey = MatrixModQ;
 
@@ -64,6 +67,7 @@ using Branch = int;
 using Plaintext = MatrixModQ;
 
 struct LWECiphertext {
+
 	// curr_batch_size many PARAM_N by PARAM_L matrices concatenated together: N x (curr_batch_size * L)
 	MatrixModQ U;
 	MatrixModQ C;
@@ -234,7 +238,6 @@ public:
 				}
 				bits_decoded += bits_per_entry;
 			}
-
 			to_return[batch][0] = ptext0;
 			to_return[batch][1] = ptext1;
 		}
@@ -253,6 +256,7 @@ public:
 		DiscretizedGaussianMatrixModQ(pk, LWE_ERROR_STDEV);
 		
 		for (int batch = 0; batch < curr_batch_size; batch++) {
+
 			pk.col(batch).noalias() -= v[sigma[batch]].col(batch);
 		}
 		pk.noalias() += (S.transpose()*A).transpose();
