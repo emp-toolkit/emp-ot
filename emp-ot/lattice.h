@@ -1,3 +1,6 @@
+// Peikert, Vaikuntanathan, Waters (STOC 2008) 
+// Learning With Errors-based OT protocol
+
 #ifndef OT_LATTICE_H__
 #define OT_LATTICE_H__
 #include <Eigen/Dense>  // for linear algebra routines
@@ -5,7 +8,6 @@
 #include <algorithm>  // std::min
 #include <cmath>  // std::log2, std::floor, std::fmod
 
-#include <iostream>  // debug printlns
 #include <limits>   // std::numeric_limits
 
 #include "emp-ot/ot.h"
@@ -17,13 +19,11 @@
 #include <boost/random/normal_distribution.hpp>
 #include <boost/random/random_device.hpp>
 
-constexpr int DEBUG = 0; // 2: print ciphertexts, 1: minimal debug info
-
 /** @addtogroup OT
     @{
 */
 
-constexpr int BATCH_SIZE = 10; ///< The number of OTs to perform at a time.
+constexpr int BATCH_SIZE = 32; ///< The number of OTs to perform at a time (performance optimization).
 using int_mod_q = uint64_t;
 
 // Parameters for 128-bit OT
@@ -43,13 +43,12 @@ constexpr int PARAM_ALPHABET_SIZE = 256;
 // constexpr int PARAM_ALPHABET_SIZE = 2; 
 
 
-//// For the Discretized Gaussian
-constexpr double LWE_ERROR_STDEV =
+constexpr double LWE_ERROR_STDEV = 
     2.0 * ((int_mod_q)1 << (PARAM_LOGQ - 1)) * PARAM_ALPHA /
-    boost::math::constants::root_two_pi<double>();
+    boost::math::constants::root_two_pi<double>();  ///< Standard deviation of the key-generation rounded Gaussian
 constexpr double R_STDEV =
     PARAM_R / boost::math::constants::root_two_pi<
-                  double>(); ///< Standard deviation of the discretized Gaussian
+                  double>(); ///< Standard deviation of the encryption-time rounded Gaussian
 constexpr int_mod_q MOD_Q_MASK = (PARAM_LOGQ == 8 * sizeof(int_mod_q))
                                      ? std::numeric_limits<int_mod_q>::max()
                                      : ((int_mod_q)2 << (PARAM_LOGQ-1)) - 1;
@@ -68,7 +67,8 @@ using Branch = int;
 using Plaintext = MatrixModQ;
 
 struct LWECiphertext {
-	// batch_size many PARAM_N by PARAM_L matrices concatenated together: N x (batch_size * L)
+
+	// curr_batch_size many PARAM_N by PARAM_L matrices concatenated together: N x (curr_batch_size * L)
 	MatrixModQ U;
 	MatrixModQ C;
 };
@@ -149,9 +149,9 @@ public:
 	int PARAM_L =
 		lround(ceil(NUM_BITS_PER_SENDER_INPUT / log2(PARAM_ALPHABET_SIZE)));
 
-	/// @param raw_plaintext A pointer to `batch_size` many blocks
+	/// @param raw_plaintext A pointer to `curr_batch_size` many blocks
 	///        of plaintext to encode
-	/// @param batch_size The number of plaintexts in this batch
+	/// @param curr_batch_size The number of plaintexts in this batch
 	/// \post Returns an appropriate (for passing to LWEEnc) object
 	///       representing the given plaintexts \p raw_plaintext.
 	///       In particular, this implementation interprets each given plaintext
@@ -160,27 +160,24 @@ public:
 	///       many least-significant bits, and places them (in increasing
 	///       significance
 	///       order) in the corresponding column of the resulting matrix.
-	Plaintext EncodePlaintext(const block* raw_plaintext, int batch_size) {
-		Plaintext res(PARAM_L, batch_size);
-		for (int batch = 0; batch < batch_size; batch++) {
+	Plaintext EncodePlaintext(const block* raw_plaintext, int curr_batch_size) {
+		Plaintext res(PARAM_L, curr_batch_size);
+		for (int batch = 0; batch < curr_batch_size; batch++) {
 			int res_idx = 0;
 			uint64_t plaintext[2];
 			plaintext[0] = raw_plaintext[batch][0];
 			plaintext[1] = raw_plaintext[batch][1];
 
-			if (DEBUG > 0)
-				std::cout << std::hex << "Encoding plaintext (idx within batch=" << batch << "): " << plaintext[1] << " " << plaintext[0] << std::dec << std::endl; 
-
 			int bits_encoded = 0;
-			int bits_per_val = log2(PARAM_ALPHABET_SIZE);
-			uint64_t value_mask = (1ul << (unsigned)bits_per_val) - 1ul;
+			int bits_per_entry = log2(PARAM_ALPHABET_SIZE);
+			uint64_t value_mask = (1ul << (unsigned)bits_per_entry) - 1ul;
 			int_mod_q tmp = 0;  // used for temporarily storing partial value overlapping the halves
 
 			// encode bits from the first half -- raw_plaintext[0] gives the *lower-order* 64 bits
-			while (bits_encoded < 64 and (bits_encoded / bits_per_val) < PARAM_L) {
-				if (bits_encoded + bits_per_val <= 64) {  // case 1: can encode full value
+			while (bits_encoded < 64 and (bits_encoded / bits_per_entry) < PARAM_L) {
+				if (bits_encoded + bits_per_entry <= 64) {  // case 1: can encode full value
 					res(res_idx++, batch) = (plaintext[0] >> bits_encoded) & value_mask;
-					bits_encoded += bits_per_val;
+					bits_encoded += bits_per_entry;
 				} else {  // case 2: must encode partial value, getting rest from second plaintext
 					tmp = plaintext[0] >> (bits_encoded);
 					break;
@@ -189,19 +186,19 @@ public:
 
 			// if necessary, and if we haven't encoded enough bits already, handle partial number
 			int bits_encoded_second_half = 0;
-			if (64 % bits_per_val != 0 and (bits_encoded / bits_per_val) < PARAM_L) {
-				bits_encoded_second_half = bits_per_val - (64 % bits_per_val);
+			if (64 % bits_per_entry != 0 and (bits_encoded / bits_per_entry) < PARAM_L) {
+				bits_encoded_second_half = bits_per_entry - (64 % bits_per_entry);
 				auto beginning_of_second_half = plaintext[1] & ((1ul << (unsigned)bits_encoded_second_half) - 1ul);
-				tmp |= beginning_of_second_half << (unsigned)(64 % bits_per_val);
+				tmp |= beginning_of_second_half << (unsigned)(64 % bits_per_entry);
 				res(res_idx++, batch) = tmp;
 				bits_encoded = 64;
 			}
 
 			// encode as many bits of the second half as necessary (if any)
 			// raw_plaintext[1] gives the *higher-order* 64 bits
-			while ((bits_encoded + bits_encoded_second_half) / bits_per_val < PARAM_L) {
+			while ((bits_encoded + bits_encoded_second_half) / bits_per_entry < PARAM_L) {
 				res(res_idx++, batch) = (plaintext[1] >> bits_encoded_second_half) & value_mask;
-				bits_encoded_second_half += bits_per_val;
+				bits_encoded_second_half += bits_per_entry;
 			}
 		}
 
@@ -214,24 +211,24 @@ public:
 	///       blocks pointed to by \p to_return.
 	/// \post For each encoded plaintext, writes the raw plaintext corresponding to it
 	///       in the corresponding block in \p to_return
-	void DecodePlaintext(block* to_return, const Plaintext& encoded_plaintext, int batch_size) {
-		for (int batch = 0; batch < batch_size; batch++) {
+	void DecodePlaintext(block* to_return, const Plaintext& encoded_plaintext, int curr_batch_size) {
+		for (int batch = 0; batch < curr_batch_size; batch++) {
 			//ptext0 will be the lower-order 64 bits, ptext1 the higher-order 64
 			uint64_t ptext0{0}, ptext1{0};
-			auto bits_per_value = static_cast<unsigned>(log2(PARAM_ALPHABET_SIZE));
+			auto bits_per_entry = static_cast<unsigned>(log2(PARAM_ALPHABET_SIZE));
 			
 			unsigned bits_decoded = 0;
 			for (int i = 0; i < PARAM_L; ++i) {
-				if (bits_decoded < 64 and bits_decoded + bits_per_value <= 64) {
+				if (bits_decoded < 64 and bits_decoded + bits_per_entry <= 64) {
 					// case 1: handle value solely in lower-order 64 bits 
 					ptext0 |= encoded_plaintext(i, batch) << bits_decoded;
-				} else if (bits_decoded < 64 and bits_decoded + bits_per_value > 64) {
+				} else if (bits_decoded < 64 and bits_decoded + bits_per_entry > 64) {
 					// case 2: handle value straddling the two halves
 					auto current = encoded_plaintext(i, batch);
 					ptext0 |= (current & ((1ul << unsigned(64 - bits_decoded)) - 1ul)) << bits_decoded;
 					current >>= unsigned(64 - bits_decoded);
 					ptext1 = current;
-				} else if (bits_decoded < 128 and bits_decoded + bits_per_value <= 128) {
+				} else if (bits_decoded < 128 and bits_decoded + bits_per_entry <= 128) {
 					// case 3: handle usual case, with value solely in higher-order 64 bits
 					ptext1 |= encoded_plaintext(i, batch) << (bits_decoded - 64);
 				} else {
@@ -239,59 +236,54 @@ public:
 					auto current = encoded_plaintext(i, batch);
 					ptext1 |= (current & ((1ul << unsigned(128 - bits_decoded)) - 1ul)) << (bits_decoded - 64);	
 				}
-				bits_decoded += bits_per_value;
+				bits_decoded += bits_per_entry;
 			}
-
-			if (DEBUG > 0)
-				std::cout << "Decoded plaintext (idx within batch=" << batch << "): " << std::hex << ptext1 << " " << ptext0 << std::dec << std::endl;
 			to_return[batch][0] = ptext0;
 			to_return[batch][1] = ptext1;
 		}
 	}
 
-	/// @param sigma points to an array of \p batch_size many request bits,
+	/// @param sigma points to an array of \p curr_batch_size many request bits,
 	///        one for each OT in the batch.
-	/// \pre The length of \p sigma is \p batch_size.
+	/// \pre The length of \p sigma is \p curr_batch_size.
 	/// \post For each bit `b` in \p sigma, generates a key pair messy
 	///       under branch `(1 - b)` and decryptable under branch `b`.
-	LWEKeypair OTKeyGen(const bool *sigma, int batch_size) {
-		LWESecretKey S(PARAM_N, batch_size);
+	LWEKeypair OTKeyGen(const bool *sigma, int curr_batch_size) {
+		LWESecretKey S(PARAM_N, curr_batch_size);
 		UniformMatrixModQ(S, prg);
 
-		LWEPublicKey pk(PARAM_M, batch_size);
+		LWEPublicKey pk(PARAM_M, curr_batch_size);
 		DiscretizedGaussianMatrixModQ(pk, LWE_ERROR_STDEV);
 		
-		for (int batch = 0; batch < batch_size; batch++) {
+		for (int batch = 0; batch < curr_batch_size; batch++) {
+
 			pk.col(batch).noalias() -= v[sigma[batch]].col(batch);
 		}
 		pk.noalias() += (S.transpose()*A).transpose();
 
-		if (DEBUG >= 3)
-			std::cout << "(Receiver) Debug: A = " << A << ", pk = " << pk
-			          << ", sk = " << S << endl;
 		return {pk, S};
 	}
 
 	/// @param pk The matrix of public keys used for encryption
 	/// @param sigma The branch to encrypt on
 	/// @param mu The matrix of plaintexts to encrypt
-	/// @param batch_size The number of OTs that are in the batch.
+	/// @param curr_batch_size The number of OTs that are in the batch.
 	/// \pre Sigma is 0 or 1.
 	/// \post Returns the ciphertexts corresponding to encrypting each \p mu with
 	///       corresponding \p pk on branch \p sigma.
 	LWECiphertext OTEnc(const LWEPublicKey &pk, Branch sigma,
-	                    const Plaintext &mu, int batch_size) {
+	                    const Plaintext &mu, int curr_batch_size) {
 		
 		LWEPublicKey branch_pk{pk + v[sigma]};
 
-		MatrixModQ E(PARAM_M, PARAM_L * batch_size);
+		MatrixModQ E(PARAM_M, PARAM_L * curr_batch_size);
 		DiscretizedGaussianMatrixModQ(E, R_STDEV);
 
-		MatrixModQ U = A * E; // Should be N x (L * batch_size)
+		MatrixModQ U = A * E; // Should be N x (L * curr_batch_size)
 		
-		MatrixModQ C(PARAM_L, batch_size);
-		for (int batch = 0; batch < batch_size; batch++) {
-			// c = ((pk+vsigma).T)*x  + floor(mu*q/|Alphabet|)
+		MatrixModQ C(PARAM_L, curr_batch_size);
+		for (int batch = 0; batch < curr_batch_size; batch++) {
+			// Compute C = ((pk+vsigma).T)*E  + floor(mu*q/|Alphabet|)
 			MatrixModQ SubE = E.block(0, PARAM_L * batch, PARAM_M, PARAM_L);
 			C.col(batch) = SubE.transpose() * branch_pk.col(batch);
 			
@@ -306,18 +298,17 @@ public:
 
 	/// @param sk The matrix of secret keys
 	/// @param ct A pointer to ciphertexts
-	/// \pre \p sk has `batch_size` many columns, \p ct has batch_size many ciphertexts
-	///      \p b is of length batch_size
+	/// \pre \p sk has `curr_batch_size` many columns, \p ct has curr_batch_size many ciphertexts
+	///      \p b is of length curr_batch_size
 	/// \post Decrypts each ciphertext in \p ct  using the corresponding secret key SK in \p sk
 	///       by computing \f$ b' := c - \langle SK, u \rangle \f$ and
 	///       determining which partition of the modspace the result falls into.
 	///       see the implementation document for more details.
-	Plaintext OTDec(LWESecretKey &sk, LWECiphertext *ct, const bool *b, int batch_size) {
-		Plaintext muprime(PARAM_L, batch_size); // Each column is the result of an OT
+	Plaintext OTDec(LWESecretKey &sk, LWECiphertext *ct, const bool *b, int curr_batch_size) {
+		Plaintext muprime(PARAM_L, curr_batch_size); // Each column is the result of an OT
 
-		for (int batch = 0; batch < batch_size; batch++) {
+		for (int batch = 0; batch < curr_batch_size; batch++) {
 			MatrixModQ SubU = ct[b[batch]].U.block(0, batch * PARAM_L, PARAM_N, PARAM_L);
-			//muprime.col(batch) = ct[b[batch]].C.col(batch) - (sk.col(batch).transpose() * SubU);
 			muprime.col(batch) = ct[b[batch]].C.col(batch) - (SubU.transpose() * sk.col(batch));
 
 			for (int i = 0; i < PARAM_L; ++i) {
@@ -452,83 +443,29 @@ public:
 		InitializeCrs();
 
 		int batch_count = make_batch_count(length);
-		for (int ot_iter = 0; ot_iter < batch_count; ++ot_iter) {
-			int batch_size = std::min(BATCH_SIZE, length - (BATCH_SIZE * ot_iter));
-			if (DEBUG)
-				std::cout << "Size of this batch=" << batch_size << std::endl;
+		for (int batch_num = 0; batch_num < batch_count; ++batch_num) {
+			int curr_batch_size = std::min(BATCH_SIZE, length - (BATCH_SIZE * batch_num));
 
-			v[0].resize(PARAM_M, batch_size);
-			v[1].resize(PARAM_M, batch_size);
-			
-			// Generate new v1, v2 every time
-			GenerateCrsVectors();
-			if (DEBUG) {
-				for (int vidx = 0; vidx <= 1; ++vidx) {
-					std::cout << "First and last 5 of sender v" << vidx << ":";
-					for (int i = 0; i < 5; ++i) {
-						std::cout << " " << v[vidx](i, 0);
-					}
-					std::cout << "\n Last 5:";
-					for (int i = 0; i < 5; ++i) {
-						std::cout << " " << v[vidx](PARAM_M - 5 + i, batch_size - 1);
-					}
-					std::cout << std::endl;
-				}	
-			}
+			v[0].resize(PARAM_M, curr_batch_size);
+			v[1].resize(PARAM_M, curr_batch_size);
+			GenerateCrsVectors();  // populate v0 and v1
 
-			if (DEBUG > 0)
-				std::cout << "Batch index " << ot_iter << ": \n";
-			Plaintext secret0 = EncodePlaintext(&data0[ot_iter * BATCH_SIZE], batch_size);
-			Plaintext secret1 = EncodePlaintext(&data1[ot_iter * BATCH_SIZE], batch_size);
+			Plaintext secret0 = EncodePlaintext(&data0[batch_num * BATCH_SIZE], curr_batch_size);
+			Plaintext secret1 = EncodePlaintext(&data1[batch_num * BATCH_SIZE], curr_batch_size);
 
-			// Sanity check: make sure they decode to the original values
-			// TODO: Remove before final version
-			if (DEBUG) {
-			block tmp[batch_size];
-			std::cout << "Temporary sanity check: should decode to the pre-encoding branch-0 ptexts\n";
-			DecodePlaintext(tmp, secret0, batch_size);
-			std::cout << "Temporary sanity check: should decode to the pre-encoding branch-1 ptexts\n";
-			DecodePlaintext(tmp, secret1, batch_size);
-			}
-
-			if (DEBUG > 0)
-				std::cout << "(Sender, iteration " << ot_iter
-				          << ") Encoded values x0=\n"
-				          << secret0 << ", x1=\n"
-				          << secret1 << std::endl;
-
-			int_mod_q *pk_array = new int_mod_q[PARAM_M * batch_size];
-
-			io->recv_data(pk_array, sizeof(int_mod_q) * PARAM_M * batch_size);
-			
+			int_mod_q *pk_array = new int_mod_q[PARAM_M * curr_batch_size];
+			io->recv_data(pk_array, sizeof(int_mod_q) * PARAM_M * curr_batch_size);
 			Eigen::Map<MatrixModQ> pk{pk_array,
 			                          PARAM_M,
-			                          batch_size}; // interpret memory as matrix
+			                          curr_batch_size}; // interpret memory as matrix
 
-			if (DEBUG)
-				std::cerr << "(Sender) Encrypting..." << std::endl;
-
-			// Encrypt the two inputs
+			// Encrypt the two inputs, then send the ciphertexts
 			LWECiphertext ct[2];
-			ct[0] = OTEnc(pk, 0, secret0, batch_size);
-			ct[1] = OTEnc(pk, 1, secret1, batch_size);
-
-			if (DEBUG == 1)
-				std::cerr << "(Sender) Encrypted ciphertexts. Sending..." << std::endl;
-
+			ct[0] = OTEnc(pk, 0, secret0, curr_batch_size);
+			ct[1] = OTEnc(pk, 1, secret1, curr_batch_size);
 			for (int i = 0; i <= 1; ++i) {
-				io->send_data(ct[i].U.data(), sizeof(int_mod_q) * PARAM_N * PARAM_L * batch_size);
-				io->send_data(ct[i].C.data(), sizeof(int_mod_q) * PARAM_L * batch_size);
-			}
-
-			if (DEBUG > 1) {
-				std::cout << "Sender: sent ciphertext 0:\n" << ct[0].C << std::endl
-					<< "First 5 entries of first col of U: ";
-				for (int i = 0; i < 5; ++i) std::cout << ct[0].U(i,0) << " ";
-				std::cout << std::endl;
-				std::cout << "Sender: sent ciphertext 1:\n" << ct[1].C << std::endl;
-				for (int i = 0; i < 5; ++i) std::cout << ct[1].U(i,0) << " ";
-				std::cout << std::endl;
+				io->send_data(ct[i].U.data(), sizeof(int_mod_q) * PARAM_N * PARAM_L * curr_batch_size);
+				io->send_data(ct[i].C.data(), sizeof(int_mod_q) * PARAM_L * curr_batch_size);
 			}
 
 			delete[] pk_array;
@@ -539,81 +476,40 @@ public:
 	/// @param b b The location of the choice of which secret to receive
 	/// @param length The number of OT executions to be performed.
 	void recv_impl(block *out_data, const bool *b, int length) {
-		receiver_coinflip(); // should only happen once
+		receiver_coinflip();
 		InitializeCrs();
 
-		int batch_count = make_batch_count(length);		
+		int batch_count = make_batch_count(length);
+		for (int batch_num = 0; batch_num < batch_count; ++batch_num) {
+			// curr_batch_size is the number of executions in the current batch
+			int curr_batch_size = std::min(BATCH_SIZE, length - (BATCH_SIZE * batch_num));
 
-		for (int ot_iter = 0; ot_iter < batch_count; ++ot_iter) {
-			// batch_size is the size of the current batch
-			int batch_size = std::min(BATCH_SIZE, length - BATCH_SIZE * ot_iter);
+			v[0].resize(PARAM_M, curr_batch_size);
+			v[1].resize(PARAM_M, curr_batch_size);
 
-			v[0].resize(PARAM_M, batch_size);
-			v[1].resize(PARAM_M, batch_size);
-
-			// Generate a new v0 and v1 for each execution within the batch
-			// (Collections of `batch_size` many v0 and v1 vectors are 
-			// represented as matrices of dimension M by `batch_size`.)
 			GenerateCrsVectors();
 
-			// Temporary; TODO remove before final submission
-			if (DEBUG) {
-				for (int vidx = 0; vidx <= 1; ++vidx) {
-					std::cout << "First and last 5 of receiver v" << vidx << ":";
-					for (int i = 0; i < 5; ++i) {
-						std::cout << " " << v[vidx](i, 0);
-					}
-					std::cout << "\n Last 5:";
-					for (int i = 0; i < 5; ++i) {
-						std::cout << " " << v[vidx](PARAM_M - 5 + i, batch_size - 1);
-					}
-					std::cout << std::endl;
-				}	
-			}
-
 			// Generate the public key from the choice bit b
-			LWEKeypair keypair = OTKeyGen(&b[ot_iter * BATCH_SIZE], batch_size);
-
+			LWEKeypair keypair = OTKeyGen(&b[batch_num * BATCH_SIZE], curr_batch_size);
 
 			// Send the public key
-			// FIXME (@Matthew): Not sure if this is correct
-			io->send_data(keypair.pk.data(), sizeof(int_mod_q) * PARAM_M * batch_size);
-
-			if (DEBUG > 0)
-				std::cerr << "(Receiver) Sent public key; waiting for ctexts"
-				          << std::endl;
+			io->send_data(keypair.pk.data(), sizeof(int_mod_q) * PARAM_M * curr_batch_size);
 
 			// Receive the ciphertexts
-			int Udim = PARAM_N * PARAM_L * batch_size;
-			int ct_array_len = Udim + PARAM_L * batch_size;
-
-			int_mod_q *ct_array0 = new int_mod_q[ct_array_len];
-			int_mod_q *ct_array1 = new int_mod_q[ct_array_len];
-			int_mod_q *ct_array[2] = {ct_array0, ct_array1};
+			int Udim = PARAM_N * PARAM_L * curr_batch_size;  // horizontal dimension of the matrix U
+			int ct_array_len = Udim + PARAM_L * curr_batch_size;
+			int_mod_q *ct_array = new int_mod_q[ct_array_len];
 			LWECiphertext ct[2];
-
 			for (int i = 0; i <= 1; ++i) {
-				io->recv_data(ct_array[i], sizeof(int_mod_q) * ct_array_len);
-				ct[i].U = Eigen::Map<MatrixModQ> {ct_array[i], PARAM_N, PARAM_L * batch_size};
-				ct[i].C = Eigen::Map<MatrixModQ> {ct_array[i] + Udim, PARAM_L, batch_size};
-				if (DEBUG > 1) {
-						std::cout << "Receiver: Got ciphertext " << i << "C=\n" << ct[i].C << std::endl;
-						std::cout << "First 5 entries of first col of U:";
-						for (int j = 0; j < 5; ++j) std::cout << ct[i].U(j,0) << " ";
-						std::cout << std::endl;
-				}
+				io->recv_data(ct_array, sizeof(int_mod_q) * ct_array_len);
+				ct[i].U = Eigen::Map<MatrixModQ> {ct_array, PARAM_N, PARAM_L * curr_batch_size};
+				ct[i].C = Eigen::Map<MatrixModQ> {ct_array + Udim, PARAM_L, curr_batch_size};
 			}
 
-			Plaintext p = OTDec(keypair.sk, ct, &b[ot_iter * BATCH_SIZE], batch_size);
-			if (DEBUG >= 1) 
-				std::cout << "(Receiver, iteration " << ot_iter << ") Decrypted branch "
-				          << b[ot_iter] << " to get plaintext: " << std::endl
-				          << p << std::endl;
+			Plaintext p = OTDec(keypair.sk, ct, &b[batch_num * BATCH_SIZE], curr_batch_size);
+			DecodePlaintext(&out_data[batch_num * BATCH_SIZE], p, curr_batch_size);
 
-			DecodePlaintext(&out_data[ot_iter * BATCH_SIZE], p, batch_size);
-
-			delete []ct_array0;
-			delete []ct_array1;
+			delete []ct_array;
 		}
 	}
 };
