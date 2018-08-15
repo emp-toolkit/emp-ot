@@ -33,3 +33,12 @@ install_manifest.txt
 *.exe
 *.out
 *.app
+
+# Emacs
+*~
+
+# CMake generated .h files
+emp-ot/latticeInclude.h
+
+# Eigen source
+eigen/

@@ -8,11 +8,13 @@ Installation
 
 1. Install prerequisites using instructions [here](https://github.com/emp-toolkit/emp-readme#detailed-installation).
 2. Install [emp-tool](https://github.com/emp-toolkit/emp-tool).
-2. `git clone https://github.com/emp-toolkit/emp-ot.git`
-3. `cd emp-ot && cmake . && sudo make install`  
+3. `git clone https://github.com/emp-toolkit/emp-ot.git`
+4. Optionally, if lattice-based OT is desired, install dependencies with `emp-ot/install_packages_lattice.sh`
+5. `cd emp-ot && cmake . && sudo make install`  
     1. Alternatively, you can also `cd emp-ot && mkdir -p build && cd build && cmake .. && sudo make install` if out-of-source build is preferred.
     2. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
-    3. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX)
+	3. To build with lattice OT, add the flag `-DLATTICEOT=true`
+    4. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX)
 
 Test
 =====
@@ -141,4 +143,6 @@ Question
 Please send email to wangxiao@cs.umd.edu
 
 ## Acknowledgement
+Lattice-based OT is contributed by David Van Cleve, Matthew Soulanille, and William Wang.
+
 This work was supported in part by the National Science Foundation under Awards #1111599 and #1563722.
