@@ -1,6 +1,7 @@
 #ifndef OT_NP_H__
 #define OT_NP_H__
 #include "emp-ot/ot.h"
+#include "emp-ot/table.h"
 /** @addtogroup OT
 	@{
 */
@@ -8,7 +9,7 @@ namespace emp {
 template<typename IO>
 class OTNP: public OT<OTNP<IO>> { public:
 	eb_t g, C;
-	const eb_t *gTbl;
+	eb_t gTbl[RELIC_EB_TABLE_MAX];
 	bn_t q;
 	PRG prg;
 	IO* io;
@@ -17,8 +18,13 @@ class OTNP: public OT<OTNP<IO>> { public:
 		initialize_relic();
 		eb_curve_get_gen(g);
 		eb_curve_get_ord(q);
-		gTbl = eb_curve_get_tab();
+		MemIO mio;
+		char * tmp = mio.buffer;
+		mio.buffer = (char*)eb_curve_get_tab_data;
+		mio.size = 15400*8;
+		mio.recv_eb(gTbl, RELIC_EB_TABLE_MAX);
 		eb_new(C);
+		mio.buffer = tmp;
 	}
 
 	void send_impl(const block* data0, const block* data1, int length) {
