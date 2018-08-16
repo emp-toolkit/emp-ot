@@ -59,9 +59,9 @@ class OTNP: public OT<OTNP<IO>> { public:
 			eb_mul_norm(pk0[i], pk0[i], r[i]);
 			eb_sub_norm(pk1, Cr[i], pk0[i]);
 			m[0] = KDF(pk0[i]);
-			m[1] = KDF(pk1);
 			m[0] = xorBlocks(data0[i], m[0]);
-			m[1] = xorBlocks(data1[i], m[1]);
+			m[1] = KDF(pk1);
+	       		m[1] = xorBlocks(data1[i], m[1]);
 			io->send_data(m, 2*sizeof(block));
 		}
 
