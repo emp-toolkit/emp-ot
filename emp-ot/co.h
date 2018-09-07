@@ -2,31 +2,47 @@
 #define OT_CO_H__
 #include "emp-ot/ot.h"
 #include "emp-ot/table.h"
+#include <mutex>
 /** @addtogroup OT
     @{
   */
 namespace emp {
+struct gTbl_st {
+    static eb_t tbl[RELIC_EB_TABLE_MAX];
+    static std::mutex lock;
+    static bool inited;
+    static void init() {
+        if (inited) return;
+        lock.lock();
+        initialize_relic();
+        MemIO mio;
+        char * tmp = mio.buffer;
+        mio.buffer = (char*)eb_curve_get_tab_data;
+        mio.size = 15400*8;
+        mio.recv_eb(tbl, RELIC_EB_TABLE_MAX);
+        eb_new(C);
+        mio.buffer = tmp;
+        inited = true;
+        lock.unlock();
+    }
+};
+eb_t gTbl_st::tbl[RELIC_EB_TABLE_MAX];
+std::mutex gTbl_st::lock;
+bool gTbl_st::inited = false;
+
 template<typename IO>
 class OTCO: public OT<OTCO<IO>> { public:
 	int cnt;
 	eb_t g;
 	bn_t q;
-	eb_t gTbl[RELIC_EB_TABLE_MAX];
 	PRG prg;
 	IO* io;
 	OTCO(IO* io) {
 		this->io = io;
-		initialize_relic();
 		eb_curve_get_gen(g);
 		eb_curve_get_ord(q);
-		MemIO mio;
-		char * tmp = mio.buffer;
-		mio.buffer = (char*)eb_curve_get_tab_data;
-		mio.size = 15400*8;
-		mio.recv_eb(gTbl, RELIC_EB_TABLE_MAX);
-		eb_new(C);
-		mio.buffer = tmp;
-	}
+        gTbl_st::init();
+    }
 
 	void send_impl(const block* data0, const block* data1, int length) {
 		bn_t * a = new bn_t[length];
@@ -40,7 +56,7 @@ class OTCO: public OT<OTCO<IO>> { public:
 		block res[2];
 		prg.random_bn(a, length);
 		for(int i = 0; i < length; ++i) {
-			eb_mul_fix_norm(A[i], gTbl, a[i]);
+			eb_mul_fix_norm(A[i], gTbl_st::tbl, a[i]);
 			io->send_eb(&A[i], 1);
 		}
 
@@ -49,7 +65,7 @@ class OTCO: public OT<OTCO<IO>> { public:
 			eb_mul_norm(B[i], B[i], a[i]);
 			bn_sqr(a[i], a[i]);
 			bn_mod(a[i], a[i], q);
-			eb_mul_fix_norm(A[i], gTbl, a[i]);
+			eb_mul_fix_norm(A[i], gTbl_st::tbl, a[i]);
 			eb_sub_norm(A[i], B[i], A[i]);
 		}
 
@@ -82,7 +98,7 @@ class OTCO: public OT<OTCO<IO>> { public:
 		prg.random_bn(bb, length);
 
 		for(int i = 0; i < length; ++i) {
-			eb_mul_fix_norm(B[i], gTbl, bb[i]);
+			eb_mul_fix_norm(B[i], gTbl_st::tbl, bb[i]);
 			io->recv_eb(&A[i], 1);
 			if (b[i]) {
 				eb_add_norm(B[i], A[i], B[i]);
