@@ -14,14 +14,14 @@ struct gTbl_st {
     static void init() {
         if (inited) return;
         lock.lock();
-		initialize_relic();
+        initialize_relic();
         MemIO mio;
-		char * tmp = mio.buffer;
-		mio.buffer = (char*)eb_curve_get_tab_data;
-		mio.size = 15400*8;
-		mio.recv_eb(tbl, RELIC_EB_TABLE_MAX);
-		eb_new(C);
-		mio.buffer = tmp;
+        char * tmp = mio.buffer;
+        mio.buffer = (char*)eb_curve_get_tab_data;
+        mio.size = 15400*8;
+        mio.recv_eb(tbl, RELIC_EB_TABLE_MAX);
+        eb_new(C);
+        mio.buffer = tmp;
         inited = true;
         lock.unlock();
     }
