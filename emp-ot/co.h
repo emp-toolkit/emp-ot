@@ -1,7 +1,7 @@
 #ifndef OT_CO_H__
 #define OT_CO_H__
 #include "emp-ot/ot.h"
-#include "emp-ot/table.h"
+#include "emp-tool/utils/constants.h" // gTbl::tbl
 /** @addtogroup OT
     @{
   */
@@ -11,22 +11,14 @@ class OTCO: public OT<OTCO<IO>> { public:
 	int cnt;
 	eb_t g;
 	bn_t q;
-	eb_t gTbl[RELIC_EB_TABLE_MAX];
 	PRG prg;
 	IO* io;
 	OTCO(IO* io) {
 		this->io = io;
-		initialize_relic();
+        gTbl::init();
 		eb_curve_get_gen(g);
 		eb_curve_get_ord(q);
-		MemIO mio;
-		char * tmp = mio.buffer;
-		mio.buffer = (char*)eb_curve_get_tab_data;
-		mio.size = 15400*8;
-		mio.recv_eb(gTbl, RELIC_EB_TABLE_MAX);
-		eb_new(C);
-		mio.buffer = tmp;
-	}
+    }
 
 	void send_impl(const block* data0, const block* data1, int length) {
 		bn_t * a = new bn_t[length];
@@ -40,7 +32,7 @@ class OTCO: public OT<OTCO<IO>> { public:
 		block res[2];
 		prg.random_bn(a, length);
 		for(int i = 0; i < length; ++i) {
-			eb_mul_fix_norm(A[i], gTbl, a[i]);
+			eb_mul_fix_norm(A[i], gTbl::tbl, a[i]);
 			io->send_eb(&A[i], 1);
 		}
 
@@ -49,7 +41,7 @@ class OTCO: public OT<OTCO<IO>> { public:
 			eb_mul_norm(B[i], B[i], a[i]);
 			bn_sqr(a[i], a[i]);
 			bn_mod(a[i], a[i], q);
-			eb_mul_fix_norm(A[i], gTbl, a[i]);
+			eb_mul_fix_norm(A[i], gTbl::tbl, a[i]);
 			eb_sub_norm(A[i], B[i], A[i]);
 		}
 
@@ -82,7 +74,7 @@ class OTCO: public OT<OTCO<IO>> { public:
 		prg.random_bn(bb, length);
 
 		for(int i = 0; i < length; ++i) {
-			eb_mul_fix_norm(B[i], gTbl, bb[i]);
+			eb_mul_fix_norm(B[i], gTbl::tbl, bb[i]);
 			io->recv_eb(&A[i], 1);
 			if (b[i]) {
 				eb_add_norm(B[i], A[i], B[i]);
