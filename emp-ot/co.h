@@ -14,10 +14,10 @@ class OTCO: public OT<OTCO<IO>> { public:
 	PRG prg;
 	IO* io;
 	OTCO(IO* io) {
-		this->io = io;
+        this->io = io;
         gTbl::init();
-		eb_curve_get_gen(g);
-		eb_curve_get_ord(q);
+        eb_curve_get_gen(g);
+        eb_curve_get_ord(q);
     }
 
 	void send_impl(const block* data0, const block* data1, int length) {
