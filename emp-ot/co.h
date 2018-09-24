@@ -1,7 +1,6 @@
 #ifndef OT_CO_H__
 #define OT_CO_H__
 #include "emp-ot/ot.h"
-#include "emp-ot/table.h"
 /** @addtogroup OT
     @{
   */
