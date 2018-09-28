@@ -25,7 +25,7 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ<IO>> { public:
 	IO* io = nullptr;
 	MOTExtension_ALSZ(IO * io, bool committing = false, int ssp = 40): ssp(ssp){
 		this->io = io;
-		this->l = 192 + 128;
+		this->l = 192;
 		u = 2;
 		this->base_ot = new OTCO<IO>(io);
 		this->s = new bool[l];
