@@ -180,7 +180,7 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ<IO>> { public:
 		if (length%128 !=0) length = (length/128 + 1)*128;
 		block seed; PRG prg;int beta;
 		uint8_t * tmp = new uint8_t[length/8];
-		char dgst[20];
+		char dgst[Hash::DIGEST_SIZE];
 		for(int i = 0; i < u; ++i) {
 			io->recv_block(&seed, 1);
 			prg.reseed(&seed);
@@ -192,7 +192,7 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ<IO>> { public:
 					for(int l = 0; l < 2; ++l) {
 						xor_arr(tmp, t[k]+(j*length/8), t[l]+(beta*length/8), length/8);
 						Hash::hash_once(dgst, tmp, length/8);
-						io->send_data(dgst, 20);
+						io->send_data(dgst, Hash::DIGEST_SIZE);
 					}
 			}
 		}
@@ -224,7 +224,7 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ<IO>> { public:
 		if (length%128 !=0) length = (length/128 + 1)*128;
 		bool cheat = false;
 		PRG prg, sprg; block seed;int beta;
-		char dgst[2][2][20]; char dgstchk[20];
+		char dgst[2][2][Hash::DIGEST_SIZE]; char dgstchk[Hash::DIGEST_SIZE];
 		uint8_t * tmp = new uint8_t[length/8];
 		for(int i = 0; i < u; ++i) {
 			prg.random_block(&seed, 1);
@@ -234,16 +234,16 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ<IO>> { public:
 				sprg.random_data(&beta, 4);
 				beta = beta>0?beta:-1*beta;
 				beta %= l;
-				io->recv_data(dgst[0][0], 20);
-				io->recv_data(dgst[0][1], 20);
-				io->recv_data(dgst[1][0], 20);
-				io->recv_data(dgst[1][1], 20);
+				io->recv_data(dgst[0][0], Hash::DIGEST_SIZE);
+				io->recv_data(dgst[0][1], Hash::DIGEST_SIZE);
+				io->recv_data(dgst[1][0], Hash::DIGEST_SIZE);
+				io->recv_data(dgst[1][1], Hash::DIGEST_SIZE);
 
 				int ind1 = s[j]? 1:0;
 				int ind2 = s[beta]? 1:0;
 				xor_arr(tmp, q+(j*length/8), q+(beta*length/8), length/8);
 				Hash::hash_once(dgstchk, tmp, length/8);	
-				if (strncmp(dgstchk, dgst[ind1][ind2], 20)!=0)
+				if (strncmp(dgstchk, dgst[ind1][ind2], Hash::DIGEST_SIZE)!=0)
 					cheat = true;
 			}
 		}
@@ -253,7 +253,10 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ<IO>> { public:
 
 	void send_impl(const block* data0, const block* data1, int length) {
 		ot_extension_send_pre(length);
-		assert(!ot_extension_send_check(length)?"T":"F");
+		if (ot_extension_send_check(length)) {
+      std::cerr << "ot_extension_send_check failed" << std::endl;
+      exit(-1);
+    }
 		delete[] q; q = nullptr;
 		ot_extension_send_post(data0, data1, length);
 	}
@@ -273,9 +276,9 @@ class MOTExtension_ALSZ: public OT<MOTExtension_ALSZ<IO>> { public:
 	//return data[1-b]		
 	void open(block * data, const bool * r, int length) {		
 		io->recv_data(s, l);		
-		char com_recv[10];		
+		char com_recv[Hash::DIGEST_SIZE];		
 		Hash::hash_once(com_recv, s, l);		
-		if (strncmp(com_recv, com, 10)!= 0)		
+		if (strncmp(com_recv, com, Hash::DIGEST_SIZE)!= 0)		
 			assert(false);		
 		bool_to_uint8(block_s, s, l);		
 		for(int i = 0; i < length; ++i) {		
