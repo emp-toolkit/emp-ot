@@ -74,10 +74,8 @@ class SHOTExtension: public OTExtension<IO, OTNP, emp::SHOTExtension>{ public:
 		block res;
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(&res, sizeof(block));
-			if(r[i])
-				data[i] = xorBlocks(res, crh.H(tT[i]));
-			else 
-				data[i] = crh.H(tT[i]);
+			data[i] = crh.H(tT[i]);
+			if(r[i]) data[i] = xorBlocks(res, data[i]);
 		}
 		delete[] tT;
 	}
