@@ -20,7 +20,7 @@ class SHOTExtension: public OTExtension<IO, OTNP, emp::SHOTExtension>{ public:
 	using OTExtension<IO, OTNP, emp::SHOTExtension>::block_s;
 
 	void got_send_post(const block* data0, const block* data1, int length) {
-		const int bsize = AES_BATCH_SIZE;
+		const int bsize = AES_BATCH_SIZE/2;
 		block pad[2*bsize];
 		for(int i = 0; i < length; i+=bsize) {
 			for(int j = i; j < i+bsize and j < length; ++j) {
@@ -38,20 +38,21 @@ class SHOTExtension: public OTExtension<IO, OTNP, emp::SHOTExtension>{ public:
 	}
 
 	void got_recv_post(block* data, const bool* r, int length) {
-		block res[2];
-		for(int i = 0; i < length; ++i) {
-			io->recv_data(res, 2*sizeof(block));
-			if(r[i]) {
-				data[i] = xorBlocks(res[1], crh.H(tT[i]));
-			} else {
-				data[i] = xorBlocks(res[0], crh.H(tT[i]));
+		const int bsize = AES_BATCH_SIZE;
+		block res[2*bsize];
+		for(int i = 0; i < length; i+=bsize) {
+			io->recv_data(res, 2*sizeof(block)*min(bsize,length-i));
+			if (bsize <= length-i) crh.H<bsize>(tT+i, tT+i);
+			else crh.Hn(tT+i, tT+i, length-i);
+			for(int j = 0; j < bsize and j < length-i; ++j) {
+				data[i] = xorBlocks(res[2*j+r[i]], tT[i]);
 			}
 		}
 		delete[] tT;
 	}
 
 	void cot_send_post(block* data0, block delta, int length) {
-		const int bsize = AES_BATCH_SIZE;
+		const int bsize = AES_BATCH_SIZE/2;
 		block pad[2*bsize];
 		block tmp[2*bsize];
 		for(int i = 0; i < length; i+=bsize) {
@@ -71,17 +72,21 @@ class SHOTExtension: public OTExtension<IO, OTNP, emp::SHOTExtension>{ public:
 	}
 
 	void cot_recv_post(block* data, const bool* r, int length) {
-		block res;
-		for(int i = 0; i < length; ++i) {
-			io->recv_data(&res, sizeof(block));
-			data[i] = crh.H(tT[i]);
-			if(r[i]) data[i] = xorBlocks(res, data[i]);
+		const int bsize = AES_BATCH_SIZE;
+		block res[bsize];
+		for(int i = 0; i < length; i+=bsize) {
+			io->recv_data(res, sizeof(block)*min(bsize,length-i));
+			if (bsize <= length-i) crh.H<bsize>(data+i, tT+i);
+			else crh.Hn(data+i, tT+i, length-i);
+			for(int j = 0; j < bsize and j < length-i; ++j) {
+				if(r[i+j]) data[i+j] = xorBlocks(res[j], data[i+j]);
+			}
 		}
 		delete[] tT;
 	}
 	
 	void rot_send_post(block* data0, block* data1, int length) {
-		const int bsize = AES_BATCH_SIZE;
+		const int bsize = AES_BATCH_SIZE/2;
 		block pad[2*bsize];
 		for(int i = 0; i < length; i+=bsize) {
 			for(int j = i; j < i+bsize and j < length; ++j) {
@@ -98,13 +103,14 @@ class SHOTExtension: public OTExtension<IO, OTNP, emp::SHOTExtension>{ public:
 	}
 
 	void rot_recv_post(block* data, const bool* r, int length) {
-		for(int i = 0; i < length; ++i)
-			data[i] = crh.H(tT[i]);
+		const int bsize = AES_BATCH_SIZE;
+		block res[bsize];
+		for(int i = 0; i < length; i+=bsize) {
+			if (bsize <= length-i) crh.H<bsize>(data+i, tT+i);
+			else crh.Hn(data+i, tT+i, length-i);
+		}
 		delete[] tT;
 	}
-
-
-
 
 	void send_impl(const block* data0, const block* data1, int length) {
 		send_pre(length);

@@ -41,6 +41,7 @@ double test_cot_mal(NetIO * io, int party, int length) {
 	delete[] b0;
 	delete[] r;
 	delete[] b;
+	delete[] delta;
 	return t;
 }
 
