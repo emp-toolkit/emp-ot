@@ -9,7 +9,6 @@ template<typename IO, template<typename> class BaseOT, template<typename> class 
 class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 	BaseOT<IO> * base_ot;
 	PRG prg;
-	PRP pi;
 	const int l = 128;
 	const int block_size = 1024*16;
 
@@ -126,92 +125,6 @@ class OTExtension: public OT<OTExtension<IO, BaseOT, OTE>> { public:
 
 		delete[] block_r;
 		delete[] r2;
-	}
-
-	void got_send_post(const block* data0, const block* data1, int length) {
-		const int bsize = AES_BATCH_SIZE;
-		block pad[2*bsize];
-		for(int i = 0; i < length; i+=bsize) {
-			for(int j = i; j < i+bsize and j < length; ++j) {
-				pad[2*(j-i)] = qT[j];
-				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
-			}
-			pi.H<2*bsize>(pad, pad, 2*i);
-			for(int j = i; j < i+bsize and j < length; ++j) {
-				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], data0[j]);
-				pad[2*(j-i)+1] = xorBlocks(pad[2*(j-i)+1], data1[j]);
-			}
-			io->send_data(pad, 2*sizeof(block)*min(bsize,length-i));
-		}
-		delete[] qT;
-	}
-
-	void got_recv_post(block* data, const bool* r, int length) {
-		block res[2];
-		for(int i = 0; i < length; ++i) {
-			io->recv_data(res, 2*sizeof(block));
-			if(r[i]) {
-				data[i] = xorBlocks(res[1], pi.H(tT[i], 2*i+1));
-			} else {
-				data[i] = xorBlocks(res[0], pi.H(tT[i], 2*i));
-			}
-		}
-		delete[] tT;
-	}
-
-	void cot_send_post(block* data0, block delta, int length) {
-		const int bsize = AES_BATCH_SIZE;
-		block pad[2*bsize];
-		block tmp[2*bsize];
-		for(int i = 0; i < length; i+=bsize) {
-			for(int j = i; j < i+bsize and j < length; ++j) {
-				pad[2*(j-i)] = qT[j];
-				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
-			}
-			pi.H<2*bsize>(pad, pad, 2*i);
-			for(int j = i; j < i+bsize and j < length; ++j) {
-				data0[j] = pad[2*(j-i)];
-				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], delta);
-				tmp[j-i] = xorBlocks(pad[2*(j-i)+1], pad[2*(j-i)]);
-			}
-			io->send_data(tmp, sizeof(block)*min(bsize,length-i));
-		}
-		delete[] qT;
-	}
-
-	void cot_recv_post(block* data, const bool* r, int length) {
-		block res;
-		for(int i = 0; i < length; ++i) {
-			io->recv_data(&res, sizeof(block));
-			if(r[i])
-				data[i] = xorBlocks(res, pi.H(tT[i], 2*i+1));
-			else 
-				data[i] = pi.H(tT[i], 2*i);
-		}
-		delete[] tT;
-	}
-	
-	void rot_send_post(block* data0, block* data1, int length) {
-		const int bsize = AES_BATCH_SIZE;
-		block pad[2*bsize];
-		for(int i = 0; i < length; i+=bsize) {
-			for(int j = i; j < i+bsize and j < length; ++j) {
-				pad[2*(j-i)] = qT[j];
-				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
-			}
-			pi.H<2*bsize>(pad, pad, 2*i);
-			for(int j = i; j < i+bsize and j < length; ++j) {
-				data0[j] = pad[2*(j-i)];
-				data1[j] = pad[2*(j-i)+1];
-			}
-		}
-		delete[] qT;
-	}
-
-	void rot_recv_post(block* data, const bool* r, int length) {
-		for(int i = 0; i < length; ++i)
-			data[i] = pi.H(tT[i], 2*i+r[i]);
-		delete[] tT;
 	}
 
 	void send_impl(const block* data0, const block* data1, int length) {

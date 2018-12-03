@@ -1,4 +1,4 @@
-#ifndef OT_M_EXTENSION_KOS_H__
+#ifndef OT_M_EXTENSION_KOS_H
 #define OT_M_EXTENSION_KOS_H__
 #include "emp-ot/ot.h"
 #include "emp-ot/co.h"
@@ -20,10 +20,10 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, emp::MOTExtension_KOS> { pu
 	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::qT;
 	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::tT;
 	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::prg;
-	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::pi;
 	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::padded_length;
 	using OTExtension<IO, OTCO, emp::MOTExtension_KOS>::block_size;
 
+	TCCRH tccrh;
 	MOTExtension_KOS(IO * io, bool committing = false, int ssp = 40) :
 		OTExtension<IO, OTCO, emp::MOTExtension_KOS>(io, ssp) {
 			this->committing = committing;
@@ -99,10 +99,10 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, emp::MOTExtension_KOS> { pu
 			for(int i = 0; i < length; ++i) {
 				io->recv_data(res, 2*sizeof(block));
 				if(r[i]) {
-					data[i] = xorBlocks(res[1], pi.H(tT[i], 2*i+1));
+					data[i] = xorBlocks(res[1], tccrh.H(tT[i], 2*i+1));
 					open_data[i] = res[0];
 				} else {
-					data[i] = xorBlocks(res[0], pi.H(tT[i], 2*i));
+					data[i] = xorBlocks(res[0], tccrh.H(tT[i], 2*i));
 					open_data[i] = res[1];
 				}
 			}
@@ -110,18 +110,98 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, emp::MOTExtension_KOS> { pu
 			for(int i = 0; i < length; ++i) {
 				io->recv_data(res, 2*sizeof(block));
 				if(r[i]) {
-					data[i] = xorBlocks(res[1], pi.H(tT[i], 2*i+1));
+					data[i] = xorBlocks(res[1], tccrh.H(tT[i], 2*i+1));
 				} else {
-					data[i] = xorBlocks(res[0], pi.H(tT[i], 2*i));
+					data[i] = xorBlocks(res[0], tccrh.H(tT[i], 2*i));
 				}
 			}
 		}
 	}
 
+
+	void got_send_post(const block* data0, const block* data1, int length) {
+		const int bsize = AES_BATCH_SIZE;
+		block pad[2*bsize];
+		for(int i = 0; i < length; i+=bsize) {
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = qT[j];
+				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
+			}
+			tccrh.H<2*bsize>(pad, pad, 2*i);
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], data0[j]);
+				pad[2*(j-i)+1] = xorBlocks(pad[2*(j-i)+1], data1[j]);
+			}
+			io->send_data(pad, 2*sizeof(block)*min(bsize,length-i));
+		}
+		delete[] qT;
+	}
+
+
+
+	void cot_send_post(block* data0, block delta, int length) {
+		const int bsize = AES_BATCH_SIZE;
+		block pad[2*bsize];
+		block tmp[2*bsize];
+		for(int i = 0; i < length; i+=bsize) {
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = qT[j];
+				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
+			}
+			tccrh.H<2*bsize>(pad, pad, 2*i);
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				data0[j] = pad[2*(j-i)];
+				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], delta);
+				tmp[j-i] = xorBlocks(pad[2*(j-i)+1], pad[2*(j-i)]);
+			}
+			io->send_data(tmp, sizeof(block)*min(bsize,length-i));
+		}
+		delete[] qT;
+	}
+
+	void cot_recv_post(block* data, const bool* r, int length) {
+		block res;
+		for(int i = 0; i < length; ++i) {
+			io->recv_data(&res, sizeof(block));
+			if(r[i])
+				data[i] = xorBlocks(res, tccrh.H(tT[i], 2*i+1));
+			else 
+				data[i] = tccrh.H(tT[i], 2*i);
+		}
+		delete[] tT;
+	}
+	
+	void rot_send_post(block* data0, block* data1, int length) {
+		const int bsize = AES_BATCH_SIZE;
+		block pad[2*bsize];
+		for(int i = 0; i < length; i+=bsize) {
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				pad[2*(j-i)] = qT[j];
+				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
+			}
+			tccrh.H<2*bsize>(pad, pad, 2*i);
+			for(int j = i; j < i+bsize and j < length; ++j) {
+				data0[j] = pad[2*(j-i)];
+				data1[j] = pad[2*(j-i)+1];
+			}
+		}
+		delete[] qT;
+	}
+
+	void rot_recv_post(block* data, const bool* r, int length) {
+		for(int i = 0; i < length; ++i)
+			data[i] = tccrh.H(tT[i], 2*i+r[i]);
+		delete[] tT;
+	}
+
+
+
+
+
 	void send_impl(const block* data0, const block* data1, int length) {
 		send_pre(length);
 		if(!send_check(length))	error("OT Extension check failed");
-		OTExtension<IO, OTCO, emp::MOTExtension_KOS>::got_send_post(data0, data1, length);
+		got_send_post(data0, data1, length);
 	}
 
 	void recv_impl(block* data, const bool* b, int length) {
@@ -133,13 +213,13 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, emp::MOTExtension_KOS> { pu
 	void send_rot(block * data0, block * data1, int length) {
 		send_pre(length);
 		if(!send_check(length))error("OT Extension check failed");
-		OTExtension<IO, OTCO, emp::MOTExtension_KOS>::rot_send_post(data0, data1, length);
+		rot_send_post(data0, data1, length);
 	}
 
 	void recv_rot(block* data, const bool* b, int length) {
 		recv_pre(b, length);
 		recv_check(b, length);
-		OTExtension<IO, OTCO, emp::MOTExtension_KOS>::rot_recv_post(data, b, length);
+		rot_recv_post(data, b, length);
 	}
 
 	void cot_send_post_new(block* data0, const block* delta, int length) {
@@ -151,7 +231,7 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, emp::MOTExtension_KOS> { pu
 				pad[2*(j-i)] = qT[j];
 				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
 			}
-		pi.Hn(pad, pad, 2*i, 2*bsize, tmp);
+		tccrh.Hn(pad, pad, 2*i, 2*bsize, tmp);
 			for(int j = i; j < i+bsize and j < length; ++j) {
 				data0[j] = pad[2*(j-i)];
 				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], delta[j]);
@@ -170,13 +250,13 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, emp::MOTExtension_KOS> { pu
 	void send_cot(block * data0, block delta, int length) {
 		send_pre(length);
 		if(!send_check(length))error("OT Extension check failed");
-		OTExtension<IO, OTCO, emp::MOTExtension_KOS>::cot_send_post(data0, delta, length);
+		cot_send_post(data0, delta, length);
 	}
 
 	void recv_cot(block* data, const bool* b, int length) {
 		recv_pre(b, length);
 		recv_check(b, length);
-		OTExtension<IO, OTCO, emp::MOTExtension_KOS>::cot_recv_post(data, b, length);
+		cot_recv_post(data, b, length);
 	}
 
 	void open() {
@@ -197,9 +277,9 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, emp::MOTExtension_KOS> { pu
 		for(int i = 0; i < length; ++i) {	
 			tT[i] = xorBlocks(tT[i], block_s);
 			if(r[i])
-				data[i] = xorBlocks(open_data[i], pi.H(tT[i], 2*i));
+				data[i] = xorBlocks(open_data[i], tccrh.H(tT[i], 2*i));
 			else	
-				data[i] = xorBlocks(open_data[i], pi.H(tT[i], 2*i+1));
+				data[i] = xorBlocks(open_data[i], tccrh.H(tT[i], 2*i+1));
 		}		
 	}
 };
