@@ -45,7 +45,7 @@ class SHOTExtension: public OTExtension<IO, OTNP, emp::SHOTExtension>{ public:
 			if (bsize <= length-i) crh.H<bsize>(tT+i, tT+i);
 			else crh.Hn(tT+i, tT+i, length-i);
 			for(int j = 0; j < bsize and j < length-i; ++j) {
-				data[i] = xorBlocks(res[2*j+r[i]], tT[i]);
+				data[i+j] = xorBlocks(res[2*j+r[i+j]], tT[i+j]);
 			}
 		}
 		delete[] tT;

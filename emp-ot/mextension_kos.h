@@ -92,47 +92,65 @@ class MOTExtension_KOS: public OTExtension<IO, OTCO, emp::MOTExtension_KOS> { pu
 		io->send_block(t, 2);
 	}
 	void got_recv_post(block* data, const bool* r, int length) {
-		block res[2];
+		const int bsize = AES_BATCH_SIZE;
+		block pad0[bsize];
+		block pad1[bsize];
 		if(committing) {
 			delete_array_null(open_data);
 			open_data = new block[length];
-			for(int i = 0; i < length; ++i) {
-				io->recv_data(res, 2*sizeof(block));
-				if(r[i]) {
-					data[i] = xorBlocks(res[1], tccrh.H(tT[i], 2*i+1));
-					open_data[i] = res[0];
-				} else {
-					data[i] = xorBlocks(res[0], tccrh.H(tT[i], 2*i));
-					open_data[i] = res[1];
+			for(int i = 0; i < length; i+=bsize) {
+				io->recv_data(pad0, sizeof(block)*min(bsize,length-i));
+				io->recv_data(pad1, sizeof(block)*min(bsize,length-i));
+				if (bsize <= length-i)tccrh.H<bsize>(tT+i, tT+i, i);
+				else tccrh.Hn(tT+i, tT+i, i, length -i);
+
+				for(int j = i; j < i+bsize and j < length; ++j) {
+					if (r[i]) {
+						data[j] = xorBlocks(tT[j], pad1[j-i]);
+						open_data[i] = pad0[j-i];
+					}
+					else {
+						data[j] = xorBlocks(tT[j], pad0[j-i]);
+						open_data[i] = pad1[j-i];;
+					}
 				}
 			}
 		} else {
-			for(int i = 0; i < length; ++i) {
-				io->recv_data(res, 2*sizeof(block));
-				if(r[i]) {
-					data[i] = xorBlocks(res[1], tccrh.H(tT[i], 2*i+1));
-				} else {
-					data[i] = xorBlocks(res[0], tccrh.H(tT[i], 2*i));
+			for(int i = 0; i < length; i+=bsize) {
+				io->recv_data(pad0, sizeof(block)*min(bsize,length-i));
+				io->recv_data(pad1, sizeof(block)*min(bsize,length-i));
+				if (bsize <= length-i)tccrh.H<bsize>(tT+i, tT+i, i);
+				else tccrh.Hn(tT+i, tT+i, i, length -i);
+
+				for(int j = i; j < i+bsize and j < length; ++j) {
+					if (r[j])
+						data[j] = xorBlocks(tT[j], pad1[j-i]);
+					else
+						data[j] = xorBlocks(tT[j], pad0[j-i]);
 				}
 			}
+			delete[] tT;
 		}
 	}
 
 
 	void got_send_post(const block* data0, const block* data1, int length) {
 		const int bsize = AES_BATCH_SIZE;
-		block pad[2*bsize];
+		block pad0[bsize];
+		block pad1[bsize];
 		for(int i = 0; i < length; i+=bsize) {
 			for(int j = i; j < i+bsize and j < length; ++j) {
-				pad[2*(j-i)] = qT[j];
-				pad[2*(j-i)+1] = xorBlocks(qT[j], block_s);
+				pad0[(j-i)] = qT[j];
+				pad1[(j-i)] = xorBlocks(qT[j], block_s);
 			}
-			tccrh.H<2*bsize>(pad, pad, 2*i);
+			tccrh.H<bsize>(pad0, pad0, i);
+			tccrh.H<bsize>(pad1, pad1, i);
 			for(int j = i; j < i+bsize and j < length; ++j) {
-				pad[2*(j-i)] = xorBlocks(pad[2*(j-i)], data0[j]);
-				pad[2*(j-i)+1] = xorBlocks(pad[2*(j-i)+1], data1[j]);
+				pad0[(j-i)] = xorBlocks(pad0[(j-i)], data0[j]);
+				pad1[(j-i)] = xorBlocks(pad1[(j-i)], data1[j]);
 			}
-			io->send_data(pad, 2*sizeof(block)*min(bsize,length-i));
+			io->send_data(pad0, sizeof(block)*min(bsize,length-i));
+			io->send_data(pad1, sizeof(block)*min(bsize,length-i));
 		}
 		delete[] qT;
 	}
