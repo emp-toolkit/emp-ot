@@ -104,7 +104,6 @@ class SHOTExtension: public OTExtension<IO, OTNP, emp::SHOTExtension>{ public:
 
 	void rot_recv_post(block* data, const bool* r, int length) {
 		const int bsize = AES_BATCH_SIZE;
-		block res[bsize];
 		for(int i = 0; i < length; i+=bsize) {
 			if (bsize <= length-i) crh.H<bsize>(data+i, tT+i);
 			else crh.Hn(data+i, tT+i, length-i);

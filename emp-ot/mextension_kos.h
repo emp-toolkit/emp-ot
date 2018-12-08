@@ -1,4 +1,4 @@
-#ifndef OT_M_EXTENSION_KOS_H
+#ifndef OT_M_EXTENSION_KOS_H__
 #define OT_M_EXTENSION_KOS_H__
 #include "emp-ot/ot.h"
 #include "emp-ot/co.h"
