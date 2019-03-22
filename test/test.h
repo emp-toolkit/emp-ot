@@ -134,7 +134,7 @@ double test_bit_ot(IO *io, int party, int length) {
 }
 
 template <typename IO, template <typename> class T>
-double test_cot(NetIO *io, int party, int length) {
+double test_cot(IO *io, int party, int length) {
   block *b0 = new block[length], *r = new block[length];
   bool *b = new bool[length];
   block delta;
