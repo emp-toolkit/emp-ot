@@ -34,6 +34,7 @@ class SHOTExtension: public OTExtension<IO, OTNP, emp::SHOTExtension>{ public:
 			}
 			io->send_data(pad, 2*sizeof(block)*min(bsize,length-i));
 		}
+		io->flush();
 		delete[] qT;
 	}
 
@@ -68,6 +69,7 @@ class SHOTExtension: public OTExtension<IO, OTNP, emp::SHOTExtension>{ public:
 			}
 			io->send_data(tmp, sizeof(block)*min(bsize,length-i));
 		}
+		io->flush();
 		delete[] qT;
 	}
 
