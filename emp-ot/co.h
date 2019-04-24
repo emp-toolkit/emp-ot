@@ -10,7 +10,7 @@ class OTCO: public OT<OTCO<IO>> { public:
 	int cnt;
 	eb_t g;
 	bn_t q;
-	eb_t gTbl[RELIC_EB_TABLE_MAX];
+	eb_t gTbl[RLC_EB_TABLE_MAX];
 	PRG prg;
 	IO* io;
 	OTCO(IO* io) {
@@ -22,7 +22,7 @@ class OTCO: public OT<OTCO<IO>> { public:
 		char * tmp = mio.buffer;
 		mio.buffer = (char*)eb_curve_get_tab_data;
 		mio.size = 15400*8;
-		mio.recv_eb(gTbl, RELIC_EB_TABLE_MAX);
+		mio.recv_eb(gTbl, RLC_EB_TABLE_MAX);
 		eb_new(C);
 		mio.buffer = tmp;
 	}
