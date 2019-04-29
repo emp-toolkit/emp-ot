@@ -13,7 +13,7 @@ int main() {
 //		cout <<io.size<<endl;
 		cout <<"#ifndef PRE_EB_TABLE\n #define PRE_EB_TABLE\n";
 		uint32_t * data = (uint32_t*)(io.buffer);
-		cout << "uint32_t eb_curve_get_tab_data[] = {"<<data[0]<<"";
+		cout << "static const uint32_t eb_curve_get_tab_data[] = {"<<data[0]<<"";
 		for (int i = 1; i < io.size/4; ++i) {
 			cout << ","<<data[i]<<"";
 		}
