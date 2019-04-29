@@ -9,7 +9,7 @@ template<typename T>
 	T* aalloc(int length) {
 		return (T*)boost::alignment::aligned_alloc(sizeof(T), sizeof(T)*length);
 	}
-void afree(void* p) {
+inline void afree(void* p) {
 	boost::alignment::aligned_free(p);
 }
 
