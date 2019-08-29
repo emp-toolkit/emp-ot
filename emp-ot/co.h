@@ -30,7 +30,7 @@ private:
 		G.from_hex(A, data);
 	}	
 
-	inline block KDF(Point in) {
+	block KDF(Point &in) {
 		char* tmp=G.to_hex(in);
 		return Hash::hash_for_block(tmp, strlen(tmp));
 	}
@@ -49,6 +49,7 @@ public:
 	OTCO(IO* io) {
 		this->io = io;
 		G.get_order(order);
+		G.init(g);
 		G.get_generator(g);
 		/*initialize_relic();
 		eb_curve_get_gen(g);
@@ -63,14 +64,11 @@ public:
 	}
 
 	void send_impl(const block* data0, const block* data1, int length) {
+		
 		BigInt * a = new BigInt[length];
 		Point * B = new Point[length];
 		Point * A = new Point[length];
 
-		Point t1, t2, iv;
-		G.init(t1);
-		G.init(t2);
-		G.init(iv);
 		for(int i = 0; i < length; ++i) {
 			//eb_newl(A[i], B[i]);
 			//bn_newl(a[i]);
@@ -78,6 +76,7 @@ public:
 			G.init(B[i]);
 			a[i].rand_mod(order);
 		}
+
 
 		block res[2];
 		//prg.random_bn(a, length);
@@ -87,6 +86,7 @@ public:
 			send_point(A[i]);
 		}
 
+		
 		for(int i = 0; i < length; ++i) {
 			//io->recv_eb(&B[i], 1);
 			recv_point(B[i]);
@@ -96,14 +96,16 @@ public:
 			//bn_mod(a[i], a[i], q);
 			//eb_mul_fix_norm(A[i], gTbl, a[i]);
 			//eb_sub_norm(A[i], B[i], A[i]);
+			
 			G.mul(B[i], B[i], a[i]);
-			a[i].mul(a[i]).mod(order);
-			G.mul_gen(A[i],a[i]);
+			G.mul(A[i],A[i],a[i]);
 			G.inv(A[i],A[i]);
 			G.add(A[i],B[i],A[i]);
-		}
 
+			
+		}
 		for(int i = 0; i < length; ++i){
+			
 			res[0] = KDF(B[i]);	
 			res[1] = KDF(A[i]);
 			res[0] = xorBlocks(res[0], data0[i]);
