@@ -2,38 +2,14 @@
 #define OT_CO_H__
 #include "emp-ot/ot.h"
 #include "emp-tool/ec_group/group.h"
+#include "emp-tool/utils/utils_ec.h"
 /** @addtogroup OT
     @{
   */
 namespace emp {
 template<typename IO>
 class OTCO: public OT<OTCO<IO>> { 
-private:
 
-	void send_point(const Point &A)
-	{
-		char *data = G.to_hex(A);
-		int len = strlen(data);
-		io->send_data(&len, 4);
-		io->send_data(data, len);
-	}
-
-	void recv_point(Point &A)
-	{
-
-		int len;
-		char *data;
-		io->recv_data(&len, 4);
-		data = new char[len + 1];
-		data[len] = 0;
-		io->recv_data(data, len);
-		G.from_hex(A, data);
-	}	
-
-	block KDF(Point &in) {
-		char* tmp=G.to_hex(in);
-		return Hash::hash_for_block(tmp, strlen(tmp));
-	}
 public:
 	//int cnt;
 	//eb_t g;
@@ -83,13 +59,13 @@ public:
 		for(int i = 0; i < length; ++i) {
 			//eb_mul_fix_norm(A[i], gTbl, a[i]);
 			G.mul_gen(A[i],a[i]);
-			send_point(A[i]);
+			io->send_pt(G,A[i]);
 		}
 
 		
 		for(int i = 0; i < length; ++i) {
 			//io->recv_eb(&B[i], 1);
-			recv_point(B[i]);
+			io->recv_pt(G,B[i]);
 
 			//eb_mul_norm(B[i], B[i], a[i]);
 			//bn_sqr(a[i], a[i]);
@@ -106,8 +82,8 @@ public:
 		}
 		for(int i = 0; i < length; ++i){
 			
-			res[0] = KDF(B[i]);	
-			res[1] = KDF(A[i]);
+			res[0] = KDF_pt(G,B[i]);	
+			res[1] = KDF_pt(G,A[i]);
 			res[0] = xorBlocks(res[0], data0[i]);
 			res[1] = xorBlocks(res[1], data1[i]);
 
@@ -134,7 +110,7 @@ public:
 
 		for(int i = 0; i < length; ++i) {
 			//eb_mul_fix_norm(B[i], gTbl, bb[i]);
-			recv_point(A[i]);
+			io->recv_pt(G,A[i]);
 			if (b[i]) {
 				//eb_add_norm(B[i], A[i], B[i]);
 				G.add(B[i],A[i],B[i]);
@@ -142,7 +118,7 @@ public:
 		}
 
 		for(int i = 0; i < length; ++i) 
-			send_point(B[i]);
+			io->send_pt(G,B[i]);
 		for(int i = 0; i < length; ++i) {
 			//eb_mul_norm(A[i], A[i], bb[i]);
 			G.mul(A[i],A[i],bb[i]);
@@ -151,7 +127,7 @@ public:
 		block res[2];
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
-			data[i] = KDF(A[i]);
+			data[i] = KDF_pt(G,A[i]);
 			if(b[i])
 				data[i] = xorBlocks(data[i], res[1]);
 			else
