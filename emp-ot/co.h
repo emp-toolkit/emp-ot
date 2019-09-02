@@ -15,7 +15,7 @@ public:
 	//eb_t g;
 	//bn_t q;
 	//eb_t gTbl[RLC_EB_TABLE_MAX];
-	//PRG prg;
+	PRG prg;
 
 
 	IO* io;
@@ -50,7 +50,8 @@ public:
 			//bn_newl(a[i]);
 			G.init(A[i]);
 			G.init(B[i]);
-			a[i].rand_mod(order);
+			prg.random_bi(a[i]);	
+			a[i].mod(order);
 		}
 
 
@@ -104,7 +105,8 @@ public:
 			//bn_newl(bb[i]);
 			G.init(A[i]);
 			G.init(B[i]);
-			bb[i].rand_mod(order);
+			prg.random_bi(bb[i]);	
+			bb[i].mod(order);
 		}
 		//prg.random_bn(bb, length);
 
