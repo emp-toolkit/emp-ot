@@ -10,13 +10,7 @@ template<typename IO>
 class OTCO: public OT<OTCO<IO>> { 
 
 public:
-	//int cnt;
-	//eb_t g;
-	//bn_t q;
-	//eb_t gTbl[RLC_EB_TABLE_MAX];
 	PRG prg;
-
-
 	IO* io;
 	Group G;
 	BigInt order;
@@ -26,16 +20,6 @@ public:
 		G.get_order(order);
 		G.init(g);
 		G.get_generator(g);
-		/*initialize_relic();
-		eb_curve_get_gen(g);
-		eb_curve_get_ord(q);
-		MemIO mio;
-		char * tmp = mio.buffer;
-		mio.buffer = (char*)eb_curve_get_tab_data;
-		mio.size = 15400*8;
-		mio.recv_eb(gTbl, RLC_EB_TABLE_MAX);
-		eb_new(C);
-		mio.buffer = tmp;*/
 	}
 
 	void send_impl(const block* data0, const block* data1, int length) {
@@ -45,41 +29,26 @@ public:
 		Point * A = new Point[length];
 
 		for(int i = 0; i < length; ++i) {
-			//eb_newl(A[i], B[i]);
-			//bn_newl(a[i]);
 			G.init(A[i]);
 			G.init(B[i]);
 			prg.random_bi(a[i]);	
 			a[i].mod(order);
 		}
 
-
 		block res[2];
-		//prg.random_bn(a, length);
 		for(int i = 0; i < length; ++i) {
-			//eb_mul_fix_norm(A[i], gTbl, a[i]);
 			G.mul_gen(A[i],a[i]);
-			io->send_pt(G,A[i]);
+			io->send_pt(G, A + i);
 		}
-
 		
 		for(int i = 0; i < length; ++i) {
-			//io->recv_eb(&B[i], 1);
-			io->recv_pt(G,B[i]);
-
-			//eb_mul_norm(B[i], B[i], a[i]);
-			//bn_sqr(a[i], a[i]);
-			//bn_mod(a[i], a[i], q);
-			//eb_mul_fix_norm(A[i], gTbl, a[i]);
-			//eb_sub_norm(A[i], B[i], A[i]);
-			
+			io->recv_pt(G,B + i);
 			G.mul(B[i], B[i], a[i]);
 			G.mul(A[i],A[i],a[i]);
 			G.inv(A[i],A[i]);
 			G.add(A[i],B[i],A[i]);
-
-			
 		}
+
 		for(int i = 0; i < length; ++i){
 			
 			res[0] = Hash::KDF(G,B[i]);	
@@ -100,28 +69,21 @@ public:
 		Point * B = new Point[length];
 		Point * A = new Point[length];
 		for(int i = 0; i < length; ++i) {
-			//eb_newl(A[i], B[i]);
-			//bn_newl(bb[i]);
 			G.init(A[i]);
 			G.init(B[i]);
 			prg.random_bi(bb[i]);	
 			bb[i].mod(order);
 		}
-		//prg.random_bn(bb, length);
 
 		for(int i = 0; i < length; ++i) {
-			//eb_mul_fix_norm(B[i], gTbl, bb[i]);
-			io->recv_pt(G,A[i]);
+			io->recv_pt(G, A + i);
 			if (b[i]) {
-				//eb_add_norm(B[i], A[i], B[i]);
 				G.add(B[i],A[i],B[i]);
 			}
 		}
 
-		for(int i = 0; i < length; ++i) 
-			io->send_pt(G,B[i]);
+		io->send_pt(G, B, length);
 		for(int i = 0; i < length; ++i) {
-			//eb_mul_norm(A[i], A[i], bb[i]);
 			G.mul(A[i],A[i],bb[i]);
 		}
 
@@ -133,7 +95,7 @@ public:
 				data[i] = xorBlocks(data[i], res[1]);
 			else
 				data[i] = xorBlocks(data[i], res[0]);
-		}
+	}
 		
 		delete[] bb;
 		delete[] A;
