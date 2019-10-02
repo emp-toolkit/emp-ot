@@ -31,7 +31,8 @@ public:
 		for(int i = 0; i < length; ++i) {
 			G.init(A[i]);
 			G.init(B[i]);
-			prg.random_bi(a[i]);	
+//			prg.random_bi(a[i]);	
+			G.get_rand_bn(a[i]);
 			a[i].mod(order);
 		}
 
@@ -71,7 +72,8 @@ public:
 		for(int i = 0; i < length; ++i) {
 			G.init(A[i]);
 			G.init(B[i]);
-			prg.random_bi(bb[i]);	
+//			prg.random_bi(bb[i]);	
+			G.get_rand_bn(bb[i]);
 			bb[i].mod(order);
 		}
 
