@@ -23,85 +23,79 @@ public:
 	}
 
 	void send_impl(const block* data0, const block* data1, int length) {
-		
-		BigInt * a = new BigInt[length];
+		BigInt a;
+		Point A, AaInv;
 		Point * B = new Point[length];
-		Point * A = new Point[length];
+		Point * BA = new Point[length];
 
+		G.get_rand_bn(a);
+		G.init(A);
+		G.init(AaInv);
 		for(int i = 0; i < length; ++i) {
-			G.init(A[i]);
 			G.init(B[i]);
-//			prg.random_bi(a[i]);	
-			G.get_rand_bn(a[i]);
-			a[i].mod(order);
-		}
-
-		block res[2];
-		for(int i = 0; i < length; ++i) {
-			G.mul_gen(A[i],a[i]);
-			io->send_pt(G, A + i);
+			G.init(BA[i]);
 		}
 		
+		block res[2];
+		G.mul_gen(A, a);
+		io->send_pt(G, &A);
+		G.mul(AaInv, A, a);
+		G.inv(AaInv, AaInv);
+		
 		for(int i = 0; i < length; ++i) {
-			io->recv_pt(G,B + i);
-			G.mul(B[i], B[i], a[i]);
-			G.mul(A[i],A[i],a[i]);
-			G.inv(A[i],A[i]);
-			G.add(A[i],B[i],A[i]);
+			io->recv_pt(G, B + i);
+			G.mul(B[i], B[i], a);
+			G.add(BA[i], B[i], AaInv);
 		}
 
-		for(int i = 0; i < length; ++i){
-			
-			res[0] = Hash::KDF(G,B[i]);	
-			res[1] = Hash::KDF(G,A[i]);
+		for(int i = 0; i < length; ++i) {
+			res[0] = Hash::KDF(G, B[i], i);
+			res[1] = Hash::KDF(G, BA[i], i);
 			res[0] = xorBlocks(res[0], data0[i]);
 			res[1] = xorBlocks(res[1], data1[i]);
 
 			io->send_data(res, 2*sizeof(block));
 		}
 
-		delete[] a;
-		delete[] A;
+		delete[] BA;
 		delete[] B;
 	}
 
 	void recv_impl(block* data, const bool* b, int length) {
 		BigInt * bb = new BigInt[length];
 		Point * B = new Point[length];
-		Point * A = new Point[length];
+		Point A;
+		G.init(A);
 		for(int i = 0; i < length; ++i) {
-			G.init(A[i]);
 			G.init(B[i]);
-//			prg.random_bi(bb[i]);	
 			G.get_rand_bn(bb[i]);
-			bb[i].mod(order);
+			G.mul_gen(B[i], bb[i]);
 		}
 
+		io->recv_pt(G, &A);
 		for(int i = 0; i < length; ++i) {
-			io->recv_pt(G, A + i);
 			if (b[i]) {
-				G.add(B[i],A[i],B[i]);
+				G.add(B[i], A, B[i]);
 			}
 		}
 
 		io->send_pt(G, B, length);
 		for(int i = 0; i < length; ++i) {
-			G.mul(A[i],A[i],bb[i]);
+			G.mul(A, A, bb[i]);
 		}
 
 		block res[2];
 		for(int i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
-			data[i] = Hash::KDF(G,A[i]);
+			data[i] = Hash::KDF(G, A, i);
 			if(b[i])
 				data[i] = xorBlocks(data[i], res[1]);
 			else
 				data[i] = xorBlocks(data[i], res[0]);
 	}
 		
-		delete[] bb;
-		delete[] A;
-		delete[] B;
+	delete[] bb;
+	delete[] B;
 	}
 };
   /**@}*/
