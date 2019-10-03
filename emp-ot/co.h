@@ -10,16 +10,14 @@ template<typename IO>
 class OTCO: public OT<OTCO<IO>> { 
 
 public:
-	PRG prg;
 	IO* io;
-	Group G;
-	BigInt order;
-	Point g;
-	OTCO(IO* io) {
+	Group *G;
+	OTCO(IO* io, Group * _G = nullptr) {
 		this->io = io;
-		G.get_order(order);
-		G.init(g);
-		G.get_generator(g);
+		if (_G == nullptr)
+			G = new Group();
+		else
+			G = _G;
 	}
 
 	void send_impl(const block* data0, const block* data1, int length) {
@@ -28,24 +26,24 @@ public:
 		Point * B = new Point[length];
 		Point * BA = new Point[length];
 
-		G.get_rand_bn(a);
-		G.init(A);
-		G.init(AaInv);
+		G->get_rand_bn(a);
+		G->init(A);
+		G->init(AaInv);
 		for(int i = 0; i < length; ++i) {
-			G.init(B[i]);
-			G.init(BA[i]);
+			G->init(B[i]);
+			G->init(BA[i]);
 		}
 		
 		block res[2];
-		G.mul_gen(A, a);
+		G->mul_gen(A, a);
+		G->mul(AaInv, A, a);
+		G->inv(AaInv, AaInv);
 		io->send_pt(G, &A);
-		G.mul(AaInv, A, a);
-		G.inv(AaInv, AaInv);
-		
+
 		for(int i = 0; i < length; ++i) {
 			io->recv_pt(G, B + i);
-			G.mul(B[i], B[i], a);
-			G.add(BA[i], B[i], AaInv);
+			G->mul(B[i], B[i], a);
+			G->add(BA[i], B[i], AaInv);
 		}
 
 		for(int i = 0; i < length; ++i) {
@@ -65,24 +63,21 @@ public:
 		BigInt * bb = new BigInt[length];
 		Point * B = new Point[length];
 		Point A;
-		G.init(A);
+		G->init(A);
 		for(int i = 0; i < length; ++i) {
-			G.init(B[i]);
-			G.get_rand_bn(bb[i]);
-			G.mul_gen(B[i], bb[i]);
+			G->init(B[i]);
+			G->get_rand_bn(bb[i]);
+			G->mul_gen(B[i], bb[i]);
 		}
 
 		io->recv_pt(G, &A);
-		for(int i = 0; i < length; ++i) {
-			if (b[i]) {
-				G.add(B[i], A, B[i]);
-			}
-		}
+		for(int i = 0; i < length; ++i)
+			if (b[i]) 
+				G->add(B[i], A, B[i]);
 
-		io->send_pt(G, B, length);
-		for(int i = 0; i < length; ++i) {
-			G.mul(A, A, bb[i]);
-		}
+		io->send_pt(G, B, length);io->flush();
+		for(int i = 0; i < length; ++i)
+			G->mul(A, A, bb[i]);
 
 		block res[2];
 		for(int i = 0; i < length; ++i) {
