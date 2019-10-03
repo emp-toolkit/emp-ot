@@ -37,9 +37,8 @@ endmacro()
 
 #add_test(shot)
 add_test(mot)
-#add_test(deltaot)
-#add_test(print_precomputation_table)
-#add_test(ideal)
+add_test(deltaot)
+add_test(ideal)
 
 if (LATTICEOT)
   set(INCLUDE_LATTICE_OT ON)

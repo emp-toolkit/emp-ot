@@ -35,12 +35,11 @@ class OTCO: public OT<OTCO<IO>> { public:
 			B[i] = Point(G);
 			BA[i] = Point(G);
 		}
-
 		G->get_rand_bn(a);
-		A = G->mul_gen(a);//g^a
-		AaInv = A.mul(a);//g^(a^2)
-		AaInv = AaInv.inv();//g^(-a^2)
+		A = G->mul_gen(a);
 		io->send_pt(&A);
+		AaInv = A.mul(a);
+		AaInv = AaInv.inv();
 
 		for(int i = 0; i < length; ++i) {
 			io->recv_pt(&B[i]);
@@ -53,7 +52,6 @@ class OTCO: public OT<OTCO<IO>> { public:
 			res[1] = Hash::KDF(BA[i], i);
 			res[0] = xorBlocks(res[0], data0[i]);
 			res[1] = xorBlocks(res[1], data1[i]);
-
 			io->send_data(res, 2*sizeof(block));
 		}
 
@@ -68,17 +66,17 @@ class OTCO: public OT<OTCO<IO>> { public:
 		Point A(G);
 		for(int i = 0; i < length; ++i) {
 			G->get_rand_bn(bb[i]);
-			B[i] = G->mul_gen(bb[i]);
 			As[i] = Point(G);
 		}
 
 		io->recv_pt(&A);
-		for(int i = 0; i < length; ++i)
+
+		for(int i = 0; i < length; ++i) {
+			B[i] = G->mul_gen(bb[i]);
 			if (b[i]) 
 				B[i] = B[i].add(A);
-
-		for (int i = 0; i < length; ++i)
-			io->send_pt(&B[i]);
+			io->send_pt(&B[i]);io->flush();
+		}
 
 		for(int i = 0; i < length; ++i)
 			As[i] = A.mul(bb[i]);

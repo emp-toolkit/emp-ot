@@ -3,7 +3,6 @@
 
 #include "emp-ot/ot.h"
 #include "emp-ot/ideal.h"
-#include "emp-ot/table.h"
 
 // Defines or does not define INCLUDE_LATTICE_OT
 // depending on whether or not lattice_ot is available
