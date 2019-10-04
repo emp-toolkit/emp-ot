@@ -19,15 +19,13 @@ else (LATTICEOT)
   include_directories(${EMP-TOOL_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
 endif (LATTICEOT)
 
-set (CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS}")
-
 # Installation
 install(FILES cmake/emp-ot-config.cmake DESTINATION cmake/)
 install(DIRECTORY emp-ot DESTINATION include/)
 
 # Test cases
 macro (add_test _name)
-  add_test_with_lib(${_name} ${EMP-TOOL_LIBRARIES} crypto ssl)
+  add_test_with_lib(${_name} ${EMP-TOOL_LIBRARIES})
 
   if (LATTICEOT AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(${_name} PUBLIC -fext-numeric-literals)
