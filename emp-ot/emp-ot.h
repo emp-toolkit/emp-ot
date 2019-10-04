@@ -15,9 +15,9 @@
 #endif
 
 #include "emp-ot/co.h"
-//#include "emp-ot/np.h"
+#include "emp-ot/np.h"
 
-//#include "emp-ot/shextension.h"
+#include "emp-ot/shextension.h"
 #include "emp-ot/ot_extension.h"
 #include "emp-ot/mextension.h"
 

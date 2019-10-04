@@ -35,7 +35,7 @@ macro (add_test _name)
 
 endmacro()
 
-#add_test(shot)
+add_test(shot)
 add_test(mot)
 add_test(deltaot)
 add_test(ideal)

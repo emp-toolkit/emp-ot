@@ -31,10 +31,7 @@ class OTCO: public OT<OTCO<IO>> { public:
 		block res[2];
 		Point * B = new Point[length];
 		Point * BA = new Point[length];
-		for (int i = 0; i < length; ++i) {
-			B[i] = Point(G);
-			BA[i] = Point(G);
-		}
+
 		G->get_rand_bn(a);
 		A = G->mul_gen(a);
 		io->send_pt(&A);
@@ -42,7 +39,7 @@ class OTCO: public OT<OTCO<IO>> { public:
 		AaInv = AaInv.inv();
 
 		for(int i = 0; i < length; ++i) {
-			io->recv_pt(&B[i]);
+			io->recv_pt(G, &B[i]);
 			B[i] = B[i].mul(a);
 			BA[i] = B[i].add(AaInv);
 		}
@@ -61,15 +58,14 @@ class OTCO: public OT<OTCO<IO>> { public:
 
 	void recv_impl(block* data, const bool* b, int length) {
 		BigInt * bb = new BigInt[length];
-		Point * B = new Point[length];
-		Point * As = new Point[length];
-		Point A(G);
-		for(int i = 0; i < length; ++i) {
-			G->get_rand_bn(bb[i]);
-			As[i] = Point(G);
-		}
+		Point * B = new Point[length],
+				* As = new Point[length],
+				A;
 
-		io->recv_pt(&A);
+		for(int i = 0; i < length; ++i)
+			G->get_rand_bn(bb[i]);
+
+		io->recv_pt(G, &A);
 
 		for(int i = 0; i < length; ++i) {
 			B[i] = G->mul_gen(bb[i]);
