@@ -19,8 +19,6 @@ else (LATTICEOT)
   include_directories(${EMP-TOOL_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
 endif (LATTICEOT)
 
-
-
 # Installation
 install(FILES cmake/emp-ot-config.cmake DESTINATION cmake/)
 install(DIRECTORY emp-ot DESTINATION include/)
@@ -38,7 +36,6 @@ endmacro()
 add_test(shot)
 add_test(mot)
 add_test(deltaot)
-add_test(print_precomputation_table)
 add_test(ideal)
 
 if (LATTICEOT)
