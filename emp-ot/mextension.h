@@ -105,7 +105,7 @@ class MOTExtension: public OTExtension<IO, OTCO, emp::MOTExtension> { public:
 				else tccrh.Hn(tT+i, tT+i, i, length -i);
 
 				for(int j = i; j < i+bsize and j < length; ++j) {
-					if (r[i]) {
+					if (r[j]) {
 						data[j] = xorBlocks(tT[j], pad1[j-i]);
 						open_data[i] = pad0[j-i];
 					}
