@@ -140,7 +140,7 @@ Citation
 
 Question
 =====
-Please send email to wangxiao@cs.umd.edu
+Please send email to wangxiao@cs.northwestern.edu
 
 ## Acknowledgement
 Lattice-based OT is contributed by David Van Cleve, Matthew Soulanille, and William Wang.
