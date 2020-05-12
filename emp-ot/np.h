@@ -1,12 +1,17 @@
-#ifndef OT_NP_H__
-#define OT_NP_H__
+#ifndef EMP_OTNP_H__
+#define EMP_OTNP_H__
 #include "emp-ot/ot.h"
-/** @addtogroup OT
-	@{
-*/
+
 namespace emp {
+
+/*
+ * Noar Pinkas OT
+ * [REF] Implementation of "Efficient Oblivious Transfer Protocols"
+ * https://dl.acm.org/doi/10.5555/365411.365502
+ */
+
 template<typename IO>
-class OTNP: public OT<OTNP<IO>> { public:
+class OTNP: public OT<IO> { public:
 	IO* io;
 	Group *G = nullptr;
 	bool delete_G = true;
@@ -24,11 +29,12 @@ class OTNP: public OT<OTNP<IO>> { public:
 			delete G;
 	}
 
-	void send_impl(const block* data0, const block* data1, int length) {
+	void send(const block* data0, const block* data1, int length) override {
 		BigInt d;
 		G->get_rand_bn(d);
 		Point C = G->mul_gen(d);
-		io->send_pt(&C);io->flush();
+		io->send_pt(&C);
+		io->flush();
 
 		BigInt * r = new BigInt[length];
 		BigInt * rc = new BigInt[length];
@@ -57,10 +63,8 @@ class OTNP: public OT<OTNP<IO>> { public:
 			pk0[i] = pk0[i].mul(r[i]);
 			Point inv = pk0[i].inv();
 			pk1 = Cr[i].add(inv);
-			m[0] = Hash::KDF(pk0[i]);
-			m[0] = xorBlocks(data0[i], m[0]);
-			m[1] = Hash::KDF(pk1);
-			m[1] = xorBlocks(data1[i], m[1]);
+			m[0] = Hash::KDF(pk0[i]) ^ data0[i];
+			m[1] = Hash::KDF(pk1) ^ data1[i];
 			io->send_data(m, 2*sizeof(block));
 		}
 
@@ -71,7 +75,7 @@ class OTNP: public OT<OTNP<IO>> { public:
 		delete[] pk0;
 	}
 
-	void recv_impl(block* data, const bool* b, int length) {
+	void recv(block* data, const bool* b, int length) override {
 		BigInt * k = new BigInt[length];
 		Point * gr = new Point[length]; 
 		Point pk[2];
@@ -81,6 +85,7 @@ class OTNP: public OT<OTNP<IO>> { public:
 			G->get_rand_bn(k[i]);
 		
 		io->recv_pt(G, &C);
+		io->flush();
 
 		for(int i = 0; i< length; ++i) {
 			if(b[i]) {
@@ -97,16 +102,17 @@ class OTNP: public OT<OTNP<IO>> { public:
 			io->recv_pt(G, &gr[i]);
 			gr[i] = gr[i].mul(k[i]);
 		}
+		io->flush();
 		for(int i = 0; i < length; ++i) {
 			int ind = b[i] ? 1 : 0;
 			io->recv_data(m, 2*sizeof(block));
-			data[i] = xorBlocks(m[ind], Hash::KDF(gr[i]));
+			data[i] = m[ind] ^ Hash::KDF(gr[i]);
 		}
 		delete[] k;
 		delete[] gr;
 	}
 
 };
-/**@}*/
-}
-#endif// OT_NP_H__
+
+}//namespace
+#endif
