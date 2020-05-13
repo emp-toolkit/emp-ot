@@ -38,7 +38,6 @@ class IKNP: public COT<T> { public:
 
 	void setup_send(const bool* in_s = nullptr, block * in_k0 = nullptr) {
 		setup = true;
-		block k0[128];
 		if(in_s == nullptr)
 			prg.random_bool(s, 128);
 		else 
