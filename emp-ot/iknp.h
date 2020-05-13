@@ -54,7 +54,7 @@ class IKNP: public COT<T> { public:
 		for(int i = 0; i < 128; ++i)
 			G0[i].reseed(&k0[i]);
 
-		Delta = bool_to128(s);
+		Delta = bool_to_block(s);
 	}
 
 	void setup_recv(block * in_k0 = nullptr, block * in_k1 =nullptr) {
@@ -108,7 +108,7 @@ class IKNP: public COT<T> { public:
 
 		block *block_r = new block[(length+127)/128];
 		for(int i = 0; i < (length+127)/128; ++i)
-			block_r[i] = bool_to128(r+i*128);
+			block_r[i] = bool_to_block(r+i*128);
 		
 		int j = 0;
 		for (; j < length/block_size; ++j)
@@ -121,8 +121,8 @@ class IKNP: public COT<T> { public:
 		if(malicious) {
 			block local_r_block[2]; 
 			prg.random_bool(local_r, 256);
-			local_r_block[0] = bool_to128(local_r);
-			local_r_block[1] = bool_to128(local_r + 128);
+			local_r_block[0] = bool_to_block(local_r);
+			local_r_block[1] = bool_to_block(local_r + 128);
 			recv_pre_block(local_out, local_r_block, 256);
 		}
 		delete[] block_r;
