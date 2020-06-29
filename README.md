@@ -14,7 +14,7 @@ Installation
     1. Alternatively, you can also `cd emp-ot && mkdir -p build && cd build && cmake .. && sudo make install` if out-of-source build is preferred.
     2. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
 	3. To build with lattice OT, add the flag `-DLATTICEOT=true`
-    4. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX)
+    4. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v3.18/variable/CMAKE_INSTALL_PREFIX.html)
 
 Test
 =====
