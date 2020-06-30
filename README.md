@@ -64,7 +64,7 @@ Communication through 2.32 Gbps network with ping <= 0.2ms. Two [c4.2xlarge](htt
 
 Usage
 =====
-All oblivious transfer protocols are implemented with network as a template. Therefore customized network implementation with [sending](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L14) and [receiving](https://github.com/emp-toolkit/emp-tool/blob/stable/io/io_channel.h#L17) can be easily hooked up with `emp-ot`. [`NetIO`](https://github.com/emp-toolkit/emp-tool/blob/stable/io/net_io_channel.h#L22) is used for all tests and examples in the following.
+All oblivious transfer protocols are implemented with network as a template. Therefore customized network implementation with [sending](https://github.com/emp-toolkit/emp-tool/blob/master/emp-tool/io/io_channel.h#L15) and [receiving](https://github.com/emp-toolkit/emp-tool/blob/master/emp-tool/io/io_channel.h#L18) can be easily hooked up with `emp-ot`. [`NetIO`](https://github.com/emp-toolkit/emp-tool/blob/master/emp-tool/io/net_io_channel.h#L26) is used for all tests and examples in the following.
 
 A Simple Example for String OT
 -----
@@ -123,8 +123,8 @@ Note that you can call `send` or `send_cot` or `send_rot` multiple times without
 More details
 -----
 - Base OTs are accelerated using ECC, from [relic](https://github.com/relic-toolkit/relic).
-- Inspired by Keller et al.[KOS15], F_COTe is split out [separately](https://github.com/emp-toolkit/emp-ot/blob/master/ot/ot_extension.h), from which semi-honest and malicious OT extension are built. Future works that optimize OT extension, but still uses IKNP can also be built on top of that. 
-- `MOTextension` also supports committing OT, which allows the sender to open *all* messages at a later stage. See [here](https://github.com/emp-toolkit/emp-ot/blob/master/ot/mextension_kos.h#L27) for more parameters in the constructor and [here](https://github.com/emp-toolkit/emp-ot/blob/master/ot/mextension_kos.h#L156) on how to open.
+- Inspired by Keller et al.[KOS15], F_COTe is split out [separately](emp-ot/ot_extension.h), from which semi-honest and malicious OT extension are built. Future works that optimize OT extension, but still uses IKNP can also be built on top of that. 
+- `MOTextension` also supports committing OT, which allows the sender to open *all* messages at a later stage. See [here](emp-ot/mextension.h#L27) for more parameters in the constructor and [here](emp-ot/mextension.h#L286) on how to open.
 - As part of `emp-toolkit`, it is being used in `emp-sh2pc`, `emp-m2pc`, and other projects that will be open sourced soon.
 
 Citation
