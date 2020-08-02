@@ -194,7 +194,7 @@ public:
 			for(int i = 0; i < block_size; ++i)
 				out[j*block_size + i] = bit_matrix_mul(tT+2*i);
 		}
-		free(block_r);
+		afree(block_r);
 		delete[] r2;
 	}
 
@@ -204,14 +204,14 @@ public:
 		if(!send_check(length))
 			error("OT Extension check failed");
 		memcpy(data, out, sizeof(block)*length);
-		free(out);
+		afree(out);
 	}
 	void recv(block* data, const bool* b, int length) {
 		out = aalloc<block>(padded_length(length));
 		recv_pre(b, length);
 		recv_check(b, length);
 		memcpy(data, out, sizeof(block)*length);
-		free(out);
+		afree(out);
 	}
 
 	bool send_check(int length) {
@@ -236,7 +236,7 @@ public:
 		q[0] = xorBlocks(q[0], tmp1);
 		q[1] = xorBlocks(q[1], tmp2);
 
-		free(chi);
+		afree(chi);
 		return block_cmp(q, t, 2);	
 	}
 	void recv_check(const bool* r, int length) {
@@ -265,7 +265,7 @@ public:
 		}
 		io->send_block(t, 2);
 
-		free(chi);
+		afree(chi);
 	}
 };
 }
