@@ -59,8 +59,8 @@ class OTCO: public OT<OTCO<IO>> { public:
 	void recv_impl(block* data, const bool* b, int length) {
 		BigInt * bb = new BigInt[length];
 		Point * B = new Point[length],
-				* As = new Point[length],
-				A;
+			* As = new Point[length],
+			A;
 
 		for(int i = 0; i < length; ++i)
 			G->get_rand_bn(bb[i]);
@@ -86,7 +86,8 @@ class OTCO: public OT<OTCO<IO>> { public:
 			else
 				data[i] = xorBlocks(data[i], res[0]);
 		}
-		
+
+		delete[] As;
 		delete[] bb;
 		delete[] B;
 	}
