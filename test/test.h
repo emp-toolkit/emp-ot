@@ -4,7 +4,7 @@
 using namespace emp;
 
 template <typename IO, template <typename> class T>
-double test_ot(IO *io, int party, int length) {
+double test_ot(IO& io, int party, int length) {
   block *b0 = new block[length], *b1 = new block[length],
         *r = new block[length];
   PRG prg(fix_key);
@@ -13,15 +13,15 @@ double test_ot(IO *io, int party, int length) {
   bool *b = new bool[length];
   prg.random_bool(b, length);
 
-  io->sync();
+  io.sync();
   auto start = clock_start();
-  T<IO> *ot = new T<IO>(io);
+  T<IO> ot(&io);
   if (party == ALICE) {
-    ot->send(b0, b1, length);
+    ot.send(b0, b1, length);
   } else {
-    ot->recv(r, b, length);
+    ot.recv(r, b, length);
   }
-  io->flush();
+  io.flush();
   long long t = time_from(start);
   if (party == BOB) {
     for (int i = 0; i < length; ++i) {
@@ -32,7 +32,6 @@ double test_ot(IO *io, int party, int length) {
     }
   }
   std::cout << "Tests passed.\n";
-  delete ot;
   delete[] b0;
   delete[] b1;
   delete[] r;
@@ -45,7 +44,7 @@ double test_ot(IO *io, int party, int length) {
 // (each message is usually one block--but, in this case, each
 // is a single bit: the LSB of each block)
 template <typename IO, template <typename, int> class T, int N_BITS>
-double test_bit_ot(IO *io, int party, int length) {
+double test_bit_ot(IO& io, int party, int length) {
   if (party == ALICE)
     std::cout << "Testing: " << length << " many " << N_BITS << "-bit OT's\n";
   block *b0 = new block[length], *b1 = new block[length],
@@ -56,15 +55,15 @@ double test_bit_ot(IO *io, int party, int length) {
   bool *b = new bool[length];
   prg.random_bool(b, length);
 
-  io->sync();
+  io.sync();
   auto start = clock_start();
-  T<IO, N_BITS> *ot = new T<IO, N_BITS>(io);
+  T<IO, N_BITS> ot(&io);
   if (party == ALICE) {
-    ot->send(b0, b1, length);
+    ot.send(b0, b1, length);
   } else {
-    ot->recv(r, b, length);
+    ot.recv(r, b, length);
   }
-  io->flush();
+  io.flush();
   long long t = time_from(start);
   if (party == BOB) {
     int failures = 0;
@@ -125,7 +124,6 @@ double test_bit_ot(IO *io, int party, int length) {
                 << " tests.\n";
     }
   }
-  delete ot;
   delete[] b0;
   delete[] b1;
   delete[] r;
@@ -134,7 +132,7 @@ double test_bit_ot(IO *io, int party, int length) {
 }
 
 template <typename IO, template <typename> class T>
-double test_cot(IO *io, int party, int length) {
+double test_cot(IO& io, int party, int length) {
   block *b0 = new block[length], *r = new block[length];
   bool *b = new bool[length];
   block delta;
@@ -142,20 +140,20 @@ double test_cot(IO *io, int party, int length) {
   prg.random_block(&delta, 1);
   prg.random_bool(b, length);
 
-  io->sync();
+  io.sync();
   auto start = clock_start();
-  T<IO> *ot = new T<IO>(io);
+  T<IO> ot(&io);
   if (party == ALICE) {
-    ot->send_cot(b0, delta, length);
+    ot.send_cot(b0, delta, length);
   } else {
-    ot->recv_cot(r, b, length);
+    ot.recv_cot(r, b, length);
   }
-  io->flush();
+  io.flush();
   long long t = time_from(start);
   if (party == ALICE)
-    io->send_block(b0, length);
+    io.send_block(b0, length);
   else if (party == BOB) {
-    io->recv_block(b0, length);
+    io.recv_block(b0, length);
     for (int i = 0; i < length; ++i) {
       block b1 = xorBlocks(b0[i], delta);
       if (b[i]) {
@@ -167,8 +165,7 @@ double test_cot(IO *io, int party, int length) {
       }
     }
   }
-  io->flush();
-  delete ot;
+  io.flush();
   delete[] b0;
   delete[] r;
   delete[] b;
@@ -176,29 +173,29 @@ double test_cot(IO *io, int party, int length) {
 }
 
 template <typename IO, template <typename> class T>
-double test_rot(IO *io, int party, int length) {
+double test_rot(IO& io, int party, int length) {
   block *b0 = new block[length], *r = new block[length];
   block *b1 = new block[length];
   bool *b = new bool[length];
   PRG prg;
   prg.random_bool(b, length);
 
-  io->sync();
+  io.sync();
   auto start = clock_start();
-  T<IO> *ot = new T<IO>(io);
+  T<IO> ot(&io);
   if (party == ALICE) {
-    ot->send_rot(b0, b1, length);
+    ot.send_rot(b0, b1, length);
   } else {
-    ot->recv_rot(r, b, length);
+    ot.recv_rot(r, b, length);
   }
-  io->flush();
+  io.flush();
   long long t = time_from(start);
   if (party == ALICE) {
-    io->send_block(b0, length);
-    io->send_block(b1, length);
+    io.send_block(b0, length);
+    io.send_block(b1, length);
   } else if (party == BOB) {
-    io->recv_block(b0, length);
-    io->recv_block(b1, length);
+    io.recv_block(b0, length);
+    io.recv_block(b1, length);
     for (int i = 0; i < length; ++i) {
       if (b[i])
         assert(block_cmp(&r[i], &b1[i], 1));
@@ -206,8 +203,7 @@ double test_rot(IO *io, int party, int length) {
         assert(block_cmp(&r[i], &b0[i], 1));
     }
   }
-  io->flush();
-  delete ot;
+  io.flush();
   delete[] b0;
   delete[] b1;
   delete[] r;
