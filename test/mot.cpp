@@ -3,7 +3,7 @@
 using namespace std;
 
 template<typename IO, template<typename>class T>
-double test_cot_mal(NetIO * io, int party, int length) {
+double test_cot_mal(NetIO& io, int party, int length) {
 	block *b0 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	block *delta = new block[length];
@@ -11,20 +11,20 @@ double test_cot_mal(NetIO * io, int party, int length) {
 	prg.random_block(delta, length);
 	prg.random_bool(b, length);
 	
-	io->sync();
+	io.sync();
 	auto start = clock_start();
-	T<IO>* ot = new T<IO>(io);
+	T<IO> ot(&io);
 	if (party == ALICE) {
-		ot->send_cot(b0, delta, length);
+		ot.send_cot(b0, delta, length);
 	} else {
-		ot->recv_cot(r, b, length);
+		ot.recv_cot(r, b, length);
 	}
-	io->flush();
+	io.flush();
 	long long t = time_from(start);
 	if(party == ALICE)
-			io->send_block(b0, length);
+		io.send_block(b0, length);
 	else if(party == BOB)  {
-		io->recv_block(b0, length);
+		io.recv_block(b0, length);
 		for(int i = 0; i < length; ++i) {
 			block b1 = xorBlocks(b0[i], delta[i]); 
 			if (b[i]) {
@@ -36,8 +36,7 @@ double test_cot_mal(NetIO * io, int party, int length) {
 			}
 		}
 	}
-	io->flush();
-	delete ot;
+	io.flush();
 	delete[] b0;
 	delete[] r;
 	delete[] b;
@@ -48,10 +47,9 @@ double test_cot_mal(NetIO * io, int party, int length) {
 int main(int argc, char** argv) {
 	int port, party, length = 1<<24;
 	parse_party_and_port(argv, 2, &party, &port);
-	NetIO * io = new NetIO(party==ALICE ? nullptr:"127.0.0.1", port);
+	NetIO io(party==ALICE ? nullptr:"127.0.0.1", port);
 	cout <<"COOT\t"<<10000.0/test_ot<NetIO, OTCO>(io, party, 10000)*1e6<<" OTps"<<endl;
 	cout <<"Malicious OT Extension\t"<<double(length)/test_ot<NetIO, MOTExtension>(io, party, length)*1e6<<" OTps"<<endl;
 	cout <<"Malicious COT Extension\t"<<double(length)/test_cot_mal<NetIO, MOTExtension>(io, party, length)*1e6<<" OTps"<<endl;
    cout <<"Malicious ROT Extension\t"<<double(length)/test_rot<NetIO, MOTExtension>(io, party, length)*1e6<<" OTps"<<endl;
-	delete io;
 }

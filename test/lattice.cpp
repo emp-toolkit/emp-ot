@@ -16,12 +16,11 @@ int main(int argc, char **argv) {
 	int N_TESTS = 128;
 	int port, party;
 	parse_party_and_port(argv, 2, &party, &port);
-	NetIO *io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+	NetIO io(party == ALICE ? nullptr : "127.0.0.1", port);
 
 	auto time_in_usec = test_bit_ot<NetIO, OTLattice, N_BITS>(io, party, N_TESTS);
 	if (party == ALICE) {
 		cout << "Lattice OT \t" << double(N_TESTS) * 1e6 / time_in_usec << " OTps"
 		     << endl;
 	}
-	delete io;
 }
