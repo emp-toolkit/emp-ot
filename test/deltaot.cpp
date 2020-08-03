@@ -1,11 +1,11 @@
-#include <emp-tool/emp-tool.h>
 #include "emp-ot/emp-ot.h"
-#include <thread>
+#include <emp-tool/emp-tool.h>
+#include <iostream>
 using namespace std;
 using namespace emp;
 
 int size = 1<<24;
-bool * tmp = new bool[256];
+bool tmp[256];
 
 int main(int argc, char** argv) {
 	int port, party;
@@ -16,34 +16,34 @@ int main(int argc, char** argv) {
 	PRG prg;
 	prg.random_bool(tmp, 256);
 	block * pretable = DeltaOT::preTable(40);
-	NetIO *io = new NetIO(party==ALICE ? nullptr:"127.0.0.1", port);
-	DeltaOT * abit = new DeltaOT(io, pretable, 40);
+	NetIO io(party==ALICE ? nullptr:"127.0.0.1", port);
+	DeltaOT abit(&io, pretable, 40);
 	prg.random_bool(bb, size);
 
 	auto start = clock_start();
 	if (party == ALICE) {
-		abit->setup_send(tmp);
+		abit.setup_send(tmp);
 	} else {
-		abit->setup_recv();
+		abit.setup_recv();
 	}
 	cout << "Setup : "<< time_from(start)<<endl;
 	start = clock_start();
 
 	if (party == ALICE) {
-		abit->send(t1, size);
+		abit.send(t1, size);
 	} else {
-		abit->recv(t1, bb, size);
+		abit.recv(t1, bb, size);
 	}
 	cout <<"Delta OT\t"<<double(size)/time_from(start)*1e6<<" OTps"<<endl;
 
 	block Delta, tmp;
 	if (party == ALICE) {
-		io->send_block(&(abit->Delta), 1);
-		io->send_block(t1, size);
+		io.send_block(&abit.Delta, 1);
+		io.send_block(t1, size);
 	} else {
-		io->recv_block (&Delta, 1);
+		io.recv_block (&Delta, 1);
 		for(int i = 0; i < size; ++i) {
-			io->recv_block (&tmp, 1);
+			io.recv_block (&tmp, 1);
 			if(bb[i])
 				tmp = xorBlocks(tmp, Delta);
 			if(memcmp(&t1[i], &tmp, 16)!=0) {
@@ -51,5 +51,9 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
+
+	delete[] t1;
+	delete[] bb;
+	afree(pretable);
 	return 0;
 }
