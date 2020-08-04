@@ -94,15 +94,15 @@ public:
 	block * out = nullptr;
 	~DeltaOT() {
 		delete base_ot;
-		delete_array_null(s);
-		delete_array_null(G0);
-		delete_array_null(G1);
+		delete[] s;
+		delete[] G0;
+		delete[] G1;
 		afree(this->t);
 		afree(this->tT);
 		afree(k0);
 		afree(k1);
 		afree(tmp);
-		delete_array_null(extended_r);
+		delete[] extended_r;
 	}
 
 	void bool_to256(const bool * in, block res[2]) {
@@ -171,7 +171,7 @@ public:
 
 		bool * r2 = new bool[length];
 		memcpy(r2, r, old_length);
-		delete_array_null(extended_r);
+		delete[] extended_r;
 		extended_r = new bool[length - old_length];
 		prg.random_bool(extended_r, length- old_length);
 		memcpy(r2+old_length, extended_r, length - old_length);

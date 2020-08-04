@@ -30,7 +30,7 @@ class MOTExtension: public OTExtension<IO, OTCO, emp::MOTExtension> { public:
 		}
 
 	~MOTExtension() {
-		delete_array_null(open_data);
+		delete[] open_data;
 	}
 
 	bool send_check(int length) {
@@ -96,7 +96,7 @@ class MOTExtension: public OTExtension<IO, OTCO, emp::MOTExtension> { public:
 		block pad0[bsize];
 		block pad1[bsize];
 		if(committing) {
-			delete_array_null(open_data);
+			delete[] open_data;
 			open_data = new block[length];
 			for(int i = 0; i < length; i+=bsize) {
 				io->recv_data(pad0, sizeof(block)*min(bsize,length-i));
