@@ -19,3 +19,4 @@ macro (add_test _name)
 endmacro()
 
 add_test(ot)
+add_test(ferret)

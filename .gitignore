@@ -42,3 +42,6 @@ emp-ot/latticeInclude.h
 
 # Eigen source
 eigen/
+
+# VOLE COT data file
+data/
