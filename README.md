@@ -2,13 +2,16 @@ emp-ot [![Build Status](https://travis-ci.org/emp-toolkit/emp-ot.svg?branch=mast
 =====
 <img src="https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/art/logo-full.jpg" width=300px/>
 
+## History Version
+This branch will only accept bug fix, new features are being added only to v0.2 branch.
+
 
 Installation
 =====
 
-1. Install prerequisites using instructions [here](https://github.com/emp-toolkit/emp-readme#detailed-installation).
-2. Install [emp-tool](https://github.com/emp-toolkit/emp-tool).
-3. `git clone https://github.com/emp-toolkit/emp-ot.git`
+1. Install prerequisites using instructions [here](https://github.com/emp-toolkit/emp-readme/tree/v0.1#express-installation).
+2. Install [emp-tool](https://github.com/emp-toolkit/emp-tool), branch v0.1.
+3. `git clone -bv0.1 https://github.com/emp-toolkit/emp-ot.git`
 4. Optionally, if lattice-based OT is desired, install dependencies with `emp-ot/install_packages_lattice.sh`
 5. `cd emp-ot && cmake . && sudo make install`  
     1. Alternatively, you can also `cd emp-ot && mkdir -p build && cd build && cmake .. && sudo make install` if out-of-source build is preferred.
