@@ -10,7 +10,7 @@ void test_ferret(int party, NetIO *ios[threads+1]) {
 	double timeused = time_from(start);
 	std::cout << party << "\tsetup\t" << timeused/1000 << "ms" << std::endl;
 
-	int num = 1 << 26;
+	int num = 1 << 24;
 	block *ot_data_alloc = new block[num];
 	std::cout << "\ngenerating " << num << " COTs: " << std::endl;
 	start = clock_start();
@@ -51,4 +51,3 @@ int main(int argc, char** argv) {
 	for(int i = 0; i < threads+1; ++i)
 		delete ios[i];
 }
-
