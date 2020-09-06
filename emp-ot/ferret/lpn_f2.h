@@ -79,7 +79,7 @@ class LpnF2 { public:
 			io->send_data(&seed, sizeof(block));
 		} else {
 			io->recv_data(&seed, sizeof(block));
-		}
+		}io->flush();
 		return seed;
 	}
 };
