@@ -6,7 +6,7 @@ FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads+1], bool malicious) 
 	this->is_malicious = malicious;
 	one = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
 	ch[0] = zero_block;
-	base_cot = new BaseCot(party, io);
+	base_cot = new BaseCot(party, io, malicious);
 	pool = new ThreadPool(threads);
 	set_param();
 	set_preprocessing_param();

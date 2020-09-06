@@ -9,11 +9,13 @@ class BaseCot { public:
 	block ot_delta;
 	NetIO *io;
 	IKNP<NetIO> *iknp;
+	bool malicious = false;
 
-	BaseCot(int party, NetIO *io) {
+	BaseCot(int party, NetIO *io, bool malicious = false) {
 		this->party = party;
 		this->io = io;
-		iknp = new IKNP<NetIO>(io, true);
+		this->malicious = malicious;
+		iknp = new IKNP<NetIO>(io, malicious);
 		minusone = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
 		one = makeBlock(0x0LL, 0x1LL);
 	}
