@@ -15,8 +15,7 @@ Installation
 5. `cd emp-ot && cmake . && sudo make install`  
     1. Alternatively, you can also `cd emp-ot && mkdir -p build && cd build && cmake .. && sudo make install` if out-of-source build is preferred.
     2. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
-	3. To build with lattice OT, add the flag `-DLATTICEOT=true`
-    4. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX)
+    3. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX)
 
 Test
 =====
@@ -58,7 +57,7 @@ Active FERRET OT	Tests passed.	191105 OTps
 Active FERRET COT	Tests passed.	1.77388e+07 OTps
 Active FERRET ROT	Tests passed.	1.9178e+07 OTps
 
-Active FERRET: 32 ns per RECOT
+Active FERRET: 32 ns per RCOT
 ```
 
 ### 10 Gbps
@@ -78,7 +77,7 @@ Active FERRET OT	Tests passed.	1.25404e+07 OTps
 Active FERRET COT	Tests passed.	2.47524e+07 OTps
 Active FERRET ROT	Tests passed.	2.52575e+07 OTps
 
-Active FERRET: 27 ns per RECOT
+Active FERRET: 27 ns per RCOT
 ```
 
 Usage
