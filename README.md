@@ -9,13 +9,11 @@ This repo contains state-of-the-art OT implementations. Include two base OTs, IK
 Installation
 =====
 
-1. Install Openssl. Instructions are available [here](https://github.com/emp-toolkit/emp-readme#detailed-installation).
-2. Install [emp-tool](https://github.com/emp-toolkit/emp-tool).
-3. `git clone https://github.com/emp-toolkit/emp-ot.git`
-5. `cd emp-ot && cmake . && sudo make install`  
-    1. Alternatively, you can also `cd emp-ot && mkdir -p build && cd build && cmake .. && sudo make install` if out-of-source build is preferred.
-    2. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
-    3. No sudo? change [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX)
+# Installation
+1. `wget https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/scripts/install.py`
+2. `python install.py -install -tool -ot`
+    1. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
+    2. No sudo? Change [`CMAKE_INSTALL_PREFIX`](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX).
 
 Test
 =====
