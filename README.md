@@ -36,46 +36,46 @@ Testing on two
   
 Performance
 =====
-Hardware: AWS c5.2xlarge
+Hardware: AWS m5.4xlarge
 
 ### 50 Mbps
 ```
-128 NPOTs:	Tests passed.	49974 us
-Passive IKNP OT	Tests passed.	129178 OTps
-Passive IKNP COT	Tests passed.	391626 OTps
-Passive IKNP ROT	Tests passed.	389552 OTps
-128 COOTs:	Tests passed.	29566 us
-Active IKNP OT	Tests passed.	129114 OTps
-Active IKNP COT	Tests passed.	390429 OTps
-Active IKNP ROT	Tests passed.	388819 OTps
-Passive FERRET OT	Tests passed.	190968 OTps
-Passive FERRET COT	Tests passed.	1.9824e+07 OTps
-Passive FERRET ROT	Tests passed.	1.99563e+07 OTps
-Active FERRET OT	Tests passed.	191105 OTps
-Active FERRET COT	Tests passed.	1.77388e+07 OTps
-Active FERRET ROT	Tests passed.	1.9178e+07 OTps
+128 NPOTs:	Tests passed.	12577 us
+Passive IKNP OT	Tests passed.	129262 OTps
+Passive IKNP COT	Tests passed.	388316 OTps
+Passive IKNP ROT	Tests passed.	386190 OTps
+128 COOTs:	Tests passed.	11073 us
+Active IKNP OT	Tests passed.	129152 OTps
+Active IKNP COT	Tests passed.	387380 OTps
+Active IKNP ROT	Tests passed.	385235 OTps
+Passive FERRET OT	Tests passed.	191511 OTps
+Passive FERRET COT	Tests passed.	1.87663e+07 OTps
+Passive FERRET ROT	Tests passed.	1.77188e+07 OTps
+Active FERRET OT	Tests passed.	191519 OTps
+Active FERRET COT	Tests passed.	1.88838e+07 OTps
+Active FERRET ROT	Tests passed.	1.76447e+07 OTps
 
-Active FERRET: 32 ns per RCOT
+Active FERRET: 5.02e+07 RCOT per second
 ```
 
 ### 10 Gbps
 ```
-128 NPOTs:	Tests passed.	10798 us
-Passive IKNP OT	Tests passed.	1.68777e+07 OTps
-Passive IKNP COT	Tests passed.	3.29181e+07 OTps
-Passive IKNP ROT	Tests passed.	2.34461e+07 OTps
-128 COOTs:	Tests passed.	9526 us
-Active IKNP OT	Tests passed.	1.52476e+07 OTps
-Active IKNP COT	Tests passed.	2.71435e+07 OTps
-Active IKNP ROT	Tests passed.	2.03387e+07 OTps
-Passive FERRET OT	Tests passed.	1.29035e+07 OTps
-Passive FERRET COT	Tests passed.	2.57758e+07 OTps
-Passive FERRET ROT	Tests passed.	2.60869e+07 OTps
-Active FERRET OT	Tests passed.	1.25404e+07 OTps
-Active FERRET COT	Tests passed.	2.47524e+07 OTps
-Active FERRET ROT	Tests passed.	2.52575e+07 OTps
+128 NPOTs:	Tests passed.	11739 us
+Passive IKNP OT	Tests passed.	1.55476e+07 OTps
+Passive IKNP COT	Tests passed.	2.96661e+07 OTps
+Passive IKNP ROT	Tests passed.	1.65765e+07 OTps
+128 COOTs:	Tests passed.	20064 us
+Active IKNP OT	Tests passed.	1.39589e+07 OTps
+Active IKNP COT	Tests passed.	2.42705e+07 OTps
+Active IKNP ROT	Tests passed.	1.47379e+07 OTps
+Passive FERRET OT	Tests passed.	1.36986e+07 OTps
+Passive FERRET COT	Tests passed.	2.73098e+07 OTps
+Passive FERRET ROT	Tests passed.	1.82382e+07 OTps
+Active FERRET OT	Tests passed.	1.32552e+07 OTps
+Active FERRET COT	Tests passed.	2.5998e+07 OTps
+Active FERRET ROT	Tests passed.	1.79005e+07 OTps
 
-Active FERRET: 27 ns per RCOT
+Active FERRET: 6.05e+07 RCOT per second
 ```
 
 Usage
@@ -101,12 +101,12 @@ else
 // and obtains b0[i] if c[i]==0 and b1[i] if c[i]==1
     np.recv(b0, c, length);  
 ```
-Note that `NPOT` can be replaced to `OTCO`, `IKNP`, or `FerretCOT` without changing any other part of the code.
+Note that `NPOT` can be replaced to `OTCO`, `IKNP`, or `FerretCOT` without changing any other part of the code. They all share the same [API](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ot.h)
 
 Correlated OT and Random OT
 -----
 
-Correlated OT and Random OT are supported for `IKNP` and `FerretCOT`. See following as an example.
+Correlated OT and Random OT are supported for `IKNP` and `FerretCOT`. See following as an example. They all share extra [APIs](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/cot.h)
 ```cpp
 block delta;
 
@@ -128,7 +128,7 @@ else
 Ferret OT
 -----
 
-Ferret OT produces correlated OT with random choice bits (rcot). Our implementation provides two interface `ferretot.rcot()` and `ferretot.rcot_inplace()`. While the first one support filling an external array of any length, an extra memcpy is needed. The second option work on the provided array directly and thus avoid the memcpy. However, it produces a fixed number of OTs (`ferretcot->n`) for every invocation. The [sample code](https://github.com/emp-toolkit/emp-ot/blob/master/test/ferret.cpp#L7) is mostly self-explainable on how to use it.
+Ferret OT produces correlated OT with random choice bits (rcot). Extra APIs are [here](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.h). Our implementation provides two interface `ferretot.rcot()` and `ferretot.rcot_inplace()`. While the first one support filling an external array of any length, an extra memcpy is needed. The second option work on the provided array directly and thus avoid the memcpy. However, it produces a fixed number of OTs (`ferretcot->n`) for every invocation. The [sample code](https://github.com/emp-toolkit/emp-ot/blob/master/test/ferret.cpp#L7) is mostly self-explainable on how to use it.
 
 Note that the choice bit is embedded as the least bit of the `block` on the receiver's side. To make sure the correlation works for all bits, the least bit of Delta is 1. This can be viewed as an extension of the point-and-permute technique. See [this code](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.hpp#L211) on how ferret is used to fullfill standard `cot` interface.
 
