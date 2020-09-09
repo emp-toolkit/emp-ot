@@ -1,5 +1,6 @@
 template<typename T, int threads>
-FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads+1], bool malicious) {
+FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads+1],
+		bool malicious, std::string pre_file) {
 	this->party = party;
 	io = ios[0];
 	this->ios = ios;
@@ -17,10 +18,10 @@ FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads+1], bool malicious) 
 		prg.random_block(&Delta);
 		Delta = Delta & one;
 		Delta = Delta ^ 0x1;
-		setup(Delta);
+		setup(Delta, pre_file);
 		Delta = Delta_f2k;
 		ch[1] = Delta;
-	} else setup();
+	} else setup(pre_file);
 }
 
 template<typename T, int threads>
@@ -154,8 +155,7 @@ void FerretCOT<T, threads>::rcot(block *data, int num) {
 	int round = (num-gened) / ot_limit;
 	int last_round_ot = num-gened-round*ot_limit;
 	for(int i = 0; i < round; ++i) {
-		extend_f2k();
-		memcpy(data+gened+i*ot_limit, ot_data, ot_limit*sizeof(block));
+		extend_f2k(data+gened+i*ot_limit);
 		ot_used = ot_limit;
 	}
 	extend_f2k();
@@ -189,13 +189,22 @@ __uint128_t FerretCOT<T, threads>::read_pre_data128_from_file(void* pre_loc, std
 	return delta;
 }
 
-// extend f2k (benchmark)
-// length = t * ot_limit + n_pre
 template<typename T, int threads>
-void FerretCOT<T, threads>::rcot_inplace(block *ot_buffer, int length) {
-	if(length < n) error("space not enough");
-	if((length - n_pre) % ot_limit != 0) error("length = t * ot_limit + n_pre");
-	int round = (length - n_pre) / ot_limit;
+uint64_t FerretCOT<T, threads>::byte_memory_need_inplace(uint64_t ot_need) {
+	int round = (ot_need - 1) / ot_limit + 1;
+	return round * ot_limit + n_pre;
+}
+
+// extend f2k (benchmark)
+// parameter "length" should be the return of "byte_memory_need_inplace"
+// output the number of COTs that can be used
+template<typename T, int threads>
+uint64_t FerretCOT<T, threads>::rcot_inplace(block *ot_buffer, int byte_space) {
+	if(byte_space < n) error("space not enough");
+	if((byte_space - n_pre) % ot_limit != 0) error("call byte_memory_need_inplace \
+			to get the correct length of memory space");
+	uint64_t ot_output_n = byte_space - n_pre;
+	int round = ot_output_n / ot_limit;
 	block *pt = ot_buffer;
 	for(int i = 0; i < round; ++i) {
 		if(party == ALICE)
@@ -205,7 +214,7 @@ void FerretCOT<T, threads>::rcot_inplace(block *ot_buffer, int length) {
 		pt += ot_limit;
 		memcpy(ot_pre_data, pt, n_pre*sizeof(block));
 	}
-	ot_used = 0;
+	return ot_output_n;
 }
 
 template<typename T, int threads>

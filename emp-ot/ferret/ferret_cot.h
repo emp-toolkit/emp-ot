@@ -23,7 +23,7 @@ public:
 	int n_pre, t_pre, k_pre, log_bin_sz_pre;
 	int ot_used, ot_limit;
 
-	FerretCOT(int party, T * ios[threads+1], bool malicious = false);
+	FerretCOT(int party, T * ios[threads+1], bool malicious = false, std::string pre_file="");
 
 	~FerretCOT();
 
@@ -31,13 +31,11 @@ public:
 
 	void recv_cot(block* data, const bool * b, int length) override;
 
-	void setup(block Deltain, std::string pre_file="");
-
-	void setup(std::string pre_file="");
-
 	void rcot(block *data, int num);
 
-	void rcot_inplace(block *ot_buffer, int length);
+	uint64_t rcot_inplace(block *ot_buffer, int length);
+
+	uint64_t byte_memory_need_inplace(uint64_t ot_need);
 
 private:
 	block ch[2];
@@ -61,6 +59,10 @@ private:
 	ThreadPool *pool = nullptr;
 	MpcotReg<threads> *mpcot = nullptr;
 	LpnF2<10> *lpn_f2 = nullptr;
+
+	void setup(block Deltain, std::string pre_file);
+
+	void setup(std::string pre_file);
 
 	void online_sender(block *data, int length);
 

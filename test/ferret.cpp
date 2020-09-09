@@ -19,20 +19,22 @@ void test_ferret(int party, NetIO *ios[threads+1]) {
 	std::cout << party << "\tCOT\t" << timeused/1000 << "ms" << std::endl;
 	delete[] ot_data_alloc;
 
-	num = 3*ferretcot->ot_limit+ferretcot->n_pre;
-	ot_data_alloc = new block[num];
-	std::cout << "\ngenerating " << num << " COTs inplace: " << std::endl;
+	num = 3*ferretcot->ot_limit;
+	uint64_t memory_len = ferretcot->byte_memory_need_inplace((uint64_t)num);
+	ot_data_alloc = new block[memory_len];
+	std::cout << "\ngenerating " << memory_len - ferretcot->n_pre << " COTs inplace: " << std::endl;
 	start = clock_start();
-	ferretcot->rcot_inplace(ot_data_alloc, num);
+	uint64_t ot_output_n = ferretcot->rcot_inplace(ot_data_alloc, memory_len);
 	timeused = time_from(start);
-	std::cout << party << "\tCOT emplace\t" << timeused/1000 << "ms" << std::endl;
+	std::cout << party << "\t" << ot_output_n << " COT emplace\t" << timeused/1000 << "ms" << std::endl;
 	delete[] ot_data_alloc;
 
-	num = ferretcot->n;
-	ot_data_alloc = new block[num];
+	num = ferretcot->ot_limit;
+	memory_len = ferretcot->byte_memory_need_inplace((uint64_t)num);
+	ot_data_alloc = new block[memory_len];
 	std::cout << "\nefficiency benchmark: " << std::endl;
 	start = clock_start();
-	ferretcot->rcot_inplace(ot_data_alloc, num);
+	ferretcot->rcot_inplace(ot_data_alloc, memory_len);
 	timeused = time_from(start);
 	std::cout << party << "\t[benchmark] time per COT element\t" << timeused*1000/ferretcot->ot_limit << "ns" << std::endl;
 	delete[] ot_data_alloc;
