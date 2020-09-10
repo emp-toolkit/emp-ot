@@ -1,4 +1,5 @@
 #include "emp-ot/emp-ot.h"
+#include "test/test.h"
 using namespace std;
 
 int port, party;
@@ -10,35 +11,16 @@ void test_ferret(int party, NetIO *ios[threads+1]) {
 	double timeused = time_from(start);
 	std::cout << party << "\tsetup\t" << timeused/1000 << "ms" << std::endl;
 
+	// RCOT
+	// The RCOTs will be generated at internal memory, and copied to user buffer
 	int num = 1 << 24;
-	block *ot_data_alloc = new block[num];
-	std::cout << "\ngenerating " << num << " COTs: " << std::endl;
-	start = clock_start();
-	ferretcot->rcot(ot_data_alloc, num);
-	timeused = time_from(start);
-	std::cout << party << "\tCOT\t" << timeused/1000 << "ms" << std::endl;
-	delete[] ot_data_alloc;
+	cout <<"Active FERRET RCOT\t"<<double(num)/test_rcot<FerretCOT<NetIO, threads>>(ferretcot, ios[0], party, num, false)*1e6<<" OTps"<<endl;
 
-	num = 3*ferretcot->ot_limit;
-	uint64_t memory_len = ferretcot->byte_memory_need_inplace((uint64_t)num);
-	ot_data_alloc = new block[memory_len];
-	std::cout << "\ngenerating " << memory_len - ferretcot->n_pre << " COTs inplace: " << std::endl;
-	start = clock_start();
-	uint64_t ot_output_n = ferretcot->rcot_inplace(ot_data_alloc, memory_len);
-	timeused = time_from(start);
-	std::cout << party << "\t" << ot_output_n << " COT emplace\t" << timeused/1000 << "ms" << std::endl;
-	delete[] ot_data_alloc;
-
-	num = ferretcot->ot_limit;
-	memory_len = ferretcot->byte_memory_need_inplace((uint64_t)num);
-	ot_data_alloc = new block[memory_len];
-	std::cout << "\nefficiency benchmark: " << std::endl;
-	start = clock_start();
-	ferretcot->rcot_inplace(ot_data_alloc, memory_len);
-	timeused = time_from(start);
-	std::cout << party << "\t[benchmark] time per COT element\t" << timeused*1000/ferretcot->ot_limit << "ns" << std::endl;
-	delete[] ot_data_alloc;
-
+	// RCOT inplace
+	// The RCOTs will be generated at user buffer
+	// Get the buffer size needed by calling byte_memory_need_inplace()
+	uint64_t batch_size = ferretcot->ot_limit;
+	cout <<"Active FERRET RCOT inplace\t"<<double(batch_size)/test_rcot<FerretCOT<NetIO, threads>>(ferretcot, ios[0], party, batch_size, true)*1e6<<" OTps"<<endl;
 	delete ferretcot;
 }
 

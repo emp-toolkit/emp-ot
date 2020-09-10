@@ -126,3 +126,50 @@ double test_rot(T* ot, NetIO *io, int party, int length) {
 	delete[] b;
 	return t;
 }
+
+template <typename T>
+double test_rcot(T* ot, NetIO *io, int party, int length, bool inplace) {
+	block *b = nullptr;
+	PRG prg;
+
+	io->sync();
+	auto start = clock_start();
+	uint64_t mem_size;
+	if(!inplace) {
+		mem_size = length;
+		b = new block[length];
+
+		// The RCOTs will be generated in the internal buffer
+		// then be copied to the user buffer
+		ot->rcot(b, length);
+	} else {
+		// Call byte_memory_need_inplace() to get the buffer size needed
+		mem_size = ot->byte_memory_need_inplace((uint64_t)length);
+		b = new block[mem_size];
+
+		// The RCOTs will be generated directly to this buffer
+		ot->rcot_inplace(b, mem_size);
+	}
+	long long t = time_from(start);
+	io->sync();
+	if (party == ALICE) {
+		io->send_block(&ot->Delta, 1);
+		io->send_block(b, mem_size);
+	}
+	else if (party == BOB) {
+		block ch[2];
+		ch[0] = zero_block;
+		block *b0 = new block[mem_size];
+		io->recv_block(ch+1, 1);
+		io->recv_block(b0, mem_size);
+		for (int i = 0; i < mem_size; ++i) {
+			b[i] = b[i] ^ ch[getLSB(b[i])];
+		}
+		if (!cmpBlock(b, b0, mem_size))
+			error("RCOT failed");
+		delete[] b0;
+	}
+	std::cout << "Tests passed.\t";
+	delete[] b;
+	return t;
+}
