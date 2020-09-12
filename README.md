@@ -55,7 +55,8 @@ Active FERRET OT	Tests passed.	191519 OTps
 Active FERRET COT	Tests passed.	1.88838e+07 OTps
 Active FERRET ROT	Tests passed.	1.76447e+07 OTps
 
-Active FERRET: 5.02e+07 RCOT per second
+Active FERRET RCOT	Tests passed.	3.42329e+07 OTps
+Active FERRET RCOT inplace	Tests passed.	6.1008e+07 OTps
 ```
 
 ### 10 Gbps
@@ -75,7 +76,8 @@ Active FERRET OT	Tests passed.	1.32552e+07 OTps
 Active FERRET COT	Tests passed.	3.13997e+07 OTps
 Active FERRET ROT	Tests passed.	1.79005e+07 OTps
 
-Active FERRET: 6.05e+07 RCOT per second
+Active FERRET RCOT	Tests passed.	3.479e+07 OTps
+Active FERRET RCOT inplace	Tests passed.	6.10686e+07 OTps
 ```
 
 Usage
