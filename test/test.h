@@ -162,7 +162,7 @@ double test_rcot(T* ot, NetIO *io, int party, int length, bool inplace) {
 		block *b0 = new block[mem_size];
 		io->recv_block(ch+1, 1);
 		io->recv_block(b0, mem_size);
-		for (int i = 0; i < mem_size; ++i) {
+		for (size_t i = 0; i < mem_size; ++i) {
 			b[i] = b[i] ^ ch[getLSB(b[i])];
 		}
 		if (!cmpBlock(b, b0, mem_size))

@@ -19,12 +19,12 @@ class COT : public OT<T>{ public:
 		io->flush();
 		block pad[2*ot_bsize];
 		for(int i = 0; i < length; i+=ot_bsize) {
-			for(int j = i; j < i+ot_bsize and j < length; ++j) {
+			for(int j = i; j < min(i+ot_bsize, length); ++j) {
 				pad[2*(j-i)] = data[j];
 				pad[2*(j-i)+1] = data[j] ^ Delta;
 			}
 			mitccrh.hash<ot_bsize, 2>(pad);
-			for(int j = i; j < i+ot_bsize and j < length; ++j) {
+			for(int j = i; j < min(i+ot_bsize, length); ++j) {
 				pad[2*(j-i)] = pad[2*(j-i)] ^ data0[j];
 				pad[2*(j-i)+1] = pad[2*(j-i)+1] ^ data1[j];
 			}
@@ -55,12 +55,12 @@ class COT : public OT<T>{ public:
 		io->flush();
 		block pad[ot_bsize*2];
 		for(int i = 0; i < length; i+=ot_bsize) {
-			for(int j = i; j < i+ot_bsize and j < length; ++j) {
+			for(int j = i; j < min(i+ot_bsize, length); ++j) {
 				pad[2*(j-i)] = data0[j];
 				pad[2*(j-i)+1] = data0[j] ^ Delta;
 			}
 			mitccrh.hash<ot_bsize, 2>(pad);
-			for(int j = i; j < i+ot_bsize and j < length; ++j) {
+			for(int j = i; j < min(i+ot_bsize, length); ++j) {
 				data0[j] = pad[2*(j-i)];
 				data1[j] = pad[2*(j-i)+1];
 			}
