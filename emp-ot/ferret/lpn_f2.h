@@ -14,6 +14,7 @@ class LpnF2 { public:
 	NetIO *io;
 	int threads;
 	block seed;
+	int mask;
 	LpnF2 (int party, int n, int k, ThreadPool * pool, NetIO *io, int threads) {
 		this->party = party;
 		this->k = k;
@@ -21,17 +22,26 @@ class LpnF2 { public:
 		this->pool = pool;
 		this->io = io;
 		this->threads = threads;
+		mask = 1;
+		while(mask < k) {
+			mask <<=1;
+			mask = mask | 0x1;
+		}
 	}
 
 	void __compute4(block * nn, const block * kk, int i, PRP * prp) {
 		block tmp[10];
 		for(int m = 0; m < 10; ++m)
 			tmp[m] = makeBlock(i, m);
-		prp->permute_block(tmp, 10);
+		AES_ecb_encrypt_blks(tmp, 10, &prp->aes);
 		uint32_t* r = (uint32_t*)(tmp);
 		for(int m = 0; m < 4; ++m)
-			for (int j = 0; j < d; ++j)
-				nn[i+m] = nn[i+m] ^ kk[r[m*d+j]%k];
+			for (int j = 0; j < d; ++j) {
+				int index = (*r) & mask;
+				++r;
+				index = index >= k? index-k:index;
+				nn[i+m] = nn[i+m] ^ kk[index];
+			}
 	}
 
 	void __compute1(block * nn, const block * kk, int i, PRP*prp) {
