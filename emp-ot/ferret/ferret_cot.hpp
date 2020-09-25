@@ -63,7 +63,7 @@ void FerretCOT<T, threads>::extend_initialization() {
 
 	pre_ot = new OTPre<NetIO>(io, mpcot->tree_height-1, mpcot->tree_n);
 	M = k + pre_ot->n + mpcot->consist_check_cot_num;
-	ot_limit = n - n_pre;
+	ot_limit = n - M;
 	ot_used = ot_limit;
 	extend_initialized = true;
 }
@@ -85,7 +85,7 @@ void FerretCOT<T, threads>::extend_f2k(block *ot_buffer) {
 	    pre_ot->send_pre(ot_pre_data, Delta_f2k);
 	else pre_ot->recv_pre(ot_pre_data);
 	extend(ot_buffer, mpcot, pre_ot, lpn_f2, ot_pre_data);
-	memcpy(ot_pre_data, ot_buffer+ot_limit, n_pre*sizeof(block));
+	memcpy(ot_pre_data, ot_buffer+ot_limit, M*sizeof(block));
 	ot_used = 0;
 }
 
@@ -149,18 +149,31 @@ void FerretCOT<T, threads>::rcot(block *data, int num) {
 		ot_used += num;
 		return;
 	}
+	block *pt = data;
 	int gened = silent_ot_left();
-	if(gened > 0)
-		memcpy(data, ot_data+ot_used, gened*sizeof(block));
-	int round = (num-gened) / ot_limit;
-	int last_round_ot = num-gened-round*ot_limit;
-	for(int i = 0; i < round; ++i) {
-		extend_f2k(data+gened+i*ot_limit);
-		ot_used = ot_limit;
+	if(gened > 0) {
+		memcpy(pt, ot_data+ot_used, gened*sizeof(block));
+		pt += gened;
 	}
-	extend_f2k();
-	memcpy(data+gened+round*ot_limit, ot_data, last_round_ot*sizeof(block));
-	ot_used = last_round_ot;
+	int round_inplace = (num-gened-M) / ot_limit;
+	int last_round_ot = num-gened-round_inplace*ot_limit;
+	bool round_memcpy = last_round_ot>ot_limit?true:false;
+	if(round_memcpy) last_round_ot -= ot_limit;
+	for(int i = 0; i < round_inplace; ++i) {
+		extend_f2k(pt);
+		ot_used = ot_limit;
+		pt += ot_limit;
+	}
+	if(round_memcpy) {
+		extend_f2k();
+		memcpy(pt, ot_data, ot_limit*sizeof(block));
+		pt += ot_limit;
+	}
+	if(last_round_ot > 0) {
+		extend_f2k();
+		memcpy(pt, ot_data, last_round_ot*sizeof(block));
+		ot_used = last_round_ot;
+	}
 }
 
 template<typename T, int threads>
