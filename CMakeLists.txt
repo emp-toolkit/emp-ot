@@ -20,3 +20,4 @@ endmacro()
 
 add_test(ot)
 add_test(ferret)
+add_test(bench_lpn)
