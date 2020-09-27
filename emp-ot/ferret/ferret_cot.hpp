@@ -1,6 +1,6 @@
 template<typename T, int threads>
 FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads+1],
-		bool malicious, std::string pre_file) {
+		bool malicious, bool run_setup, std::string pre_file) {
 	this->party = party;
 	io = ios[0];
 	this->ios = ios;
@@ -13,21 +13,22 @@ FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads+1],
 	set_preprocessing_param();
 	this->extend_initialized = false;
 
-	if(party == ALICE) {
-		PRG prg;
-		prg.random_block(&Delta);
-		Delta = Delta & one;
-		Delta = Delta ^ 0x1;
-		setup(Delta, pre_file);
-		Delta = Delta_f2k;
-		ch[1] = Delta;
-	} else setup(pre_file);
+	if(run_setup) {
+		if(party == ALICE) {
+			PRG prg;
+			prg.random_block(&Delta);
+			Delta = Delta & one;
+			Delta = Delta ^ 0x1;
+			setup(Delta, pre_file);
+			ch[1] = Delta;
+		} else setup(pre_file);
+	}
 }
 
 template<typename T, int threads>
 FerretCOT<T, threads>::~FerretCOT() {
 	if (ot_pre_data != nullptr) {
-		if(party == ALICE) write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)Delta_f2k, pre_ot_filename);
+		if(party == ALICE) write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)Delta, pre_ot_filename);
 		else write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)0, pre_ot_filename);
 		delete[] ot_pre_data;
 	}
@@ -72,7 +73,7 @@ void FerretCOT<T, threads>::extend_initialization() {
 template<typename T, int threads>
 void FerretCOT<T, threads>::extend(block* ot_output, MpcotReg<threads> *mpcot, OTPre<NetIO> *preot, 
 		LpnF2<10> *lpn, block *ot_input) {
-	if(party == ALICE) mpcot->sender_init(Delta_f2k);
+	if(party == ALICE) mpcot->sender_init(Delta);
 	else mpcot->recver_init();
 	mpcot->mpcot(ot_output, preot, ot_input);
 	lpn->compute(ot_output, ot_input+mpcot->consist_check_cot_num);
@@ -82,7 +83,7 @@ void FerretCOT<T, threads>::extend(block* ot_output, MpcotReg<threads> *mpcot, O
 template<typename T, int threads>
 void FerretCOT<T, threads>::extend_f2k(block *ot_buffer) {
 	if(party == ALICE)
-	    pre_ot->send_pre(ot_pre_data, Delta_f2k);
+	    pre_ot->send_pre(ot_pre_data, Delta);
 	else pre_ot->recv_pre(ot_pre_data);
 	extend(ot_buffer, mpcot, pre_ot, lpn_f2, ot_pre_data);
 	memcpy(ot_pre_data, ot_buffer+ot_limit, M*sizeof(block));
@@ -97,7 +98,7 @@ void FerretCOT<T, threads>::extend_f2k() {
 
 template<typename T, int threads>
 void FerretCOT<T, threads>::setup(block Deltain, std::string pre_file) {
-	this->Delta_f2k = Deltain;
+	this->Delta = Deltain;
 	setup(pre_file);
 }
 
@@ -115,10 +116,10 @@ void FerretCOT<T, threads>::setup(std::string pre_file) {
 
 	ot_pre_data = new block[n_pre];
 	if(file_exists(pre_ot_filename) == true) {
-		Delta_f2k = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
+		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
 	} else {
 		if(party == BOB) base_cot->cot_gen_pre();
-		else base_cot->cot_gen_pre(Delta_f2k);
+		else base_cot->cot_gen_pre(Delta);
 
 		MpcotReg<threads> mpcot_ini(party, n_pre, t_pre, log_bin_sz_pre, pool, ios);
 		if(is_malicious) mpcot_ini.set_malicious();
@@ -221,7 +222,7 @@ uint64_t FerretCOT<T, threads>::rcot_inplace(block *ot_buffer, int byte_space) {
 	block *pt = ot_buffer;
 	for(int i = 0; i < round; ++i) {
 		if(party == ALICE)
-		    pre_ot->send_pre(ot_pre_data, Delta_f2k);
+		    pre_ot->send_pre(ot_pre_data, Delta);
 		else pre_ot->recv_pre(ot_pre_data);
 		extend(pt, mpcot, pre_ot, lpn_f2, ot_pre_data);
 		pt += ot_limit;

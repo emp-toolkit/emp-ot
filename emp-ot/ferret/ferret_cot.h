@@ -23,7 +23,7 @@ public:
 	int n_pre, t_pre, k_pre, log_bin_sz_pre;
 	int ot_used, ot_limit;
 
-	FerretCOT(int party, T * ios[threads+1], bool malicious = false, std::string pre_file="");
+	FerretCOT(int party, T * ios[threads+1], bool malicious = false, bool run_setup = true, std::string pre_file="");
 
 	~FerretCOT();
 
@@ -48,7 +48,6 @@ private:
 
 	block one;
 
-	block Delta_f2k;
 	block * ot_pre_data = nullptr;
 	block * ot_data = nullptr;
 
