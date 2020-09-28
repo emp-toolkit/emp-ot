@@ -20,7 +20,6 @@ FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads+1],
 			Delta = Delta & one;
 			Delta = Delta ^ 0x1;
 			setup(Delta, pre_file);
-			ch[1] = Delta;
 		} else setup(pre_file);
 	}
 }
@@ -100,6 +99,7 @@ template<typename T, int threads>
 void FerretCOT<T, threads>::setup(block Deltain, std::string pre_file) {
 	this->Delta = Deltain;
 	setup(pre_file);
+	ch[1] = Delta;
 }
 
 template<typename T, int threads>

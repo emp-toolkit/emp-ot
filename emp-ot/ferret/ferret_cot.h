@@ -27,6 +27,10 @@ public:
 
 	~FerretCOT();
 
+	void setup(block Deltain, std::string pre_file = "");
+
+	void setup(std::string pre_file = "");
+
 	void send_cot(block * data, int length) override;
 
 	void recv_cot(block* data, const bool * b, int length) override;
@@ -59,10 +63,7 @@ private:
 	MpcotReg<threads> *mpcot = nullptr;
 	LpnF2<10> *lpn_f2 = nullptr;
 
-	void setup(block Deltain, std::string pre_file);
-
-	void setup(std::string pre_file);
-
+	
 	void online_sender(block *data, int length);
 
 	void online_recver(block *data, const bool *b, int length);
