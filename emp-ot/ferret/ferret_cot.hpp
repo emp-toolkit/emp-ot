@@ -187,6 +187,9 @@ void FerretCOT<T, threads>::write_pre_data128_to_file(void* loc, __uint128_t del
 	FileIO fio(filename.c_str(), false);
 	fio.send_data(&party, sizeof(int));
 	if(party == ALICE) fio.send_data(&delta, 16);
+	fio.send_data(&n, sizeof(int));
+	fio.send_data(&t, sizeof(int));
+	fio.send_data(&k, sizeof(int));
 	fio.send_data(loc, n_pre*16);
 }
 
@@ -198,6 +201,12 @@ __uint128_t FerretCOT<T, threads>::read_pre_data128_from_file(void* pre_loc, std
 	if(in_party != party) error("wrong party");
 	__uint128_t delta = 0;
 	if(party == ALICE) fio.recv_data(&delta, 16);
+	int nin, tin, kin;
+	fio.recv_data(&nin, sizeof(int));
+	fio.recv_data(&tin, sizeof(int));
+	fio.recv_data(&kin, sizeof(int));
+	if(nin != n || tin != t || kin != k)
+		error("wrong parameters");
 	fio.recv_data(pre_loc, n_pre*16);
 	std::remove(filename.c_str());
 	return delta;
