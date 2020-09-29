@@ -55,8 +55,8 @@ Active FERRET OT	Tests passed.	191519 OTps
 Active FERRET COT	Tests passed.	1.88838e+07 OTps
 Active FERRET ROT	Tests passed.	1.76447e+07 OTps
 
-Active FERRET RCOT	Tests passed.	3.42329e+07 OTps
-Active FERRET RCOT inplace	Tests passed.	6.1008e+07 OTps
+Active FERRET RCOT	Tests passed.	4.97468e+07 OTps
+Active FERRET RCOT inplace	Tests passed.	5.84142e+07 OTps
 ```
 
 ### 10 Gbps
@@ -69,15 +69,15 @@ Passive IKNP ROT	Tests passed.	1.65765e+07 OTps
 Active IKNP OT	Tests passed.	1.39589e+07 OTps
 Active IKNP COT	Tests passed.	2.42705e+07 OTps
 Active IKNP ROT	Tests passed.	1.47379e+07 OTps
-Passive FERRET OT	Tests passed.	1.36986e+07 OTps
-Passive FERRET COT	Tests passed.	3.34741e+07 OTps
+Passive FERRET OT	Tests passed.	1.60211e+07 OTps
+Passive FERRET COT	Tests passed.	3.86102e+07 OTps
 Passive FERRET ROT	Tests passed.	1.82382e+07 OTps
 Active FERRET OT	Tests passed.	1.32552e+07 OTps
-Active FERRET COT	Tests passed.	3.13997e+07 OTps
+Active FERRET COT	Tests passed.	3.58546e+07 OTps
 Active FERRET ROT	Tests passed.	1.79005e+07 OTps
 
-Active FERRET RCOT	Tests passed.	3.479e+07 OTps
-Active FERRET RCOT inplace	Tests passed.	6.10686e+07 OTps
+Active FERRET RCOT	Tests passed.	6.1264e+07 OTps
+Active FERRET RCOT inplace	Tests passed.	7.42027e+07 OTps
 ```
 
 Usage
