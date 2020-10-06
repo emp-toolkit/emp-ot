@@ -28,7 +28,12 @@ before_install:
   - eval "${MATRIX_EVAL}"
   - git clone -bv0.1 https://github.com/emp-toolkit/emp-readme.git
   - bash ./emp-readme/scripts/install_packages.sh
-  - bash ./emp-readme/scripts/install_emp-tool.sh
+  - git clone -bfb https://github.com/emp-toolkit/emp-tool.git
+  - cd emp-tool
+  - cmake .
+  - make
+  - sudo make install
+  - cd ..
 
 script:
   - cmake -DCMAKE_BUILD_TYPE=$TYPE . && make
