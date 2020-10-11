@@ -1,7 +1,7 @@
 #include "test/test.h"
 using namespace std;
 
-const static int threads = 5;
+const static int threads = 1;
 
 int main(int argc, char** argv) {
 	int length = 1<<24, port, party;
