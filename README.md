@@ -37,6 +37,8 @@ Testing on two
 Performance
 =====
 Hardware: AWS m5.4xlarge
+Results below are for performing 2^26 OTs. IKNP-style protocols use 1 thread;
+FERRET uses 5 threads.
 
 ### 50 Mbps
 ```
