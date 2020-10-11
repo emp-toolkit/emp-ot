@@ -2,8 +2,8 @@
 #define EMP_FERRET_CONSTANTS_H__
 
 namespace emp { 
-std::string PRE_OT_DATA_REG_SEND_FILE = "./data/pre_ot_data_reg_send";
-std::string PRE_OT_DATA_REG_RECV_FILE = "./data/pre_ot_data_reg_recv";
+static std::string PRE_OT_DATA_REG_SEND_FILE = "./data/pre_ot_data_reg_send";
+static std::string PRE_OT_DATA_REG_RECV_FILE = "./data/pre_ot_data_reg_recv";
 
 const static int N_REG = 10608640;
 const static int T_REG = 1295;
