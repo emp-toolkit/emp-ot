@@ -9,7 +9,6 @@ This repo contains state-of-the-art OT implementations. Include two base OTs, IK
 Installation
 =====
 
-# Installation
 1. `wget https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/scripts/install.py`
 2. `python install.py -install -tool -ot`
     1. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
