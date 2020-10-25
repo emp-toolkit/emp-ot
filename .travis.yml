@@ -46,5 +46,7 @@ before_install:
 script:
   - while sleep 400; do echo "=====[ $SECONDS seconds ]====="; done &
   - cmake -DCMAKE_BUILD_TYPE=$TYPE . && make
+  - rm data/*
   - ./run ./bin/ot
+  - rm data/*
   - ./run ./bin/ferret

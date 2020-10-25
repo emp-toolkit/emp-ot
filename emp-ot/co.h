@@ -93,6 +93,7 @@ class OTCO: public OT<IO> { public:
 		
 		delete[] bb;
 		delete[] B;
+		delete[] As;
 	}
 };
 

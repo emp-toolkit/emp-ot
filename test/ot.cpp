@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
 
 	NetIO* ios[threads+1];
 	for(int i = 0; i < threads+1; ++i)
-		ios[i] = new NetIO(party == ALICE?nullptr:"127.0.0.1",port+1);
+		ios[i] = new NetIO(party == ALICE?nullptr:"127.0.0.1",port+i);
 	FerretCOT<NetIO, threads> * ferretcot = new FerretCOT<NetIO, threads>(party, ios, false);
 	cout <<"Passive FERRET OT\t"<<double(length)/test_ot<FerretCOT<NetIO, threads>>(ferretcot, ios[0], party, length)*1e6<<" OTps"<<endl;
 	cout <<"Passive FERRET COT\t"<<double(length)/test_cot<FerretCOT<NetIO, threads>>(ferretcot, ios[0], party, length)*1e6<<" OTps"<<endl;

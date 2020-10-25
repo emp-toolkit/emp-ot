@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
 	parse_party_and_port(argv, &party, &port);
 	NetIO* ios[threads+1];
 	for(int i = 0; i < threads+1; ++i)
-		ios[i] = new NetIO(party == ALICE?nullptr:"127.0.0.1",port);
+		ios[i] = new NetIO(party == ALICE?nullptr:"127.0.0.1",port+i);
 
 	test_ferret(party, ios);
 
