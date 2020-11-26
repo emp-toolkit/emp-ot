@@ -22,7 +22,7 @@ public:
 
 	PRG prg;
 	NetIO *netio;
-	NetIO* ios[threads+1];
+	NetIO* ios[threads];
 	block Delta_f2k;
 	block *consist_check_chi_alpha = nullptr, *consist_check_VW = nullptr;
 	ThreadPool *pool;
@@ -30,10 +30,10 @@ public:
 	std::vector<uint32_t> item_pos_recver;
 	GaloisFieldPacking pack;
 
-	MpcotReg(int party, int n, int t, int log_bin_sz, ThreadPool * pool, NetIO* ios[threads+1]) {
+	MpcotReg(int party, int n, int t, int log_bin_sz, ThreadPool * pool, NetIO* ios[threads]) {
 		this->party = party;
 		netio = ios[0];
-		for (int i = 0; i < threads+1; ++i)
+		for (int i = 0; i < threads; ++i)
 			this->ios[i] = ios[i];
 		consist_check_cot_num = 128;
 
@@ -114,46 +114,44 @@ public:
 	void exec_parallel_sender(vector<SPCOT_Sender<NetIO>*> &senders,
 			OTPre<NetIO> *ot, block* sparse_vector) {
 		vector<future<void>> fut;		
-		int width = (this->tree_n+threads)/(threads+1);	
-		for(int i = 0; i < threads; ++i) {	
-			int start = i * width;
-			int end = min((i+1)*width, tree_n);
+		uint32_t width = tree_n / threads;
+		uint32_t start = 0, end = width;
+		for(int i = 0; i < threads - 1; ++i) {	
 			fut.push_back(this->pool->enqueue([this, start, end, width, 
 						senders, ot, sparse_vector](){
 				for(int i = start; i < end; ++i)
 					exec_f2k_sender(senders[i], ot, sparse_vector+i*leave_n, 
 							ios[start/width], i);
 			}));
+			start = end;
+			end += width;
 		}
-
-		int start = threads*width;
-		int end = min((threads+1)*width, tree_n);
+		end = tree_n;
 		for(int i = start; i < end; ++i)
 			exec_f2k_sender(senders[i], ot, sparse_vector+i*leave_n, 
-					ios[threads], i);
+					ios[threads - 1], i);
 		for (auto & f : fut) f.get();
 	}
 
 	void exec_parallel_recver(vector<SPCOT_Recver<NetIO>*> &recvers,
 			OTPre<NetIO> *ot, block* sparse_vector) {
 		vector<future<void>> fut;		
-		int width = (this->tree_n+threads)/(threads+1);	
-		for(int i = 0; i < threads; ++i) {
-			int start = i * width;
-			int end = min((i+1)*width, tree_n);
+		uint32_t width = tree_n / threads;
+		uint32_t start = 0, end = width;
+		for(int i = 0; i < threads - 1; ++i) {
 			fut.push_back(this->pool->enqueue([this, start, end, width, 
 						recvers, ot, sparse_vector](){
 				for(int i = start; i < end; ++i)
 					exec_f2k_recver(recvers[i], ot, sparse_vector+i*leave_n, 
 							ios[start/width], i);
 			}));
+			start = end;
+			end += width;
 		}
-
-		int start = threads*width;
-		int end = min((threads+1)*width, tree_n);
+		end = tree_n;
 		for(int i = start; i < end; ++i)
 			exec_f2k_recver(recvers[i], ot, sparse_vector+i*leave_n, 
-					ios[threads], i);
+					ios[threads - 1], i);
 		for (auto & f : fut) f.get();
 	}
 

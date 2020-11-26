@@ -5,7 +5,7 @@ using namespace std;
 int port, party;
 const static int threads = 1;
 
-void test_ferret(int party, NetIO *ios[threads+1]) {
+void test_ferret(int party, NetIO *ios[threads]) {
 	auto start = clock_start();
 	FerretCOT<NetIO, threads> * ferretcot = new FerretCOT<NetIO, threads>(party, ios, true);
 	double timeused = time_from(start);
@@ -26,12 +26,12 @@ void test_ferret(int party, NetIO *ios[threads+1]) {
 
 int main(int argc, char** argv) {
 	parse_party_and_port(argv, &party, &port);
-	NetIO* ios[threads+1];
-	for(int i = 0; i < threads+1; ++i)
+	NetIO* ios[threads];
+	for(int i = 0; i < threads; ++i)
 		ios[i] = new NetIO(party == ALICE?nullptr:"127.0.0.1",port+i);
 
 	test_ferret(party, ios);
 
-	for(int i = 0; i < threads+1; ++i)
+	for(int i = 0; i < threads; ++i)
 		delete ios[i];
 }

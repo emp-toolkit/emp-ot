@@ -1,5 +1,5 @@
 template<typename T, int threads>
-FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads+1],
+FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads],
 		bool malicious, bool run_setup, std::string pre_file) {
 	this->party = party;
 	io = ios[0];
