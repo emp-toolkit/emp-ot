@@ -116,7 +116,15 @@ void FerretCOT<T>::setup(std::string pre_file) {
 	});
 
 	ot_pre_data = new block[n_pre];
-	if(file_exists(pre_ot_filename) == true) {
+	bool hasfile = file_exists(pre_ot_filename), ahasfile;
+	if(party == ALICE) {
+		io->send_data(&hasfile, sizeof(bool));
+		io->flush();
+	} else {
+		io->recv_data(&ahasfile, sizeof(bool));
+		if(hasfile != ahasfile) error("one party hasn't setup");
+	}
+	if(hasfile) {
 		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
 	} else {
 		if(party == BOB) base_cot->cot_gen_pre();
@@ -185,6 +193,9 @@ int FerretCOT<T>::silent_ot_left() {
 
 template<typename T>
 void FerretCOT<T>::write_pre_data128_to_file(void* loc, __uint128_t delta, std::string filename) {
+	std::ofstream outfile(filename);
+	if(outfile.is_open()) outfile.close();
+	else error("create a directory to store pre-OT data");
 	FileIO fio(filename.c_str(), false);
 	fio.send_data(&party, sizeof(int));
 	if(party == ALICE) fio.send_data(&delta, 16);
