@@ -10,10 +10,9 @@
 using namespace emp;
 using std::future;
 
-template<int threads>
 class MpcotReg {
 public:
-	int party;
+	int party, threads;
 	int item_n, idx_max, m;
 	int tree_height, leave_n;
 	int tree_n;
@@ -22,7 +21,7 @@ public:
 
 	PRG prg;
 	NetIO *netio;
-	NetIO* ios[threads];
+	NetIO **ios;
 	block Delta_f2k;
 	block *consist_check_chi_alpha = nullptr, *consist_check_VW = nullptr;
 	ThreadPool *pool;
@@ -30,11 +29,11 @@ public:
 	std::vector<uint32_t> item_pos_recver;
 	GaloisFieldPacking pack;
 
-	MpcotReg(int party, int n, int t, int log_bin_sz, ThreadPool * pool, NetIO* ios[threads]) {
+	MpcotReg(int party, int threads, int n, int t, int log_bin_sz, ThreadPool * pool, NetIO **ios) {
 		this->party = party;
+		this->threads = threads;
 		netio = ios[0];
-		for (int i = 0; i < threads; ++i)
-			this->ios[i] = ios[i];
+		this->ios = ios;
 		consist_check_cot_num = 128;
 
 		this->pool = pool;

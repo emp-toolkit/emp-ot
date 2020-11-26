@@ -13,7 +13,7 @@ namespace emp {
  * https://eprint.iacr.org/2020/924.pdf
  *
  */
-template<typename T, int threads>
+template<typename T>
 class FerretCOT: public COT<T> { 
 public:
 	using COT<T>::io;
@@ -23,7 +23,7 @@ public:
 	int n_pre, t_pre, k_pre, log_bin_sz_pre;
 	int ot_used, ot_limit;
 
-	FerretCOT(int party, T * ios[threads], bool malicious = false, bool run_setup = true, std::string pre_file="");
+	FerretCOT(int party, int threads, T **ios, bool malicious = false, bool run_setup = true, std::string pre_file="");
 
 	~FerretCOT();
 
@@ -45,7 +45,7 @@ private:
 	block ch[2];
 
 	NetIO **ios;
-	int party;
+	int party, threads;
 	int M;
 	bool is_malicious;
 	bool extend_initialized;
@@ -60,7 +60,7 @@ private:
 	BaseCot *base_cot = nullptr;
 	OTPre<NetIO> *pre_ot = nullptr;
 	ThreadPool *pool = nullptr;
-	MpcotReg<threads> *mpcot = nullptr;
+	MpcotReg *mpcot = nullptr;
 	LpnF2<10> *lpn_f2 = nullptr;
 
 	
@@ -74,7 +74,7 @@ private:
 
 	void extend_initialization();
 
-	void extend(block* ot_output, MpcotReg<threads> *mpfss, OTPre<NetIO> *preot, 
+	void extend(block* ot_output, MpcotReg *mpfss, OTPre<NetIO> *preot, 
 			LpnF2<10> *lpn, block *ot_input);
 
 	void extend_f2k(block *ot_buffer);
