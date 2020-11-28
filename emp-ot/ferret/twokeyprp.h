@@ -35,38 +35,12 @@ class TwoKeyPRP { public:
 	  children[0] = children[0] ^ tmp[0];
 	}
 
-	inline void
-	__attribute__((target("aes,sse2")))
-	permute_block_4blks(block *blks) {
-	  blks[0] = _mm_xor_si128(blks[0], aes_key[0].rd_key[0]);
-	  blks[1] = _mm_xor_si128(blks[1], aes_key[1].rd_key[0]);
-	  blks[2] = _mm_xor_si128(blks[2], aes_key[0].rd_key[0]);
-	  blks[3] = _mm_xor_si128(blks[3], aes_key[1].rd_key[0]);
-	  for (unsigned int j = 1; j < aes_key[0].rounds; ++j) {
-			blks[0] = _mm_aesenc_si128(blks[0], aes_key[0].rd_key[j]);
-			blks[2] = _mm_aesenc_si128(blks[2], aes_key[0].rd_key[j]);
-	  }
-	  for (unsigned int j = 1; j < aes_key[1].rounds; ++j) {
-			blks[1] = _mm_aesenc_si128(blks[1], aes_key[1].rd_key[j]);
-			blks[3] = _mm_aesenc_si128(blks[3], aes_key[1].rd_key[j]);
-	  }
-	  blks[0] = _mm_aesenclast_si128(blks[0], aes_key[0].rd_key[aes_key[0].rounds]);
-	  blks[1] = _mm_aesenclast_si128(blks[1], aes_key[1].rd_key[aes_key[1].rounds]);
-	  blks[2] = _mm_aesenclast_si128(blks[2], aes_key[0].rd_key[aes_key[0].rounds]);
-	  blks[3] = _mm_aesenclast_si128(blks[3], aes_key[1].rd_key[aes_key[1].rounds]);
+	inline void permute_block_4blks(block *blks) {
+		ParaEnc<2,4>(blks, aes_key);
 	}
 
-	inline void
-	__attribute__((target("aes,sse2")))
-	permute_block_2blks(block *blks) {
-	  blks[0] = _mm_xor_si128(blks[0], aes_key[0].rd_key[0]);
-	  blks[1] = _mm_xor_si128(blks[1], aes_key[1].rd_key[0]);
-	  for (unsigned int j = 1; j < aes_key[0].rounds; ++j)
-			blks[0] = _mm_aesenc_si128(blks[0], aes_key[0].rd_key[j]);
-	  for (unsigned int j = 1; j < aes_key[1].rounds; ++j)
-			blks[1] = _mm_aesenc_si128(blks[1], aes_key[1].rd_key[j]);
-	  blks[0] = _mm_aesenclast_si128(blks[0], aes_key[0].rd_key[aes_key[0].rounds]);
-	  blks[1] = _mm_aesenclast_si128(blks[1], aes_key[1].rd_key[aes_key[1].rounds]);
+	inline void permute_block_2blks(block *blks) {
+		ParaEnc<2,2>(blks, aes_key);
 	}
 };
 #endif

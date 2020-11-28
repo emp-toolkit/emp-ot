@@ -106,8 +106,8 @@ public:
 	void exec_parallel_sender(vector<SPCOT_Sender<NetIO>*> &senders,
 			OTPre<NetIO> *ot, block* sparse_vector) {
 		vector<future<void>> fut;		
-		uint32_t width = tree_n / threads;
-		uint32_t start = 0, end = width;
+		int width = tree_n / threads;
+		int start = 0, end = width;
 		for(int i = 0; i < threads - 1; ++i) {	
 			fut.push_back(this->pool->enqueue([this, start, end, width, 
 						senders, ot, sparse_vector](){
@@ -128,8 +128,8 @@ public:
 	void exec_parallel_recver(vector<SPCOT_Recver<NetIO>*> &recvers,
 			OTPre<NetIO> *ot, block* sparse_vector) {
 		vector<future<void>> fut;		
-		uint32_t width = tree_n / threads;
-		uint32_t start = 0, end = width;
+		int width = tree_n / threads;
+		int start = 0, end = width;
 		for(int i = 0; i < threads - 1; ++i) {
 			fut.push_back(this->pool->enqueue([this, start, end, width, 
 						recvers, ot, sparse_vector](){
