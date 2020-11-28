@@ -1,7 +1,8 @@
-template<typename T, int threads>
-FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads+1],
+template<typename T>
+FerretCOT<T>::FerretCOT(int party, int threads, T **ios,
 		bool malicious, bool run_setup, std::string pre_file) {
 	this->party = party;
+	this->threads = threads;
 	io = ios[0];
 	this->ios = ios;
 	this->is_malicious = malicious;
@@ -24,8 +25,8 @@ FerretCOT<T, threads>::FerretCOT(int party, T * ios[threads+1],
 	}
 }
 
-template<typename T, int threads>
-FerretCOT<T, threads>::~FerretCOT() {
+template<typename T>
+FerretCOT<T>::~FerretCOT() {
 	if (ot_pre_data != nullptr) {
 		if(party == ALICE) write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)Delta, pre_ot_filename);
 		else write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)0, pre_ot_filename);
@@ -39,26 +40,26 @@ FerretCOT<T, threads>::~FerretCOT() {
 	if(mpcot != nullptr) delete mpcot;
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::set_param() {
+template<typename T>
+void FerretCOT<T>::set_param() {
 	this->n = N_REG;
 	this->k = K_REG;
 	this->t = T_REG;
 	this->log_bin_sz = BIN_SZ_REG;
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::set_preprocessing_param() {
+template<typename T>
+void FerretCOT<T>::set_preprocessing_param() {
 	this->n_pre = N_PRE_REG;
 	this->k_pre = K_PRE_REG;
 	this->t_pre = T_PRE_REG;
 	this->log_bin_sz_pre = BIN_SZ_PRE_REG;
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::extend_initialization() {
+template<typename T>
+void FerretCOT<T>::extend_initialization() {
 	lpn_f2 = new LpnF2<10>(party, n, k, pool, io, pool->size());
-	mpcot = new MpcotReg<threads>(party, n, t, log_bin_sz, pool, ios);
+	mpcot = new MpcotReg(party, threads, n, t, log_bin_sz, pool, ios);
 	if(is_malicious) mpcot->set_malicious();
 
 	pre_ot = new OTPre<NetIO>(io, mpcot->tree_height-1, mpcot->tree_n);
@@ -69,8 +70,8 @@ void FerretCOT<T, threads>::extend_initialization() {
 }
 
 // extend f2k in detail
-template<typename T, int threads>
-void FerretCOT<T, threads>::extend(block* ot_output, MpcotReg<threads> *mpcot, OTPre<NetIO> *preot, 
+template<typename T>
+void FerretCOT<T>::extend(block* ot_output, MpcotReg *mpcot, OTPre<NetIO> *preot, 
 		LpnF2<10> *lpn, block *ot_input) {
 	if(party == ALICE) mpcot->sender_init(Delta);
 	else mpcot->recver_init();
@@ -79,8 +80,8 @@ void FerretCOT<T, threads>::extend(block* ot_output, MpcotReg<threads> *mpcot, O
 }
 
 // extend f2k (customized location)
-template<typename T, int threads>
-void FerretCOT<T, threads>::extend_f2k(block *ot_buffer) {
+template<typename T>
+void FerretCOT<T>::extend_f2k(block *ot_buffer) {
 	if(party == ALICE)
 	    pre_ot->send_pre(ot_pre_data, Delta);
 	else pre_ot->recv_pre(ot_pre_data);
@@ -90,20 +91,20 @@ void FerretCOT<T, threads>::extend_f2k(block *ot_buffer) {
 }
 
 // extend f2k
-template<typename T, int threads>
-void FerretCOT<T, threads>::extend_f2k() {
+template<typename T>
+void FerretCOT<T>::extend_f2k() {
 	extend_f2k(ot_data);
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::setup(block Deltain, std::string pre_file) {
+template<typename T>
+void FerretCOT<T>::setup(block Deltain, std::string pre_file) {
 	this->Delta = Deltain;
 	setup(pre_file);
 	ch[1] = Delta;
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::setup(std::string pre_file) {
+template<typename T>
+void FerretCOT<T>::setup(std::string pre_file) {
 	if(pre_file != "") pre_ot_filename = pre_file;
 	else {
 		pre_ot_filename=(party==ALICE?PRE_OT_DATA_REG_SEND_FILE:PRE_OT_DATA_REG_RECV_FILE);
@@ -115,13 +116,21 @@ void FerretCOT<T, threads>::setup(std::string pre_file) {
 	});
 
 	ot_pre_data = new block[n_pre];
-	if(file_exists(pre_ot_filename) == true) {
+	bool hasfile = file_exists(pre_ot_filename), ahasfile;
+	if(party == ALICE) {
+		io->send_data(&hasfile, sizeof(bool));
+		io->flush();
+	} else {
+		io->recv_data(&ahasfile, sizeof(bool));
+		if(hasfile != ahasfile) error("one party hasn't setup");
+	}
+	if(hasfile) {
 		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
 	} else {
 		if(party == BOB) base_cot->cot_gen_pre();
 		else base_cot->cot_gen_pre(Delta);
 
-		MpcotReg<threads> mpcot_ini(party, n_pre, t_pre, log_bin_sz_pre, pool, ios);
+		MpcotReg mpcot_ini(party, threads, n_pre, t_pre, log_bin_sz_pre, pool, ios);
 		if(is_malicious) mpcot_ini.set_malicious();
 		OTPre<NetIO> pre_ot_ini(ios[0], mpcot_ini.tree_height-1, mpcot_ini.tree_n);
 		LpnF2<10> lpn(party, n_pre, k_pre, pool, io, pool->size());
@@ -137,8 +146,8 @@ void FerretCOT<T, threads>::setup(std::string pre_file) {
 	fut.get();
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::rcot(block *data, int num) {
+template<typename T>
+void FerretCOT<T>::rcot(block *data, int num) {
 	if(ot_data == nullptr) {
 		ot_data = new block[n];
 		memset(ot_data, 0, n*sizeof(block));
@@ -177,13 +186,16 @@ void FerretCOT<T, threads>::rcot(block *data, int num) {
 	}
 }
 
-template<typename T, int threads>
-int FerretCOT<T, threads>::silent_ot_left() {
+template<typename T>
+int FerretCOT<T>::silent_ot_left() {
 	return ot_limit-ot_used;
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::write_pre_data128_to_file(void* loc, __uint128_t delta, std::string filename) {
+template<typename T>
+void FerretCOT<T>::write_pre_data128_to_file(void* loc, __uint128_t delta, std::string filename) {
+	std::ofstream outfile(filename);
+	if(outfile.is_open()) outfile.close();
+	else error("create a directory to store pre-OT data");
 	FileIO fio(filename.c_str(), false);
 	fio.send_data(&party, sizeof(int));
 	if(party == ALICE) fio.send_data(&delta, 16);
@@ -193,8 +205,8 @@ void FerretCOT<T, threads>::write_pre_data128_to_file(void* loc, __uint128_t del
 	fio.send_data(loc, n_pre*16);
 }
 
-template<typename T, int threads>
-__uint128_t FerretCOT<T, threads>::read_pre_data128_from_file(void* pre_loc, std::string filename) {
+template<typename T>
+__uint128_t FerretCOT<T>::read_pre_data128_from_file(void* pre_loc, std::string filename) {
 	FileIO fio(filename.c_str(), true);
 	int in_party;
 	fio.recv_data(&in_party, sizeof(int));
@@ -212,8 +224,8 @@ __uint128_t FerretCOT<T, threads>::read_pre_data128_from_file(void* pre_loc, std
 	return delta;
 }
 
-template<typename T, int threads>
-uint64_t FerretCOT<T, threads>::byte_memory_need_inplace(uint64_t ot_need) {
+template<typename T>
+uint64_t FerretCOT<T>::byte_memory_need_inplace(uint64_t ot_need) {
 	int round = (ot_need - 1) / ot_limit;
 	return round * ot_limit + n;
 }
@@ -221,8 +233,8 @@ uint64_t FerretCOT<T, threads>::byte_memory_need_inplace(uint64_t ot_need) {
 // extend f2k (benchmark)
 // parameter "length" should be the return of "byte_memory_need_inplace"
 // output the number of COTs that can be used
-template<typename T, int threads>
-uint64_t FerretCOT<T, threads>::rcot_inplace(block *ot_buffer, int byte_space) {
+template<typename T>
+uint64_t FerretCOT<T>::rcot_inplace(block *ot_buffer, int byte_space) {
 	if(byte_space < n) error("space not enough");
 	if((byte_space - M) % ot_limit != 0) error("call byte_memory_need_inplace \
 			to get the correct length of memory space");
@@ -240,8 +252,8 @@ uint64_t FerretCOT<T, threads>::rcot_inplace(block *ot_buffer, int byte_space) {
 	return ot_output_n;
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::online_sender(block *data, int length) {
+template<typename T>
+void FerretCOT<T>::online_sender(block *data, int length) {
 	bool *bo = new bool[length];
 	io->recv_bool(bo, length*sizeof(bool));
 	for(int i = 0; i < length; ++i) {
@@ -250,8 +262,8 @@ void FerretCOT<T, threads>::online_sender(block *data, int length) {
 	delete[] bo;
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::online_recver(block *data, const bool *b, int length) {
+template<typename T>
+void FerretCOT<T>::online_recver(block *data, const bool *b, int length) {
 	bool *bo = new bool[length];
 	for(int i = 0; i < length; ++i) {
 		bo[i] = b[i] ^ getLSB(data[i]);
@@ -260,14 +272,14 @@ void FerretCOT<T, threads>::online_recver(block *data, const bool *b, int length
 	delete[] bo;
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::send_cot(block * data, int length) {
+template<typename T>
+void FerretCOT<T>::send_cot(block * data, int length) {
 	rcot(data, length);
 	online_sender(data, length);
 }
 
-template<typename T, int threads>
-void FerretCOT<T, threads>::recv_cot(block* data, const bool * b, int length) {
+template<typename T>
+void FerretCOT<T>::recv_cot(block* data, const bool * b, int length) {
 	rcot(data, length);
 	online_recver(data, b, length);
 }

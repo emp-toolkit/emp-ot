@@ -65,17 +65,17 @@ class LpnF2 { public:
 
 	void compute(block * nn, const block * kk) {
 		vector<std::future<void>> fut;
-		int width = n/(threads+1);
+		int width = n/threads;
 		seed = seed_gen();
-		for(int i = 0; i < threads; ++i) {
+		for(int i = 0; i < threads - 1; ++i) {
 			int start = i * width;
 			int end = min((i+1)* width, n);
 			fut.push_back(pool->enqueue([this, nn, kk, start, end]() {
 				task(nn, kk, start, end);
 			}));
 		}
-		int start = threads * width;
-		int end = min( (threads+1) * width, n);
+		int start = (threads - 1) * width;
+		int end = min(threads * width, n);
 		task(nn, kk, start, end);
 
 		for (auto &f: fut) f.get();
@@ -94,16 +94,16 @@ class LpnF2 { public:
 	}
 	void bench(block * nn, const block * kk) {
 		vector<std::future<void>> fut;
-		int width = n/(threads+1);
-		for(int i = 0; i < threads; ++i) {
+		int width = n/threads;
+		for(int i = 0; i < threads - 1; ++i) {
 			int start = i * width;
 			int end = min((i+1)* width, n);
 			fut.push_back(pool->enqueue([this, nn, kk, start, end]() {
 				task(nn, kk, start, end);
 			}));
 		}
-		int start = threads * width;
-		int end = min( (threads+1) * width, n);
+		int start = (threads - 1) * width;
+		int end = min(threads * width, n);
 		task(nn, kk, start, end);
 
 		for (auto &f: fut) f.get();
