@@ -13,7 +13,7 @@ void test_ferret(int party, NetIO *ios[threads]) {
 
 	// RCOT
 	// The RCOTs will be generated at internal memory, and copied to user buffer
-	int num = 1 << 22;
+	int num = 1 << 24;
 	cout <<"Active FERRET RCOT\t"<<double(num)/test_rcot<FerretCOT<NetIO>>(ferretcot, ios[0], party, num, false)*1e6<<" OTps"<<endl;
 
 	// RCOT inplace
