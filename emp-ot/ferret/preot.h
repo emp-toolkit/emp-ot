@@ -54,15 +54,11 @@ class OTPre { public:
 	}
 
 	void choices_sender() {
-		io->recv_data(bits+count, length);
 		count +=length;
 	}
 
-	void choices_recver(const bool * b) {
-		for (int i = 0; i < length; ++i) {
-			bits[count + i] = (b[i] != bits[count + i]);
-		}
-		io->send_data(bits+count, length);
+	void choices_recver(bool * b) {
+		memcpy(b, bits+count, length);
 		count +=length;
 	}
 	
@@ -74,13 +70,8 @@ class OTPre { public:
 		block pad[2];
 		int k = s*length;
 		for (int i = 0; i < length; ++i) {
-			if (!bits[k]) {
 				pad[0] = m0[i] ^ pre_data[k];
 				pad[1] = m1[i] ^ pre_data[k+n];
-			} else {
-				pad[0] = m0[i] ^ pre_data[k+n];
-				pad[1] = m1[i] ^ pre_data[k];
-			}
 			++k;
 			io2->send_block(pad, 2);
 		}

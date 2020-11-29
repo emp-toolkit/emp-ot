@@ -30,20 +30,14 @@ public:
 		delete[] b;
 	}
 
-	// generate the choice bit of blivious transfer
-	void choice_bit_gen(int idxin) {
-		choice_pos = idxin;
-		int leaves_n = 1<<(depth-1);
-		if(choice_pos > leaves_n) {
-			std::cout << "index exceeds the limit" << std::endl;
-			exit(0);
+	int get_index() {
+		choice_pos = 0;
+		for(int i = 0; i < depth-1; ++i) {
+			choice_pos<<=1;
+			if(!b[i])
+				choice_pos +=1;
 		}
-
-		int idx = idxin--;
-		for(int i = depth-2; i >= 0; --i) {
-			b[i] = (idx % 2) == 0;
-			idx >>= 1;
-		}
+		return choice_pos;
 	}
 
 	// receive the message and reconstruct the tree

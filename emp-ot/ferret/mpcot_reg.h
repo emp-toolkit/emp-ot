@@ -55,14 +55,7 @@ public:
 	}
 
 	void recver_init() {
-		std::set<uint32_t> item_set;
-		uint32_t rdata;
-		item_set.clear();
-		while(item_set.size() < (size_t)this->item_n) {
-			this->prg.random_data(&rdata, sizeof(uint32_t));
-			item_set.insert(rdata%this->idx_max);
-		}
-		item_pos_recver = std::vector<uint32_t>(item_set.begin(), item_set.end());
+		item_pos_recver.resize(this->item_n);
 	}
 
 	// MPFSS F_2k
@@ -103,8 +96,8 @@ public:
 	void mpcot_init_recver(vector<SPCOT_Recver<NetIO>*> &recvers, OTPre<NetIO> *ot) {
 		for(int i = 0; i < tree_n; ++i) {
 			recvers.push_back(new SPCOT_Recver<NetIO>(netio, tree_height));
-			recvers[i]->choice_bit_gen(item_pos_recver[i]%leave_n);
 			ot->choices_recver(recvers[i]->b);
+			item_pos_recver[i] = recvers[i]->get_index();
 		}
 		netio->flush();
 		ot->reset();
@@ -113,8 +106,8 @@ public:
 	void exec_parallel_sender(vector<SPCOT_Sender<NetIO>*> &senders,
 			OTPre<NetIO> *ot, block* sparse_vector) {
 		vector<future<void>> fut;		
-		uint32_t width = tree_n / threads;
-		uint32_t start = 0, end = width;
+		int width = tree_n / threads;
+		int start = 0, end = width;
 		for(int i = 0; i < threads - 1; ++i) {	
 			fut.push_back(this->pool->enqueue([this, start, end, width, 
 						senders, ot, sparse_vector](){
@@ -135,8 +128,8 @@ public:
 	void exec_parallel_recver(vector<SPCOT_Recver<NetIO>*> &recvers,
 			OTPre<NetIO> *ot, block* sparse_vector) {
 		vector<future<void>> fut;		
-		uint32_t width = tree_n / threads;
-		uint32_t start = 0, end = width;
+		int width = tree_n / threads;
+		int start = 0, end = width;
 		for(int i = 0; i < threads - 1; ++i) {
 			fut.push_back(this->pool->enqueue([this, start, end, width, 
 						recvers, ot, sparse_vector](){
