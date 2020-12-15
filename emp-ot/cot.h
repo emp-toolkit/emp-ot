@@ -10,12 +10,15 @@ class COT : public OT<T>{ public:
 	T * io = nullptr;
 	MITCCRH<ot_bsize> mitccrh;
 	block Delta;
+	PRG prg;
 	virtual void send_cot(block* data0, int length) = 0;
 	virtual void recv_cot(block* data, const bool* b, int length) = 0;
 	void send(const block* data0, const block* data1, int length) override {
 		block * data = new block[length];
 		send_cot(data, length);
-		mitccrh.setS(zero_block);
+		block s;prg.random_block(&s, 1);
+		io->send_block(&s,1);
+		mitccrh.setS(s);
 		io->flush();
 		block pad[2*ot_bsize];
 		for(int i = 0; i < length; i+=ot_bsize) {
@@ -35,7 +38,9 @@ class COT : public OT<T>{ public:
 
 	void recv(block* data, const bool* r, int length) override {
 		recv_cot(data, r, length);
-		mitccrh.setS(zero_block);
+		block s;
+		io->recv_block(&s,1);
+		mitccrh.setS(s);
 		io->flush();
 
 		block res[2*ot_bsize];
@@ -52,7 +57,11 @@ class COT : public OT<T>{ public:
 
 	void send_rot(block* data0, block* data1, int length) {
 		send_cot(data0, length);
+		block s; prg.random_block(&s, 1);
+		io->send_block(&s,1);
+		mitccrh.setS(s);
 		io->flush();
+
 		block pad[ot_bsize*2];
 		for(int i = 0; i < length; i+=ot_bsize) {
 			for(int j = i; j < min(i+ot_bsize, length); ++j) {
@@ -69,6 +78,9 @@ class COT : public OT<T>{ public:
 
 	void recv_rot(block* data, const bool* r, int length) {
 		recv_cot(data, r, length);
+		block s;
+		io->recv_block(&s,1);
+		mitccrh.setS(s);
 		io->flush();
 		block pad[ot_bsize];
 		for(int i = 0; i < length; i+=ot_bsize) {
