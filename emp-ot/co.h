@@ -6,7 +6,7 @@ namespace emp {
 
 template<typename IO>
 /*
- * Noar Pinkas OT
+ * Chou Orlandi OT
  * [REF] Implementation of "The Simplest Protocol for Oblivious Transfer"
  * https://eprint.iacr.org/2015/267.pdf
  */
