@@ -8,7 +8,7 @@ FerretCOT<T>::FerretCOT(int party, int threads, T **ios,
 	this->is_malicious = malicious;
 	one = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
 	ch[0] = zero_block;
-	base_cot = new BaseCot(party, io, malicious);
+	base_cot = new BaseCot<T>(party, io, malicious);
 	pool = new ThreadPool(threads);
 	set_param();
 	set_preprocessing_param();
@@ -58,11 +58,11 @@ void FerretCOT<T>::set_preprocessing_param() {
 
 template<typename T>
 void FerretCOT<T>::extend_initialization() {
-	lpn_f2 = new LpnF2<10>(party, n, k, pool, io, pool->size());
-	mpcot = new MpcotReg(party, threads, n, t, log_bin_sz, pool, ios);
+	lpn_f2 = new LpnF2<T, 10>(party, n, k, pool, io, pool->size());
+	mpcot = new MpcotReg<T>(party, threads, n, t, log_bin_sz, pool, ios);
 	if(is_malicious) mpcot->set_malicious();
 
-	pre_ot = new OTPre<NetIO>(io, mpcot->tree_height-1, mpcot->tree_n);
+	pre_ot = new OTPre<T>(io, mpcot->tree_height-1, mpcot->tree_n);
 	M = k + pre_ot->n + mpcot->consist_check_cot_num;
 	ot_limit = n - M;
 	ot_used = ot_limit;
@@ -71,8 +71,8 @@ void FerretCOT<T>::extend_initialization() {
 
 // extend f2k in detail
 template<typename T>
-void FerretCOT<T>::extend(block* ot_output, MpcotReg *mpcot, OTPre<NetIO> *preot, 
-		LpnF2<10> *lpn, block *ot_input) {
+void FerretCOT<T>::extend(block* ot_output, MpcotReg<T> *mpcot, OTPre<T> *preot, 
+		LpnF2<T, 10> *lpn, block *ot_input) {
 	if(party == ALICE) mpcot->sender_init(Delta);
 	else mpcot->recver_init();
 	mpcot->mpcot(ot_output, preot, ot_input);
@@ -130,10 +130,10 @@ void FerretCOT<T>::setup(std::string pre_file) {
 		if(party == BOB) base_cot->cot_gen_pre();
 		else base_cot->cot_gen_pre(Delta);
 
-		MpcotReg mpcot_ini(party, threads, n_pre, t_pre, log_bin_sz_pre, pool, ios);
+		MpcotReg<T> mpcot_ini(party, threads, n_pre, t_pre, log_bin_sz_pre, pool, ios);
 		if(is_malicious) mpcot_ini.set_malicious();
-		OTPre<NetIO> pre_ot_ini(ios[0], mpcot_ini.tree_height-1, mpcot_ini.tree_n);
-		LpnF2<10> lpn(party, n_pre, k_pre, pool, io, pool->size());
+		OTPre<T> pre_ot_ini(ios[0], mpcot_ini.tree_height-1, mpcot_ini.tree_n);
+		LpnF2<T, 10> lpn(party, n_pre, k_pre, pool, io, pool->size());
 
 		block pre_data_ini[k_pre+mpcot_ini.consist_check_cot_num];
 		memset(this->ot_pre_data, 0, n_pre*16);

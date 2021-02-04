@@ -3,19 +3,20 @@
 
 #include "emp-ot/ferret/preot.h"
 
+template<typename IO>
 class BaseCot { public:
    int party;
 	block one, minusone;
 	block ot_delta;
-	NetIO *io;
-	IKNP<NetIO> *iknp;
+	IO *io;
+	IKNP<IO> *iknp;
 	bool malicious = false;
 
-	BaseCot(int party, NetIO *io, bool malicious = false) {
+	BaseCot(int party, IO *io, bool malicious = false) {
 		this->party = party;
 		this->io = io;
 		this->malicious = malicious;
-		iknp = new IKNP<NetIO>(io, malicious);
+		iknp = new IKNP<IO>(io, malicious);
 		minusone = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
 		one = makeBlock(0x0LL, 0x1LL);
 	}
@@ -66,7 +67,7 @@ class BaseCot { public:
 		}
 	}
 
-	void cot_gen(OTPre<NetIO> *pre_ot, int size) {
+	void cot_gen(OTPre<IO> *pre_ot, int size) {
 		block *ot_data = new block[size];
 		if (this->party == ALICE) {
 			iknp->send_cot(ot_data, size);

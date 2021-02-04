@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
 	for (int kkk = 10; kkk < k; ++kkk) {	
 		auto t1 = clock_start();
 		for (int ttt = 0; ttt < 20; ttt++) {
-			LpnF2<10> lpn(ALICE, 1<<n, 1<<kkk, pool, nullptr, pool->size());
+			LpnF2<NetIO, 10> lpn(ALICE, 1<<n, 1<<kkk, pool, nullptr, pool->size());
 			lpn.bench(nn, kk);
 			kk[0] = nn[0];
 		}

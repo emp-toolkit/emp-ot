@@ -6,16 +6,16 @@ using namespace emp;
 
 //Implementation of local linear code on F_2^k
 //Performance highly dependent on the CPU cache size
-template<int d = 10>
+template<typename IO, int d = 10>
 class LpnF2 { public:
 	int party;
 	int k, n;
 	ThreadPool * pool;
-	NetIO *io;
+	IO *io;
 	int threads;
 	block seed;
 	int mask;
-	LpnF2 (int party, int n, int k, ThreadPool * pool, NetIO *io, int threads) {
+	LpnF2 (int party, int n, int k, ThreadPool * pool, IO *io, int threads) {
 		this->party = party;
 		this->k = k;
 		this->n = n;
