@@ -43,7 +43,7 @@ public:
 	// receive the message and reconstruct the tree
 	// j: position of the secret, begins from 0
 	template<typename OT>
-	void recv_f2k(OT * ot, NetIO * io2, int s) {
+	void recv_f2k(OT * ot, IO * io2, int s) {
 		ot->recv(m, b, depth-1, io2, s);
 		io2->recv_data(&secret_sum_f2, sizeof(block));
 	}

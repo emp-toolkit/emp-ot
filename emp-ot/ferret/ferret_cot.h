@@ -44,7 +44,7 @@ public:
 private:
 	block ch[2];
 
-	NetIO **ios;
+	T **ios;
 	int party, threads;
 	int M;
 	bool is_malicious;
@@ -57,11 +57,11 @@ private:
 
 	std::string pre_ot_filename;
 
-	BaseCot *base_cot = nullptr;
-	OTPre<NetIO> *pre_ot = nullptr;
+	BaseCot<T> *base_cot = nullptr;
+	OTPre<T> *pre_ot = nullptr;
 	ThreadPool *pool = nullptr;
-	MpcotReg *mpcot = nullptr;
-	LpnF2<10> *lpn_f2 = nullptr;
+	MpcotReg<T> *mpcot = nullptr;
+	LpnF2<T, 10> *lpn_f2 = nullptr;
 
 	
 	void online_sender(block *data, int length);
@@ -74,8 +74,8 @@ private:
 
 	void extend_initialization();
 
-	void extend(block* ot_output, MpcotReg *mpfss, OTPre<NetIO> *preot, 
-			LpnF2<10> *lpn, block *ot_input);
+	void extend(block* ot_output, MpcotReg<T> *mpfss, OTPre<T> *preot, 
+			LpnF2<T, 10> *lpn, block *ot_input);
 
 	void extend_f2k(block *ot_buffer);
 

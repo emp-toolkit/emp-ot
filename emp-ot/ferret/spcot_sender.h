@@ -41,7 +41,7 @@ class SPCOT_Sender { public:
 
 	// send the nodes by oblivious transfer, F2^k
 	template<typename OT>
-	void send_f2k(OT * ot, NetIO * io2, int s) {
+	void send_f2k(OT * ot, IO * io2, int s) {
 		ot->send(m, &m[depth-1], depth-1, io2, s);
 		io2->send_data(&secret_sum_f2, sizeof(block));
 	}
