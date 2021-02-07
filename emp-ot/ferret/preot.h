@@ -66,7 +66,7 @@ class OTPre { public:
 		count = 0;
 	}
 
-	void send(const block * m0, const  block * m1, int length, NetIO * io2, int s) {
+	void send(const block * m0, const  block * m1, int length, IO * io2, int s) {
 		block pad[2];
 		int k = s*length;
 		for (int i = 0; i < length; ++i) {
@@ -77,7 +77,7 @@ class OTPre { public:
 		}
 	}
 
-	void recv(block* data, const bool* b, int length, NetIO* io2, int s) {
+	void recv(block* data, const bool* b, int length, IO* io2, int s) {
 		int k = s*length;
 		block pad[2];
 		for (int i = 0; i < length; ++i) {
