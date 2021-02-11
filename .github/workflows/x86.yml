@@ -21,5 +21,5 @@ jobs:
     - name: Test
       shell: bash
       run: |
-        ./bin/ot 1 12345 24 & ./bin/ot 2 12345 24
-        ./bin/ferret 1 12345 24 & ./bin/ferret 2 12345 24
+        ./bin/ot 1 12345 20 & ./bin/ot 2 12345 20
+        ./bin/ferret 1 12345 20 & ./bin/ferret 2 12345 20
