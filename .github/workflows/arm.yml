@@ -1,13 +1,13 @@
-name: x86
+name: arm
 on: [push]
 
 jobs:
-  build_x86:
+  build_arm:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         build_type: [Debug, Release]
-    runs-on: ${{ matrix.os }}
+    runs-on: [self-hosted]
     env: 
       BUILD_TYPE: ${{matrix.build_type}}
     steps:
@@ -15,11 +15,11 @@ jobs:
     - name: install dependency
       run: |
         wget https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/scripts/install.py
-        python install.py -install -tool
+        python3 install.py -install -tool
     - name: Create Build Environment
       run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE && make
     - name: Test
       shell: bash
       run: |
-        ./bin/ot 1 12345 20 & ./bin/ot 2 12345 20
+        ./bin/ot 1 12345 20 & ./bin/ot 2 12345 20 
         ./bin/ferret 1 12345 20 & ./bin/ferret 2 12345 20

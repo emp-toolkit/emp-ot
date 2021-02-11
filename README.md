@@ -1,5 +1,7 @@
-emp-ot [![Build Status](https://travis-ci.org/emp-toolkit/emp-ot.svg?branch=master)](https://travis-ci.org/emp-toolkit/emp-ot)
-=====
+# emp-ot 
+![arm](https://github.com/emp-toolkit/emp-ot/workflows/arm/badge.svg)
+![x86](https://github.com/emp-toolkit/emp-ot/workflows/x86/badge.svg)
+
 <img src="https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/art/logo-full.jpg" width=300px/>
 
 Protocols
