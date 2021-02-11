@@ -12,6 +12,10 @@ jobs:
       BUILD_TYPE: ${{matrix.build_type}}
     steps:
     - uses: actions/checkout@v2
+    - name: install dependency
+      run: |
+        wget https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/scripts/install.py
+        python install.py -install -tool
     - name: Create Build Environment
       run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE && make
     - name: Test
