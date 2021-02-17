@@ -116,15 +116,17 @@ void FerretCOT<T>::setup(std::string pre_file) {
 	});
 
 	ot_pre_data = new block[n_pre];
-	bool hasfile = file_exists(pre_ot_filename), ahasfile;
+	bool hasfile = file_exists(pre_ot_filename), hasfile2;
 	if(party == ALICE) {
 		io->send_data(&hasfile, sizeof(bool));
 		io->flush();
+		io->recv_data(&hasfile2, sizeof(bool));
 	} else {
-		io->recv_data(&ahasfile, sizeof(bool));
-		if(hasfile != ahasfile) error("one party hasn't setup");
+		io->recv_data(&hasfile2, sizeof(bool));
+		io->send_data(&hasfile, sizeof(bool));
+		io->flush();
 	}
-	if(hasfile) {
+	if(hasfile & hasfile2) {
 		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
 	} else {
 		if(party == BOB) base_cot->cot_gen_pre();
