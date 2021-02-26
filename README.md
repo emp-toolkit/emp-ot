@@ -83,6 +83,28 @@ Active FERRET RCOT	Tests passed.	6.1264e+07 OTps
 Active FERRET RCOT inplace	Tests passed.	7.42027e+07 OTps
 ```
 
+## Performance of Ferret
+Tested in AWS c5.4xlarge. (unit: million RCOT per second)
+### Semi-honest
+|#threads\bandwidth|10 Mbps|30 Mbps|50 Mbps|
+|==================|=======|=======|=======|
+|1                 |12.1   |16.0   |16.0   |
+|2                 |16.3   |27.0   |30.8   |
+|3                 |18.3   |34.2   |40.7   |
+|4                 |19.7   |39.5   |48.8   |
+|5                 |20.5   |43.2   |55.0   |
+|6                 |21.4   |47.1   |61.2   |
+
+### Malicious
+|#threads\bandwidth|10 Mbps|30 Mbps|50 Mbps|
+|==================|=======|=======|=======|
+|1                 |11.6   |13.9   |13.9   |
+|2                 |16.0   |26.6   |27.1   |
+|3                 |18.3   |33.8   |40.0   |
+|4                 |19.6   |38.3   |47.4   |
+|5                 |20.4   |42.4   |53.7   |
+|6                 |21.3   |46.5   |59.8   |
+
 Usage
 =====
 Our test files already provides useful sample code. Here we provide an overview.
