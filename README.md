@@ -37,12 +37,12 @@ Testing on two
   
 Performance
 =====
-Hardware: AWS m5.4xlarge
-Results below are for performing 2^26 OTs. IKNP-style protocols use 1 thread;
-FERRET uses 5 threads.
+All tested between two AWS c5.4xlarge intances.
 
-### 50 Mbps
+## IKNP-style protocols
+
 ```
+50 Mbps
 128 NPOTs:	Tests passed.	12577 us
 Passive IKNP OT	Tests passed.	129262 OTps
 Passive IKNP COT	Tests passed.	388316 OTps
@@ -51,19 +51,8 @@ Passive IKNP ROT	Tests passed.	386190 OTps
 Active IKNP OT	Tests passed.	129152 OTps
 Active IKNP COT	Tests passed.	387380 OTps
 Active IKNP ROT	Tests passed.	385235 OTps
-Passive FERRET OT	Tests passed.	191511 OTps
-Passive FERRET COT	Tests passed.	1.87663e+07 OTps
-Passive FERRET ROT	Tests passed.	1.77188e+07 OTps
-Active FERRET OT	Tests passed.	191519 OTps
-Active FERRET COT	Tests passed.	1.88838e+07 OTps
-Active FERRET ROT	Tests passed.	1.76447e+07 OTps
 
-Active FERRET RCOT	Tests passed.	4.97468e+07 OTps
-Active FERRET RCOT inplace	Tests passed.	5.84142e+07 OTps
-```
-
-### 10 Gbps
-```
+10 Gbps
 128 NPOTs:	Tests passed.	11739 us
 Passive IKNP OT	Tests passed.	1.55476e+07 OTps
 Passive IKNP COT	Tests passed.	2.96661e+07 OTps
@@ -72,16 +61,30 @@ Passive IKNP ROT	Tests passed.	1.65765e+07 OTps
 Active IKNP OT	Tests passed.	1.39589e+07 OTps
 Active IKNP COT	Tests passed.	2.42705e+07 OTps
 Active IKNP ROT	Tests passed.	1.47379e+07 OTps
-Passive FERRET OT	Tests passed.	1.60211e+07 OTps
-Passive FERRET COT	Tests passed.	3.86102e+07 OTps
-Passive FERRET ROT	Tests passed.	1.82382e+07 OTps
-Active FERRET OT	Tests passed.	1.32552e+07 OTps
-Active FERRET COT	Tests passed.	3.58546e+07 OTps
-Active FERRET ROT	Tests passed.	1.79005e+07 OTps
 
-Active FERRET RCOT	Tests passed.	6.1264e+07 OTps
-Active FERRET RCOT inplace	Tests passed.	7.42027e+07 OTps
 ```
+
+## Ferret protocols
+(unit: million random correlated OT per second)
+### Semi-honest
+bandwidth |10 Mbps|30 Mbps|50 Mbps
+------------------|-------|-------|-------
+1  thread         |12.1   |16.0   |16.0
+2 threads         |16.3   |27.0   |30.8
+3 threads         |18.3   |34.2   |40.7
+4 threads         |19.7   |39.5   |48.8
+5 threads         |20.5   |43.2   |55.0
+6 threads         |21.4   |47.1   |61.2
+
+### Malicious
+bandwidth |10 Mbps|30 Mbps|50 Mbps
+------------------|-------|-------|-------|
+1 thread          |11.6   |13.9   |13.9
+2 threads         |16.0   |26.6   |27.1
+3 threads         |18.3   |33.8   |40.0
+4 threads         |19.6   |38.3   |47.4
+5 threads         |20.4   |42.4   |53.7
+6 threads         |21.3   |46.5   |59.8
 
 Usage
 =====
@@ -150,7 +153,7 @@ Citation
 
 Question
 =====
-Please send email to wangxiao@cs.northwestern.edu
+Please send email to wangxiao@cs.northwestern.edu. Ferret is also developed and maintained by Chenkai Weng (ckweng@u.northwestern.edu).
 
 ## Acknowledgement
 This work was supported in part by the National Science Foundation under Awards #1111599 and #1563722. The Ferret implementation is based upon work supported by DARPA under Contract No. HR001120C0087. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of DARPA.
