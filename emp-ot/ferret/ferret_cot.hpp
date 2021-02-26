@@ -285,3 +285,43 @@ void FerretCOT<T>::recv_cot(block* data, const bool * b, int length) {
 	rcot(data, length);
 	online_recver(data, b, length);
 }
+
+template<typename T>
+void FerretCOT<T>::assemble_state(void * data, int size) {
+	unsigned char * array = (unsigned char * )data;
+	memcpy(array, &party, sizeof(int));
+	memcpy(array + sizeof(int), &n, sizeof(int));
+	memcpy(array + sizeof(int) * 2, &t, sizeof(int));
+	memcpy(array + sizeof(int) * 3, &k, sizeof(int));
+	memcpy(array + sizeof(int) * 4, &Delta, sizeof(block));	
+	memcpy(array + sizeof(int) * 4 + sizeof(block), ot_pre_data, sizeof(block)*n_pre);
+	if (ot_pre_data!= nullptr)
+		delete[] ot_pre_data;
+	ot_pre_data = nullptr;
+}
+
+template<typename T>
+int FerretCOT<T>::disassemble_state(const void * data, int size) {
+	const unsigned char * array = (const unsigned char * )data;
+	int n2 = -1, t2 = -1, k2 = -1, party2 = -1;
+	ot_pre_data = new block[n_pre];
+	memcpy(&party2, array, sizeof(int));
+	memcpy(&n2, array + sizeof(int), sizeof(int));
+	memcpy(&t2, array + sizeof(int) * 2, sizeof(int));
+	memcpy(&k2, array + sizeof(int) * 3, sizeof(int));
+	if(party2 != party or n2 != n or t2 != t or k2 != k) {
+		return -1;
+	}
+	memcpy(&Delta, array + sizeof(int) * 4, sizeof(block));	
+	memcpy(ot_pre_data, array + sizeof(int) * 4 + sizeof(block), sizeof(block)*n_pre);
+
+	extend_initialization();
+	ch[1] = Delta;
+	return 0;
+}
+
+template<typename T>
+int FerretCOT<T>::state_size() {
+	return sizeof(int) * 4 + sizeof(block) + sizeof(block)*n_pre;
+}
+

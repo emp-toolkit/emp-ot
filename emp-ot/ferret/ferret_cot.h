@@ -41,6 +41,11 @@ public:
 
 	uint64_t byte_memory_need_inplace(uint64_t ot_need);
 
+	void assemble_state(void * data, int size);
+
+	int disassemble_state(const void * data, int size);
+
+	int state_size();
 private:
 	block ch[2];
 
