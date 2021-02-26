@@ -64,7 +64,7 @@ Active IKNP ROT	Tests passed.	1.47379e+07 OTps
 
 ```
 
-## Performance of Ferret
+## Ferret protocols
 (unit: million random correlated OT per second)
 ### Semi-honest
 bandwidth |10 Mbps|30 Mbps|50 Mbps
