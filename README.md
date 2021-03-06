@@ -156,4 +156,4 @@ Question
 Please send email to wangxiao@cs.northwestern.edu. Ferret is also developed and maintained by Chenkai Weng (ckweng@u.northwestern.edu).
 
 ## Acknowledgement
-This work was supported in part by the National Science Foundation under Awards #1111599 and #1563722. The Ferret implementation is based upon work supported by DARPA under Contract No. HR001120C0087. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of DARPA.
+This work was supported in part by the National Science Foundation under Awards #1111599 and #1563722. The Ferret implementation is partially based upon work supported by DARPA under Contract No. HR001120C0087. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of DARPA. The authors would also like to thank the support from PlatON Network and ChainLink Lab.
