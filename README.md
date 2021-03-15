@@ -22,18 +22,18 @@ Test
 Testing on localhost
 -----
 
-   `./run ./bin/[binary]`
+   `./run ./bin/[binary] logn`
 
-with `[binary]=ot` for common OT functionalities, `[binary]=ferret` for ferret specific functionalities. The script `run` will locally open two programs.
+with `[binary]=ot` for common OT functionalities, `[binary]=ferret` for ferret specific functionalities, `logn` as the log(number of OT). The script `run` will locally open two programs.
    
 Testing on two
 -----
 
 1. Change the IP address in the test code (e.g. [here](https://github.com/emp-toolkit/emp-ot/blob/master/test/ot.cpp))
 
-2. run `./bin/[binary] 1 [port]` on one machine and 
+2. run `./bin/[binary] 1 [port] logn` on one machine and 
   
-   run `./bin/[binary] 2 [port]` on the other machine.
+   run `./bin/[binary] 2 [port] logn` on the other machine.
   
 Performance
 =====
