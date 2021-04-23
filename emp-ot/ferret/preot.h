@@ -37,20 +37,20 @@ class OTPre { public:
 
 	void send_pre(block * data, block in_Delta) {
 		Delta = in_Delta;
-		ccrh.Hn(pre_data, data, 0, n, pre_data+n);
+		ccrh.Hn(pre_data, data, n, pre_data+n);
 		xorBlocks_arr(pre_data+n, data, Delta, n);
-		ccrh.Hn(pre_data+n, pre_data+n, 0, n);
+		ccrh.Hn(pre_data+n, pre_data+n, n);
 	}
 
 	void recv_pre(block * data, bool * b) {
 		memcpy(bits, b, n);
-		ccrh.Hn(pre_data, data, 0, n);
+		ccrh.Hn(pre_data, data, n);
 	}
 
 	void recv_pre(block * data) {
 		for(int i = 0; i < n; ++i)
 			bits[i] = getLSB(data[i]);
-		ccrh.Hn(pre_data, data, 0, n);
+		ccrh.Hn(pre_data, data, n);
 	}
 
 	void choices_sender() {
