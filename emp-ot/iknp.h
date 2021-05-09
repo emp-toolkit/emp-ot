@@ -106,8 +106,15 @@ class IKNP: public COT<T> { public:
 			setup_recv();
 
 		block *block_r = new block[(length+127)/128];
-		for(int i = 0; i < (length+127)/128; ++i)
+		for(int i = 0; i < length/128; ++i)
 			block_r[i] = bool_to_block(r+i*128);
+		if (length%128 != 0) {
+			bool tmp_bool_array[128];
+			memset(tmp_bool_array, 0, 128);
+			int start_point = (length / 128)*128;
+			memcpy(tmp_bool_array, r+start_point, length % 128);
+			block_r[length/128] = bool_to_block(tmp_bool_array);
+		}
 		
 		int j = 0;
 		for (; j < length/block_size; ++j)
