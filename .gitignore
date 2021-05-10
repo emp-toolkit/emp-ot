@@ -1,3 +1,6 @@
+*.DS_Store
+*.txt.cpp
+*CTestTestfile.cmake
 *perf.data*
 CMakeCache.txt
 CMakeFiles/

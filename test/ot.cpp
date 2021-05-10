@@ -4,7 +4,12 @@ using namespace std;
 const static int threads = 1;
 
 int main(int argc, char** argv) {
-	int length = (1<<atoi(argv[3])) + 101, port, party; // make sure all functions work for non-power-of-two lengths
+	int length, port, party; // make sure all functions work for non-power-of-two lengths
+	if (argc <= 3)
+		length = (1<<20) + 101;
+	else
+		length = (1<<atoi(argv[3])) + 101;
+
 	parse_party_and_port(argv, &party, &port);
 	NetIO * io = new NetIO(party==ALICE ? nullptr:"127.0.0.1", port);
 	OTNP<NetIO> * np = new OTNP<NetIO>(io);

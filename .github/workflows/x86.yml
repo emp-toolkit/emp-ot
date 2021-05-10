@@ -8,6 +8,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         build_type: [Debug, Release]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env: 
       BUILD_TYPE: ${{matrix.build_type}}
     steps:
@@ -21,5 +22,4 @@ jobs:
     - name: Test
       shell: bash
       run: |
-        ./run ./bin/ot 20
-        ./run ./bin/ferret 20
+        make test

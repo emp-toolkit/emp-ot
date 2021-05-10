@@ -14,10 +14,5 @@ include_directories(${EMP-TOOL_INCLUDE_DIRS})
 install(FILES cmake/emp-ot-config.cmake DESTINATION cmake/)
 install(DIRECTORY emp-ot DESTINATION include/)
 
-macro (add_test _name)
-	add_test_with_lib(${_name} ${EMP-TOOL_LIBRARIES})
-endmacro()
-
-add_test(ot)
-add_test(ferret)
-add_test(bench_lpn)
+ENABLE_TESTING()
+ADD_SUBDIRECTORY(test)

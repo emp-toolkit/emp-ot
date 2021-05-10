@@ -30,7 +30,10 @@ int main(int argc, char** argv) {
 	for(int i = 0; i < threads; ++i)
 		ios[i] = new NetIO(party == ALICE?nullptr:"127.0.0.1",port+i);
 
-	test_ferret(party, ios, atoi(argv[3]));
+	int length = 20;
+	if (argc > 3)
+		length = atoi(argv[3]);
+	test_ferret(party, ios, length);
 
 	for(int i = 0; i < threads; ++i)
 		delete ios[i];
