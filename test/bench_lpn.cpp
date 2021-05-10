@@ -7,8 +7,14 @@ using namespace emp;
 
 int main(int argc, char** argv) {
 	PRG prg;
-	int k = atoi(argv[1]);
-	int n = atoi(argv[2]);
+	int k, n;
+	if (argc >= 3) {
+		k = atoi(argv[1]);
+		n = atoi(argv[2]);
+	} else {
+		k = 11;
+		n = 20;
+	}
 	block seed;
 	block * kk = new block[1<<k];
 	block * nn = new block[1<<n];
