@@ -29,7 +29,7 @@ class OTNP: public OT<IO> { public:
 			delete G;
 	}
 
-	void send(const block* data0, const block* data1, int length) override {
+	void send(const block* data0, const block* data1, size_t length) override {
 		BigInt d;
 		G->get_rand_bn(d);
 		Point C = G->mul_gen(d);
@@ -42,7 +42,7 @@ class OTNP: public OT<IO> { public:
 				pk1,
 				*gr = new Point[length], 
 				*Cr = new Point[length];
-		for(int i = 0; i < length; ++i) {
+		for(size_t i = 0; i < length; ++i) {
 			G->get_rand_bn(r[i]);
 			gr[i] = G->mul_gen(r[i]);
 			rc[i] = r[i].mul(d, G->bn_ctx);
@@ -50,10 +50,10 @@ class OTNP: public OT<IO> { public:
 			Cr[i] = G->mul_gen(rc[i]);
 		}
 
-		for(int i = 0; i < length; ++i) {
+		for(size_t i = 0; i < length; ++i) {
 			io->recv_pt(G, &pk0[i]);
 		}
-		for(int i = 0; i < length; ++i) {
+		for(size_t i = 0; i < length; ++i) {
 			io->send_pt(&gr[i]);
 		}
 		io->flush();
@@ -75,19 +75,19 @@ class OTNP: public OT<IO> { public:
 		delete[] pk0;
 	}
 
-	void recv(block* data, const bool* b, int length) override {
+	void recv(block* data, const bool* b, size_t length) override {
 		BigInt * k = new BigInt[length];
 		Point * gr = new Point[length]; 
 		Point pk[2];
 		block m[2];
 		Point C;
-		for(int i = 0; i < length; ++i) 
+		for(size_t i = 0; i < length; ++i) 
 			G->get_rand_bn(k[i]);
 		
 		io->recv_pt(G, &C);
 		io->flush();
 
-		for(int i = 0; i< length; ++i) {
+		for(size_t i = 0; i< length; ++i) {
 			if(b[i]) {
 				pk[1] = G->mul_gen(k[i]);
 				Point inv = pk[1].inv();
@@ -98,12 +98,12 @@ class OTNP: public OT<IO> { public:
 			io->send_pt(&pk[0]);
 		}
 
-		for(int i = 0; i < length; ++i) {
+		for(size_t i = 0; i < length; ++i) {
 			io->recv_pt(G, &gr[i]);
 			gr[i] = gr[i].mul(k[i]);
 		}
 		io->flush();
-		for(int i = 0; i < length; ++i) {
+		for(size_t i = 0; i < length; ++i) {
 			int ind = b[i] ? 1 : 0;
 			io->recv_data(m, 2*sizeof(block));
 			data[i] = m[ind] ^ Hash::KDF(gr[i]);

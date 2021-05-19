@@ -19,9 +19,9 @@ public:
 	using COT<T>::io;
 	using COT<T>::Delta;
 
-	int n, t, k, log_bin_sz;
-	int n_pre, t_pre, k_pre, log_bin_sz_pre;
-	int ot_used, ot_limit;
+	size_t n, t, k, log_bin_sz;
+	size_t n_pre, t_pre, k_pre, log_bin_sz_pre;
+	size_t ot_used, ot_limit;
 
 	FerretCOT(int party, int threads, T **ios, bool malicious = false, bool run_setup = true, std::string pre_file="");
 
@@ -31,27 +31,27 @@ public:
 
 	void setup(std::string pre_file = "");
 
-	void send_cot(block * data, int length) override;
+	void send_cot(block * data, size_t length) override;
 
-	void recv_cot(block* data, const bool * b, int length) override;
+	void recv_cot(block* data, const bool * b, size_t length) override;
 
-	void rcot(block *data, int num);
+	void rcot(block *data, size_t num);
 
-	uint64_t rcot_inplace(block *ot_buffer, int length);
+	size_t rcot_inplace(block *ot_buffer, size_t length);
 
-	uint64_t byte_memory_need_inplace(uint64_t ot_need);
+	size_t byte_memory_need_inplace(size_t ot_need);
 
-	void assemble_state(void * data, int size);
+	void assemble_state(void * data, size_t size);
 
-	int disassemble_state(const void * data, int size);
+	size_t disassemble_state(const void * data, size_t size);
 
-	int state_size();
+	size_t state_size();
 private:
 	block ch[2];
 
 	T **ios;
 	int party, threads;
-	int M;
+	size_t M;
 	bool is_malicious;
 	bool extend_initialized;
 
@@ -69,9 +69,9 @@ private:
 	LpnF2<T, 10> *lpn_f2 = nullptr;
 
 	
-	void online_sender(block *data, int length);
+	void online_sender(block *data, size_t length);
 
-	void online_recver(block *data, const bool *b, int length);
+	void online_recver(block *data, const bool *b, size_t length);
 
 	void set_param();
 
@@ -86,7 +86,7 @@ private:
 
 	void extend_f2k();
 
-	int silent_ot_left();
+	size_t silent_ot_left();
 
 	void write_pre_data128_to_file(void* loc, __uint128_t delta, std::string filename);
 
