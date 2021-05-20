@@ -11,7 +11,7 @@ class OTIdeal: public COT<T> { public:
 	PRG prg;
 	OTIdeal(T * io, bool * delta = nullptr) {
 		this->io = io;
-		prg.reseed(*fix_key);
+		prg.reseed(fix_key);
 		if (delta!= nullptr)
 			Delta = bool_to_block(delta);
 	}
