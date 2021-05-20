@@ -4,7 +4,7 @@
 using namespace emp;
 
 template <typename T>
-double test_ot(T * ot, NetIO *io, int party, int length) {
+double test_ot(T * ot, NetIO *io, int party, size_t length) {
 	block *b0 = new block[length], *b1 = new block[length],
 	*r = new block[length];
 	PRG prg(fix_key);
@@ -23,7 +23,7 @@ double test_ot(T * ot, NetIO *io, int party, int length) {
 	io->flush();
 	long long t = time_from(start);
 	if (party == BOB) {
-		for (int i = 0; i < length; ++i) {
+		for (size_t i = 0; i < length; ++i) {
 			if (b[i]){ if(!cmpBlock(&r[i], &b1[i], 1)) {
 				std::cout <<i<<"\n";
 				error("wrong!\n");
@@ -44,7 +44,7 @@ double test_ot(T * ot, NetIO *io, int party, int length) {
 
 
 template <typename T>
-double test_cot(T * ot, NetIO *io, int party, int length) {
+double test_cot(T * ot, NetIO *io, int party, size_t length) {
 	block *b0 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	block delta;
@@ -69,7 +69,7 @@ double test_cot(T * ot, NetIO *io, int party, int length) {
 	else if (party == BOB) {
 		io->recv_block(&delta, 1);
 		io->recv_block(b0, length);
-		for (int i = 0; i < length; ++i) {
+		for (size_t i = 0; i < length; ++i) {
 			block b1 = b0[i] ^ delta;
 			if (b[i]) {
 				if (!cmpBlock(&r[i], &b1, 1))
@@ -89,7 +89,7 @@ double test_cot(T * ot, NetIO *io, int party, int length) {
 }
 
 template <typename T>
-double test_rot(T* ot, NetIO *io, int party, int length) {
+double test_rot(T* ot, NetIO *io, int party, size_t length) {
 	block *b0 = new block[length], *r = new block[length];
 	block *b1 = new block[length];
 	bool *b = new bool[length];
@@ -111,7 +111,7 @@ double test_rot(T* ot, NetIO *io, int party, int length) {
 	} else if (party == BOB) {
 		io->recv_block(b0, length);
 		io->recv_block(b1, length);
-		for (int i = 0; i < length; ++i) {
+		for (size_t i = 0; i < length; ++i) {
 			if (b[i])
 				assert(cmpBlock(&r[i], &b1[i], 1));
 			else
@@ -128,7 +128,7 @@ double test_rot(T* ot, NetIO *io, int party, int length) {
 }
 
 template <typename T>
-double test_rcot(T* ot, NetIO *io, int party, int length, bool inplace) {
+double test_rcot(T* ot, NetIO *io, int party, size_t length, bool inplace) {
 	block *b = nullptr;
 	PRG prg;
 
