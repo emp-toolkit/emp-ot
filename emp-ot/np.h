@@ -59,7 +59,7 @@ class OTNP: public OT<IO> { public:
 		io->flush();
 
 		block m[2];
-		for(int i = 0 ; i < length; ++i) {
+		for(size_t i = 0 ; i < length; ++i) {
 			pk0[i] = pk0[i].mul(r[i]);
 			Point inv = pk0[i].inv();
 			pk1 = Cr[i].add(inv);

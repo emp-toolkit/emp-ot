@@ -9,13 +9,12 @@ using namespace emp;
 template<typename IO, int d = 10>
 class LpnF2 { public:
 	int party;
-	int k, n;
+	size_t n;
 	ThreadPool * pool;
 	IO *io;
-	int threads;
+	int threads, k, mask;
 	block seed;
-	int mask;
-	LpnF2 (int party, int n, int k, ThreadPool * pool, IO *io, int threads) {
+	LpnF2 (int party, size_t n, int k, ThreadPool * pool, IO *io, int threads) {
 		this->party = party;
 		this->k = k;
 		this->n = n;
@@ -29,7 +28,7 @@ class LpnF2 { public:
 		}
 	}
 
-	void __compute4(block * nn, const block * kk, int i, PRP * prp) {
+	void __compute4(block * nn, const block * kk, size_t i, PRP * prp) {
 		block tmp[10];
 		for(int m = 0; m < 10; ++m)
 			tmp[m] = makeBlock(i, m);
@@ -44,7 +43,7 @@ class LpnF2 { public:
 			}
 	}
 
-	void __compute1(block * nn, const block * kk, int i, PRP*prp) {
+	void __compute1(block * nn, const block * kk, size_t i, PRP*prp) {
 		block tmp[3];
 		for(int m = 0; m < 3; ++m)
 			tmp[m] = makeBlock(i, m);
@@ -54,9 +53,9 @@ class LpnF2 { public:
 			nn[i] = nn[i] ^ kk[r[j]%k];
 	}
 
-	void task(block * nn, const block * kk, int start, int end) {
+	void task(block * nn, const block * kk, size_t start, size_t end) {
 		PRP prp(seed);
-		int j = start;
+		size_t j = start;
 		for(; j < end-4; j+=4)
 			__compute4(nn, kk, j, &prp);
 		for(; j < end; ++j)
@@ -65,17 +64,17 @@ class LpnF2 { public:
 
 	void compute(block * nn, const block * kk) {
 		vector<std::future<void>> fut;
-		int width = n/threads;
+		size_t width = n/threads;
 		seed = seed_gen();
 		for(int i = 0; i < threads - 1; ++i) {
-			int start = i * width;
-			int end = min((i+1)* width, n);
+			size_t start = i * width;
+			size_t end = min((i+1)* width, n);
 			fut.push_back(pool->enqueue([this, nn, kk, start, end]() {
 				task(nn, kk, start, end);
 			}));
 		}
-		int start = (threads - 1) * width;
-		int end = min(threads * width, n);
+		size_t start = (threads - 1) * width;
+		size_t end = min(threads * width, n);
 		task(nn, kk, start, end);
 
 		for (auto &f: fut) f.get();
@@ -94,16 +93,16 @@ class LpnF2 { public:
 	}
 	void bench(block * nn, const block * kk) {
 		vector<std::future<void>> fut;
-		int width = n/threads;
+		size_t width = n/threads;
 		for(int i = 0; i < threads - 1; ++i) {
-			int start = i * width;
-			int end = min((i+1)* width, n);
+			size_t start = i * width;
+			size_t end = min((i+1)* width, n);
 			fut.push_back(pool->enqueue([this, nn, kk, start, end]() {
 				task(nn, kk, start, end);
 			}));
 		}
-		int start = (threads - 1) * width;
-		int end = min(threads * width, n);
+		size_t start = (threads - 1) * width;
+		size_t end = min(threads * width, n);
 		task(nn, kk, start, end);
 
 		for (auto &f: fut) f.get();

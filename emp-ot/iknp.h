@@ -23,7 +23,7 @@ class IKNP: public COT<T> { public:
 	OTCO<T> * base_ot = nullptr;
 	bool setup = false, *extended_r = nullptr;
 
-	const static int block_size = 1024*2;
+	const static size_t block_size = 1024*2;
 	block local_out[block_size];
 	bool s[128], local_r[256];
 	PRG prg, G0[128], G1[128];
@@ -50,7 +50,7 @@ class IKNP: public COT<T> { public:
 			base_ot->recv(k0, s, 128);
 			delete base_ot;
 		}
-		for(int i = 0; i < 128; ++i)
+		for(size_t i = 0; i < 128; ++i)
 			G0[i].reseed(&k0[i]);
 
 		Delta = bool_to_block(s);
@@ -68,7 +68,7 @@ class IKNP: public COT<T> { public:
 			base_ot->send(k0, k1, 128);
 			delete base_ot;
 		}
-		for(int i = 0; i < 128; ++i) {
+		for(size_t i = 0; i < 128; ++i) {
 			G0[i].reseed(&k0[i]);
 			G1[i].reseed(&k1[i]);
 		}
@@ -93,7 +93,7 @@ class IKNP: public COT<T> { public:
 		block tmp[block_size];
 		size_t local_block_size = (len+127)/128*128;
 		io->recv_block(tmp, local_block_size);
-		for(int i = 0; i < 128; ++i) {
+		for(size_t i = 0; i < 128; ++i) {
 			G0[i].random_data(t+(i*block_size/128), local_block_size/8);
 			if (s[i])
 				xorBlocks_arr(t+(i*block_size/128), t+(i*block_size/128), tmp+(i*local_block_size/128), local_block_size/128);
@@ -233,7 +233,7 @@ class IKNP: public COT<T> { public:
 			vector_inn_prdt_sum_no_red<256>(tmp, chi, local_out);
 			t[0] = t[0] ^ tmp[0];
 			t[1] = t[1] ^ tmp[1];
-			for(int j = 0; j < 256; ++j)
+			for(size_t j = 0; j < 256; ++j)
 				x = x ^ (chi[j] & select[local_r[j]]);
 		}
 
