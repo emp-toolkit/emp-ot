@@ -1,31 +1,32 @@
 #ifndef EMP_OTIDEAL_H__
 #define EMP_OTIDEAL_H__
-#include "emp-ot/ot.h"
+#include "emp-ot/cot.h"
 
 namespace emp { 
-template<typename IO> 
-class OTIdeal: public OT<IO> { public:
-	int cnt = 0;
-	IO* io = nullptr;
-	OTIdeal(IO * io) {
+template<typename T> 
+class OTIdeal: public COT<T> { public:
+	using COT<T>::io;
+	using COT<T>::Delta;
+	int64_t cnt = 0;
+	PRG prg;
+	OTIdeal(T * io, bool * delta = nullptr) {
 		this->io = io;
+		prg.reseed((const block *)fix_key);
+		if (delta!= nullptr)
+			Delta = bool_to_block(delta);
 	}
 
-	void send(const block* data0, const block* data1, int length) override {
+	void send_cot(block* data, int64_t length) override {
 		cnt+=length;
-		io->send_block(data0, length);
-		io->send_block(data1, length);
+		prg.random_block(data);
 	}
 
-	void recv(block* data, const bool* b, int length) override {
+	void recv_cot(block* data, const bool* b, int64_t length) override {
 		cnt+=length;
-		block *data1 = new block[length];
-		io->recv_block(data, length);
-		io->recv_block(data1, length);
+		prg.random_block(data);
 		for(int i = 0; i < length; ++i)
 			if(b[i])
-				data[i] = data1[i];
-		delete []data1;
+				data[i] = data[i] ^ Delta;
 	}
 };
 }//namespace

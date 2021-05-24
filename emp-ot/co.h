@@ -29,7 +29,7 @@ class OTCO: public OT<IO> { public:
 			delete G;
 	}
 
-	void send(const block* data0, const block* data1, int length) override {
+	void send(const block* data0, const block* data1, int64_t length) override {
 		BigInt a;
 		Point A, AaInv;
 		block res[2];
@@ -42,14 +42,14 @@ class OTCO: public OT<IO> { public:
 		AaInv = A.mul(a);
 		AaInv = AaInv.inv();
 
-		for(int i = 0; i < length; ++i) {
+		for(int64_t i = 0; i < length; ++i) {
 			io->recv_pt(G, &B[i]);
 			B[i] = B[i].mul(a);
 			BA[i] = B[i].add(AaInv);
 		}
 		io->flush();
 
-		for(int i = 0; i < length; ++i) {
+		for(int64_t i = 0; i < length; ++i) {
 			res[0] = Hash::KDF(B[i], i) ^ data0[i];
 			res[1] = Hash::KDF(BA[i], i) ^ data1[i];
 			io->send_data(res, 2*sizeof(block));
@@ -59,18 +59,18 @@ class OTCO: public OT<IO> { public:
 		delete[] B;
 	}
 
-	void recv(block* data, const bool* b, int length) override {
+	void recv(block* data, const bool* b, int64_t length) override {
 		BigInt * bb = new BigInt[length];
 		Point * B = new Point[length],
 				* As = new Point[length],
 				A;
 
-		for(int i = 0; i < length; ++i)
+		for(int64_t i = 0; i < length; ++i)
 			G->get_rand_bn(bb[i]);
 
 		io->recv_pt(G, &A);
 
-		for(int i = 0; i < length; ++i) {
+		for(int64_t i = 0; i < length; ++i) {
 			B[i] = G->mul_gen(bb[i]);
 			if (b[i]) 
 				B[i] = B[i].add(A);
@@ -78,11 +78,11 @@ class OTCO: public OT<IO> { public:
 		}
 		io->flush();
 
-		for(int i = 0; i < length; ++i)
+		for(int64_t i = 0; i < length; ++i)
 			As[i] = A.mul(bb[i]);
 
 		block res[2];
-		for(int i = 0; i < length; ++i) {
+		for(int64_t i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
 			data[i] = Hash::KDF(As[i], i);
 			if(b[i])
