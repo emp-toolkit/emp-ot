@@ -46,11 +46,11 @@ class BaseCot { public:
 		}
 	}
 
-	void cot_gen(block *ot_data, size_t size) {
+	void cot_gen(block *ot_data, int64_t size) {
 		if (this->party == ALICE) {
 			iknp->send_cot(ot_data, size);
 			io->flush();
-			for(size_t i = 0; i < size; ++i)
+			for(int64_t i = 0; i < size; ++i)
 				ot_data[i] = ot_data[i] & minusone;
 		} else {
 			PRG prg;
@@ -60,19 +60,19 @@ class BaseCot { public:
 			block ch[2];
 			ch[0] = zero_block;
 			ch[1] = makeBlock(0, 1);
-			for(size_t i = 0; i < size; ++i)
+			for(int64_t i = 0; i < size; ++i)
 				ot_data[i] = 
 						(ot_data[i] & minusone) ^ ch[pre_bool_ini[i]];
 			delete[] pre_bool_ini;
 		}
 	}
 
-	void cot_gen(OTPre<IO> *pre_ot, size_t size) {
+	void cot_gen(OTPre<IO> *pre_ot, int64_t size) {
 		block *ot_data = new block[size];
 		if (this->party == ALICE) {
 			iknp->send_cot(ot_data, size);
 			io->flush();
-			for(size_t i = 0; i < size; ++i)
+			for(int64_t i = 0; i < size; ++i)
 				ot_data[i] = ot_data[i] & minusone;
 			pre_ot->send_pre(ot_data, ot_delta);
 		} else {
@@ -83,7 +83,7 @@ class BaseCot { public:
 			block ch[2];
 			ch[0] = zero_block;
 			ch[1] = makeBlock(0, 1);
-			for(size_t i = 0; i < size; ++i)
+			for(int64_t i = 0; i < size; ++i)
 				ot_data[i] = 
 						(ot_data[i] & minusone) ^ ch[pre_bool_ini[i]];
 			pre_ot->recv_pre(ot_data, pre_bool_ini);
@@ -93,7 +93,7 @@ class BaseCot { public:
 	}
 
 	// debug
-	bool check_cot(block *data, size_t len) {
+	bool check_cot(block *data, int64_t len) {
 		if(party == ALICE) {
 			io->send_block(&ot_delta, 1);
 			io->send_block(data, len); 
@@ -105,7 +105,7 @@ class BaseCot { public:
 			io->recv_block(ch+1, 1);
 			ch[0] = zero_block;
 			io->recv_block(tmp, len);
-			for(size_t i = 0; i < len; ++i)
+			for(int64_t i = 0; i < len; ++i)
 				tmp[i] = tmp[i] ^ ch[getLSB(data[i])];
 			bool res = cmpBlock(tmp, data, len);
 			delete[] tmp;
