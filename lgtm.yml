@@ -1,0 +1,6 @@
+extraction:
+  cpp:
+    configure:    # Customizable step used only by C/C++ extraction.
+      command:
+        - wget https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/scripts/install.py
+        - python install.py -install -tool
