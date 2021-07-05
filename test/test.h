@@ -134,7 +134,7 @@ double test_rcot(T* ot, NetIO *io, int party, int64_t length, bool inplace) {
 
 	io->sync();
 	auto start = clock_start();
-	uint64_t mem_size;
+	int64_t mem_size;
 	if(!inplace) {
 		mem_size = length;
 		b = new block[length];
