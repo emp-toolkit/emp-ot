@@ -10,4 +10,6 @@ extraction:
         - cmake -DENABLE_FLOAT=True -DCMAKE_INSTALL_PREFIX=$DEPS_BUILD_DIR .
         - make -j4
         - make install
-
+  index:    # Customizable step used by all languages.
+    build_command:
+      - cmake -DCMAKE_INSTALL_PREFIX=$DEPS_BUILD_DIR . && make
