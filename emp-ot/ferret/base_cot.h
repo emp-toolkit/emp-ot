@@ -20,6 +20,10 @@ class BaseCot { public:
 		minusone = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
 		one = makeBlock(0x0LL, 0x1LL);
 	}
+	
+	~BaseCot() {
+		delete iknp;
+	}
 
 	void cot_gen_pre(block deltain) {
 		if (this->party == ALICE) {
