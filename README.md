@@ -113,26 +113,25 @@ else
 ```
 Note that `NPOT` can be replaced to `OTCO`, `IKNP`, or `FerretCOT` without changing any other part of the code. They all share the same [API](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ot.h)
 
-Correlated OT and Random OT
+(Random) correlated OT
 -----
 
-Correlated OT and Random OT are supported for `IKNP` and `FerretCOT`. See following as an example. They all share extra [APIs](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/cot.h)
+Random correlated OT is supported for `IKNP` and `FerretCOT`. See following as an example. They all share extra [APIs](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/cot.h) The current interface allows specifying the Delta value once
+and get COT correlation in multiple batches.
+
 ```cpp
-block delta;
-
 IKNP<NetIO> ote(&io, false); // create a semi honest OT extension
-
 //Correlated OT
 if (party == ALICE)
-    ote.send_cot(b0, delta, length);
+    ote.send_cot(b0, length); //ote.Delta is the correlation
 else
-    ote.recv_cot(b0, c, length);
+    ote.recv_cot(br, c, length);   //br[i] = b0[i]\xor c[i]*ote.Delta
     
 //Random OT
 if (party == ALICE)
     ote.send_rot(b0, b1, length);
 else
-    ote.recv_rot(b0, c, length);
+    ote.recv_rot(br, c, length);    //br[i] = c[i] ? b1[i] : b0[i]
 ```
 
 Ferret OT
@@ -140,7 +139,15 @@ Ferret OT
 
 Ferret OT produces correlated OT with random choice bits (rcot). Extra APIs are [here](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.h). Our implementation provides two interface `ferretot.rcot()` and `ferretot.rcot_inplace()`. While the first one support filling an external array of any length, an extra memcpy is needed. The second option work on the provided array directly and thus avoid the memcpy. However, it produces a fixed number of OTs (`ferretcot->n`) for every invocation. The [sample code](https://github.com/emp-toolkit/emp-ot/blob/master/test/ferret.cpp#L7) is mostly self-explainable on how to use it.
 
-Note that the choice bit is embedded as the least bit of the `block` on the receiver's side. To make sure the correlation works for all bits, the least bit of Delta is 1. This can be viewed as an extension of the point-and-permute technique. See [this code](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.hpp#L211) on how ferret is used to fullfill standard `cot` interface.
+Note that the choice bit is embedded to the least bit of the `block` on the receiver's side. To make sure the correlation works for all bits, the least bit of Delta is 1. This can be viewed as an extension of the point-and-permute technique. See [this code](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.hpp#L211) on how ferret is used to fullfill standard `cot` interface.
+
+```cpp
+FerretCOT<NetIO> ferretcot(party, threads, ios);
+if (party == ALICE)
+    ferretcot.rcot(b0, length); //ote.Delta is the correlation
+else
+    ferretcot.rcot(br, length); //br[i] = b0[i] \xor LSB(br[i]) * ferretcot.Delta
+```
 
 Citation
 =====
@@ -158,4 +165,4 @@ Question
 Please send email to wangxiao@cs.northwestern.edu. Ferret is also developed and maintained by Chenkai Weng (ckweng@u.northwestern.edu).
 
 ## Acknowledgement
-This work was supported in part by the National Science Foundation under Awards #1111599 and #1563722. The Ferret implementation is partially based upon work supported by DARPA under Contract No. HR001120C0087. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of DARPA. The authors would also like to thank the support from PlatON Network and ChainLink Lab.
+This work was supported in part by the National Science Foundation under Awards #1111599 and #1563722. The Ferret implementation is partially based upon work supported by DARPA under Contract No. HR001120C0087. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of DARPA. The authors would also like to thank the support from PlatON Network and Facebook.
