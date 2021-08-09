@@ -8,7 +8,7 @@
 
 Protocols
 =====
-This repo contains state-of-the-art OT implementations. Include two base OTs, IKNP OT extension and Ferret OT extension. All hash functions used for OTs are implemented with [MiTCCR](https://github.com/emp-toolkit/emp-tool/blob/master/emp-tool/utils/mitccrh.h#L8) for optimal concrete efficiency.
+This repo contains state-of-the-art OT implementations. Include two base OTs, IKNP OT extension and Ferret OT extension. All hash functions used for OTs are implemented with [MiTCCR](https://github.com/emp-toolkit/emp-tool/blob/master/emp-tool/utils/mitccrh.h#L8) for optimal concrete security.
 
 Installation
 =====
