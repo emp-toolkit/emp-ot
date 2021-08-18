@@ -6,7 +6,7 @@ using namespace emp;
 
 //kappa->2kappa PRG, implemented as G(k) = PRF_seed0(k)\xor k || PRF_seed1(k)\xor k
 class TwoKeyPRP { public:
-	AES_KEY aes_key[2];
+	emp::AES_KEY aes_key[2];
 
 	TwoKeyPRP(block seed0, block seed1) {
 		AES_set_encrypt_key((const block)seed0, aes_key);
