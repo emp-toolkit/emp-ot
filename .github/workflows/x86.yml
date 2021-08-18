@@ -1,5 +1,5 @@
 name: x86
-on: [push]
+on: [push, pull_request]
 
 jobs:
   build_x86:
