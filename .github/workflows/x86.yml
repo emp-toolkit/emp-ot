@@ -16,7 +16,7 @@ jobs:
     - name: install dependency
       run: |
         wget https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/scripts/install.py
-        python install.py -install -tool
+        python3 install.py --deps --tool=$(cat .github/workflow/emp-tool.dep)
     - name: Create Build Environment
       run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DUSE_RANDOM_DEVICE=On && make
     - name: Test
