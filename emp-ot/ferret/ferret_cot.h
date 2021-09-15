@@ -3,6 +3,7 @@
 #include "emp-ot/ferret/mpcot_reg.h"
 #include "emp-ot/ferret/base_cot.h"
 #include "emp-ot/ferret/lpn_f2.h"
+#include "emp-ot/ferret/dual_lpn_f2.h"
 #include "emp-ot/ferret/constants.h"
 
 namespace emp {
@@ -19,17 +20,15 @@ public:
 	using COT<T>::io;
 	using COT<T>::Delta;
 
-	int64_t n, t, k, log_bin_sz;
-	int64_t n_pre, t_pre, k_pre, log_bin_sz_pre;
 	int64_t ot_used, ot_limit;
 
-	FerretCOT(int party, int threads, T **ios, bool malicious = false, bool run_setup = true, std::string pre_file="");
+	FerretCOT(int party, int threads, T **ios, bool malicious = false, bool run_setup = true);
 
 	~FerretCOT();
 
-	void setup(block Deltain, std::string pre_file = "");
+	void setup(block Deltain);
 
-	void setup(std::string pre_file = "");
+	void setup();
 
 	void send_cot(block * data, int64_t length) override;
 
@@ -60,8 +59,6 @@ private:
 	block * ot_pre_data = nullptr;
 	block * ot_data = nullptr;
 
-	std::string pre_ot_filename;
-
 	BaseCot<T> *base_cot = nullptr;
 	OTPre<T> *pre_ot = nullptr;
 	ThreadPool *pool = nullptr;
@@ -73,10 +70,6 @@ private:
 
 	void online_recver(block *data, const bool *b, int64_t length);
 
-	void set_param();
-
-	void set_preprocessing_param();
-
 	void extend_initialization();
 
 	void extend(block* ot_output, MpcotReg<T> *mpfss, OTPre<T> *preot, 
@@ -86,11 +79,15 @@ private:
 
 	void extend_f2k();
 
+	void extend_once_dual_lpn(block *ot_pre_data_buf,
+		int64_t n, int64_t np, int64_t t, int64_t logbin);
+
+	void extend_once_primal_lpn(block *ot_pre_data_buf,
+		block *ot_pre_data_inbuf,
+		int64_t n, int64_t k, int64_t t, int64_t logbin);
+
 	int64_t silent_ot_left();
 
-	void write_pre_data128_to_file(void* loc, __uint128_t delta, std::string filename);
-
-	__uint128_t read_pre_data128_from_file(void* pre_loc, std::string filename);
 };
 
 #include "emp-ot/ferret/ferret_cot.hpp"
