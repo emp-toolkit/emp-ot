@@ -40,7 +40,7 @@ Testing on two
   
 Performance
 =====
-All tested between two AWS c5.4xlarge intances.
+All tested between two AWS c5.4xlarge instances.
 
 ## IKNP-style protocols
 
@@ -140,7 +140,7 @@ Ferret OT
 
 Ferret OT produces correlated OT with random choice bits (rcot). Extra APIs are [here](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.h). Our implementation provides two interface `ferretot.rcot()` and `ferretot.rcot_inplace()`. While the first one support filling an external array of any length, an extra memcpy is needed. The second option work on the provided array directly and thus avoid the memcpy. However, it produces a fixed number of OTs (`ferretcot->n`) for every invocation. The [sample code](https://github.com/emp-toolkit/emp-ot/blob/master/test/ferret.cpp#L7) is mostly self-explainable on how to use it.
 
-Note that the choice bit is embedded to the least bit of the `block` on the receiver's side. To make sure the correlation works for all bits, the least bit of Delta is 1. This can be viewed as an extension of the point-and-permute technique. See [this code](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.hpp#L211) on how ferret is used to fullfill standard `cot` interface.
+Note that the choice bit is embedded to the least bit of the `block` on the receiver's side. To make sure the correlation works for all bits, the least bit of Delta is 1. This can be viewed as an extension of the point-and-permute technique. See [this code](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.hpp#L211) on how ferret is used to fullfil standard `cot` interface.
 
 ```cpp
 FerretCOT<NetIO> ferretcot(party, threads, ios);
