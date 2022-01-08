@@ -172,22 +172,23 @@ class IKNP: public COT<T> { public:
 		q[0] = q[1] = makeBlock(0, 0);
 		io->recv_block(&seed2, 1);
 		io->flush();
+		PRG chiPRG(&seed2);
 
 		for(int64_t i = 0; i < length/block_size; ++i) {
-			uni_hash_coeff_gen<block_size>(chi, seed2);
+			chiPRG.random_block(chi, block_size);
 			vector_inn_prdt_sum_no_red<block_size>(tmp, chi, out+i*block_size);
 			q[0] = q[0] ^ tmp[0];
 			q[1] = q[1] ^ tmp[1];
 		}
 		int64_t remain = length % block_size;
 		if(remain != 0) {
-			uni_hash_coeff_gen<block_size>(chi, seed2);
+			chiPRG.random_block(chi, block_size);
 			vector_inn_prdt_sum_no_red(tmp, chi, out + length - remain, remain);
 			q[0] = q[0] ^ tmp[0];
 			q[1] = q[1] ^ tmp[1];
 		}
 		{
-			uni_hash_coeff_gen<256>(chi, seed2);
+			chiPRG.random_block(chi, 256);
 			vector_inn_prdt_sum_no_red<256>(tmp, chi, local_out);
 			q[0] = q[0] ^ tmp[0];
 			q[1] = q[1] ^ tmp[1];
@@ -209,9 +210,10 @@ class IKNP: public COT<T> { public:
 		io->flush();
 		block chi[block_size];
 		t[0] = t[1] = makeBlock(0, 0);
+		PRG chiPRG(&seed2);
 
 		for(int64_t i = 0; i < length/block_size; ++i) {
-			uni_hash_coeff_gen<block_size>(chi, seed2);
+			chiPRG.random_block(chi, block_size);
 			vector_inn_prdt_sum_no_red<block_size>(tmp, chi, out+i*block_size);
 			t[0] = t[0] ^ tmp[0];
 			t[1] = t[1] ^ tmp[1];
@@ -220,7 +222,7 @@ class IKNP: public COT<T> { public:
 		}
 		int64_t remain = length % block_size;
 		if(remain != 0) {
-			uni_hash_coeff_gen<block_size>(chi, seed2);
+			chiPRG.random_block(chi, block_size);
 			vector_inn_prdt_sum_no_red(tmp, chi, out+length - remain, remain);
 			t[0] = t[0] ^ tmp[0];
 			t[1] = t[1] ^ tmp[1];
@@ -229,7 +231,7 @@ class IKNP: public COT<T> { public:
 		}
 		
 		{
-			uni_hash_coeff_gen<256>(chi, seed2);
+			chiPRG.random_block(chi, 256);
 			vector_inn_prdt_sum_no_red<256>(tmp, chi, local_out);
 			t[0] = t[0] ^ tmp[0];
 			t[1] = t[1] ^ tmp[1];
