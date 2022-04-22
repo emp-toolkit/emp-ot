@@ -143,6 +143,7 @@ void FerretCOT<T>::setup(std::string pre_file) {
 		base_cot->cot_gen(&pre_ot_ini, pre_ot_ini.n);
 		base_cot->cot_gen(pre_data_ini, k_pre+mpcot_ini.consist_check_cot_num);
 		extend(ot_pre_data, &mpcot_ini, &pre_ot_ini, &lpn, pre_data_ini);
+		delete[] pre_data_ini;
 	}
 
 	fut.get();
