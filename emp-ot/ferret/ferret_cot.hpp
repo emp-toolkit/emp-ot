@@ -137,7 +137,7 @@ void FerretCOT<T>::setup(std::string pre_file) {
 		OTPre<T> pre_ot_ini(ios[0], mpcot_ini.tree_height-1, mpcot_ini.tree_n);
 		LpnF2<T, 10> lpn(party, n_pre, k_pre, pool, io, pool->size());
 
-		block pre_data_ini[k_pre+mpcot_ini.consist_check_cot_num];
+		block *pre_data_ini = new block[k_pre+mpcot_ini.consist_check_cot_num];
 		memset(this->ot_pre_data, 0, n_pre*16);
 
 		base_cot->cot_gen(&pre_ot_ini, pre_ot_ini.n);
