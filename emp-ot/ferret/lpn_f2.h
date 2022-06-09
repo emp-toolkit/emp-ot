@@ -34,13 +34,16 @@ class LpnF2 { public:
 			tmp[m] = makeBlock(i, m);
 		AES_ecb_encrypt_blks(tmp, 10, &prp->aes);
 		uint32_t* r = (uint32_t*)(tmp);
-		for(int m = 0; m < 4; ++m)
+		for(int m = 0; m < 4; ++m) {
+			block tmp = zero_block;
 			for (int j = 0; j < d; ++j) {
 				int index = (*r) & mask;
 				++r;
 				index = index >= k? index-k:index;
-				nn[i+m] = nn[i+m] ^ kk[index];
+				tmp ^= kk[index];
 			}
+			nn[i+m] = tmp;
+		}
 	}
 
 	void __compute1(block * nn, const block * kk, int64_t i, PRP*prp) {
