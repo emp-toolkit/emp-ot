@@ -3,21 +3,26 @@
 
 #include "emp-ot/ferret/preot.h"
 
+template<typename IO>
 class BaseCot { public:
    int party;
 	block one, minusone;
 	block ot_delta;
-	NetIO *io;
-	IKNP<NetIO> *iknp;
+	IO *io;
+	IKNP<IO> *iknp;
 	bool malicious = false;
 
-	BaseCot(int party, NetIO *io, bool malicious = false) {
+	BaseCot(int party, IO *io, bool malicious = false) {
 		this->party = party;
 		this->io = io;
 		this->malicious = malicious;
-		iknp = new IKNP<NetIO>(io, malicious);
+		iknp = new IKNP<IO>(io, malicious);
 		minusone = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
 		one = makeBlock(0x0LL, 0x1LL);
+	}
+	
+	~BaseCot() {
+		delete iknp;
 	}
 
 	void cot_gen_pre(block deltain) {
@@ -45,11 +50,11 @@ class BaseCot { public:
 		}
 	}
 
-	void cot_gen(block *ot_data, int size) {
+	void cot_gen(block *ot_data, int64_t size) {
 		if (this->party == ALICE) {
 			iknp->send_cot(ot_data, size);
 			io->flush();
-			for(int i = 0; i < size; ++i)
+			for(int64_t i = 0; i < size; ++i)
 				ot_data[i] = ot_data[i] & minusone;
 		} else {
 			PRG prg;
@@ -59,19 +64,19 @@ class BaseCot { public:
 			block ch[2];
 			ch[0] = zero_block;
 			ch[1] = makeBlock(0, 1);
-			for(int i = 0; i < size; ++i)
+			for(int64_t i = 0; i < size; ++i)
 				ot_data[i] = 
 						(ot_data[i] & minusone) ^ ch[pre_bool_ini[i]];
 			delete[] pre_bool_ini;
 		}
 	}
 
-	void cot_gen(OTPre<NetIO> *pre_ot, int size) {
+	void cot_gen(OTPre<IO> *pre_ot, int64_t size) {
 		block *ot_data = new block[size];
 		if (this->party == ALICE) {
 			iknp->send_cot(ot_data, size);
 			io->flush();
-			for(int i = 0; i < size; ++i)
+			for(int64_t i = 0; i < size; ++i)
 				ot_data[i] = ot_data[i] & minusone;
 			pre_ot->send_pre(ot_data, ot_delta);
 		} else {
@@ -82,7 +87,7 @@ class BaseCot { public:
 			block ch[2];
 			ch[0] = zero_block;
 			ch[1] = makeBlock(0, 1);
-			for(int i = 0; i < size; ++i)
+			for(int64_t i = 0; i < size; ++i)
 				ot_data[i] = 
 						(ot_data[i] & minusone) ^ ch[pre_bool_ini[i]];
 			pre_ot->recv_pre(ot_data, pre_bool_ini);
@@ -92,7 +97,7 @@ class BaseCot { public:
 	}
 
 	// debug
-	bool check_cot(block *data, int len) {
+	bool check_cot(block *data, int64_t len) {
 		if(party == ALICE) {
 			io->send_block(&ot_delta, 1);
 			io->send_block(data, len); 
@@ -104,7 +109,7 @@ class BaseCot { public:
 			io->recv_block(ch+1, 1);
 			ch[0] = zero_block;
 			io->recv_block(tmp, len);
-			for(int i = 0; i < len; ++i)
+			for(int64_t i = 0; i < len; ++i)
 				tmp[i] = tmp[i] ^ ch[getLSB(data[i])];
 			bool res = cmpBlock(tmp, data, len);
 			delete[] tmp;

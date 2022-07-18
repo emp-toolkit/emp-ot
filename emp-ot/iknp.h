@@ -23,7 +23,7 @@ class IKNP: public COT<T> { public:
 	OTCO<T> * base_ot = nullptr;
 	bool setup = false, *extended_r = nullptr;
 
-	const static int block_size = 1024*2;
+	const static int64_t block_size = 1024*2;
 	block local_out[block_size];
 	bool s[128], local_r[256];
 	PRG prg, G0[128], G1[128];
@@ -50,7 +50,7 @@ class IKNP: public COT<T> { public:
 			base_ot->recv(k0, s, 128);
 			delete base_ot;
 		}
-		for(int i = 0; i < 128; ++i)
+		for(int64_t i = 0; i < 128; ++i)
 			G0[i].reseed(&k0[i]);
 
 		Delta = bool_to_block(s);
@@ -68,18 +68,18 @@ class IKNP: public COT<T> { public:
 			base_ot->send(k0, k1, 128);
 			delete base_ot;
 		}
-		for(int i = 0; i < 128; ++i) {
+		for(int64_t i = 0; i < 128; ++i) {
 			G0[i].reseed(&k0[i]);
 			G1[i].reseed(&k1[i]);
 		}
 	}
-	void send_pre(block * out, int length) {
+	void send_pre(block * out, int64_t length) {
 		if(not setup)
 			setup_send();
-		int j = 0;
+		int64_t j = 0;
 		for (; j < length/block_size; ++j)
 			send_pre_block(out + j*block_size, block_size);
-		int remain = length % block_size;
+		int64_t remain = length % block_size;
 		if (remain > 0) {
 			send_pre_block(local_out, remain);
 			memcpy(out+j*block_size, local_out, sizeof(block)*remain);
@@ -88,12 +88,12 @@ class IKNP: public COT<T> { public:
 			send_pre_block(local_out, 256);
 	}
 
-	void send_pre_block(block * out, int len) {
+	void send_pre_block(block * out, int64_t len) {
 		block t[block_size];
 		block tmp[block_size];
-		int local_block_size = (len+127)/128*128;
+		int64_t local_block_size = (len+127)/128*128;
 		io->recv_block(tmp, local_block_size);
-		for(int i = 0; i < 128; ++i) {
+		for(int64_t i = 0; i < 128; ++i) {
 			G0[i].random_data(t+(i*block_size/128), local_block_size/8);
 			if (s[i])
 				xorBlocks_arr(t+(i*block_size/128), t+(i*block_size/128), tmp+(i*local_block_size/128), local_block_size/128);
@@ -101,18 +101,25 @@ class IKNP: public COT<T> { public:
 		sse_trans((uint8_t *)(out), (uint8_t*)t, 128, block_size);
 	}
 
-	void recv_pre(block * out, const bool* r, int length) {
+	void recv_pre(block * out, const bool* r, int64_t length) {
 		if(not setup)
 			setup_recv();
 
 		block *block_r = new block[(length+127)/128];
-		for(int i = 0; i < (length+127)/128; ++i)
+		for(int64_t i = 0; i < length/128; ++i)
 			block_r[i] = bool_to_block(r+i*128);
+		if (length%128 != 0) {
+			bool tmp_bool_array[128];
+			memset(tmp_bool_array, 0, 128);
+			int64_t start_point = (length / 128)*128;
+			memcpy(tmp_bool_array, r+start_point, length % 128);
+			block_r[length/128] = bool_to_block(tmp_bool_array);
+		}
 		
-		int j = 0;
+		int64_t j = 0;
 		for (; j < length/block_size; ++j)
 			recv_pre_block(out+j*block_size, block_r + (j*block_size/128), block_size);
-		int remain = length % block_size;
+		int64_t remain = length % block_size;
 		if (remain > 0) {
 			recv_pre_block(local_out, block_r + (j*block_size/128), remain);
 			memcpy(out+j*block_size, local_out, sizeof(block)*remain);
@@ -126,11 +133,11 @@ class IKNP: public COT<T> { public:
 		}
 		delete[] block_r;
 	}
-	void recv_pre_block(block * out, block * r, int len) {
+	void recv_pre_block(block * out, block * r, int64_t len) {
 		block t[block_size];
 		block tmp[block_size];
-		int local_block_size = (len+127)/128 * 128;
-		for(int i = 0; i < 128; ++i) {
+		int64_t local_block_size = (len+127)/128 * 128;
+		for(int64_t i = 0; i < 128; ++i) {
 			G0[i].random_data(t+(i*block_size/128), local_block_size/8);
 			G1[i].random_data(tmp, local_block_size/8);
 			xorBlocks_arr(tmp, t+(i*block_size/128), tmp, local_block_size/128);
@@ -141,14 +148,14 @@ class IKNP: public COT<T> { public:
 		sse_trans((uint8_t *)(out), (uint8_t*)t, 128, block_size);
 	}
 
-	void send_cot(block * data, int length) override{
+	void send_cot(block * data, int64_t length) override{
 		send_pre(data, length);
 
 		if(malicious)
 			if(!send_check(data, length))
 				error("OT Extension check failed");
 	}
-	void recv_cot(block* data, const bool * b, int length) override {
+	void recv_cot(block* data, const bool * b, int64_t length) override {
 		recv_pre(data, b, length);
 		if(malicious)
 			recv_check(data, b, length);
@@ -159,28 +166,29 @@ class IKNP: public COT<T> { public:
  * [REF] Implementation of "Actively Secure OT Extension with Optimal Overhead"
  * https://eprint.iacr.org/2015/546.pdf
  */
-	bool send_check(block * out, int length) {
+	bool send_check(block * out, int64_t length) {
 		block seed2, x, t[2], q[2], tmp[2];
 		block chi[block_size];
 		q[0] = q[1] = makeBlock(0, 0);
 		io->recv_block(&seed2, 1);
 		io->flush();
+		PRG chiPRG(&seed2);
 
-		for(int i = 0; i < length/block_size; ++i) {
-			uni_hash_coeff_gen<block_size>(chi, seed2);
+		for(int64_t i = 0; i < length/block_size; ++i) {
+			chiPRG.random_block(chi, block_size);
 			vector_inn_prdt_sum_no_red<block_size>(tmp, chi, out+i*block_size);
 			q[0] = q[0] ^ tmp[0];
 			q[1] = q[1] ^ tmp[1];
 		}
-		int remain = length % block_size;
+		int64_t remain = length % block_size;
 		if(remain != 0) {
-			uni_hash_coeff_gen<block_size>(chi, seed2);
+			chiPRG.random_block(chi, block_size);
 			vector_inn_prdt_sum_no_red(tmp, chi, out + length - remain, remain);
 			q[0] = q[0] ^ tmp[0];
 			q[1] = q[1] ^ tmp[1];
 		}
 		{
-			uni_hash_coeff_gen<256>(chi, seed2);
+			chiPRG.random_block(chi, 256);
 			vector_inn_prdt_sum_no_red<256>(tmp, chi, local_out);
 			q[0] = q[0] ^ tmp[0];
 			q[1] = q[1] ^ tmp[1];
@@ -194,7 +202,7 @@ class IKNP: public COT<T> { public:
 
 		return cmpBlock(q, t, 2);	
 	}
-	void recv_check(block * out, const bool* r, int length) {
+	void recv_check(block * out, const bool* r, int64_t length) {
 		block select[2] = {zero_block, all_one_block};
 		block seed2, x = makeBlock(0,0), t[2], tmp[2];
 		prg.random_block(&seed2,1);
@@ -202,31 +210,32 @@ class IKNP: public COT<T> { public:
 		io->flush();
 		block chi[block_size];
 		t[0] = t[1] = makeBlock(0, 0);
+		PRG chiPRG(&seed2);
 
-		for(int i = 0; i < length/block_size; ++i) {
-			uni_hash_coeff_gen<block_size>(chi, seed2);
+		for(int64_t i = 0; i < length/block_size; ++i) {
+			chiPRG.random_block(chi, block_size);
 			vector_inn_prdt_sum_no_red<block_size>(tmp, chi, out+i*block_size);
 			t[0] = t[0] ^ tmp[0];
 			t[1] = t[1] ^ tmp[1];
-			for(int j = 0; j < block_size; ++j) 
+			for(int64_t j = 0; j < block_size; ++j) 
 				x = x ^ (chi[j] & select[r[i*block_size+j]]);
 		}
-		int remain = length % block_size;
+		int64_t remain = length % block_size;
 		if(remain != 0) {
-			uni_hash_coeff_gen<block_size>(chi, seed2);
+			chiPRG.random_block(chi, block_size);
 			vector_inn_prdt_sum_no_red(tmp, chi, out+length - remain, remain);
 			t[0] = t[0] ^ tmp[0];
 			t[1] = t[1] ^ tmp[1];
-			for(int j = 0; j < remain; ++j)
+			for(int64_t j = 0; j < remain; ++j)
 				x = x ^ (chi[j] & select[r[length - remain + j]]);
 		}
 		
 		{
-			uni_hash_coeff_gen<256>(chi, seed2);
+			chiPRG.random_block(chi, 256);
 			vector_inn_prdt_sum_no_red<256>(tmp, chi, local_out);
 			t[0] = t[0] ^ tmp[0];
 			t[1] = t[1] ^ tmp[1];
-			for(int j = 0; j < 256; ++j)
+			for(int64_t j = 0; j < 256; ++j)
 				x = x ^ (chi[j] & select[local_r[j]]);
 		}
 

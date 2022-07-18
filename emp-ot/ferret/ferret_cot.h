@@ -19,9 +19,9 @@ public:
 	using COT<T>::io;
 	using COT<T>::Delta;
 
-	int n, t, k, log_bin_sz;
-	int n_pre, t_pre, k_pre, log_bin_sz_pre;
-	int ot_used, ot_limit;
+	int64_t n, t, k, log_bin_sz;
+	int64_t n_pre, t_pre, k_pre, log_bin_sz_pre;
+	int64_t ot_used, ot_limit;
 
 	FerretCOT(int party, int threads, T **ios, bool malicious = false, bool run_setup = true, std::string pre_file="");
 
@@ -31,22 +31,27 @@ public:
 
 	void setup(std::string pre_file = "");
 
-	void send_cot(block * data, int length) override;
+	void send_cot(block * data, int64_t length) override;
 
-	void recv_cot(block* data, const bool * b, int length) override;
+	void recv_cot(block* data, const bool * b, int64_t length) override;
 
-	void rcot(block *data, int num);
+	void rcot(block *data, int64_t num);
 
-	uint64_t rcot_inplace(block *ot_buffer, int length);
+	int64_t rcot_inplace(block *ot_buffer, int64_t length);
 
-	uint64_t byte_memory_need_inplace(uint64_t ot_need);
+	int64_t byte_memory_need_inplace(int64_t ot_need);
 
+	void assemble_state(void * data, int64_t size);
+
+	int disassemble_state(const void * data, int64_t size);
+
+	int64_t state_size();
 private:
 	block ch[2];
 
-	NetIO **ios;
+	T **ios;
 	int party, threads;
-	int M;
+	int64_t M;
 	bool is_malicious;
 	bool extend_initialized;
 
@@ -57,16 +62,16 @@ private:
 
 	std::string pre_ot_filename;
 
-	BaseCot *base_cot = nullptr;
-	OTPre<NetIO> *pre_ot = nullptr;
+	BaseCot<T> *base_cot = nullptr;
+	OTPre<T> *pre_ot = nullptr;
 	ThreadPool *pool = nullptr;
-	MpcotReg *mpcot = nullptr;
-	LpnF2<10> *lpn_f2 = nullptr;
+	MpcotReg<T> *mpcot = nullptr;
+	LpnF2<T, 10> *lpn_f2 = nullptr;
 
 	
-	void online_sender(block *data, int length);
+	void online_sender(block *data, int64_t length);
 
-	void online_recver(block *data, const bool *b, int length);
+	void online_recver(block *data, const bool *b, int64_t length);
 
 	void set_param();
 
@@ -74,14 +79,14 @@ private:
 
 	void extend_initialization();
 
-	void extend(block* ot_output, MpcotReg *mpfss, OTPre<NetIO> *preot, 
-			LpnF2<10> *lpn, block *ot_input);
+	void extend(block* ot_output, MpcotReg<T> *mpfss, OTPre<T> *preot, 
+			LpnF2<T, 10> *lpn, block *ot_input);
 
 	void extend_f2k(block *ot_buffer);
 
 	void extend_f2k();
 
-	int silent_ot_left();
+	int64_t silent_ot_left();
 
 	void write_pre_data128_to_file(void* loc, __uint128_t delta, std::string filename);
 

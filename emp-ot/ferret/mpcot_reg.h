@@ -10,6 +10,7 @@
 using namespace emp;
 using std::future;
 
+template<typename IO>
 class MpcotReg {
 public:
 	int party, threads;
@@ -20,8 +21,8 @@ public:
 	bool is_malicious;
 
 	PRG prg;
-	NetIO *netio;
-	NetIO **ios;
+	IO *netio;
+	IO **ios;
 	block Delta_f2k;
 	block *consist_check_chi_alpha = nullptr, *consist_check_VW = nullptr;
 	ThreadPool *pool;
@@ -29,7 +30,7 @@ public:
 	std::vector<uint32_t> item_pos_recver;
 	GaloisFieldPacking pack;
 
-	MpcotReg(int party, int threads, int n, int t, int log_bin_sz, ThreadPool * pool, NetIO **ios) {
+	MpcotReg(int party, int threads, int n, int t, int log_bin_sz, ThreadPool * pool, IO **ios) {
 		this->party = party;
 		this->threads = threads;
 		netio = ios[0];
@@ -59,12 +60,12 @@ public:
 	}
 
 	// MPFSS F_2k
-	void mpcot(block * sparse_vector, OTPre<NetIO> * ot, block *pre_cot_data) {
+	void mpcot(block * sparse_vector, OTPre<IO> * ot, block *pre_cot_data) {
 		if(party == BOB) consist_check_chi_alpha = new block[item_n];
 		consist_check_VW = new block[item_n];
 
-		vector<SPCOT_Sender<NetIO>*> senders;
-		vector<SPCOT_Recver<NetIO>*> recvers;
+		vector<SPCOT_Sender<IO>*> senders;
+		vector<SPCOT_Recver<IO>*> recvers;
 
 		if(party == ALICE) {
 			mpcot_init_sender(senders, ot);
@@ -84,18 +85,18 @@ public:
 		delete[] consist_check_VW;
 	}
 
-	void mpcot_init_sender(vector<SPCOT_Sender<NetIO>*> &senders, OTPre<NetIO> *ot) {
+	void mpcot_init_sender(vector<SPCOT_Sender<IO>*> &senders, OTPre<IO> *ot) {
 		for(int i = 0; i < tree_n; ++i) {
-			senders.push_back(new SPCOT_Sender<NetIO>(netio, tree_height));
+			senders.push_back(new SPCOT_Sender<IO>(netio, tree_height));
 			ot->choices_sender();
 		}
 		netio->flush();
 		ot->reset();
 	}
 
-	void mpcot_init_recver(vector<SPCOT_Recver<NetIO>*> &recvers, OTPre<NetIO> *ot) {
+	void mpcot_init_recver(vector<SPCOT_Recver<IO>*> &recvers, OTPre<IO> *ot) {
 		for(int i = 0; i < tree_n; ++i) {
-			recvers.push_back(new SPCOT_Recver<NetIO>(netio, tree_height));
+			recvers.push_back(new SPCOT_Recver<IO>(netio, tree_height));
 			ot->choices_recver(recvers[i]->b);
 			item_pos_recver[i] = recvers[i]->get_index();
 		}
@@ -103,8 +104,8 @@ public:
 		ot->reset();
 	}
 
-	void exec_parallel_sender(vector<SPCOT_Sender<NetIO>*> &senders,
-			OTPre<NetIO> *ot, block* sparse_vector) {
+	void exec_parallel_sender(vector<SPCOT_Sender<IO>*> &senders,
+			OTPre<IO> *ot, block* sparse_vector) {
 		vector<future<void>> fut;		
 		int width = tree_n / threads;
 		int start = 0, end = width;
@@ -125,8 +126,8 @@ public:
 		for (auto & f : fut) f.get();
 	}
 
-	void exec_parallel_recver(vector<SPCOT_Recver<NetIO>*> &recvers,
-			OTPre<NetIO> *ot, block* sparse_vector) {
+	void exec_parallel_recver(vector<SPCOT_Recver<IO>*> &recvers,
+			OTPre<IO> *ot, block* sparse_vector) {
 		vector<future<void>> fut;		
 		int width = tree_n / threads;
 		int start = 0, end = width;
@@ -147,18 +148,18 @@ public:
 		for (auto & f : fut) f.get();
 	}
 
-	void exec_f2k_sender(SPCOT_Sender<NetIO> *sender, OTPre<NetIO> *ot, 
-			block *ggm_tree_mem, NetIO *io, int i) {
+	void exec_f2k_sender(SPCOT_Sender<IO> *sender, OTPre<IO> *ot, 
+			block *ggm_tree_mem, IO *io, int i) {
 		sender->compute(ggm_tree_mem, Delta_f2k);
-		sender->send_f2k<OTPre<NetIO>>(ot, io, i);
+		sender->template send_f2k<OTPre<IO>>(ot, io, i);
 		io->flush();
 		if(is_malicious)
 			sender->consistency_check_msg_gen(consist_check_VW+i);
 	}
 
-	void exec_f2k_recver(SPCOT_Recver<NetIO> *recver, OTPre<NetIO> *ot,
-			block *ggm_tree_mem, NetIO *io, int i) {
-		recver->recv_f2k<OTPre<NetIO>>(ot, io, i);
+	void exec_f2k_recver(SPCOT_Recver<IO> *recver, OTPre<IO> *ot,
+			block *ggm_tree_mem, IO *io, int i) {
+		recver->template recv_f2k<OTPre<IO>>(ot, io, i);
 		recver->compute(ggm_tree_mem);
 		if(is_malicious) 
 			recver->consistency_check_msg_gen(consist_check_chi_alpha+i, consist_check_VW+i);

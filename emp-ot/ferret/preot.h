@@ -37,20 +37,20 @@ class OTPre { public:
 
 	void send_pre(block * data, block in_Delta) {
 		Delta = in_Delta;
-		ccrh.Hn(pre_data, data, 0, n, pre_data+n);
+		ccrh.Hn(pre_data, data, n, pre_data+n);
 		xorBlocks_arr(pre_data+n, data, Delta, n);
-		ccrh.Hn(pre_data+n, pre_data+n, 0, n);
+		ccrh.Hn(pre_data+n, pre_data+n, n);
 	}
 
 	void recv_pre(block * data, bool * b) {
 		memcpy(bits, b, n);
-		ccrh.Hn(pre_data, data, 0, n);
+		ccrh.Hn(pre_data, data, n);
 	}
 
 	void recv_pre(block * data) {
 		for(int i = 0; i < n; ++i)
 			bits[i] = getLSB(data[i]);
-		ccrh.Hn(pre_data, data, 0, n);
+		ccrh.Hn(pre_data, data, n);
 	}
 
 	void choices_sender() {
@@ -66,7 +66,7 @@ class OTPre { public:
 		count = 0;
 	}
 
-	void send(const block * m0, const  block * m1, int length, NetIO * io2, int s) {
+	void send(const block * m0, const  block * m1, int length, IO * io2, int s) {
 		block pad[2];
 		int k = s*length;
 		for (int i = 0; i < length; ++i) {
@@ -77,7 +77,7 @@ class OTPre { public:
 		}
 	}
 
-	void recv(block* data, const bool* b, int length, NetIO* io2, int s) {
+	void recv(block* data, const bool* b, int length, IO* io2, int s) {
 		int k = s*length;
 		block pad[2];
 		for (int i = 0; i < length; ++i) {

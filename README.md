@@ -1,18 +1,23 @@
-emp-ot [![Build Status](https://travis-ci.org/emp-toolkit/emp-ot.svg?branch=master)](https://travis-ci.org/emp-toolkit/emp-ot)
-=====
+# emp-ot 
+![arm](https://github.com/emp-toolkit/emp-ot/workflows/arm/badge.svg)
+![x86](https://github.com/emp-toolkit/emp-ot/workflows/x86/badge.svg)
+[![Total alerts](https://img.shields.io/lgtm/alerts/g/emp-toolkit/emp-ot.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/emp-toolkit/emp-ot/alerts/)
+[![Language grade: C/C++](https://img.shields.io/lgtm/grade/cpp/g/emp-toolkit/emp-ot.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/emp-toolkit/emp-ot/context:cpp)
+
 <img src="https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/art/logo-full.jpg" width=300px/>
 
 Protocols
 =====
-This repo contains state-of-the-art OT implementations. Include two base OTs, IKNP OT extension and Ferret OT extension. All hash functions used for OTs are implemented with [MiTCCR](https://github.com/emp-toolkit/emp-tool/blob/master/emp-tool/utils/mitccrh.h#L8) for optimal concrete efficiency.
+This repo contains state-of-the-art OT implementations. Include two base OTs, IKNP OT extension and Ferret OT extension. All hash functions used for OTs are implemented with [MiTCCR](https://github.com/emp-toolkit/emp-tool/blob/master/emp-tool/utils/mitccrh.h#L8) for optimal concrete security.
 
 Installation
 =====
 
 1. `wget https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/scripts/install.py`
-2. `python install.py -install -tool -ot`
-    1. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
-    2. No sudo? Change [`CMAKE_INSTALL_PREFIX`](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX).
+2. `python install.py --install --tool --ot`
+    1. You can use `--ot=[release]` to install a particular branch or release
+    2. By default it will build for Release. `-DCMAKE_BUILD_TYPE=[Release|Debug]` option is also available.
+    3. No sudo? Change [`CMAKE_INSTALL_PREFIX`](https://cmake.org/cmake/help/v2.8.8/cmake.html#variable%3aCMAKE_INSTALL_PREFIX).
 
 Test
 =====
@@ -20,27 +25,27 @@ Test
 Testing on localhost
 -----
 
-   `./run ./bin/[binary]`
+   `./run ./bin/[binary] logn`
 
-with `[binary]=ot` for common OT functionalities, `[binary]=ferret` for ferret specific functionalities. The script `run` will locally open two programs.
+with `[binary]=ot` for common OT functionalities, `[binary]=ferret` for ferret specific functionalities, `logn` as the log(number of OT). The script `run` will locally open two programs.
    
 Testing on two
 -----
 
 1. Change the IP address in the test code (e.g. [here](https://github.com/emp-toolkit/emp-ot/blob/master/test/ot.cpp))
 
-2. run `./bin/[binary] 1 [port]` on one machine and 
+2. run `./bin/[binary] 1 [port] logn` on one machine and 
   
-   run `./bin/[binary] 2 [port]` on the other machine.
+   run `./bin/[binary] 2 [port] logn` on the other machine.
   
 Performance
 =====
-Hardware: AWS m5.4xlarge
-Results below are for performing 2^26 OTs. IKNP-style protocols use 1 thread;
-FERRET uses 5 threads.
+All tested between two AWS c5.4xlarge instances.
 
-### 50 Mbps
+## IKNP-style protocols
+
 ```
+50 Mbps
 128 NPOTs:	Tests passed.	12577 us
 Passive IKNP OT	Tests passed.	129262 OTps
 Passive IKNP COT	Tests passed.	388316 OTps
@@ -49,19 +54,8 @@ Passive IKNP ROT	Tests passed.	386190 OTps
 Active IKNP OT	Tests passed.	129152 OTps
 Active IKNP COT	Tests passed.	387380 OTps
 Active IKNP ROT	Tests passed.	385235 OTps
-Passive FERRET OT	Tests passed.	191511 OTps
-Passive FERRET COT	Tests passed.	1.87663e+07 OTps
-Passive FERRET ROT	Tests passed.	1.77188e+07 OTps
-Active FERRET OT	Tests passed.	191519 OTps
-Active FERRET COT	Tests passed.	1.88838e+07 OTps
-Active FERRET ROT	Tests passed.	1.76447e+07 OTps
 
-Active FERRET RCOT	Tests passed.	4.97468e+07 OTps
-Active FERRET RCOT inplace	Tests passed.	5.84142e+07 OTps
-```
-
-### 10 Gbps
-```
+10 Gbps
 128 NPOTs:	Tests passed.	11739 us
 Passive IKNP OT	Tests passed.	1.55476e+07 OTps
 Passive IKNP COT	Tests passed.	2.96661e+07 OTps
@@ -70,16 +64,30 @@ Passive IKNP ROT	Tests passed.	1.65765e+07 OTps
 Active IKNP OT	Tests passed.	1.39589e+07 OTps
 Active IKNP COT	Tests passed.	2.42705e+07 OTps
 Active IKNP ROT	Tests passed.	1.47379e+07 OTps
-Passive FERRET OT	Tests passed.	1.60211e+07 OTps
-Passive FERRET COT	Tests passed.	3.86102e+07 OTps
-Passive FERRET ROT	Tests passed.	1.82382e+07 OTps
-Active FERRET OT	Tests passed.	1.32552e+07 OTps
-Active FERRET COT	Tests passed.	3.58546e+07 OTps
-Active FERRET ROT	Tests passed.	1.79005e+07 OTps
 
-Active FERRET RCOT	Tests passed.	6.1264e+07 OTps
-Active FERRET RCOT inplace	Tests passed.	7.42027e+07 OTps
 ```
+
+## Ferret protocols
+(unit: million random correlated OT per second)
+### Semi-honest
+bandwidth |10 Mbps|30 Mbps|50 Mbps
+------------------|-------|-------|-------
+1  thread         |12.1   |16.0   |16.0
+2 threads         |16.3   |27.0   |30.8
+3 threads         |18.3   |34.2   |40.7
+4 threads         |19.7   |39.5   |48.8
+5 threads         |20.5   |43.2   |55.0
+6 threads         |21.4   |47.1   |61.2
+
+### Malicious
+bandwidth |10 Mbps|30 Mbps|50 Mbps
+------------------|-------|-------|-------|
+1 thread          |11.6   |13.9   |13.9
+2 threads         |16.0   |26.6   |27.1
+3 threads         |18.3   |33.8   |40.0
+4 threads         |19.6   |38.3   |47.4
+5 threads         |20.4   |42.4   |53.7
+6 threads         |21.3   |46.5   |59.8
 
 Usage
 =====
@@ -106,26 +114,25 @@ else
 ```
 Note that `NPOT` can be replaced to `OTCO`, `IKNP`, or `FerretCOT` without changing any other part of the code. They all share the same [API](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ot.h)
 
-Correlated OT and Random OT
+(Random) correlated OT
 -----
 
-Correlated OT and Random OT are supported for `IKNP` and `FerretCOT`. See following as an example. They all share extra [APIs](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/cot.h)
+Random correlated OT is supported for `IKNP` and `FerretCOT`. See following as an example. They all share extra [APIs](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/cot.h) The current interface allows specifying the Delta value once
+and get COT correlation in multiple batches.
+
 ```cpp
-block delta;
-
 IKNP<NetIO> ote(&io, false); // create a semi honest OT extension
-
 //Correlated OT
 if (party == ALICE)
-    ote.send_cot(b0, delta, length);
+    ote.send_cot(b0, length); //ote.Delta is the correlation
 else
-    ote.recv_cot(b0, c, length);
+    ote.recv_cot(br, c, length);   //br[i] = b0[i]\xor c[i]*ote.Delta
     
 //Random OT
 if (party == ALICE)
     ote.send_rot(b0, b1, length);
 else
-    ote.recv_rot(b0, c, length);
+    ote.recv_rot(br, c, length);    //br[i] = c[i] ? b1[i] : b0[i]
 ```
 
 Ferret OT
@@ -133,7 +140,15 @@ Ferret OT
 
 Ferret OT produces correlated OT with random choice bits (rcot). Extra APIs are [here](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.h). Our implementation provides two interface `ferretot.rcot()` and `ferretot.rcot_inplace()`. While the first one support filling an external array of any length, an extra memcpy is needed. The second option work on the provided array directly and thus avoid the memcpy. However, it produces a fixed number of OTs (`ferretcot->n`) for every invocation. The [sample code](https://github.com/emp-toolkit/emp-ot/blob/master/test/ferret.cpp#L7) is mostly self-explainable on how to use it.
 
-Note that the choice bit is embedded as the least bit of the `block` on the receiver's side. To make sure the correlation works for all bits, the least bit of Delta is 1. This can be viewed as an extension of the point-and-permute technique. See [this code](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.hpp#L211) on how ferret is used to fullfill standard `cot` interface.
+Note that the choice bit is embedded to the least bit of the `block` on the receiver's side. To make sure the correlation works for all bits, the least bit of Delta is 1. This can be viewed as an extension of the point-and-permute technique. See [this code](https://github.com/emp-toolkit/emp-ot/blob/master/emp-ot/ferret/ferret_cot.hpp#L211) on how ferret is used to fullfil standard `cot` interface.
+
+```cpp
+FerretCOT<NetIO> ferretcot(party, threads, ios);
+if (party == ALICE)
+    ferretcot.rcot(b0, length); //ote.Delta is the correlation
+else
+    ferretcot.rcot(br, length); //br[i] = b0[i] \xor LSB(br[i]) * ferretcot.Delta
+```
 
 Citation
 =====
@@ -148,7 +163,7 @@ Citation
 
 Question
 =====
-Please send email to wangxiao@cs.northwestern.edu
+Please send email to wangxiao@cs.northwestern.edu. Ferret is also developed and maintained by Chenkai Weng (ckweng@u.northwestern.edu).
 
 ## Acknowledgement
-This work was supported in part by the National Science Foundation under Awards #1111599 and #1563722.
+This work was supported in part by the National Science Foundation under Awards #1111599 and #1563722. The Ferret implementation is partially based upon work supported by DARPA under Contract No. HR001120C0087. Any opinions, findings and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of DARPA. The authors would also like to thank the support from PlatON Network and Facebook.
