@@ -290,7 +290,8 @@ void FerretCOT<T>::recv_cot(block* data, const bool * b, int64_t length) {
 template<typename T>
 void FerretCOT<T>::assemble_state(void * data, int64_t size) {
 	unsigned char * array = (unsigned char * )data;
-	memcpy(array, &party, sizeof(int64_t));
+	int64_t party_tmp = party;
+	memcpy(array, &party_tmp, sizeof(int64_t));
 	memcpy(array + sizeof(int64_t), &n, sizeof(int64_t));
 	memcpy(array + sizeof(int64_t) * 2, &t, sizeof(int64_t));
 	memcpy(array + sizeof(int64_t) * 3, &k, sizeof(int64_t));
