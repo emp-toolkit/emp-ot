@@ -1,6 +1,6 @@
 template<typename T>
 FerretCOT<T>::FerretCOT(int party, int threads, T **ios,
-		bool malicious, bool run_setup, std::string pre_file) {
+		bool malicious, bool run_setup, PrimalLPNParameter param, std::string pre_file) {
 	this->party = party;
 	this->threads = threads;
 	io = ios[0];
@@ -10,8 +10,8 @@ FerretCOT<T>::FerretCOT(int party, int threads, T **ios,
 	ch[0] = zero_block;
 	base_cot = new BaseCot<T>(party, io, malicious);
 	pool = new ThreadPool(threads);
-	set_param();
-	set_preprocessing_param();
+	set_param(param);
+
 	this->extend_initialized = false;
 
 	if(run_setup) {
@@ -41,19 +41,15 @@ FerretCOT<T>::~FerretCOT() {
 }
 
 template<typename T>
-void FerretCOT<T>::set_param() {
-	this->n = N_REG;
-	this->k = K_REG;
-	this->t = T_REG;
-	this->log_bin_sz = BIN_SZ_REG;
-}
-
-template<typename T>
-void FerretCOT<T>::set_preprocessing_param() {
-	this->n_pre = N_PRE_REG;
-	this->k_pre = K_PRE_REG;
-	this->t_pre = T_PRE_REG;
-	this->log_bin_sz_pre = BIN_SZ_PRE_REG;
+void FerretCOT<T>::set_param(const PrimalLPNParameter & param) {
+	this->n = param.n;
+	this->k = param.k;
+	this->t = param.t;
+	this->log_bin_sz = param.log_bin_sz;
+	this->n_pre = param.n_pre;
+	this->k_pre = param.k_pre;
+	this->t_pre = param.t_pre;
+	this->log_bin_sz_pre = param.log_bin_sz_pre;
 }
 
 template<typename T>
