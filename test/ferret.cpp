@@ -3,11 +3,11 @@
 using namespace std;
 
 int port, party;
-const static int threads = 1;
+const static int threads = 2;
 
 void test_ferret(int party, NetIO *ios[threads], int64_t num_ot) {
 	auto start = clock_start();
-	FerretCOT<NetIO> * ferretcot = new FerretCOT<NetIO>(party, threads, ios, true);
+	FerretCOT<NetIO> * ferretcot = new FerretCOT<NetIO>(party, threads, ios, true, true, ferret_b13);
 	double timeused = time_from(start);
 	std::cout << party << "\tsetup\t" << timeused/1000 << "ms" << std::endl;
 
@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
 	for(int i = 0; i < threads; ++i)
 		ios[i] = new NetIO(party == ALICE?nullptr:"127.0.0.1",port+i);
 
-	int64_t length = 20;
+	int64_t length = 24;
 	if (argc > 3)
 		length = atoi(argv[3]);
 	test_ferret(party, ios, length);

@@ -64,15 +64,22 @@ class SPCOT_Sender { public:
 		prp->node_expand_1to2(ggm_tree, seed);
 		ot_msg_0[0] = ggm_tree[0];
 		ot_msg_1[0] = ggm_tree[1];
-		for(int h = 1; h < depth-1; ++h) {
+		prp->node_expand_2to4(&ggm_tree[0], &ggm_tree[0]);
+		ot_msg_0[1] = ggm_tree[0] ^ ggm_tree[2];
+		ot_msg_1[1] = ggm_tree[1] ^ ggm_tree[3];
+		for(int h = 2; h < depth-1; ++h) {
 			ot_msg_0[h] = ot_msg_1[h] = zero_block;
 			int sz = 1<<h;
-			for(int i = sz-2; i >=0; i-=2) {
-				prp->node_expand_2to4(&ggm_tree[i*2], &ggm_tree[i]);
-				ot_msg_0[h] = ot_msg_0[h] ^ ggm_tree[i*2];
-				ot_msg_0[h] = ot_msg_0[h] ^ ggm_tree[i*2+2];
-				ot_msg_1[h] = ot_msg_1[h] ^ ggm_tree[i*2+1];
-				ot_msg_1[h] = ot_msg_1[h] ^ ggm_tree[i*2+3];
+			for(int i = sz-4; i >=0; i-=4) {
+				prp->node_expand_4to8(&ggm_tree[i*2], &ggm_tree[i]);
+				ot_msg_0[h] ^= ggm_tree[i*2];
+				ot_msg_0[h] ^= ggm_tree[i*2+2];
+				ot_msg_0[h] ^= ggm_tree[i*2+4];
+				ot_msg_0[h] ^= ggm_tree[i*2+6];
+				ot_msg_1[h] ^= ggm_tree[i*2+1];
+				ot_msg_1[h] ^= ggm_tree[i*2+3];
+				ot_msg_1[h] ^= ggm_tree[i*2+5];
+				ot_msg_1[h] ^= ggm_tree[i*2+7];
 			}
 		}
 		delete prp;

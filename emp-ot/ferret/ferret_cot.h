@@ -19,11 +19,12 @@ public:
 	using COT<T>::io;
 	using COT<T>::Delta;
 
-	int64_t n, t, k, log_bin_sz;
-	int64_t n_pre, t_pre, k_pre, log_bin_sz_pre;
+	PrimalLPNParameter param;
 	int64_t ot_used, ot_limit;
 
-	FerretCOT(int party, int threads, T **ios, bool malicious = false, bool run_setup = true, std::string pre_file="");
+	FerretCOT(int party, int threads, T **ios, bool malicious = false, bool run_setup = true, 
+PrimalLPNParameter param = ferret_b13, std::string pre_file="");
+	
 
 	~FerretCOT();
 
