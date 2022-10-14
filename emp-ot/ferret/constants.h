@@ -6,7 +6,8 @@ static std::string PRE_OT_DATA_REG_SEND_FILE = "./data/pre_ot_data_reg_send";
 static std::string PRE_OT_DATA_REG_RECV_FILE = "./data/pre_ot_data_reg_recv";
 
 class PrimalLPNParameter { public:
-	const int64_t n, t, k, log_bin_sz, n_pre, t_pre, k_pre, log_bin_sz_pre;
+	int64_t n, t, k, log_bin_sz, n_pre, t_pre, k_pre, log_bin_sz_pre;
+	PrimalLPNParameter() {}
 	PrimalLPNParameter(int64_t n, int64_t t, int64_t k, int64_t log_bin_sz, int64_t n_pre, int64_t t_pre, int64_t k_pre, int64_t log_bin_sz_pre)
 		: n(n), t(t), k(k), log_bin_sz(log_bin_sz),
 		n_pre(n_pre), t_pre(t_pre), k_pre(k_pre), log_bin_sz_pre(log_bin_sz_pre) {
@@ -15,6 +16,9 @@ class PrimalLPNParameter { public:
 			n_pre != t_pre * (1<< log_bin_sz_pre) ||
 			n_pre < k + t * log_bin_sz + 128 )
 			error("LPN parameter not matched");	
+	}
+	int64_t buf_sz() const {
+		return n - t * log_bin_sz - k - 128;
 	}
 };
 

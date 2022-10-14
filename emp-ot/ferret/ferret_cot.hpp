@@ -10,7 +10,7 @@ FerretCOT<T>::FerretCOT(int party, int threads, T **ios,
 	ch[0] = zero_block;
 	base_cot = new BaseCot<T>(party, io, malicious);
 	pool = new ThreadPool(threads);
-	set_param(param);
+	this->param = param;
 
 	this->extend_initialized = false;
 
@@ -41,26 +41,14 @@ FerretCOT<T>::~FerretCOT() {
 }
 
 template<typename T>
-void FerretCOT<T>::set_param(const PrimalLPNParameter & param) {
-	this->n = param.n;
-	this->k = param.k;
-	this->t = param.t;
-	this->log_bin_sz = param.log_bin_sz;
-	this->n_pre = param.n_pre;
-	this->k_pre = param.k_pre;
-	this->t_pre = param.t_pre;
-	this->log_bin_sz_pre = param.log_bin_sz_pre;
-}
-
-template<typename T>
 void FerretCOT<T>::extend_initialization() {
-	lpn_f2 = new LpnF2<T, 10>(party, n, k, pool, io, pool->size());
-	mpcot = new MpcotReg<T>(party, threads, n, t, log_bin_sz, pool, ios);
+	lpn_f2 = new LpnF2<T, 10>(party, param.n, param.k, pool, io, pool->size());
+	mpcot = new MpcotReg<T>(party, threads, param.n, param.t, param.log_bin_sz, pool, ios);
 	if(is_malicious) mpcot->set_malicious();
 
 	pre_ot = new OTPre<T>(io, mpcot->tree_height-1, mpcot->tree_n);
-	M = k + pre_ot->n + mpcot->consist_check_cot_num;
-	ot_limit = n - M;
+	M = param.k + pre_ot->n + mpcot->consist_check_cot_num;
+	ot_limit = param.n - M;
 	ot_used = ot_limit;
 	extend_initialized = true;
 }
@@ -111,7 +99,7 @@ void FerretCOT<T>::setup(std::string pre_file) {
 		extend_initialization();
 	});
 
-	ot_pre_data = new block[n_pre];
+	ot_pre_data = new block[param.n_pre];
 	bool hasfile = file_exists(pre_ot_filename), hasfile2;
 	if(party == ALICE) {
 		io->send_data(&hasfile, sizeof(bool));
@@ -128,16 +116,16 @@ void FerretCOT<T>::setup(std::string pre_file) {
 		if(party == BOB) base_cot->cot_gen_pre();
 		else base_cot->cot_gen_pre(Delta);
 
-		MpcotReg<T> mpcot_ini(party, threads, n_pre, t_pre, log_bin_sz_pre, pool, ios);
+		MpcotReg<T> mpcot_ini(party, threads, param.n_pre, param.t_pre, param.log_bin_sz_pre, pool, ios);
 		if(is_malicious) mpcot_ini.set_malicious();
 		OTPre<T> pre_ot_ini(ios[0], mpcot_ini.tree_height-1, mpcot_ini.tree_n);
-		LpnF2<T, 10> lpn(party, n_pre, k_pre, pool, io, pool->size());
+		LpnF2<T, 10> lpn(party, param.n_pre, param.k_pre, pool, io, pool->size());
 
-		block *pre_data_ini = new block[k_pre+mpcot_ini.consist_check_cot_num];
-		memset(this->ot_pre_data, 0, n_pre*16);
+		block *pre_data_ini = new block[param.k_pre+mpcot_ini.consist_check_cot_num];
+		memset(this->ot_pre_data, 0, param.n_pre*16);
 
 		base_cot->cot_gen(&pre_ot_ini, pre_ot_ini.n);
-		base_cot->cot_gen(pre_data_ini, k_pre+mpcot_ini.consist_check_cot_num);
+		base_cot->cot_gen(pre_data_ini, param.k_pre+mpcot_ini.consist_check_cot_num);
 		extend(ot_pre_data, &mpcot_ini, &pre_ot_ini, &lpn, pre_data_ini);
 		delete[] pre_data_ini;
 	}
@@ -148,8 +136,8 @@ void FerretCOT<T>::setup(std::string pre_file) {
 template<typename T>
 void FerretCOT<T>::rcot(block *data, int64_t num) {
 	if(ot_data == nullptr) {
-		ot_data = new block[n];
-		memset(ot_data, 0, n*sizeof(block));
+		ot_data = new block[param.n];
+		memset(ot_data, 0, param.n*sizeof(block));
 	}
 	if(extend_initialized == false) 
 		error("Run setup before extending");
@@ -198,10 +186,10 @@ void FerretCOT<T>::write_pre_data128_to_file(void* loc, __uint128_t delta, std::
 	FileIO fio(filename.c_str(), false);
 	fio.send_data(&party, sizeof(int64_t));
 	if(party == ALICE) fio.send_data(&delta, 16);
-	fio.send_data(&n, sizeof(int64_t));
-	fio.send_data(&t, sizeof(int64_t));
-	fio.send_data(&k, sizeof(int64_t));
-	fio.send_data(loc, n_pre*16);
+	fio.send_data(&param.n, sizeof(int64_t));
+	fio.send_data(&param.t, sizeof(int64_t));
+	fio.send_data(&param.k, sizeof(int64_t));
+	fio.send_data(loc, param.n_pre*16);
 }
 
 template<typename T>
@@ -216,9 +204,9 @@ __uint128_t FerretCOT<T>::read_pre_data128_from_file(void* pre_loc, std::string 
 	fio.recv_data(&nin, sizeof(int64_t));
 	fio.recv_data(&tin, sizeof(int64_t));
 	fio.recv_data(&kin, sizeof(int64_t));
-	if(nin != n || tin != t || kin != k)
+	if(nin != param.n || tin != param.t || kin != param.k)
 		error("wrong parameters");
-	fio.recv_data(pre_loc, n_pre*16);
+	fio.recv_data(pre_loc, param.n_pre*16);
 	std::remove(filename.c_str());
 	return delta;
 }
@@ -226,7 +214,7 @@ __uint128_t FerretCOT<T>::read_pre_data128_from_file(void* pre_loc, std::string 
 template<typename T>
 int64_t FerretCOT<T>::byte_memory_need_inplace(int64_t ot_need) {
 	int64_t round = (ot_need - 1) / ot_limit;
-	return round * ot_limit + n;
+	return round * ot_limit + param.n;
 }
 
 // extend f2k (benchmark)
@@ -234,7 +222,7 @@ int64_t FerretCOT<T>::byte_memory_need_inplace(int64_t ot_need) {
 // output the number of COTs that can be used
 template<typename T>
 int64_t FerretCOT<T>::rcot_inplace(block *ot_buffer, int64_t byte_space) {
-	if(byte_space < n) error("space not enough");
+	if(byte_space < param.n) error("space not enough");
 	if((byte_space - M) % ot_limit != 0) error("call byte_memory_need_inplace \
 			to get the correct length of memory space");
 	int64_t ot_output_n = byte_space - M;
@@ -288,11 +276,11 @@ void FerretCOT<T>::assemble_state(void * data, int64_t size) {
 	unsigned char * array = (unsigned char * )data;
 	int64_t party_tmp = party;
 	memcpy(array, &party_tmp, sizeof(int64_t));
-	memcpy(array + sizeof(int64_t), &n, sizeof(int64_t));
-	memcpy(array + sizeof(int64_t) * 2, &t, sizeof(int64_t));
-	memcpy(array + sizeof(int64_t) * 3, &k, sizeof(int64_t));
+	memcpy(array + sizeof(int64_t), &param.n, sizeof(int64_t));
+	memcpy(array + sizeof(int64_t) * 2, &param.t, sizeof(int64_t));
+	memcpy(array + sizeof(int64_t) * 3, &param.k, sizeof(int64_t));
 	memcpy(array + sizeof(int64_t) * 4, &Delta, sizeof(block));	
-	memcpy(array + sizeof(int64_t) * 4 + sizeof(block), ot_pre_data, sizeof(block)*n_pre);
+	memcpy(array + sizeof(int64_t) * 4 + sizeof(block), ot_pre_data, sizeof(block)*param.n_pre);
 	if (ot_pre_data!= nullptr)
 		delete[] ot_pre_data;
 	ot_pre_data = nullptr;
@@ -302,16 +290,16 @@ template<typename T>
 int FerretCOT<T>::disassemble_state(const void * data, int64_t size) {
 	const unsigned char * array = (const unsigned char * )data;
 	int64_t n2 = 0, t2 = 0, k2 = 0, party2 = 0;
-	ot_pre_data = new block[n_pre];
+	ot_pre_data = new block[param.n_pre];
 	memcpy(&party2, array, sizeof(int64_t));
 	memcpy(&n2, array + sizeof(int64_t), sizeof(int64_t));
 	memcpy(&t2, array + sizeof(int64_t) * 2, sizeof(int64_t));
 	memcpy(&k2, array + sizeof(int64_t) * 3, sizeof(int64_t));
-	if(party2 != party or n2 != n or t2 != t or k2 != k) {
+	if(party2 != party or n2 != param.n or t2 != param.t or k2 != param.k) {
 		return -1;
 	}
 	memcpy(&Delta, array + sizeof(int64_t) * 4, sizeof(block));	
-	memcpy(ot_pre_data, array + sizeof(int64_t) * 4 + sizeof(block), sizeof(block)*n_pre);
+	memcpy(ot_pre_data, array + sizeof(int64_t) * 4 + sizeof(block), sizeof(block)*param.n_pre);
 
 	extend_initialization();
 	ch[1] = Delta;
@@ -320,6 +308,6 @@ int FerretCOT<T>::disassemble_state(const void * data, int64_t size) {
 
 template<typename T>
 int64_t FerretCOT<T>::state_size() {
-	return sizeof(int64_t) * 4 + sizeof(block) + sizeof(block)*n_pre;
+	return sizeof(int64_t) * 4 + sizeof(block) + sizeof(block)*param.n_pre;
 }
 
