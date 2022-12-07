@@ -1,0 +1,53 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  schedule:
+    - cron: "36 22 * * 3"
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ cpp ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure
+        run: |
+          export DEPS_BUILD_DIR=$RUNNER_TEMP/deps
+          mkdir -p $DEPS_BUILD_DIR
+          git clone https://github.com/emp-toolkit/emp-tool.git
+          cd emp-tool
+          cmake -DENABLE_FLOAT=True -DCMAKE_INSTALL_PREFIX=$DEPS_BUILD_DIR .
+          make -j4
+          make install
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ matrix.language }}
+          queries: +security-and-quality
+
+      - name: Build cpp
+        run: |
+          export DEPS_BUILD_DIR=$RUNNER_TEMP/deps
+          cmake -DCMAKE_INSTALL_PREFIX=$DEPS_BUILD_DIR . && make
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "/language:${{ matrix.language }}"
