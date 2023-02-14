@@ -29,10 +29,10 @@ class LpnF2 { public:
 	}
 
 	void __compute4(block * nn, const block * kk, int64_t i, PRP * prp) {
-		block tmp[10];
-		for(int m = 0; m < 10; ++m)
+		block tmp[d];
+		for(int m = 0; m < d; ++m)
 			tmp[m] = makeBlock(i, m);
-		AES_ecb_encrypt_blks(tmp, 10, &prp->aes);
+		AES_ecb_encrypt_blks(tmp, d, &prp->aes);
 		uint32_t* r = (uint32_t*)(tmp);
 		for(int m = 0; m < 4; ++m)
 			for (int j = 0; j < d; ++j) {
@@ -44,10 +44,11 @@ class LpnF2 { public:
 	}
 
 	void __compute1(block * nn, const block * kk, int64_t i, PRP*prp) {
-		block tmp[3];
-		for(int m = 0; m < 3; ++m)
+                const auto nr_blocks = d/4 + (d % 4 != 0);
+                block tmp[nr_blocks];
+		for(int m = 0; m < nr_blocks; ++m)
 			tmp[m] = makeBlock(i, m);
-		prp->permute_block(tmp, 3);
+		prp->permute_block(tmp, nr_blocks);
 		uint32_t* r = (uint32_t*)(tmp);
 		for (int j = 0; j < d; ++j)
 			nn[i] = nn[i] ^ kk[r[j]%k];
