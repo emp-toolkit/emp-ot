@@ -15,6 +15,11 @@ int main(int argc, char** argv) {
 		k = 11;
 		n = 20;
 	}
+	if(n > 30 or k > 30) {
+		cout <<"Large test size! comment me if you want to run this size\n";
+		exit(1);
+	}
+
 	block seed;
 	block * kk = new block[1<<k];
 	block * nn = new block[1<<n];

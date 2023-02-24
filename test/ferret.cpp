@@ -33,6 +33,11 @@ int main(int argc, char** argv) {
 	int64_t length = 24;
 	if (argc > 3)
 		length = atoi(argv[3]);
+	if(length > 30) {
+		cout <<"Large test size! comment me if you want to run this size\n";
+		exit(1);
+	}
+		
 	test_ferret(party, ios, length);
 
 	for(int i = 0; i < threads; ++i)
