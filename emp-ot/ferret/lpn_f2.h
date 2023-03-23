@@ -75,7 +75,7 @@ class LpnF2 { public:
 			}));
 		}
 		int64_t start = (threads - 1) * width;
-		int64_t end = min(threads * width, n);
+        	int64_t end = n;
 		task(nn, kk, start, end);
 
 		for (auto &f: fut) f.get();
@@ -103,7 +103,7 @@ class LpnF2 { public:
 			}));
 		}
 		int64_t start = (threads - 1) * width;
-		int64_t end = min(threads * width, n);
+        	int64_t end = n;
 		task(nn, kk, start, end);
 
 		for (auto &f: fut) f.get();
