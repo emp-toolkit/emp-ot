@@ -63,10 +63,11 @@ class LpnF2 { public:
 			__compute1(nn, kk, j, &prp);
 	}
 
-	void compute(block * nn, const block * kk) {
+	void compute(block * nn, const block * kk, block s = zero_block) {
 		vector<std::future<void>> fut;
 		int64_t width = n/threads;
-		seed = seed_gen();
+        if(!cmpBlock(&s, &zero_block, 1)) seed = s;
+		else seed = seed_gen();
 		for(int i = 0; i < threads - 1; ++i) {
 			int64_t start = i * width;
 			int64_t end = min((i+1)* width, n);
