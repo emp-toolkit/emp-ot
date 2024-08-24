@@ -50,7 +50,7 @@ class BaseCot { public:
 		}
 	}
 
-	void cot_gen(block *ot_data, int64_t size) {
+	void cot_gen(block *ot_data, int64_t size, bool * pre_bool = nullptr) {
 		if (this->party == ALICE) {
 			iknp->send_cot(ot_data, size);
 			io->flush();
@@ -59,7 +59,10 @@ class BaseCot { public:
 		} else {
 			PRG prg;
 			bool *pre_bool_ini = new bool[size];
-			prg.random_bool(pre_bool_ini, size);
+			if(pre_bool && !malicious)
+				memcpy(pre_bool_ini, pre_bool, size);
+			else
+				prg.random_bool(pre_bool_ini, size);
 			iknp->recv_cot(ot_data, pre_bool_ini, size);
 			block ch[2];
 			ch[0] = zero_block;
@@ -71,7 +74,7 @@ class BaseCot { public:
 		}
 	}
 
-	void cot_gen(OTPre<IO> *pre_ot, int64_t size) {
+	void cot_gen(OTPre<IO> *pre_ot, int64_t size, bool * pre_bool = nullptr) {
 		block *ot_data = new block[size];
 		if (this->party == ALICE) {
 			iknp->send_cot(ot_data, size);
@@ -82,7 +85,10 @@ class BaseCot { public:
 		} else {
 			PRG prg;
 			bool *pre_bool_ini = new bool[size];
-			prg.random_bool(pre_bool_ini, size);
+			if(pre_bool && !malicious)
+				memcpy(pre_bool_ini, pre_bool, size);
+			else
+				prg.random_bool(pre_bool_ini, size);
 			iknp->recv_cot(ot_data, pre_bool_ini, size);
 			block ch[2];
 			ch[0] = zero_block;

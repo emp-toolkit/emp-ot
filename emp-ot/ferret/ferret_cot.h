@@ -28,9 +28,9 @@ PrimalLPNParameter param = ferret_b13, std::string pre_file="");
 
 	~FerretCOT();
 
-	void setup(block Deltain, std::string pre_file = "");
+	void setup(block Deltain, std::string pre_file = "", bool *choice=nullptr, block seed=zero_block);
 
-	void setup(std::string pre_file = "");
+	void setup(std::string pre_file = "", bool *choice = nullptr, block seed= zero_block);
 
 	void send_cot(block * data, int64_t length) override;
 
@@ -38,7 +38,7 @@ PrimalLPNParameter param = ferret_b13, std::string pre_file="");
 
 	void rcot(block *data, int64_t num);
 
-	int64_t rcot_inplace(block *ot_buffer, int64_t length);
+	int64_t rcot_inplace(block *ot_buffer, int64_t length, block seed = zero_block);
 
 	int64_t byte_memory_need_inplace(int64_t ot_need);
 
@@ -81,7 +81,7 @@ private:
 	void extend_initialization();
 
 	void extend(block* ot_output, MpcotReg<T> *mpfss, OTPre<T> *preot, 
-			LpnF2<T, 10> *lpn, block *ot_input);
+			LpnF2<T, 10> *lpn, block *ot_input, block seed = zero_block);
 
 	void extend_f2k(block *ot_buffer);
 
