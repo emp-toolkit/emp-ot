@@ -204,7 +204,7 @@ void FerretCOT<T>::write_pre_data128_to_file(void* loc, __uint128_t delta, std::
 template<typename T>
 __uint128_t FerretCOT<T>::read_pre_data128_from_file(void* pre_loc, std::string filename) {
 	FileIO fio(filename.c_str(), true);
-	int in_party;
+	int64_t in_party;
 	fio.recv_data(&in_party, sizeof(int64_t));
 	if(in_party != party) error("wrong party");
 	__uint128_t delta = 0;
