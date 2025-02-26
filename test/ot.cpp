@@ -10,7 +10,7 @@ int main(int argc, char** argv) {
 	else
 		length = (1<<atoi(argv[3])) + 101;
 
-    parse_party_and_port(argv, &party, &port);
+        parse_party_and_port(argv, &party, &port);
 	NetIO * io = new NetIO(party==ALICE ? nullptr:"127.0.0.1", port);
 	OTNP<NetIO> * np = new OTNP<NetIO>(io);
 	cout <<"128 NPOTs:\t"<<test_ot<OTNP<NetIO>>(np, io, party, 128)<<" us"<<endl;
