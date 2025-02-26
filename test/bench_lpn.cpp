@@ -39,4 +39,6 @@ int main(int argc, char** argv) {
 		cout << time_from(t1)/20<<"\t"<<time_from(t1)/20*1000.0/(1<<n)<<endl;
 	}
 	cout << nn[0] <<endl;
+    delete [] kk;
+    delete [] nn;
 }
