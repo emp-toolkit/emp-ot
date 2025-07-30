@@ -193,14 +193,9 @@ void FerretCOT<T>::write_pre_data128_to_file(void* loc, __uint128_t delta, std::
 	if(outfile.is_open()) outfile.close();
 	else error("create a directory to store pre-OT data");
 	FileIO fio(filename.c_str(), false);
-	fio.send_data(&party, sizeof(int));
+	int64_t party64 = party;
+	fio.send_data(&party64, sizeof(int64_t));
 
-	// for 8-byte alignment in file
-	if constexpr (sizeof(int) == 4) {
-		int z = 0;
-		fio.send_data(&z, sizeof(int));
-	}
-	
 	if(party == ALICE) fio.send_data(&delta, 16);
 	fio.send_data(&param.n, sizeof(int64_t));
 	fio.send_data(&param.t, sizeof(int64_t));
@@ -211,15 +206,9 @@ void FerretCOT<T>::write_pre_data128_to_file(void* loc, __uint128_t delta, std::
 template<typename T>
 __uint128_t FerretCOT<T>::read_pre_data128_from_file(void* pre_loc, std::string filename) {
 	FileIO fio(filename.c_str(), true);
-	int in_party;
-	fio.recv_data(&in_party, sizeof(int));
+	int64_t in_party;
+	fio.recv_data(&in_party, sizeof(int64_t));
 	if(in_party != party) error("wrong party");
-
-	// for 8-byte alignment in file
-	if constexpr (sizeof(int) == 4) {
-		int dummy;
-		fio.recv_data(&dummy, sizeof(int));
-	}
 	
 	__uint128_t delta = 0;
 	if(party == ALICE) fio.recv_data(&delta, 16);
