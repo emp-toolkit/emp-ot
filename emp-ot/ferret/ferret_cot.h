@@ -24,7 +24,8 @@ public:
 
 	FerretCOT(int party, int threads, T **ios, bool malicious = false, bool run_setup = true, 
 PrimalLPNParameter param = ferret_b13, std::string pre_file="");
-	
+
+	void skip_file();
 
 	~FerretCOT();
 
