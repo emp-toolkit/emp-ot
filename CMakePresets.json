@@ -1,0 +1,79 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+
+    "configurePresets": [
+        {
+            "name":   "base",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+
+        {
+            "name":   "release",
+            "displayName": "Release",
+            "inherits": "base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+        },
+        {
+            "name":   "debug",
+            "displayName": "Debug",
+            "inherits": "base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name":   "relwithdebinfo",
+            "displayName": "RelWithDebInfo",
+            "inherits": "base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+        },
+
+        {
+            "name":   "asan",
+            "displayName": "AddressSanitizer + UBSan",
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "CMAKE_C_FLAGS":   "-fsanitize=address,undefined -fno-omit-frame-pointer",
+                "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
+                "CMAKE_EXE_LINKER_FLAGS":    "-fsanitize=address,undefined",
+                "CMAKE_SHARED_LINKER_FLAGS": "-fsanitize=address,undefined"
+            }
+        }
+    ],
+
+    "buildPresets": [
+        { "name": "release",        "configurePreset": "release"        },
+        { "name": "debug",          "configurePreset": "debug"          },
+        { "name": "relwithdebinfo", "configurePreset": "relwithdebinfo" },
+        { "name": "asan",           "configurePreset": "asan"           }
+    ],
+
+    "testPresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "output": { "outputOnFailure": true, "verbosity": "default" },
+            "execution": { "noTestsAction": "error", "stopOnFailure": false },
+            "filter": { "exclude": { "name": "^(ot|ferret)$" } }
+        },
+        { "name": "release",        "configurePreset": "release",        "inherits": "base" },
+        { "name": "debug",          "configurePreset": "debug",          "inherits": "base" },
+        { "name": "relwithdebinfo", "configurePreset": "relwithdebinfo", "inherits": "base" },
+        { "name": "asan",           "configurePreset": "asan",           "inherits": "base" }
+    ],
+
+    "workflowPresets": [
+        {
+            "name": "release",
+            "steps": [
+                { "type": "configure", "name": "release" },
+                { "type": "build",     "name": "release" },
+                { "type": "test",      "name": "release" }
+            ]
+        }
+    ]
+}

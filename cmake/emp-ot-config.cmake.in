@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(emp-tool 1.0)
+
+include("${CMAKE_CURRENT_LIST_DIR}/emp-otTargets.cmake")
+
+check_required_components(emp-ot)
