@@ -27,8 +27,10 @@ void test_ferret(int party, NetIO *ios[threads], int64_t num_ot) {
 int main(int argc, char** argv) {
 	parse_party_and_port(argv, &party, &port);
 	NetIO* ios[threads];
+	// NetIO opens (port, port+1) per instance, so each thread's pair must be
+	// 2 ports apart to avoid collisions.
 	for(int i = 0; i < threads; ++i)
-		ios[i] = new NetIO(party == ALICE?nullptr:"127.0.0.1",port+i);
+		ios[i] = new NetIO(party == ALICE?nullptr:"127.0.0.1",port + 2*i);
 
 	int64_t length = 24;
 	if (argc > 3)

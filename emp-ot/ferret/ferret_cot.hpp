@@ -195,36 +195,39 @@ int64_t FerretCOT<T>::silent_ot_left() {
 
 template<typename T>
 void FerretCOT<T>::write_pre_data128_to_file(void* loc, __uint128_t delta, std::string filename) {
-	std::ofstream outfile(filename);
-	if(outfile.is_open()) outfile.close();
-	else error("create a directory to store pre-OT data");
-	FileIO fio(filename.c_str(), false);
+	std::ofstream outfile(filename, std::ios::binary | std::ios::trunc);
+	if (!outfile.is_open())
+		error("create a directory to store pre-OT data");
 	int64_t party64 = party;
-	fio.send_data(&party64, sizeof(int64_t));
-
-	if(party == ALICE) fio.send_data(&delta, 16);
-	fio.send_data(&param.n, sizeof(int64_t));
-	fio.send_data(&param.t, sizeof(int64_t));
-	fio.send_data(&param.k, sizeof(int64_t));
-	fio.send_data(loc, param.n_pre*16);
+	outfile.write(reinterpret_cast<const char*>(&party64), sizeof(int64_t));
+	if (party == ALICE)
+		outfile.write(reinterpret_cast<const char*>(&delta), 16);
+	outfile.write(reinterpret_cast<const char*>(&param.n), sizeof(int64_t));
+	outfile.write(reinterpret_cast<const char*>(&param.t), sizeof(int64_t));
+	outfile.write(reinterpret_cast<const char*>(&param.k), sizeof(int64_t));
+	outfile.write(reinterpret_cast<const char*>(loc), param.n_pre * 16);
 }
 
 template<typename T>
 __uint128_t FerretCOT<T>::read_pre_data128_from_file(void* pre_loc, std::string filename) {
-	FileIO fio(filename.c_str(), true);
+	std::ifstream infile(filename, std::ios::binary);
+	if (!infile.is_open())
+		error("could not open pre-OT data file");
 	int64_t in_party;
-	fio.recv_data(&in_party, sizeof(int64_t));
-	if(in_party != party) error("wrong party");
-	
+	infile.read(reinterpret_cast<char*>(&in_party), sizeof(int64_t));
+	if (in_party != party) error("wrong party");
+
 	__uint128_t delta = 0;
-	if(party == ALICE) fio.recv_data(&delta, 16);
+	if (party == ALICE)
+		infile.read(reinterpret_cast<char*>(&delta), 16);
 	int64_t nin, tin, kin;
-	fio.recv_data(&nin, sizeof(int64_t));
-	fio.recv_data(&tin, sizeof(int64_t));
-	fio.recv_data(&kin, sizeof(int64_t));
-	if(nin != param.n || tin != param.t || kin != param.k)
+	infile.read(reinterpret_cast<char*>(&nin), sizeof(int64_t));
+	infile.read(reinterpret_cast<char*>(&tin), sizeof(int64_t));
+	infile.read(reinterpret_cast<char*>(&kin), sizeof(int64_t));
+	if (nin != param.n || tin != param.t || kin != param.k)
 		error("wrong parameters");
-	fio.recv_data(pre_loc, param.n_pre*16);
+	infile.read(reinterpret_cast<char*>(pre_loc), param.n_pre * 16);
+	infile.close();
 	std::remove(filename.c_str());
 	return delta;
 }
