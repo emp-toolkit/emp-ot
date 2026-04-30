@@ -23,22 +23,23 @@ jobs:
         id: dep
         run: echo "ref=$(cat .github/workflows/emp-tool.dep)" >> "$GITHUB_OUTPUT"
 
-      - name: Build emp-tool sibling
+      - name: Build and install emp-tool sibling
         run: |
           git clone --depth 1 --branch "${{ steps.dep.outputs.ref }}" \
             https://github.com/emp-toolkit/emp-tool.git "$RUNNER_TEMP/emp-tool"
           cmake -S "$RUNNER_TEMP/emp-tool" -B "$RUNNER_TEMP/emp-tool/build" \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/emp-tool-install" \
             -DEMP_TOOL_NATIVE_ARCH=OFF \
-            -DEMP_TOOL_BUILD_TESTS=OFF \
-            -DEMP_TOOL_INSTALL=OFF
+            -DEMP_TOOL_BUILD_TESTS=OFF
           cmake --build "$RUNNER_TEMP/emp-tool/build" -j
+          cmake --install "$RUNNER_TEMP/emp-tool/build"
 
       - name: Configure
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -Demp-tool_DIR=${{ runner.temp }}/emp-tool/build
+          -DCMAKE_PREFIX_PATH=${{ runner.temp }}/emp-tool-install
 
       - name: Build
         run: cmake --build build -j
