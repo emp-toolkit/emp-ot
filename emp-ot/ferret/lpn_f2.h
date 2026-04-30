@@ -1,8 +1,9 @@
-#ifndef EMP_LPN_F2K_H__
-#define EMP_LPN_F2K_H__
+#ifndef EMP_OT_LPN_F2_H__
+#define EMP_OT_LPN_F2_H__
 
 #include "emp-tool/emp-tool.h"
-using namespace emp;
+
+namespace emp {
 
 //Implementation of local linear code on F_2^k
 //Performance highly dependent on the CPU cache size
@@ -70,7 +71,7 @@ class LpnF2 { public:
 		else seed = seed_gen();
 		for(int i = 0; i < threads - 1; ++i) {
 			int64_t start = i * width;
-			int64_t end = min((i+1)* width, n);
+			int64_t end = std::min((i+1)* width, n);
 			fut.push_back(pool->enqueue([this, nn, kk, start, end]() {
 				task(nn, kk, start, end);
 			}));
@@ -93,22 +94,14 @@ class LpnF2 { public:
 		}io->flush();
 		return seed;
 	}
+
+	// Local-only benchmark of the compute kernel — uses a fixed seed to
+	// skip the network handshake in compute(), so callers can pass
+	// io=nullptr.
 	void bench(block * nn, const block * kk) {
-		vector<std::future<void>> fut;
-		int64_t width = n/threads;
-		for(int i = 0; i < threads - 1; ++i) {
-			int64_t start = i * width;
-			int64_t end = min((i+1)* width, n);
-			fut.push_back(pool->enqueue([this, nn, kk, start, end]() {
-				task(nn, kk, start, end);
-			}));
-		}
-		int64_t start = (threads - 1) * width;
-        	int64_t end = n;
-		task(nn, kk, start, end);
-
-		for (auto &f: fut) f.get();
+		compute(nn, kk, makeBlock(0, 1));
 	}
-
 };
+
+}  // namespace emp
 #endif

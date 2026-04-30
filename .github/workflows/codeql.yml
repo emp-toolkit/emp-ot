@@ -24,30 +24,37 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
-      - name: Configure
+      - name: Read emp-tool ref
+        id: dep
+        run: echo "ref=$(cat .github/workflows/emp-tool.dep)" >> "$GITHUB_OUTPUT"
+
+      - name: Build emp-tool sibling
         run: |
-          export DEPS_BUILD_DIR=$RUNNER_TEMP/deps
-          mkdir -p $DEPS_BUILD_DIR
-          git clone https://github.com/emp-toolkit/emp-tool.git
-          cd emp-tool
-          cmake -DENABLE_FLOAT=True -DCMAKE_INSTALL_PREFIX=$DEPS_BUILD_DIR .
-          make -j4
-          make install
+          git clone --depth 1 --branch "${{ steps.dep.outputs.ref }}" \
+            https://github.com/emp-toolkit/emp-tool.git "$RUNNER_TEMP/emp-tool"
+          cmake -S "$RUNNER_TEMP/emp-tool" -B "$RUNNER_TEMP/emp-tool/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEMP_TOOL_NATIVE_ARCH=OFF \
+            -DEMP_TOOL_BUILD_TESTS=OFF \
+            -DEMP_TOOL_INSTALL=OFF
+          cmake --build "$RUNNER_TEMP/emp-tool/build" -j
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
 
-      - name: Build cpp
+      - name: Build
         run: |
-          export DEPS_BUILD_DIR=$RUNNER_TEMP/deps
-          cmake -DCMAKE_INSTALL_PREFIX=$DEPS_BUILD_DIR . && make
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Demp-tool_DIR="$RUNNER_TEMP/emp-tool/build"
+          cmake --build build -j
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"

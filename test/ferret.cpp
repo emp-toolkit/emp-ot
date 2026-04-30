@@ -3,7 +3,7 @@
 using namespace std;
 
 int port, party;
-const static int threads = 2;
+const static int threads = 1;
 
 void test_ferret(int party, NetIO *ios[threads], int64_t num_ot) {
 	auto start = clock_start();

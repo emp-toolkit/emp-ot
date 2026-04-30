@@ -1,5 +1,5 @@
-#ifndef MPCOT_REG_H__
-#define MPCOT_REG_H__
+#ifndef EMP_OT_MPCOT_REG_H__
+#define EMP_OT_MPCOT_REG_H__
 
 #include <emp-tool/emp-tool.h>
 #include <set>
@@ -7,7 +7,7 @@
 #include "emp-ot/ferret/spcot_recver.h"
 #include "emp-ot/ferret/preot.h"
 
-using namespace emp;
+namespace emp {
 using std::future;
 
 template<typename IO>
@@ -211,4 +211,6 @@ public:
 		}
 	}
 };
+
+}  // namespace emp
 #endif

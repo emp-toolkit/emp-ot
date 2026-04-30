@@ -1,11 +1,11 @@
-#ifndef SPCOT_RECVER_H__
-#define SPCOT_RECVER_H__
+#ifndef EMP_OT_SPCOT_RECVER_H__
+#define EMP_OT_SPCOT_RECVER_H__
 #include <iostream>
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/emp-ot.h"
 #include "emp-ot/ferret/twokeyprp.h"
 
-using namespace emp;
+namespace emp {
 
 template<typename IO>
 class SPCOT_Recver {
@@ -106,4 +106,6 @@ public:
 		delete[] chi;
 	}
 };
+
+}  // namespace emp
 #endif

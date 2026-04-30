@@ -1,0 +1,47 @@
+name: build
+on: [push, pull_request]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        build_type: [Debug, Release]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install OpenSSL (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install openssl@3
+          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+
+      - name: Read emp-tool ref
+        id: dep
+        run: echo "ref=$(cat .github/workflows/emp-tool.dep)" >> "$GITHUB_OUTPUT"
+
+      - name: Build emp-tool sibling
+        run: |
+          git clone --depth 1 --branch "${{ steps.dep.outputs.ref }}" \
+            https://github.com/emp-toolkit/emp-tool.git "$RUNNER_TEMP/emp-tool"
+          cmake -S "$RUNNER_TEMP/emp-tool" -B "$RUNNER_TEMP/emp-tool/build" \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DEMP_TOOL_NATIVE_ARCH=OFF \
+            -DEMP_TOOL_BUILD_TESTS=OFF \
+            -DEMP_TOOL_INSTALL=OFF
+          cmake --build "$RUNNER_TEMP/emp-tool/build" -j
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -Demp-tool_DIR=${{ runner.temp }}/emp-tool/build
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

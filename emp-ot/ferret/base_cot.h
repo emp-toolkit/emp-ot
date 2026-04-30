@@ -1,7 +1,9 @@
-#ifndef COT_H__
-#define COT_H__
+#ifndef EMP_OT_BASE_COT_H__
+#define EMP_OT_BASE_COT_H__
 
 #include "emp-ot/ferret/preot.h"
+
+namespace emp {
 
 template<typename IO>
 class BaseCot { public:
@@ -29,7 +31,7 @@ class BaseCot { public:
 		if (this->party == ALICE) {
 			this->ot_delta = deltain;
 			bool delta_bool[128];
-			block_to_bool(delta_bool, ot_delta);
+			bits_to_bools(delta_bool, &ot_delta, 128);
 			iknp->setup_send(delta_bool);
 		} else {
 			iknp->setup_recv();
@@ -43,7 +45,7 @@ class BaseCot { public:
 			ot_delta = ot_delta & minusone;
 			ot_delta = ot_delta ^ one;
 			bool delta_bool[128];
-			block_to_bool(delta_bool, ot_delta);
+			bits_to_bools(delta_bool, &ot_delta, 128);
 			iknp->setup_send(delta_bool);
 		} else {
 			iknp->setup_recv();
@@ -124,4 +126,5 @@ class BaseCot { public:
 	}
 };
 
+}  // namespace emp
 #endif

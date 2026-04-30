@@ -1,11 +1,11 @@
-#ifndef SPCOT_SENDER_H__
-#define SPCOT_SENDER_H__
+#ifndef EMP_OT_SPCOT_SENDER_H__
+#define EMP_OT_SPCOT_SENDER_H__
 #include <iostream>
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/emp-ot.h"
 #include "emp-ot/ferret/twokeyprp.h"
 
-using namespace emp;
+namespace emp {
 
 template<typename IO>
 class SPCOT_Sender { public:
@@ -98,4 +98,5 @@ class SPCOT_Sender { public:
 	}
 };
 
+}  // namespace emp
 #endif
