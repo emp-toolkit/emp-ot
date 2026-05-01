@@ -24,6 +24,10 @@ int main(int argc, char** argv) {
 	OTCO * co = new OTCO(io);
 	cout <<"128 COOTs:\t"<<test_ot<OTCO>(co, io, party, 128)<<" us"<<endl;
 	delete co;
+
+	OTPVW * pvw = new OTPVW(io);
+	cout <<"128 PVW OTs:\t"<<test_ot<OTPVW>(pvw, io, party, 128)<<" us"<<endl;
+	delete pvw;
 	iknp = new IKNP(io, true);
 	cout <<"Active IKNP OT\t"<<double(length)/test_ot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
 	cout <<"Active IKNP COT\t"<<double(length)/test_cot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;

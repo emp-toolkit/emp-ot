@@ -43,8 +43,8 @@ class OTNP: public OT { public:
 		for(int64_t i = 0; i < length; ++i) {
 			G->get_rand_bn(r[i]);
 			gr[i] = G->mul_gen(r[i]);
-			rc[i] = r[i].mul(d, G->bn_ctx);
-			rc[i] = rc[i].mod(G->order, G->bn_ctx);
+			rc[i] = r[i].mul(d, G->bn_ctx());
+			rc[i] = rc[i].mod(G->order(), G->bn_ctx());
 			Cr[i] = G->mul_gen(rc[i]);
 		}
 
