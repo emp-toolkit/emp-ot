@@ -1,248 +1,123 @@
 #ifndef EMP_IKNP_H__
 #define EMP_IKNP_H__
+#include <cassert>
 #include "emp-ot/cot.h"
 #include "emp-ot/co.h"
 
 namespace emp {
 
 /*
- * IKNP OT Extension
- * [REF] Implementation of "Extending oblivious transfers efficiently"
- * https://www.iacr.org/archive/crypto2003/27290145/27290145.pdf
+ * IKNP OT Extension — RandomCOT backend.
+ * [REF] "Extending oblivious transfers efficiently"
+ *       https://www.iacr.org/archive/crypto2003/27290145/27290145.pdf
+ * [REF] "More Efficient Oblivious Transfer and Extensions for Faster Secure Computation"
+ *       https://eprint.iacr.org/2013/552.pdf
+ * [REF] Active security via "Actively Secure OT Extension with Optimal Overhead"
+ *       https://eprint.iacr.org/2015/546.pdf  (send_check / recv_check)
  *
- * [REF] With optimization of "More Efficient Oblivious Transfer and Extensions for Faster Secure Computation"
- * https://eprint.iacr.org/2013/552.pdf
- * [REF] With optimization of "Better Concrete Security for Half-Gates Garbling (in the Multi-Instance Setting)"
- * https://eprint.iacr.org/2019/1168.pdf
+ * Streaming Fiat-Shamir: each pre_block call snapshots the transcript
+ * after putting its u-matrix bytes (Hash::digest with reset_after=false),
+ * derives a per-chunk chi seed, and folds the chunk's packed F_{2^128}
+ * elements into running accumulators (check_q on the sender, check_t /
+ * check_x on the receiver) right after sse_trans, while `out` is still
+ * cache-hot. rcot_send_end / rcot_recv_end run a final 128-OT chunk
+ * (folded with chi from the same continuing transcript) before the
+ * (x, t) io exchange and check_q ⊕ x·Δ == t compare. The streaming API
+ * is stateless — *_begin() just resets transcript and accumulators; the
+ * caller drives the chunk loop, picking length per call (must be a
+ * multiple of 128 and ≤ block_size, since rcot_*_next writes
+ * ((len+127)/128)*128 blocks directly into the caller buffer). The
+ * single-call rcot_send / rcot_recv wrappers drive one full session
+ * each and handle the non-aligned tail with stack scratch for callers
+ * that don't need chunk-by-chunk streaming.
+ *
+ * Bit-0 choice encoding: with the invariant bit_0(Δ) = 1, row 0 of the
+ * IKNP matrix collapses. Sender forces q[0] = 0 (memset row 0 of t,
+ * loop starts at i=1). Receiver samples r internally via choice_prg
+ * and pins t[0] = r before sse_trans; after transpose, bit_0(M_k) =
+ * bit_k(r) = choice_k and bit_0(K_k) = 0, so Q ^ T = r·Δ holds at bit
+ * 0 with zero post-processing. RandomCOT's online correction reads
+ * getLSB(M_k) = choice_k, so the LSB convention lines up with no
+ * extra work. Row 0 is dropped on the wire and in the FS transcript
+ * (both sides know it's zeros), saving 1/128 of the u-matrix
+ * bandwidth and keeping chi snapshots aligned without sending dead
+ * bytes.
  */
-template<typename T>
-class IKNP: public COT<T> { public:
+template <typename T>
+class IKNP : public RandomCOT<T> { public:
 	using COT<T>::io;
 	using COT<T>::Delta;
 
-	OTCO<T> * base_ot = nullptr;
-	bool setup = false, *extended_r = nullptr;
-
-	const static int64_t block_size = 1024*2;
-	block local_out[block_size];
-	bool s[128], local_r[256];
+	// ===== State =====
+	const static int64_t block_size = 1024 * 2;
+	bool s[128];
 	PRG prg, G0[128], G1[128];
-	bool malicious = false;
-	block k0[128], k1[128]; 
-	IKNP(T * io, bool malicious = false): malicious(malicious) {
-		this->io = io;
+	PRG choice_prg;
+	bool malicious = true;
+	bool is_sender = false;
+	// Tracks whether setup_send / setup_recv has been called. rcot_send /
+	// rcot_recv auto-run the matching setup on first call so callers
+	// without a specific Δ to pin can just construct + use.
+	bool setup_done = false;
+	// Fiat-Shamir transcript over the OT-extension u-matrix bytes. Both
+	// sides absorb the same byte stream during rcot_*_next; snapshots
+	// (reset_after=false) yield matching per-chunk chi seeds.
+	Hash transcript;
+	// Packs 128 consecutive COT outputs into a single F_{2^128} element
+	// via the gadget (1, X, ..., X^{127}). Lets the malicious check
+	// chi-combine 128x fewer elements than the unpacked version.
+	GaloisFieldPacking packer;
+	// Running malicious-check accumulators, reset at each rcot_*_begin.
+	// Sender uses check_q; receiver uses check_t and check_x.
+	block check_q, check_t, check_x;
+	// Session flags: rcot_*_begin sets, rcot_*_end clears, rcot_*_next
+	// asserts. Catches forgotten begin/end and double-begin in debug
+	// builds.
+	bool in_send_session = false;
+	bool in_recv_session = false;
+
+	IKNP() = default;
+	explicit IKNP(T *io_, bool malicious_ = true) : malicious(malicious_) {
+		this->io = io_;
 	}
+
 	~IKNP() {
-		delete_array_null(extended_r);
+		assert(!in_send_session && "~IKNP: send session active — missing rcot_send_end");
+		assert(!in_recv_session && "~IKNP: recv session active — missing rcot_recv_end");
 	}
 
-	void setup_send(const bool* in_s = nullptr, block * in_k0 = nullptr) {
-		setup = true;
-		if(in_s == nullptr)
-			prg.random_bool(s, 128);
-		else 
-			memcpy(s, in_s, 128);
-		
-		if(in_k0 != nullptr) {
-			memcpy(k0, in_k0, 128*sizeof(block));
-		} else {
-			this->base_ot = new OTCO<T>(io);
-			base_ot->recv(k0, s, 128);
-			delete base_ot;
-		}
-		for(int64_t i = 0; i < 128; ++i)
-			G0[i].reseed(&k0[i]);
+	// ===== Setup =====
+	// Sender role with explicit Δ (caller must ensure delta_bool_in[0] = true).
+	void setup_send(const bool *delta_bool_in);
+	// Sender role with random Δ; forces bit_0 = 1 internally.
+	void setup_send();
+	// Receiver role.
+	void setup_recv();
 
-		Delta = bool_to_block(s);
-	}
+	// ===== RandomCOT one-shot =====
+	// Run one full random COT session of `num` outputs. Auto-runs the
+	// matching setup on first call.
+	void rcot_send(block *data, int64_t num) override;
+	void rcot_recv(block *data, int64_t num) override;
 
-	void setup_recv(block * in_k0 = nullptr, block * in_k1 =nullptr) {
-		setup = true;
-		if(in_k0 !=nullptr) {
-			memcpy(k0, in_k0, 128*sizeof(block));
-			memcpy(k1, in_k1, 128*sizeof(block));
-		} else {
-			this->base_ot = new OTCO<T>(io);
-			prg.random_block(k0, 128);
-			prg.random_block(k1, 128);
-			base_ot->send(k0, k1, 128);
-			delete base_ot;
-		}
-		for(int64_t i = 0; i < 128; ++i) {
-			G0[i].reseed(&k0[i]);
-			G1[i].reseed(&k1[i]);
-		}
-	}
-	void send_pre(block * out, int64_t length) {
-		if(not setup)
-			setup_send();
-		int64_t j = 0;
-		for (; j < length/block_size; ++j)
-			send_pre_block(out + j*block_size, block_size);
-		int64_t remain = length % block_size;
-		if (remain > 0) {
-			send_pre_block(local_out, remain);
-			memcpy(out+j*block_size, local_out, sizeof(block)*remain);
-		}
-		if(malicious)
-			send_pre_block(local_out, 256);
-	}
+	// ===== Streaming API =====
+	// External streaming consumers: *_begin → loop *_next (length must
+	// be a multiple of 128 and ≤ block_size) → *_end. Setup must already
+	// be done (no auto-setup at this layer).
+	void rcot_send_begin();
+	void rcot_send_next(block *out, int64_t len);
+	void rcot_send_end();
 
-	void send_pre_block(block * out, int64_t len) {
-		block t[block_size];
-		block tmp[block_size];
-		int64_t local_block_size = (len+127)/128*128;
-		io->recv_block(tmp, local_block_size);
-		for(int64_t i = 0; i < 128; ++i) {
-			G0[i].random_data(t+(i*block_size/128), local_block_size/8);
-			if (s[i])
-				xorBlocks_arr(t+(i*block_size/128), t+(i*block_size/128), tmp+(i*local_block_size/128), local_block_size/128);
-		}
-		sse_trans((uint8_t *)(out), (uint8_t*)t, 128, block_size);
-	}
+	void rcot_recv_begin();
+	void rcot_recv_next(block *out, int64_t len);
+	void rcot_recv_end();
 
-	void recv_pre(block * out, const bool* r, int64_t length) {
-		if(not setup)
-			setup_recv();
-
-		block *block_r = new block[(length+127)/128];
-		for(int64_t i = 0; i < length/128; ++i)
-			block_r[i] = bool_to_block(r+i*128);
-		if (length%128 != 0) {
-			bool tmp_bool_array[128];
-			memset(tmp_bool_array, 0, 128);
-			int64_t start_point = (length / 128)*128;
-			memcpy(tmp_bool_array, r+start_point, length % 128);
-			block_r[length/128] = bool_to_block(tmp_bool_array);
-		}
-		
-		int64_t j = 0;
-		for (; j < length/block_size; ++j)
-			recv_pre_block(out+j*block_size, block_r + (j*block_size/128), block_size);
-		int64_t remain = length % block_size;
-		if (remain > 0) {
-			recv_pre_block(local_out, block_r + (j*block_size/128), remain);
-			memcpy(out+j*block_size, local_out, sizeof(block)*remain);
-		}
-		if(malicious) {
-			block local_r_block[2]; 
-			prg.random_bool(local_r, 256);
-			local_r_block[0] = bool_to_block(local_r);
-			local_r_block[1] = bool_to_block(local_r + 128);
-			recv_pre_block(local_out, local_r_block, 256);
-		}
-		delete[] block_r;
-	}
-	void recv_pre_block(block * out, block * r, int64_t len) {
-		block t[block_size];
-		block tmp[block_size];
-		int64_t local_block_size = (len+127)/128 * 128;
-		for(int64_t i = 0; i < 128; ++i) {
-			G0[i].random_data(t+(i*block_size/128), local_block_size/8);
-			G1[i].random_data(tmp, local_block_size/8);
-			xorBlocks_arr(tmp, t+(i*block_size/128), tmp, local_block_size/128);
-			xorBlocks_arr(tmp, r, tmp, local_block_size/128);
-			io->send_data(tmp, local_block_size/8);
-		}
-
-		sse_trans((uint8_t *)(out), (uint8_t*)t, 128, block_size);
-	}
-
-	void send_cot(block * data, int64_t length) override{
-		send_pre(data, length);
-
-		if(malicious)
-			if(!send_check(data, length))
-				error("OT Extension check failed");
-	}
-	void recv_cot(block* data, const bool * b, int64_t length) override {
-		recv_pre(data, b, length);
-		if(malicious)
-			recv_check(data, b, length);
-	}
-
-/*
- *
- * [REF] Implementation of "Actively Secure OT Extension with Optimal Overhead"
- * https://eprint.iacr.org/2015/546.pdf
- */
-	bool send_check(block * out, int64_t length) {
-		block seed2, x, t[2], q[2], tmp[2];
-		block chi[block_size];
-		q[0] = q[1] = makeBlock(0, 0);
-		io->recv_block(&seed2, 1);
-		io->flush();
-		PRG chiPRG(&seed2);
-
-		for(int64_t i = 0; i < length/block_size; ++i) {
-			chiPRG.random_block(chi, block_size);
-			vector_inn_prdt_sum_no_red<block_size>(tmp, chi, out+i*block_size);
-			q[0] = q[0] ^ tmp[0];
-			q[1] = q[1] ^ tmp[1];
-		}
-		int64_t remain = length % block_size;
-		if(remain != 0) {
-			chiPRG.random_block(chi, block_size);
-			vector_inn_prdt_sum_no_red(tmp, chi, out + length - remain, remain);
-			q[0] = q[0] ^ tmp[0];
-			q[1] = q[1] ^ tmp[1];
-		}
-		{
-			chiPRG.random_block(chi, 256);
-			vector_inn_prdt_sum_no_red<256>(tmp, chi, local_out);
-			q[0] = q[0] ^ tmp[0];
-			q[1] = q[1] ^ tmp[1];
-		}
-
-		io->recv_block(&x, 1);
-		io->recv_block(t, 2);
-		mul128(x, Delta, tmp, tmp+1);
-		q[0] = q[0] ^ tmp[0];
-		q[1] = q[1] ^ tmp[1];
-
-		return cmpBlock(q, t, 2);	
-	}
-	void recv_check(block * out, const bool* r, int64_t length) {
-		block select[2] = {zero_block, all_one_block};
-		block seed2, x = makeBlock(0,0), t[2], tmp[2];
-		prg.random_block(&seed2,1);
-		io->send_block(&seed2, 1);
-		io->flush();
-		block chi[block_size];
-		t[0] = t[1] = makeBlock(0, 0);
-		PRG chiPRG(&seed2);
-
-		for(int64_t i = 0; i < length/block_size; ++i) {
-			chiPRG.random_block(chi, block_size);
-			vector_inn_prdt_sum_no_red<block_size>(tmp, chi, out+i*block_size);
-			t[0] = t[0] ^ tmp[0];
-			t[1] = t[1] ^ tmp[1];
-			for(int64_t j = 0; j < block_size; ++j) 
-				x = x ^ (chi[j] & select[r[i*block_size+j]]);
-		}
-		int64_t remain = length % block_size;
-		if(remain != 0) {
-			chiPRG.random_block(chi, block_size);
-			vector_inn_prdt_sum_no_red(tmp, chi, out+length - remain, remain);
-			t[0] = t[0] ^ tmp[0];
-			t[1] = t[1] ^ tmp[1];
-			for(int64_t j = 0; j < remain; ++j)
-				x = x ^ (chi[j] & select[r[length - remain + j]]);
-		}
-		
-		{
-			chiPRG.random_block(chi, 256);
-			vector_inn_prdt_sum_no_red<256>(tmp, chi, local_out);
-			t[0] = t[0] ^ tmp[0];
-			t[1] = t[1] ^ tmp[1];
-			for(int64_t j = 0; j < 256; ++j)
-				x = x ^ (chi[j] & select[local_r[j]]);
-		}
-
-		io->send_block(&x, 1);
-		io->send_block(t, 2);
-	}
+	// ===== Internal helpers (chi-fold per chunk) =====
+	void combine_send(block *out, int64_t rounded_len);
+	void combine_recv(block *out, block *r, int64_t rounded_len);
 };
 
-}//namespace
+#include "emp-ot/iknp.hpp"
+
+}  // namespace emp
 #endif

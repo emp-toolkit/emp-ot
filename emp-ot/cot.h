@@ -95,5 +95,35 @@ public:
 		}
 	}
 };
+
+template<typename T>
+class RandomCOT : public COT<T> {
+public:
+	// Role-specific random COT generation. Concrete backends supply both
+	// — the role is implicit in which method runs, so no party flag is
+	// needed at this layer for dispatch.
+	virtual void rcot_send(block* data, int64_t num) = 0;
+	virtual void rcot_recv(block* data, int64_t num) = 0;
+
+	void send_cot(block* data, int64_t length) override {
+		rcot_send(data, length);
+		bool* bo = new bool[length];
+		this->io->recv_bool(bo, length * sizeof(bool));
+		for (int64_t i = 0; i < length; ++i) {
+			if (bo[i]) data[i] = data[i] ^ this->Delta;
+		}
+		delete[] bo;
+	}
+
+	void recv_cot(block* data, const bool* b, int64_t length) override {
+		rcot_recv(data, length);
+		bool* bo = new bool[length];
+		for (int64_t i = 0; i < length; ++i) {
+			bo[i] = b[i] ^ getLSB(data[i]);
+		}
+		this->io->send_bool(bo, length * sizeof(bool));
+		delete[] bo;
+	}
+};
 }
 #endif
