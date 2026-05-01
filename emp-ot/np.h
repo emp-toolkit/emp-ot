@@ -9,13 +9,11 @@ namespace emp {
  * [REF] Implementation of "Efficient Oblivious Transfer Protocols"
  * https://dl.acm.org/doi/10.5555/365411.365502
  */
-
-template<typename IO>
-class OTNP: public OT<IO> { public:
-	IO* io;
+class OTNP: public OT { public:
+	IOChannel* io;
 	Group *G = nullptr;
 	bool delete_G = true;
-	OTNP(IO* io, Group * _G = nullptr) {
+	OTNP(IOChannel* io, Group * _G = nullptr) {
 		this->io = io;
 		if (_G == nullptr)
 			G = new Group();
@@ -38,9 +36,9 @@ class OTNP: public OT<IO> { public:
 
 		BigInt * r = new BigInt[length];
 		BigInt * rc = new BigInt[length];
-		Point * pk0 = new Point[length], 
+		Point * pk0 = new Point[length],
 				pk1,
-				*gr = new Point[length], 
+				*gr = new Point[length],
 				*Cr = new Point[length];
 		for(int64_t i = 0; i < length; ++i) {
 			G->get_rand_bn(r[i]);
@@ -77,13 +75,13 @@ class OTNP: public OT<IO> { public:
 
 	void recv(block* data, const bool* b, int64_t length) override {
 		BigInt * k = new BigInt[length];
-		Point * gr = new Point[length]; 
+		Point * gr = new Point[length];
 		Point pk[2];
 		block m[2];
 		Point C;
-		for(int64_t i = 0; i < length; ++i) 
+		for(int64_t i = 0; i < length; ++i)
 			G->get_rand_bn(k[i]);
-		
+
 		io->recv_pt(G, &C);
 		io->flush();
 

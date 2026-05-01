@@ -5,15 +5,15 @@
 namespace emp {
 
 const static int64_t ot_bsize = 8;
-template<typename T>
-class COT : public OT<T> {
+
+class COT : public OT {
 public:
 	block Delta;     // sender's correlation; exposed for test / check code
 	virtual void send_cot(block* data0, int64_t length) = 0;
 	virtual void recv_cot(block* data, const bool* b, int64_t length) = 0;
 
 protected:
-	T * io = nullptr;
+	IOChannel * io = nullptr;
 	MITCCRH<ot_bsize> mitccrh;
 	PRG prg;
 
@@ -96,8 +96,7 @@ public:
 	}
 };
 
-template<typename T>
-class RandomCOT : public COT<T> {
+class RandomCOT : public COT {
 public:
 	// Role-specific random COT generation. Concrete backends supply both
 	// — the role is implicit in which method runs, so no party flag is
@@ -108,9 +107,9 @@ public:
 	void send_cot(block* data, int64_t length) override {
 		rcot_send(data, length);
 		bool* bo = new bool[length];
-		this->io->recv_bool(bo, length * sizeof(bool));
+		io->recv_bool(bo, length * sizeof(bool));
 		for (int64_t i = 0; i < length; ++i) {
-			if (bo[i]) data[i] = data[i] ^ this->Delta;
+			if (bo[i]) data[i] = data[i] ^ Delta;
 		}
 		delete[] bo;
 	}
@@ -121,7 +120,7 @@ public:
 		for (int64_t i = 0; i < length; ++i) {
 			bo[i] = b[i] ^ getLSB(data[i]);
 		}
-		this->io->send_bool(bo, length * sizeof(bool));
+		io->send_bool(bo, length * sizeof(bool));
 		delete[] bo;
 	}
 };

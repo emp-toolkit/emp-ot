@@ -4,18 +4,16 @@
 #include "emp-ot/ot.h"
 namespace emp {
 
-template<typename IO>
 /*
  * Chou Orlandi OT
  * [REF] Implementation of "The Simplest Protocol for Oblivious Transfer"
  * https://eprint.iacr.org/2015/267.pdf
  */
-
-class OTCO: public OT<IO> { public:
-	IO* io;
+class OTCO: public OT { public:
+	IOChannel* io;
 	Group *G = nullptr;
 	bool delete_G = true;
-	OTCO(IO* io, Group * _G = nullptr) {
+	OTCO(IOChannel* io, Group * _G = nullptr) {
 		this->io = io;
 		if (_G == nullptr)
 			G = new Group();
@@ -72,7 +70,7 @@ class OTCO: public OT<IO> { public:
 
 		for(int64_t i = 0; i < length; ++i) {
 			B[i] = G->mul_gen(bb[i]);
-			if (b[i]) 
+			if (b[i])
 				B[i] = B[i].add(A);
 			io->send_pt(&B[i]);
 		}
@@ -90,7 +88,7 @@ class OTCO: public OT<IO> { public:
 			else
 				data[i] = data[i] ^ res[0];
 		}
-		
+
 		delete[] bb;
 		delete[] B;
 		delete[] As;

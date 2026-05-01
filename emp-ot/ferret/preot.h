@@ -5,9 +5,8 @@
 
 namespace emp {
 
-template<typename IO>
 class OTPre { public:
-	IO* io;
+	IOChannel* io;
 	block * pre_data = nullptr;
 	bool * bits = nullptr;
 	int n;
@@ -19,7 +18,7 @@ class OTPre { public:
 	CCRH ccrh;
 	int length, count;
 	block Delta;
-	OTPre(IO* io, int length, int times) {
+	OTPre(IOChannel* io, int length, int times) {
 		this->io = io;
 		this->length = length;
 		n = length*times;
@@ -62,12 +61,12 @@ class OTPre { public:
 		memcpy(b, bits+count, length);
 		count +=length;
 	}
-	
+
 	void reset() {
 		count = 0;
 	}
 
-	void send(const block * m0, const  block * m1, int length, IO * io2, int s) {
+	void send(const block * m0, const  block * m1, int length, IOChannel * io2, int s) {
 		block pad[2];
 		int k = s*length;
 		for (int i = 0; i < length; ++i) {
@@ -78,7 +77,7 @@ class OTPre { public:
 		}
 	}
 
-	void recv(block* data, const bool* b, int length, IO* io2, int s) {
+	void recv(block* data, const bool* b, int length, IOChannel* io2, int s) {
 		int k = s*length;
 		block pad[2];
 		for (int i = 0; i < length; ++i) {

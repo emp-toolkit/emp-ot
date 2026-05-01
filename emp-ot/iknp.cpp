@@ -1,12 +1,14 @@
-// Out-of-line template definitions for IKNP. Included once at the bottom
-// of iknp.h, inside `namespace emp`. See iknp.h for the API surface.
+// Out-of-line definitions for IKNP. See iknp.h for the API surface.
 
-template <typename T>
-void IKNP<T>::setup_send(const bool *delta_bool_in) {
+#include "emp-ot/iknp.h"
+
+namespace emp {
+
+void IKNP::setup_send(const bool *delta_bool_in) {
 	is_sender = true;
 	memcpy(s, delta_bool_in, 128);
 	block k0[128];
-	OTCO<T> base_ot(io);
+	OTCO base_ot(io);
 	base_ot.recv(k0+1, s+1, 127);
 	for (int64_t i = 1; i < 128; ++i)
 		G0[i].reseed(&k0[i]);
@@ -14,19 +16,17 @@ void IKNP<T>::setup_send(const bool *delta_bool_in) {
 	setup_done = true;
 }
 
-template <typename T>
-void IKNP<T>::setup_send() {
+void IKNP::setup_send() {
 	bool s_random[128];
 	prg.random_bool(s_random, 128);
 	s_random[0] = true;  // bit_0(Δ) = 1 invariant; see class comment.
 	setup_send(s_random);
 }
 
-template <typename T>
-void IKNP<T>::setup_recv() {
+void IKNP::setup_recv() {
 	is_sender = false;
 	block k0[128], k1[128];
-	OTCO<T> base_ot(io);
+	OTCO base_ot(io);
 	prg.random_block(k0, 128);
 	prg.random_block(k1, 128);
 	base_ot.send(k0+1, k1+1, 127);
@@ -44,8 +44,7 @@ void IKNP<T>::setup_recv() {
 // scratch since rcot_*_next writes ((len+127)/128)*128 blocks. The
 // caller's `data` only has `tail` blocks of room past `aligned`, so it
 // can't take the full output.
-template <typename T>
-void IKNP<T>::rcot_send(block *data, int64_t num) {
+void IKNP::rcot_send(block *data, int64_t num) {
 	if (!setup_done) setup_send();
 	if (num <= 0) return;
 	int64_t aligned = num & ~(int64_t)127;
@@ -63,8 +62,7 @@ void IKNP<T>::rcot_send(block *data, int64_t num) {
 	rcot_send_end();
 }
 
-template <typename T>
-void IKNP<T>::rcot_recv(block *data, int64_t num) {
+void IKNP::rcot_recv(block *data, int64_t num) {
 	if (!setup_done) setup_recv();
 	if (num <= 0) return;
 	int64_t aligned = num & ~(int64_t)127;
@@ -82,8 +80,7 @@ void IKNP<T>::rcot_recv(block *data, int64_t num) {
 	rcot_recv_end();
 }
 
-template <typename T>
-void IKNP<T>::rcot_send_begin() {
+void IKNP::rcot_send_begin() {
 	assert(is_sender && "rcot_send_begin: not in sender role");
 	assert(!in_send_session && "rcot_send_begin: previous session not ended");
 	in_send_session = true;
@@ -93,8 +90,7 @@ void IKNP<T>::rcot_send_begin() {
 	}
 }
 
-template <typename T>
-void IKNP<T>::rcot_send_end() {
+void IKNP::rcot_send_end() {
 	assert(in_send_session && "rcot_send_end: no active session");
 	if (malicious) {
 		// Sacrificial chunk: 128 extra OTs folded into check_q with chi
@@ -127,8 +123,7 @@ void IKNP<T>::rcot_send_end() {
 // directly. Both sides skip row 0 on the wire and in the transcript
 // (both know it's zeros), so only rows 1..127 are exchanged and hashed
 // — same chi seed on both sides.
-template <typename T>
-void IKNP<T>::rcot_send_next(block *out, int64_t len) {
+void IKNP::rcot_send_next(block *out, int64_t len) {
 	assert(in_send_session && "rcot_send_next: call rcot_send_begin first");
 	block t[block_size];
 	block tmp[block_size / 128];
@@ -158,8 +153,7 @@ void IKNP<T>::rcot_send_next(block *out, int64_t len) {
 // the user-requested `len` would zero-pad the tail and break the
 // Q_i ⊕ T_i = R_i · Δ identity at the unused positions, since the
 // receiver's r tail is random.
-template <typename T>
-void IKNP<T>::combine_send(block *out, int64_t rounded_len) {
+void IKNP::combine_send(block *out, int64_t rounded_len) {
 	PRG chiPRG;
 	block seed;
 	char dgst[Hash::DIGEST_SIZE];
@@ -176,8 +170,7 @@ void IKNP<T>::combine_send(block *out, int64_t rounded_len) {
 	}
 }
 
-template <typename T>
-void IKNP<T>::rcot_recv_begin() {
+void IKNP::rcot_recv_begin() {
 	assert(!is_sender && "rcot_recv_begin: not in receiver role");
 	assert(!in_recv_session && "rcot_recv_begin: previous session not ended");
 	in_recv_session = true;
@@ -188,8 +181,7 @@ void IKNP<T>::rcot_recv_begin() {
 	}
 }
 
-template <typename T>
-void IKNP<T>::rcot_recv_end() {
+void IKNP::rcot_recv_end() {
 	assert(in_recv_session && "rcot_recv_end: no active session");
 	if (malicious) {
 		block scratch[128];
@@ -206,8 +198,7 @@ void IKNP<T>::rcot_recv_end() {
 // known-zero on both sides (sender forces q[0]=0, receiver pins
 // t[0]=r post-loop), so skip it on the wire and in the transcript —
 // only rows 1..127 are sent and hashed.
-template <typename T>
-void IKNP<T>::rcot_recv_next(block *out, int64_t len) {
+void IKNP::rcot_recv_next(block *out, int64_t len) {
 	assert(in_recv_session && "rcot_recv_next: call rcot_recv_begin first");
 	block r[block_size / 128];
 	block t[block_size];
@@ -240,8 +231,7 @@ void IKNP<T>::rcot_recv_next(block *out, int64_t len) {
 // when len isn't a multiple of 128 (the tail OTs / choice bits are
 // unused upstream but still satisfy Q ⊕ T = R · Δ here, which is
 // what the chi-fold needs).
-template <typename T>
-void IKNP<T>::combine_recv(block *out, block *r, int64_t rounded_len) {
+void IKNP::combine_recv(block *out, block *r, int64_t rounded_len) {
 	PRG chiPRG;
 	block seed;
 	char dgst[Hash::DIGEST_SIZE];
@@ -260,3 +250,5 @@ void IKNP<T>::combine_recv(block *out, block *r, int64_t rounded_len) {
 		check_x = check_x ^ tmp;
 	}
 }
+
+}  // namespace emp

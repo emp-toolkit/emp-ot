@@ -5,24 +5,23 @@
 
 namespace emp {
 
-template<typename IO>
 class BaseCot { public:
-   int party;
+	int party;
 	block one, minusone;
 	block ot_delta;
-	IO *io;
-	IKNP<IO> *iknp;
+	IOChannel *io;
+	IKNP *iknp;
 	bool malicious = false;
 
-	BaseCot(int party, IO *io, bool malicious = false) {
+	BaseCot(int party, IOChannel *io, bool malicious = false) {
 		this->party = party;
 		this->io = io;
 		this->malicious = malicious;
-		iknp = new IKNP<IO>(io, malicious);
+		iknp = new IKNP(io, malicious);
 		minusone = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
 		one = makeBlock(0x0LL, 0x1LL);
 	}
-	
+
 	~BaseCot() {
 		delete iknp;
 	}
@@ -70,13 +69,13 @@ class BaseCot { public:
 			ch[0] = zero_block;
 			ch[1] = makeBlock(0, 1);
 			for(int64_t i = 0; i < size; ++i)
-				ot_data[i] = 
+				ot_data[i] =
 						(ot_data[i] & minusone) ^ ch[pre_bool_ini[i]];
 			delete[] pre_bool_ini;
 		}
 	}
 
-	void cot_gen(OTPre<IO> *pre_ot, int64_t size, bool * pre_bool = nullptr) {
+	void cot_gen(OTPre *pre_ot, int64_t size, bool * pre_bool = nullptr) {
 		block *ot_data = new block[size];
 		if (this->party == ALICE) {
 			iknp->send_cot(ot_data, size);
@@ -96,7 +95,7 @@ class BaseCot { public:
 			ch[0] = zero_block;
 			ch[1] = makeBlock(0, 1);
 			for(int64_t i = 0; i < size; ++i)
-				ot_data[i] = 
+				ot_data[i] =
 						(ot_data[i] & minusone) ^ ch[pre_bool_ini[i]];
 			pre_ot->recv_pre(ot_data, pre_bool_ini);
 			delete[] pre_bool_ini;
@@ -108,7 +107,7 @@ class BaseCot { public:
 	bool check_cot(block *data, int64_t len) {
 		if(party == ALICE) {
 			io->send_block(&ot_delta, 1);
-			io->send_block(data, len); 
+			io->send_block(data, len);
 			io->flush();
 			return true;
 		} else {

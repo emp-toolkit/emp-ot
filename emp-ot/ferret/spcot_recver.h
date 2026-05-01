@@ -7,17 +7,16 @@
 
 namespace emp {
 
-template<typename IO>
 class SPCOT_Recver {
 public:
 	block *ggm_tree, *m;
 	bool *b;
 	int choice_pos, depth, leave_n;
-	IO *io;
+	IOChannel *io;
 
 	block secret_sum_f2;
 
-	SPCOT_Recver(IO *io, int depth_in) {
+	SPCOT_Recver(IOChannel *io, int depth_in) {
 		this->io = io;
 		this->depth = depth_in;
 		this->leave_n = 1<<(depth_in-1);
@@ -43,7 +42,7 @@ public:
 	// receive the message and reconstruct the tree
 	// j: position of the secret, begins from 0
 	template<typename OT>
-	void recv_f2k(OT * ot, IO * io2, int s) {
+	void recv_f2k(OT * ot, IOChannel * io2, int s) {
 		ot->recv(m, b, depth-1, io2, s);
 		io2->recv_data(&secret_sum_f2, sizeof(block));
 	}
@@ -81,7 +80,7 @@ public:
 		int item_n = 1<<depth;
 		block nodes_sum = zero_block;
 		int lr_start = lr==0?layer_start:(layer_start+1);
-		
+
 		for(int i = lr_start; i < item_n; i+=2)
 			nodes_sum = nodes_sum ^ ggm_tree[i];
 		ggm_tree[to_fill_idx] = nodes_sum ^ sum;

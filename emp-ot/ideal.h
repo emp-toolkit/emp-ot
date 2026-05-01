@@ -2,14 +2,11 @@
 #define EMP_OTIDEAL_H__
 #include "emp-ot/cot.h"
 
-namespace emp { 
-template<typename T> 
-class OTIdeal: public COT<T> { public:
-	using COT<T>::io;
-	using COT<T>::Delta;
+namespace emp {
+class OTIdeal: public COT { public:
 	int64_t cnt = 0;
 	PRG prg;
-	OTIdeal(T * io, bool * delta = nullptr) {
+	OTIdeal(IOChannel * io, bool * delta = nullptr) {
 		this->io = io;
 		prg.reseed((const block *)fix_key);
 		if (delta!= nullptr)

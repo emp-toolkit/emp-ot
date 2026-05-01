@@ -7,22 +7,21 @@
 
 namespace emp {
 
-template<typename IO>
 class SPCOT_Sender { public:
 	block seed;
 	block delta;
 	block *ggm_tree, *m;
-	IO *io;
+	IOChannel *io;
 	int depth, leave_n;
 	PRG prg;
 	block secret_sum_f2;
 
-	SPCOT_Sender(IO *io, int depth_in) {
+	SPCOT_Sender(IOChannel *io, int depth_in) {
 		initialization(io, depth_in);
 		prg.random_block(&seed, 1);
 	}
 
-	void initialization(IO *io, int depth_in) {
+	void initialization(IOChannel *io, int depth_in) {
 		this->io = io;
 		this->depth = depth_in;
 		this->leave_n = 1<<(this->depth-1);
@@ -41,7 +40,7 @@ class SPCOT_Sender { public:
 
 	// send the nodes by oblivious transfer, F2^k
 	template<typename OT>
-	void send_f2k(OT * ot, IO * io2, int s) {
+	void send_f2k(OT * ot, IOChannel * io2, int s) {
 		ot->send(m, &m[depth-1], depth-1, io2, s);
 		io2->send_data(&secret_sum_f2, sizeof(block));
 	}

@@ -43,13 +43,9 @@ namespace emp {
  * bandwidth and keeping chi snapshots aligned without sending dead
  * bytes.
  */
-template <typename T>
-class IKNP : public RandomCOT<T> { public:
-	using COT<T>::io;
-	using COT<T>::Delta;
-
+class IKNP : public RandomCOT { public:
 	// ===== State =====
-	const static int64_t block_size = 1024 * 2;
+	static constexpr int64_t block_size = 1024 * 2;
 	bool s[128];
 	PRG prg, G0[128], G1[128];
 	PRG choice_prg;
@@ -77,7 +73,7 @@ class IKNP : public RandomCOT<T> { public:
 	bool in_recv_session = false;
 
 	IKNP() = default;
-	explicit IKNP(T *io_, bool malicious_ = true) : malicious(malicious_) {
+	explicit IKNP(IOChannel *io_, bool malicious_ = true) : malicious(malicious_) {
 		this->io = io_;
 	}
 
@@ -116,8 +112,6 @@ class IKNP : public RandomCOT<T> { public:
 	void combine_send(block *out, int64_t rounded_len);
 	void combine_recv(block *out, block *r, int64_t rounded_len);
 };
-
-#include "emp-ot/iknp.hpp"
 
 }  // namespace emp
 #endif

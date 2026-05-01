@@ -31,18 +31,22 @@ option(EMP_OT_INSTALL     "Generate install / export rules" ${PROJECT_IS_TOP_LEV
 find_package(emp-tool 1.0 REQUIRED)
 
 # ---------------------------------------------------------------------
-# Library target (header-only)
+# Library target
 # ---------------------------------------------------------------------
-add_library(emp-ot INTERFACE)
+# IKNP and FerretCOT bodies live in .cpp now (no longer header-only) —
+# the rest of the headers are still consumed inline.
+add_library(emp-ot STATIC
+    emp-ot/iknp.cpp
+    emp-ot/ferret/ferret_cot.cpp)
 add_library(emp-ot::emp-ot ALIAS emp-ot)
 
-target_compile_features(emp-ot INTERFACE cxx_std_17)
+target_compile_features(emp-ot PUBLIC cxx_std_17)
 
-target_include_directories(emp-ot INTERFACE
+target_include_directories(emp-ot PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-target_link_libraries(emp-ot INTERFACE emp-tool::emp-tool)
+target_link_libraries(emp-ot PUBLIC emp-tool::emp-tool)
 
 # ---------------------------------------------------------------------
 # Install + export
@@ -55,8 +59,7 @@ if(EMP_OT_INSTALL)
     install(DIRECTORY emp-ot
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING
-            PATTERN "*.h"
-            PATTERN "*.hpp")
+            PATTERN "*.h")
 
     install(EXPORT emp-otTargets
         NAMESPACE   emp-ot::

@@ -13,17 +13,13 @@ namespace emp {
  * https://eprint.iacr.org/2020/924.pdf
  *
  */
-template<typename T>
-class FerretCOT: public COT<T> { 
+class FerretCOT: public COT {
 public:
-	using COT<T>::io;
-	using COT<T>::Delta;
-
 	PrimalLPNParameter param;
 	int64_t ot_used, ot_limit;
 
-	FerretCOT(int party, int threads, T **ios, bool malicious = false, bool run_setup = true, 
-PrimalLPNParameter param = ferret_b13, std::string pre_file="");
+	FerretCOT(int party, int threads, IOChannel **ios, bool malicious = false, bool run_setup = true,
+			PrimalLPNParameter param = ferret_b13, std::string pre_file="");
 
 	void skip_file();
 
@@ -51,7 +47,7 @@ PrimalLPNParameter param = ferret_b13, std::string pre_file="");
 private:
 	block ch[2];
 
-	T **ios;
+	IOChannel **ios;
 	int party, threads;
 	int64_t M;
 	bool is_malicious;
@@ -64,13 +60,12 @@ private:
 
 	std::string pre_ot_filename;
 
-	BaseCot<T> *base_cot = nullptr;
-	OTPre<T> *pre_ot = nullptr;
+	BaseCot *base_cot = nullptr;
+	OTPre *pre_ot = nullptr;
 	ThreadPool *pool = nullptr;
-	MpcotReg<T> *mpcot = nullptr;
-	LpnF2<T, 10> *lpn_f2 = nullptr;
+	MpcotReg *mpcot = nullptr;
+	LpnF2<10> *lpn_f2 = nullptr;
 
-	
 	void online_sender(block *data, int64_t length);
 
 	void online_recver(block *data, const bool *b, int64_t length);
@@ -81,8 +76,8 @@ private:
 
 	void extend_initialization();
 
-	void extend(block* ot_output, MpcotReg<T> *mpfss, OTPre<T> *preot, 
-			LpnF2<T, 10> *lpn, block *ot_input, block seed = zero_block);
+	void extend(block* ot_output, MpcotReg *mpfss, OTPre *preot,
+			LpnF2<10> *lpn, block *ot_input, block seed = zero_block);
 
 	void extend_f2k(block *ot_buffer);
 
@@ -95,6 +90,5 @@ private:
 	__uint128_t read_pre_data128_from_file(void* pre_loc, std::string filename);
 };
 
-#include "emp-ot/ferret/ferret_cot.hpp"
-}
+}  // namespace emp
 #endif// _VOLE_H_
