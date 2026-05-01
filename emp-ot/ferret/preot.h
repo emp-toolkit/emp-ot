@@ -1,7 +1,6 @@
 #ifndef EMP_OT_PREOT_H__
 #define EMP_OT_PREOT_H__
 #include "emp-tool/emp-tool.h"
-#include "emp-ot/emp-ot.h"
 
 namespace emp {
 

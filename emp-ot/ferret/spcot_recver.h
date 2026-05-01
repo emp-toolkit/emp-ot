@@ -2,7 +2,7 @@
 #define EMP_OT_SPCOT_RECVER_H__
 #include <iostream>
 #include "emp-tool/emp-tool.h"
-#include "emp-ot/emp-ot.h"
+#include "emp-ot/ferret/preot.h"
 #include "emp-ot/ferret/twokeyprp.h"
 
 namespace emp {
@@ -41,8 +41,7 @@ public:
 
 	// receive the message and reconstruct the tree
 	// j: position of the secret, begins from 0
-	template<typename OT>
-	void recv_f2k(OT * ot, IOChannel * io2, int s) {
+	void recv_f2k(OTPre * ot, IOChannel * io2, int s) {
 		ot->recv(m, b, depth-1, io2, s);
 		io2->recv_data(&secret_sum_f2, sizeof(block));
 	}

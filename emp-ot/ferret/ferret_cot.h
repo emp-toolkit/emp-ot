@@ -1,5 +1,6 @@
 #ifndef EMP_FERRET_COT_H_
 #define EMP_FERRET_COT_H_
+#include "emp-ot/cot.h"
 #include "emp-ot/ferret/mpcot_reg.h"
 #include "emp-ot/ferret/base_cot.h"
 #include "emp-ot/ferret/lpn_f2.h"

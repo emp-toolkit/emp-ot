@@ -2,7 +2,7 @@
 #define EMP_OT_SPCOT_SENDER_H__
 #include <iostream>
 #include "emp-tool/emp-tool.h"
-#include "emp-ot/emp-ot.h"
+#include "emp-ot/ferret/preot.h"
 #include "emp-ot/ferret/twokeyprp.h"
 
 namespace emp {
@@ -39,8 +39,7 @@ class SPCOT_Sender { public:
 	}
 
 	// send the nodes by oblivious transfer, F2^k
-	template<typename OT>
-	void send_f2k(OT * ot, IOChannel * io2, int s) {
+	void send_f2k(OTPre * ot, IOChannel * io2, int s) {
 		ot->send(m, &m[depth-1], depth-1, io2, s);
 		io2->send_data(&secret_sum_f2, sizeof(block));
 	}

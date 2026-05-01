@@ -1,6 +1,7 @@
 #ifndef EMP_OT_BASE_COT_H__
 #define EMP_OT_BASE_COT_H__
 
+#include "emp-ot/iknp.h"
 #include "emp-ot/ferret/preot.h"
 
 namespace emp {

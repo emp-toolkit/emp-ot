@@ -150,7 +150,7 @@ public:
 	void exec_f2k_sender(SPCOT_Sender *sender, OTPre *ot,
 			block *ggm_tree_mem, IOChannel *io, int i) {
 		sender->compute(ggm_tree_mem, Delta_f2k);
-		sender->send_f2k<OTPre>(ot, io, i);
+		sender->send_f2k(ot, io, i);
 		io->flush();
 		if(is_malicious)
 			sender->consistency_check_msg_gen(consist_check_VW+i);
@@ -158,7 +158,7 @@ public:
 
 	void exec_f2k_recver(SPCOT_Recver *recver, OTPre *ot,
 			block *ggm_tree_mem, IOChannel *io, int i) {
-		recver->recv_f2k<OTPre>(ot, io, i);
+		recver->recv_f2k(ot, io, i);
 		recver->compute(ggm_tree_mem);
 		if(is_malicious)
 			recver->consistency_check_msg_gen(consist_check_chi_alpha+i, consist_check_VW+i);
