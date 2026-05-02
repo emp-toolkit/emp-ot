@@ -65,6 +65,7 @@ class OTNP: public OT { public:
 			m[1] = Hash::KDF(pk1) ^ data1[i];
 			io->send_data(m, 2*sizeof(block));
 		}
+		io->flush();
 
 		delete[] r;
 		delete[] gr;
@@ -83,7 +84,6 @@ class OTNP: public OT { public:
 			G->get_rand_bn(k[i]);
 
 		io->recv_pt(G, &C);
-		io->flush();
 
 		for(int64_t i = 0; i< length; ++i) {
 			if(b[i]) {
@@ -100,7 +100,6 @@ class OTNP: public OT { public:
 			io->recv_pt(G, &gr[i]);
 			gr[i] = gr[i].mul(k[i]);
 		}
-		io->flush();
 		for(int64_t i = 0; i < length; ++i) {
 			int ind = b[i] ? 1 : 0;
 			io->recv_data(m, 2*sizeof(block));

@@ -45,13 +45,13 @@ class OTCO: public OT { public:
 			B[i] = B[i].mul(a);
 			BA[i] = B[i].add(AaInv);
 		}
-		io->flush();
 
 		for(int64_t i = 0; i < length; ++i) {
 			res[0] = Hash::KDF(B[i], i) ^ data0[i];
 			res[1] = Hash::KDF(BA[i], i) ^ data1[i];
 			io->send_data(res, 2*sizeof(block));
 		}
+		io->flush();
 
 		delete[] BA;
 		delete[] B;

@@ -38,6 +38,7 @@ public:
 			}
 			io->send_data(pad, 2*sizeof(block)*std::min(ot_bsize,length-i));
 		}
+		io->flush();
 		delete[] data;
 	}
 
@@ -46,7 +47,6 @@ public:
 		block s;
 		io->recv_block(&s,1);
 		mitccrh.setS(s);
-		io->flush();
 
 		block res[2*ot_bsize];
 		block pad[ot_bsize];
@@ -86,7 +86,6 @@ public:
 		block s;
 		io->recv_block(&s,1);
 		mitccrh.setS(s);
-		io->flush();
 		block pad[ot_bsize];
 		for(int64_t i = 0; i < length; i+=ot_bsize) {
 			memcpy(pad, data+i, std::min(ot_bsize,length-i)*sizeof(block));
@@ -121,6 +120,7 @@ public:
 			bo[i] = b[i] ^ getLSB(data[i]);
 		}
 		io->send_bool(bo, length * sizeof(bool));
+		io->flush();
 		delete[] bo;
 	}
 };
