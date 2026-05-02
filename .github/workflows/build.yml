@@ -13,11 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install OpenSSL (macOS)
+      - name: Locate OpenSSL (macOS)
         if: runner.os == 'macOS'
-        run: |
-          brew install openssl@3
-          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+        run: echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
 
       - name: Read emp-tool ref
         id: dep
