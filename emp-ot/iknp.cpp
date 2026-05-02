@@ -30,6 +30,12 @@ void IKNP::setup_recv() {
 	prg.random_block(k0, 128);
 	prg.random_block(k1, 128);
 	base_ot.send(k0+1, k1+1, 127);
+	// Tail-flush: OTCO::send ends with 127 unflushed res[0..1] writes
+	// (~4 KiB), and IKNP receivers don't recv on this NetIO afterwards
+	// (rcot_recv is also send-only). Without the flush, the peer's
+	// setup_send blocks on res[0..1] reads if no later activity overflows
+	// the stdio buffer.
+	io->flush();
 	for (int64_t i = 1; i < 128; ++i) {
 		G0[i].reseed(&k0[i]);
 		G1[i].reseed(&k1[i]);
@@ -188,6 +194,12 @@ void IKNP::rcot_recv_end() {
 		rcot_recv_next(scratch, 128);
 		io->send_block(&check_x, 1);
 		io->send_block(&check_t, 1);
+		// Tail-flush so a peer's rcot_send_end (which blocks on
+		// recv_block(check_x/check_t)) can complete even if no further
+		// protocol work runs on this NetIO. Without this, the trailing
+		// 32 bytes can sit in the stdio buffer until ~NetIO, deadlocking
+		// any caller that does rcot in isolation.
+		io->flush();
 	}
 	in_recv_session = false;
 }

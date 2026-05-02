@@ -9,15 +9,15 @@ const static int64_t ot_bsize = 8;
 class COT : public OT {
 public:
 	block Delta;     // sender's correlation; exposed for test / check code
-	virtual void send_cot(block* data0, int64_t length) = 0;
-	virtual void recv_cot(block* data, const bool* b, int64_t length) = 0;
-
-protected:
-	IOChannel * io = nullptr;
+	IOChannel * io = nullptr;       // assignable post-construction; concrete
+	                                // subclasses run setup_send/setup_recv
+	                                // after io is wired.
 	MITCCRH<ot_bsize> mitccrh;
 	PRG prg;
 
-public:
+	virtual void send_cot(block* data0, int64_t length) = 0;
+	virtual void recv_cot(block* data, const bool* b, int64_t length) = 0;
+
 	void send(const block* data0, const block* data1, int64_t length) override {
 		block * data = new block[length];
 		send_cot(data, length);
