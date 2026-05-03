@@ -1,6 +1,7 @@
 #ifndef EMP_OT_CGGM_H__
 #define EMP_OT_CGGM_H__
 #include <emp-tool/emp-tool.h>
+#include <algorithm>
 
 // Half-Tree correlated GGM tree (Guo-Yang-Wang-Zhang-Xie-Liu-Zhao,
 // ePrint 2022/1431, Figure 3). At every non-leaf:
@@ -21,6 +22,55 @@
 
 namespace emp { namespace cggm {
 
+// Per-platform tile size for batched H. Bench-derived from
+// test/bench_aes_batch.cpp on the four configs we care about
+// (AES-NI, VAES256, VAES512, ARM/NEON). The tile is the
+// compile-time N for ParaEnc<1, N> inside CCRH::H<N>; it must
+// match the in-flight latency × port budget of the AES units.
+// Picking the wrong tile costs more than wider SIMD gains.
+#if defined(__aarch64__)
+constexpr int kTile = 4;        // NEON (Apple): peak ~1167 MH/s
+#elif EMP_AES_HAS_VAES512
+constexpr int kTile = 64;       // VAES512: peak ~632 MH/s
+#elif EMP_AES_HAS_VAES256
+constexpr int kTile = 32;       // VAES256: peak ~587 MH/s
+#else
+constexpr int kTile = 4;        // AES-NI only: peak ~590 MH/s
+#endif
+
+namespace detail {
+
+// Expand `parents` parents at leaves[0..parents) into children at
+// leaves[0..2*parents) using batched CCRH::H<kTile> over the whole
+// level. Outputs left/right pairs in-place; caller may then read
+// the per-level XOR-sum (sender) or apply on-path corrections
+// (receiver).
+//
+// Tile invariant: process tiles top-down so each tile reads
+// `parents[base..base+n)` and writes children at
+// `[2*base, 2*(base+n))`. The next iteration's parents at
+// `[0, base)` are strictly below the just-written `[2*base, ...)`
+// region — no clobber.
+inline void expand_level(CCRH& ccrh, block* leaves, int parents) {
+    block parents_buf[kTile];
+    block lefts_buf[kTile];
+    for (int s = parents; s > 0; ) {
+        const int n    = std::min(s, kTile);
+        const int base = s - n;
+        for (int t = 0; t < n; ++t) parents_buf[t] = leaves[base + t];
+        if (n == kTile) ccrh.H<kTile>(lefts_buf, parents_buf);
+        else            ccrh.Hn(lefts_buf, parents_buf, n);
+        for (int t = n - 1; t >= 0; --t) {
+            const int j = base + t;
+            leaves[2 * j]     = lefts_buf[t];
+            leaves[2 * j + 1] = parents_buf[t] ^ lefts_buf[t];
+        }
+        s = base;
+    }
+}
+
+}  // namespace detail
+
 // Sender: build the depth-d cGGM tree given Δ and a top secret k.
 // Writes 2^d leaves into `leaves` and the per-level left-side
 // XOR-sums K^0_i for i ∈ [1, d] into `K0[i-1]`. The right-side
@@ -38,16 +88,7 @@ inline void build_sender(int d, block Delta, block k,
     // Levels 2..d.
     for (int i = 2; i <= d; ++i) {
         const int parents = 1 << (i - 1);
-        // Expand in place from index parents-1 downward so a parent
-        // at index j produces children at 2j and 2j+1 without
-        // clobbering yet-to-be-expanded parents.
-        for (int j = parents - 1; j >= 0; --j) {
-            block parent = leaves[j];
-            block left   = ccrh.H(parent);
-            block right  = parent ^ left;
-            leaves[2 * j]     = left;
-            leaves[2 * j + 1] = right;
-        }
+        detail::expand_level(ccrh, leaves, parents);
         block sum = zero_block;
         for (int j = 0; j < (1 << i); j += 2)
             sum = sum ^ leaves[j];
@@ -78,19 +119,14 @@ inline void eval_receiver(int d, int alpha,
         path = alpha_1;
     }
 
-    // Levels 2..d. At each, every parent on level i-1 except the
-    // on-path one (at index `path`) is fully known; we expand them,
-    // then recover the on-path level-i node on the alpha_bar_i side
-    // via K_recv[i-1] XOR (XOR of expanded alpha_bar_i-side nodes).
+    // Levels 2..d. Expand the whole previous-level layer (the
+    // on-path parent at `path` is zero, so its two children become
+    // junk from H(0); we overwrite both right after expansion).
+    // Then recover the sibling on the alpha_bar_i side via
+    // K_recv[i-1] XOR (XOR of expanded alpha_bar_i-side nodes).
     for (int i = 2; i <= d; ++i) {
         const int parents = 1 << (i - 1);
-        for (int j = parents - 1; j >= 0; --j) {
-            block parent = leaves[j];
-            block left   = ccrh.H(parent);
-            block right  = parent ^ left;
-            leaves[2 * j]     = left;
-            leaves[2 * j + 1] = right;
-        }
+        detail::expand_level(ccrh, leaves, parents);
 
         const int alpha_i     = (alpha >> (d - i)) & 1;
         const int alpha_bar_i = 1 - alpha_i;
