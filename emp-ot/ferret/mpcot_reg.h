@@ -13,12 +13,13 @@ using std::future;
 
 // Multi-point COT over a regular sparse vector. Drives `tree_n`
 // parallel single-point COT trees of height `tree_height` (= log2 of
-// `leave_n` + 1) through OTPre, then if malicious mode is on runs
-// the consistency check that consumes 128 base COTs.
+// `leave_n` + 1) through cGGM (Half-Tree, ePrint 2022/1431, Fig 4),
+// then if malicious mode is on runs the consistency check that
+// consumes 128 base COTs.
 class MpcotReg {
 public:
 	// Security parameter kappa (in bits). The consistency check
-	// consumes exactly this many pre-OT base COTs to bind the
+	// consumes exactly this many base COTs to bind the
 	// receiver's punctured-position choices.
 	static constexpr int kConsistCheckCotNum = 128;
 
@@ -91,10 +92,10 @@ public:
 	}
 
 private:
-	// Construct `tree_n` SPCOT workers, advancing the OTPre cursor by
-	// one batch per worker. Sender just bumps the cursor; receiver
-	// also drains the choice bits into each worker's `b` and computes
-	// its puncture index.
+	// Construct `tree_n` SPCOT workers, advancing the level-correction
+	// cursor by one batch per worker. Sender just bumps the cursor;
+	// receiver also drains the choice bits into each worker's `b` and
+	// computes its puncture index.
 	template <typename Worker, typename LC>
 	void init_spcot_workers(std::vector<Worker*>& out, LC& lc) {
 		out.reserve(tree_n);

@@ -3,7 +3,6 @@
 
 #include "emp-ot/iknp.h"
 #include "emp-ot/ferret/constants.h"
-#include "emp-ot/ferret/preot.h"
 #include <memory>
 
 namespace emp {
@@ -47,22 +46,12 @@ class BaseCot { public:
 		delete[] bits;  // delete[] nullptr is well-defined
 	}
 
-	// Same, then feed the result through pre_ot for downstream spcot.
-	void cot_gen(OTPre *pre_ot, int64_t size, bool *pre_bool = nullptr) {
-		block *ot_data = new block[size];
-		bool  *bits    = produce_cots(ot_data, size, pre_bool);
-		if (party == ALICE) pre_ot->send_pre(ot_data, ot_delta);
-		else                pre_ot->recv_pre(ot_data, bits);
-		delete[] bits;
-		delete[] ot_data;
-	}
-
 private:
-	// Shared body for both cot_gen overloads. ALICE runs IKNP send_cot
-	// and masks bit 0; BOB picks choice bits (caller-supplied unless
-	// malicious, in which case fresh PRG-sampled), runs IKNP recv_cot,
-	// masks bit 0, then ORs the choice back in. Returns the choice-bit
-	// array (BOB only; nullptr for ALICE) — caller frees.
+	// ALICE runs IKNP send_cot and masks bit 0; BOB picks choice bits
+	// (caller-supplied unless malicious, in which case fresh PRG-
+	// sampled), runs IKNP recv_cot, masks bit 0, then ORs the choice
+	// back in. Returns the choice-bit array (BOB only; nullptr for
+	// ALICE) — caller frees.
 	bool* produce_cots(block *ot_data, int64_t size, bool *pre_bool) {
 		if (party == ALICE) {
 			iknp->send_cot(ot_data, size);

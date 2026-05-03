@@ -5,7 +5,7 @@
 #include <memory>
 
 // Forward-declare ferret internals so the public header doesn't pull
-// in the IKNP / OTPre / SPCOT / GGM / TwoKeyPRP transitive closure.
+// in the IKNP / SPCOT / cGGM transitive closure.
 // The .cpp #includes the real headers; std::unique_ptr<T> works with
 // forward-declared T as long as the dtor is out-of-line (it is).
 
