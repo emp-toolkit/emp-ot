@@ -2,8 +2,9 @@
 #define EMP_OT_SPCOT_RECVER_H__
 #include <iostream>
 #include "emp-tool/emp-tool.h"
+#include "emp-ot/ferret/constants.h"
 #include "emp-ot/ferret/preot.h"
-#include "emp-ot/ferret/twokeyprp.h"
+#include "emp-ot/pprf.h"
 
 namespace emp {
 
@@ -46,50 +47,31 @@ public:
 		io2->recv_data(&secret_sum_f2, sizeof(block));
 	}
 
-	// receive the message and reconstruct the tree
-	// j: position of the secret, begins from 0
+	// Reconstruct the GGM tree (every leaf except the punctured one),
+	// then apply the SPCOT-specific correction that recovers the
+	// punctured leaf's value (with `delta` at its bit 0). `b[]` is the
+	// OT choice array = NOT alpha_j, MSB-first; get_index() already
+	// folds it into choice_pos == alpha, and m[i] is precisely the
+	// shared K_recv[i] = K_{alpha_bar_{i+1}}^{i+1}.
 	void compute(block* ggm_tree_mem) {
 		this->ggm_tree = ggm_tree_mem;
-		ggm_tree_reconstruction(b, m);
-		ggm_tree[choice_pos] = zero_block;
+		get_index();  // idempotent; ensures choice_pos == alpha.
+		pprf::eval_receiver(depth - 1, choice_pos, m, ggm_tree);
+		apply_punctured_correction();
+	}
+
+	// Mirror of SPCOT_Sender::apply_punctured_correction. eval_receiver
+	// left ggm_tree[choice_pos] = zero_block; the XOR-then-overwrite
+	// fills it with (XOR of known leaves) XOR secret_sum_f2, which
+	// equals the sender's leaf at choice_pos with `delta` deposited
+	// at bit 0.
+	void apply_punctured_correction() {
 		block nodes_sum = zero_block;
-		block one = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
-		for(int i = 0; i < leave_n; ++i) {
-			ggm_tree[i] = ggm_tree[i] & one;
-			nodes_sum = nodes_sum ^ ggm_tree[i];
+		for (int i = 0; i < leave_n; ++i) {
+			ggm_tree[i] = ggm_tree[i] & lsb_clear_mask;
+			nodes_sum   = nodes_sum ^ ggm_tree[i];
 		}
 		ggm_tree[choice_pos] = nodes_sum ^ secret_sum_f2;
-	}
-
-	void ggm_tree_reconstruction(bool *b, block *m) {
-		int to_fill_idx = 0;
-		TwoKeyPRP prp(zero_block, makeBlock(0, 1));
-		for(int i = 1; i < depth; ++i) {
-			to_fill_idx = to_fill_idx * 2;
-			ggm_tree[to_fill_idx] = ggm_tree[to_fill_idx+1] = zero_block;
-			if(b[i-1] == false) {
-				layer_recover(i, 0, to_fill_idx, m[i-1], &prp);
-				to_fill_idx += 1;
-			} else layer_recover(i, 1, to_fill_idx+1, m[i-1], &prp);
-		}
-	}
-
-	void layer_recover(int depth, int lr, int to_fill_idx, block sum, TwoKeyPRP *prp) {
-		int layer_start = 0;
-		int item_n = 1<<depth;
-		block nodes_sum = zero_block;
-		int lr_start = lr==0?layer_start:(layer_start+1);
-
-		for(int i = lr_start; i < item_n; i+=2)
-			nodes_sum = nodes_sum ^ ggm_tree[i];
-		ggm_tree[to_fill_idx] = nodes_sum ^ sum;
-		if(depth == this->depth-1) return;
-		if(item_n == 2)
-			prp->node_expand_2to4(&ggm_tree[0], &ggm_tree[0]);
-		else {
-			for(int i = item_n-4; i >= 0; i-=4)
-				prp->node_expand_4to8(&ggm_tree[i*2], &ggm_tree[i]);
-		}
 	}
 
 	void consistency_check_msg_gen(block *chi_alpha, block *W) {

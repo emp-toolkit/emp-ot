@@ -2,13 +2,13 @@
 #define EMP_OT_BASE_COT_H__
 
 #include "emp-ot/iknp.h"
+#include "emp-ot/ferret/constants.h"
 #include "emp-ot/ferret/preot.h"
 
 namespace emp {
 
 class BaseCot { public:
 	int party;
-	block one, minusone;
 	block ot_delta;
 	IOChannel *io;
 	IKNP *iknp;
@@ -19,8 +19,6 @@ class BaseCot { public:
 		this->io = io;
 		this->malicious = malicious;
 		iknp = new IKNP(io, malicious);
-		minusone = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
-		one = makeBlock(0x0LL, 0x1LL);
 	}
 
 	~BaseCot() {
@@ -42,8 +40,7 @@ class BaseCot { public:
 		if (this->party == ALICE) {
 			PRG prg;
 			prg.random_block(&ot_delta, 1);
-			ot_delta = ot_delta & minusone;
-			ot_delta = ot_delta ^ one;
+			ot_delta = (ot_delta & lsb_clear_mask) ^ lsb_only_mask;
 			bool delta_bool[128];
 			bits_to_bools(delta_bool, &ot_delta, 128);
 			iknp->setup_send(delta_bool);
@@ -57,7 +54,7 @@ class BaseCot { public:
 			iknp->send_cot(ot_data, size);
 			io->flush();
 			for(int64_t i = 0; i < size; ++i)
-				ot_data[i] = ot_data[i] & minusone;
+				ot_data[i] = ot_data[i] & lsb_clear_mask;
 		} else {
 			PRG prg;
 			bool *pre_bool_ini = new bool[size];
@@ -66,12 +63,10 @@ class BaseCot { public:
 			else
 				prg.random_bool(pre_bool_ini, size);
 			iknp->recv_cot(ot_data, pre_bool_ini, size);
-			block ch[2];
-			ch[0] = zero_block;
-			ch[1] = makeBlock(0, 1);
+			const block ch[2] = { zero_block, lsb_only_mask };
 			for(int64_t i = 0; i < size; ++i)
 				ot_data[i] =
-						(ot_data[i] & minusone) ^ ch[pre_bool_ini[i]];
+						(ot_data[i] & lsb_clear_mask) ^ ch[pre_bool_ini[i]];
 			delete[] pre_bool_ini;
 		}
 	}
@@ -82,7 +77,7 @@ class BaseCot { public:
 			iknp->send_cot(ot_data, size);
 			io->flush();
 			for(int64_t i = 0; i < size; ++i)
-				ot_data[i] = ot_data[i] & minusone;
+				ot_data[i] = ot_data[i] & lsb_clear_mask;
 			pre_ot->send_pre(ot_data, ot_delta);
 		} else {
 			PRG prg;
@@ -92,12 +87,10 @@ class BaseCot { public:
 			else
 				prg.random_bool(pre_bool_ini, size);
 			iknp->recv_cot(ot_data, pre_bool_ini, size);
-			block ch[2];
-			ch[0] = zero_block;
-			ch[1] = makeBlock(0, 1);
+			const block ch[2] = { zero_block, lsb_only_mask };
 			for(int64_t i = 0; i < size; ++i)
 				ot_data[i] =
-						(ot_data[i] & minusone) ^ ch[pre_bool_ini[i]];
+						(ot_data[i] & lsb_clear_mask) ^ ch[pre_bool_ini[i]];
 			pre_ot->recv_pre(ot_data, pre_bool_ini);
 			delete[] pre_bool_ini;
 		}

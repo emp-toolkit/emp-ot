@@ -18,3 +18,8 @@ add_test_case_with_run(ot)
 add_test_case_with_run(ferret)
 add_test_case_with_run(softspoken)
 add_test_case(bench_lpn)
+
+# Verification harness for the ferret refactor: not added to CTest
+# (it has a two-step snap+trace flow driven by hand). Just builds.
+add_executable(test_ferret_trace ferret_trace.cpp)
+target_link_libraries(test_ferret_trace PRIVATE emp-ot::emp-ot)

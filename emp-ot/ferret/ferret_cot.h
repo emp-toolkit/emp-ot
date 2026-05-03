@@ -54,8 +54,6 @@ private:
 	bool is_malicious;
 	bool extend_initialized;
 
-	block one;
-
 	block * ot_pre_data = nullptr;
 	block * ot_data = nullptr;
 
@@ -92,4 +90,4 @@ private:
 };
 
 }  // namespace emp
-#endif// _VOLE_H_
+#endif  // EMP_FERRET_COT_H_

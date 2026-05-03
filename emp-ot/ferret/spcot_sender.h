@@ -2,8 +2,10 @@
 #define EMP_OT_SPCOT_SENDER_H__
 #include <iostream>
 #include "emp-tool/emp-tool.h"
+#include "emp-ot/ferret/constants.h"
 #include "emp-ot/ferret/preot.h"
-#include "emp-ot/ferret/twokeyprp.h"
+#include "emp-ot/ferret/test_random.h"
+#include "emp-ot/pprf.h"
 
 namespace emp {
 
@@ -18,7 +20,8 @@ class SPCOT_Sender { public:
 
 	SPCOT_Sender(IOChannel *io, int depth_in) {
 		initialization(io, depth_in);
-		prg.random_block(&seed, 1);
+		if (!ferret_test::maybe_test_seed(&seed))
+			prg.random_block(&seed, 1);
 	}
 
 	void initialization(IOChannel *io, int depth_in) {
@@ -32,10 +35,14 @@ class SPCOT_Sender { public:
 		delete[] m;
 	}
 
-	// generate GGM tree, transfer secret, F2^k
+	// Build the depth-`depth` GGM tree, then apply the SPCOT-specific
+	// per-leaf correction so bit-0 of every leaf carries the COT
+	// choice signal (with bit-0 of the punctured leaf carrying `secret`).
 	void compute(block* ggm_tree_mem, block secret) {
-		this->delta = secret;
-		ggm_tree_gen(m, m+depth-1, ggm_tree_mem, secret);
+		this->delta    = secret;
+		this->ggm_tree = ggm_tree_mem;
+		pprf::build_sender(depth - 1, seed, ggm_tree, m, m + depth - 1);
+		apply_punctured_correction(secret);
 	}
 
 	// send the nodes by oblivious transfer, F2^k
@@ -44,43 +51,18 @@ class SPCOT_Sender { public:
 		io2->send_data(&secret_sum_f2, sizeof(block));
 	}
 
-	void ggm_tree_gen(block *ot_msg_0, block *ot_msg_1, block* ggm_tree_mem, block secret) {
-		ggm_tree_gen(ot_msg_0, ot_msg_1, ggm_tree_mem);
-		secret_sum_f2 = zero_block;
-		block one = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
-		for(int i = 0; i < leave_n; ++i) {
-			ggm_tree[i] = ggm_tree[i] & one;
+	// SPCOT-specific post-PPRF step: clear bit 0 of every leaf so the
+	// per-leaf COT outputs use the LSB convention, then emit
+	// secret_sum_f2 = (XOR of all leaves) XOR secret. The receiver,
+	// who knows every leaf except the punctured one, reconstructs the
+	// punctured leaf's value by XORing its known leaves into
+	// secret_sum_f2 — which deposits `secret` at bit 0 of that leaf.
+	void apply_punctured_correction(block secret) {
+		secret_sum_f2 = secret;
+		for (int i = 0; i < leave_n; ++i) {
+			ggm_tree[i]   = ggm_tree[i] & lsb_clear_mask;
 			secret_sum_f2 = secret_sum_f2 ^ ggm_tree[i];
 		}
-		secret_sum_f2 = secret_sum_f2 ^ secret;
-	}
-
-	// generate GGM tree from the top
-	void ggm_tree_gen(block *ot_msg_0, block *ot_msg_1, block* ggm_tree_mem) {
-		this->ggm_tree = ggm_tree_mem;
-		TwoKeyPRP *prp = new TwoKeyPRP(zero_block, makeBlock(0, 1));
-		prp->node_expand_1to2(ggm_tree, seed);
-		ot_msg_0[0] = ggm_tree[0];
-		ot_msg_1[0] = ggm_tree[1];
-		prp->node_expand_2to4(&ggm_tree[0], &ggm_tree[0]);
-		ot_msg_0[1] = ggm_tree[0] ^ ggm_tree[2];
-		ot_msg_1[1] = ggm_tree[1] ^ ggm_tree[3];
-		for(int h = 2; h < depth-1; ++h) {
-			ot_msg_0[h] = ot_msg_1[h] = zero_block;
-			int sz = 1<<h;
-			for(int i = sz-4; i >=0; i-=4) {
-				prp->node_expand_4to8(&ggm_tree[i*2], &ggm_tree[i]);
-				ot_msg_0[h] ^= ggm_tree[i*2];
-				ot_msg_0[h] ^= ggm_tree[i*2+2];
-				ot_msg_0[h] ^= ggm_tree[i*2+4];
-				ot_msg_0[h] ^= ggm_tree[i*2+6];
-				ot_msg_1[h] ^= ggm_tree[i*2+1];
-				ot_msg_1[h] ^= ggm_tree[i*2+3];
-				ot_msg_1[h] ^= ggm_tree[i*2+5];
-				ot_msg_1[h] ^= ggm_tree[i*2+7];
-			}
-		}
-		delete prp;
 	}
 
 	void consistency_check_msg_gen(block *V) {

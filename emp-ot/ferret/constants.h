@@ -1,9 +1,21 @@
 #ifndef EMP_FERRET_CONSTANTS_H__
 #define EMP_FERRET_CONSTANTS_H__
 
-namespace emp { 
+#include "emp-tool/emp-tool.h"
+
+namespace emp {
 static std::string PRE_OT_DATA_REG_SEND_FILE = "./data/pre_ot_data_reg_send";
 static std::string PRE_OT_DATA_REG_RECV_FILE = "./data/pre_ot_data_reg_recv";
+
+// LSB-convention masks used throughout ferret. The COT correlation
+// `delta` always has bit 0 = 1, so each per-leaf SPCOT output is
+// masked to clear bit 0 before the punctured leaf gets `delta` XORed
+// in (so its bit 0 carries the choice signal). Naming is deliberately
+// self-describing — the previous mix of `one`/`minusone` for these
+// two complementary patterns was a routine source of confusion.
+inline const block lsb_clear_mask = makeBlock(0xFFFFFFFFFFFFFFFFLL,
+                                              0xFFFFFFFFFFFFFFFELL);
+inline const block lsb_only_mask  = makeBlock(0LL, 1LL);
 
 class PrimalLPNParameter { public:
 	int64_t n, t, k, log_bin_sz, n_pre, t_pre, k_pre, log_bin_sz_pre;

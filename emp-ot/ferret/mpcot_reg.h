@@ -19,7 +19,6 @@ public:
 	int consist_check_cot_num;
 	bool is_malicious;
 
-	PRG prg;
 	IOChannel *netio;
 	IOChannel **ios;
 	block Delta_f2k;

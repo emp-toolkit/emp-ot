@@ -2,6 +2,7 @@
 #define EMP_OT_LPN_F2_H__
 
 #include "emp-tool/emp-tool.h"
+#include "emp-ot/ferret/test_random.h"
 
 namespace emp {
 
@@ -29,7 +30,7 @@ class LpnF2 { public:
 		}
 	}
 
-	void __compute4(block * nn, const block * kk, int64_t i, PRP * prp) {
+	void compute_block_4(block * nn, const block * kk, int64_t i, PRP * prp) {
 		block tmp[d];
 		for(int m = 0; m < d; ++m)
 			tmp[m] = makeBlock(i, m);
@@ -44,7 +45,7 @@ class LpnF2 { public:
 			}
 	}
 
-	void __compute1(block * nn, const block * kk, int64_t i, PRP*prp) {
+	void compute_block_1(block * nn, const block * kk, int64_t i, PRP*prp) {
                 const auto nr_blocks = d/4 + (d % 4 != 0);
                 block tmp[nr_blocks];
 		for(int m = 0; m < nr_blocks; ++m)
@@ -59,9 +60,9 @@ class LpnF2 { public:
 		PRP prp(seed);
 		int64_t j = start;
 		for(; j < end-4; j+=4)
-			__compute4(nn, kk, j, &prp);
+			compute_block_4(nn, kk, j, &prp);
 		for(; j < end; ++j)
-			__compute1(nn, kk, j, &prp);
+			compute_block_1(nn, kk, j, &prp);
 	}
 
 	void compute(block * nn, const block * kk, block s = zero_block) {
@@ -86,8 +87,10 @@ class LpnF2 { public:
 	block seed_gen() {
 		block seed;
 		if(party == ALICE) {
-			PRG prg;
-			prg.random_block(&seed, 1);
+			if (!ferret_test::maybe_test_seed(&seed)) {
+				PRG prg;
+				prg.random_block(&seed, 1);
+			}
 			io->send_data(&seed, sizeof(block));
 		} else {
 			io->recv_data(&seed, sizeof(block));

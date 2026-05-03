@@ -11,7 +11,6 @@ FerretCOT::FerretCOT(int party, int threads, IOChannel **ios,
 	io = ios[0];
 	this->ios = ios;
 	this->is_malicious = malicious;
-	one = makeBlock(0xFFFFFFFFFFFFFFFFLL,0xFFFFFFFFFFFFFFFELL);
 	ch[0] = zero_block;
 	base_cot = new BaseCot(party, io, malicious);
 	pool = new ThreadPool(threads);
@@ -23,8 +22,7 @@ FerretCOT::FerretCOT(int party, int threads, IOChannel **ios,
 		if(party == ALICE) {
 			PRG prg;
 			prg.random_block(&Delta);
-			Delta = Delta & one;
-			Delta = Delta ^ 0x1;
+			Delta = (Delta & lsb_clear_mask) ^ lsb_only_mask;
 			setup(Delta, pre_file);
 		} else setup(pre_file);
 	}
@@ -146,41 +144,37 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 }
 
 void FerretCOT::rcot(block *data, int64_t num) {
-	if(ot_data == nullptr) {
-		ot_data = new block[param.n];
-		memset(ot_data, 0, param.n*sizeof(block));
-	}
-	if(extend_initialized == false)
+	if (!extend_initialized)
 		error("Run setup before extending");
-	if(num <= silent_ot_left()) {
-		memcpy(data, ot_data+ot_used, num*sizeof(block));
-		ot_used += num;
-		return;
+	if (ot_data == nullptr) {
+		ot_data = new block[param.n]();  // value-init zero-fills
 	}
-	block *pt = data;
-	int64_t gened = silent_ot_left();
-	if(gened > 0) {
-		memcpy(pt, ot_data+ot_used, gened*sizeof(block));
-		pt += gened;
+
+	int64_t produced = 0;
+
+	// 1) Drain whatever's already buffered from a previous call.
+	if (silent_ot_left() > 0) {
+		int64_t take = std::min<int64_t>(num, silent_ot_left());
+		memcpy(data, ot_data + ot_used, take * sizeof(block));
+		ot_used  += take;
+		produced += take;
 	}
-	int64_t round_inplace = (num-gened-M) / ot_limit;
-	int64_t last_round_ot = num-gened-round_inplace*ot_limit;
-	bool round_memcpy = last_round_ot>ot_limit?true:false;
-	if(round_memcpy) last_round_ot -= ot_limit;
-	for(int64_t i = 0; i < round_inplace; ++i) {
-		extend_f2k(pt);
-		ot_used = ot_limit;
-		pt += ot_limit;
+
+	// 2) While the caller's remaining buffer can hold a full extend
+	//    output (param.n = ot_limit useful + M tail), produce in place.
+	while (num - produced >= param.n) {
+		extend_f2k(data + produced);
+		produced += ot_limit;
+		ot_used   = ot_limit;  // internal buffer is "drained"
 	}
-	if(round_memcpy) {
+
+	// 3) Final tail: extend into the internal buffer, copy out.
+	while (produced < num) {
 		extend_f2k();
-		memcpy(pt, ot_data, ot_limit*sizeof(block));
-		pt += ot_limit;
-	}
-	if(last_round_ot > 0) {
-		extend_f2k();
-		memcpy(pt, ot_data, last_round_ot*sizeof(block));
-		ot_used = last_round_ot;
+		int64_t take = std::min<int64_t>(num - produced, ot_limit);
+		memcpy(data + produced, ot_data, take * sizeof(block));
+		ot_used   = take;
+		produced += take;
 	}
 }
 
@@ -281,32 +275,26 @@ void FerretCOT::recv_cot(block* data, const bool * b, int64_t length) {
 }
 
 void FerretCOT::assemble_state(void * data, int64_t size) {
-	unsigned char * array = (unsigned char * )data;
-	int64_t party_tmp = party;
-	memcpy(array, &party_tmp, sizeof(int64_t));
-	memcpy(array + sizeof(int64_t), &param.n, sizeof(int64_t));
-	memcpy(array + sizeof(int64_t) * 2, &param.t, sizeof(int64_t));
-	memcpy(array + sizeof(int64_t) * 3, &param.k, sizeof(int64_t));
-	memcpy(array + sizeof(int64_t) * 4, &Delta, sizeof(block));
-	memcpy(array + sizeof(int64_t) * 4 + sizeof(block), ot_pre_data, sizeof(block)*param.n_pre);
-	if (ot_pre_data!= nullptr)
-		delete[] ot_pre_data;
+	(void)size;
+	auto* cur = static_cast<unsigned char*>(data);
+	auto put = [&](auto const& v) { memcpy(cur, &v, sizeof v); cur += sizeof v; };
+	int64_t party64 = party;
+	put(party64); put(param.n); put(param.t); put(param.k); put(Delta);
+	memcpy(cur, ot_pre_data, sizeof(block) * param.n_pre);
+	delete[] ot_pre_data;  // delete[] nullptr is well-defined; safe regardless
 	ot_pre_data = nullptr;
 }
 
-inline int FerretCOT::disassemble_state(const void * data, int64_t size) {
-	const unsigned char * array = (const unsigned char * )data;
-	int64_t n2 = 0, t2 = 0, k2 = 0, party2 = 0;
-	ot_pre_data = new block[param.n_pre];
-	memcpy(&party2, array, sizeof(int64_t));
-	memcpy(&n2, array + sizeof(int64_t), sizeof(int64_t));
-	memcpy(&t2, array + sizeof(int64_t) * 2, sizeof(int64_t));
-	memcpy(&k2, array + sizeof(int64_t) * 3, sizeof(int64_t));
-	if(party2 != party or n2 != param.n or t2 != param.t or k2 != param.k) {
+int FerretCOT::disassemble_state(const void * data, int64_t size) {
+	(void)size;
+	auto const* cur = static_cast<const unsigned char*>(data);
+	auto get = [&](auto& v) { memcpy(&v, cur, sizeof v); cur += sizeof v; };
+	int64_t party2 = 0, n2 = 0, t2 = 0, k2 = 0;
+	get(party2); get(n2); get(t2); get(k2); get(Delta);
+	if (party2 != party || n2 != param.n || t2 != param.t || k2 != param.k)
 		return -1;
-	}
-	memcpy(&Delta, array + sizeof(int64_t) * 4, sizeof(block));
-	memcpy(ot_pre_data, array + sizeof(int64_t) * 4 + sizeof(block), sizeof(block)*param.n_pre);
+	ot_pre_data = new block[param.n_pre];
+	memcpy(ot_pre_data, cur, sizeof(block) * param.n_pre);
 
 	extend_initialization();
 	ch[1] = Delta;
