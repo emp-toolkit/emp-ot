@@ -1,7 +1,7 @@
 // Out-of-line definitions for FerretCOT. See ferret_cot.h for the API.
 
 #include "emp-ot/ferret/ferret_cot.h"
-#include "emp-ot/ferret/base_cot.h"
+#include "emp-ot/iknp.h"
 #include "emp-ot/ferret/mpcot_reg.h"
 #include "emp-ot/ferret/lpn_f2.h"
 
@@ -14,7 +14,7 @@ FerretCOT::FerretCOT(int party, int threads, IOChannel **ios,
 	io = ios[0];
 	this->ios = ios;
 	this->is_malicious = malicious;
-	base_cot = std::make_unique<BaseCot>(party, io, malicious);
+	iknp = std::make_unique<IKNP>(io, malicious);
 	pool = std::make_unique<ThreadPool>(threads);
 	this->param = param;
 
@@ -118,30 +118,37 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 	if(hasfile && hasfile2) {
 		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
 	} else {
-		if(party == BOB) base_cot->cot_gen_pre();
-		else base_cot->cot_gen_pre(Delta);
+		// IKNP setup. ALICE binds Δ (LSB=1, set by the constructor or
+		// by the explicit setup(Deltain, ...) entry point); BOB just
+		// sets up the receiver role.
+		if (party == BOB) iknp->setup_recv();
+		else {
+			bool delta_bool[128];
+			bits_to_bools(delta_bool, &Delta, 128);
+			iknp->setup_send(delta_bool);
+		}
 
 		MpcotReg mpcot_ini(party, threads, param.n_pre, param.t_pre, param.log_bin_sz_pre, pool.get(), ios);
 		if(is_malicious) mpcot_ini.set_malicious();
 		LpnF2<10> lpn(party, param.n_pre, param.k_pre, pool.get(), io, pool->size());
 
 		const int level_cots_ini = mpcot_ini.tree_n * (mpcot_ini.tree_height - 1);
-		block *pre_data_ini = new block[level_cots_ini + param.k_pre + mpcot_ini.consist_check_cot_num];
+		const int total_ini = level_cots_ini + param.k_pre + mpcot_ini.consist_check_cot_num;
+		block *pre_data_ini = new block[total_ini];
 		memset(this->ot_pre_data, 0, param.n_pre*16);
 		if(this->is_malicious){
 			seed = zero_block;
 			choice = nullptr;
 		}
+		(void)choice;  // base COT choice bits are IKNP-internal random.
 		// cGGM: base COTs are consumed directly (no OTPre layer). Layout
 		// in pre_data_ini matches FerretCOT::extend's view: level COTs
 		// at offset 0 (with [0,128) aliased into the consistency check),
-		// LPN base at offset 128.
-		const int total_ini = level_cots_ini + param.k_pre + mpcot_ini.consist_check_cot_num;
-		if(choice){
-			base_cot->cot_gen(pre_data_ini, total_ini, choice);
-		}else {
-			base_cot->cot_gen(pre_data_ini, total_ini);
-		}
+		// LPN base at offset 128. IKNP's rcot already meets the LSB-
+		// encoded base-COT convention (recv: bit_0 = choice; send:
+		// bit_0 = 0 since Δ has LSB=1).
+		if (party == ALICE) iknp->rcot_send(pre_data_ini, total_ini);
+		else                iknp->rcot_recv(pre_data_ini, total_ini);
 		extend(ot_pre_data, &mpcot_ini, &lpn, pre_data_ini, seed);
 		delete[] pre_data_ini;
 	}

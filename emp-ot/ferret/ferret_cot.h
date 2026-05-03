@@ -10,7 +10,7 @@
 // forward-declared T as long as the dtor is out-of-line (it is).
 
 namespace emp {
-class BaseCot;
+class IKNP;
 class MpcotReg;
 template <int d> class LpnF2;
 }  // namespace emp
@@ -69,7 +69,7 @@ private:
 
 	std::string pre_ot_filename;
 
-	std::unique_ptr<BaseCot>   base_cot;
+	std::unique_ptr<IKNP>      iknp;
 	std::unique_ptr<ThreadPool> pool;
 	std::unique_ptr<MpcotReg>  mpcot;
 	std::unique_ptr<LpnF2<10>> lpn_f2;
