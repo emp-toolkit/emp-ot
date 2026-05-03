@@ -4,8 +4,7 @@
 #include <emp-tool/emp-tool.h>
 #include <future>
 #include <vector>
-#include "emp-ot/ferret/spcot_sender.h"
-#include "emp-ot/ferret/spcot_recver.h"
+#include "emp-ot/ferret/spcot.h"
 
 namespace emp {
 using std::future;
