@@ -4,7 +4,6 @@
 #include "emp-ot/ferret/base_cot.h"
 #include "emp-ot/ferret/mpcot_reg.h"
 #include "emp-ot/ferret/lpn_f2.h"
-#include "emp-ot/ferret/preot.h"
 #include "emp-ot/ferret/level_correction.h"
 
 namespace emp {
@@ -53,26 +52,35 @@ void FerretCOT::extend_initialization() {
 	mpcot  = std::make_unique<MpcotReg>(party, threads, param.n, param.t, param.log_bin_sz, pool.get(), ios);
 	if (is_malicious) mpcot->set_malicious();
 
-	pre_ot   = std::make_unique<OTPre>(io, mpcot->tree_height - 1, mpcot->tree_n);
-	M        = param.k + pre_ot->n + mpcot->consist_check_cot_num;
+	// cGGM (Half-Tree) consumes one base COT per tree level: tree_n
+	// trees × (tree_height - 1) levels per tree. Plus param.k base
+	// COTs for LPN and 128 for the malicious consistency check.
+	M        = param.k + mpcot->tree_n * (mpcot->tree_height - 1)
+	           + mpcot->consist_check_cot_num;
 	ot_limit = param.n - M;
 	ot_used  = ot_limit;
 	extend_initialized = true;
 }
 
 // extend f2k in detail
-void FerretCOT::extend(block* ot_output, MpcotReg *mpcot, OTPre *preot,
+void FerretCOT::extend(block* ot_output, MpcotReg *mpcot,
 		LpnF2<10> *lpn, block *ot_input, block seed) {
 	if(party == ALICE) mpcot->sender_init(Delta);
 	else mpcot->recver_init();
+	// ot_input slicing matches the pre-cGGM (OTPre) code: cGGM level
+	// corrections consume ot_input[0 .. tree_n*(h-1)) (formerly the
+	// OTPre region). The first 128 entries are also re-read by the
+	// malicious consistency check (same aliasing the OTPre code had).
+	// LPN base reads from ot_input + 128 onward.
+	const int level_cots_per_tree = mpcot->tree_height - 1;
 	if (party == ALICE) {
-		OTPreCorrectionSender lc(preot);
+		CGGMCorrectionSender lc(ot_input, level_cots_per_tree);
 		mpcot->mpcot(ot_output, &lc, nullptr, ot_input);
 	} else {
-		OTPreCorrectionRecver lc(preot);
+		CGGMCorrectionRecver lc(ot_input, level_cots_per_tree);
 		mpcot->mpcot(ot_output, nullptr, &lc, ot_input);
 	}
-	lpn->compute(ot_output, ot_input+mpcot->consist_check_cot_num, seed);
+	lpn->compute(ot_output, ot_input + mpcot->consist_check_cot_num, seed);
 }
 
 // Run one extend round. ot_buffer = nullptr writes to the internal
@@ -82,9 +90,7 @@ void FerretCOT::extend(block* ot_output, MpcotReg *mpcot, OTPre *preot,
 // seed the next round.
 void FerretCOT::extend_f2k(block *ot_buffer) {
 	if (ot_buffer == nullptr) ot_buffer = ot_data;
-	if (party == ALICE) pre_ot->send_pre(ot_pre_data, Delta);
-	else                pre_ot->recv_pre(ot_pre_data);
-	extend(ot_buffer, mpcot.get(), pre_ot.get(), lpn_f2.get(), ot_pre_data);
+	extend(ot_buffer, mpcot.get(), lpn_f2.get(), ot_pre_data);
 	memcpy(ot_pre_data, ot_buffer + ot_limit, M * sizeof(block));
 	ot_used = 0;
 }
@@ -125,23 +131,26 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 
 		MpcotReg mpcot_ini(party, threads, param.n_pre, param.t_pre, param.log_bin_sz_pre, pool.get(), ios);
 		if(is_malicious) mpcot_ini.set_malicious();
-		OTPre pre_ot_ini(ios[0], mpcot_ini.tree_height-1, mpcot_ini.tree_n);
 		LpnF2<10> lpn(party, param.n_pre, param.k_pre, pool.get(), io, pool->size());
 
-		block *pre_data_ini = new block[param.k_pre+mpcot_ini.consist_check_cot_num];
+		const int level_cots_ini = mpcot_ini.tree_n * (mpcot_ini.tree_height - 1);
+		block *pre_data_ini = new block[level_cots_ini + param.k_pre + mpcot_ini.consist_check_cot_num];
 		memset(this->ot_pre_data, 0, param.n_pre*16);
 		if(this->is_malicious){
 			seed = zero_block;
 			choice = nullptr;
 		}
+		// cGGM: base COTs are consumed directly (no OTPre layer). Layout
+		// in pre_data_ini matches FerretCOT::extend's view: level COTs
+		// at offset 0 (with [0,128) aliased into the consistency check),
+		// LPN base at offset 128.
+		const int total_ini = level_cots_ini + param.k_pre + mpcot_ini.consist_check_cot_num;
 		if(choice){
-            base_cot->cot_gen(&pre_ot_ini, pre_ot_ini.n, choice);
-            base_cot->cot_gen(pre_data_ini, param.k_pre + mpcot_ini.consist_check_cot_num, choice+pre_ot_ini.n);
-        }else {
-            base_cot->cot_gen(&pre_ot_ini, pre_ot_ini.n);
-            base_cot->cot_gen(pre_data_ini, param.k_pre + mpcot_ini.consist_check_cot_num);
-        }
-		extend(ot_pre_data, &mpcot_ini, &pre_ot_ini, &lpn, pre_data_ini, seed);
+			base_cot->cot_gen(pre_data_ini, total_ini, choice);
+		}else {
+			base_cot->cot_gen(pre_data_ini, total_ini);
+		}
+		extend(ot_pre_data, &mpcot_ini, &lpn, pre_data_ini, seed);
 		delete[] pre_data_ini;
 	}
 
@@ -240,11 +249,8 @@ int64_t FerretCOT::rcot_inplace(block *ot_buffer, int64_t byte_space, block seed
 	int64_t round = ot_output_n / ot_limit;
 	block *pt = ot_buffer;
 	for(int64_t i = 0; i < round; ++i) {
-		if(party == ALICE)
-		    pre_ot->send_pre(ot_pre_data, Delta);
-		else pre_ot->recv_pre(ot_pre_data);
 		if(this->is_malicious) seed = zero_block;
-		extend(pt, mpcot.get(), pre_ot.get(), lpn_f2.get(), ot_pre_data, seed);
+		extend(pt, mpcot.get(), lpn_f2.get(), ot_pre_data, seed);
 		pt += ot_limit;
 		memcpy(ot_pre_data, pt, M*sizeof(block));
 	}

@@ -11,7 +11,6 @@
 
 namespace emp {
 class BaseCot;
-class OTPre;
 class MpcotReg;
 template <int d> class LpnF2;
 }  // namespace emp
@@ -71,14 +70,13 @@ private:
 	std::string pre_ot_filename;
 
 	std::unique_ptr<BaseCot>   base_cot;
-	std::unique_ptr<OTPre>     pre_ot;
 	std::unique_ptr<ThreadPool> pool;
 	std::unique_ptr<MpcotReg>  mpcot;
 	std::unique_ptr<LpnF2<10>> lpn_f2;
 
 	void extend_initialization();
 
-	void extend(block* ot_output, MpcotReg *mpfss, OTPre *preot,
+	void extend(block* ot_output, MpcotReg *mpfss,
 			LpnF2<10> *lpn, block *ot_input, block seed = zero_block);
 
 	// One-arg form. Pass nullptr to write to the internal buffer

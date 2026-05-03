@@ -3,7 +3,7 @@
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/ferret/constants.h"
 #include "emp-ot/ferret/level_correction.h"
-#include "emp-ot/pprf.h"
+#include "emp-ot/ferret/cggm.h"
 
 namespace emp {
 
@@ -37,7 +37,7 @@ public:
 	// Receive per-level K^{ᾱ_i}_{i+1} into m[0..depth-2] and the
 	// trailing secret_sum_f2 via the level-correction strategy.
 	void recv_levels(LevelCorrectionRecver& lc, IOChannel* io2, int s) {
-		lc.recv_tree(s, io2, m, b, depth-1, &secret_sum_f2);
+		lc.recv_tree(s, io2, m, depth-1, &secret_sum_f2);
 	}
 
 	// Reconstruct the GGM tree (every leaf except the punctured one),
@@ -49,7 +49,7 @@ public:
 	void compute(block* ggm_tree_mem) {
 		this->ggm_tree = ggm_tree_mem;
 		get_index();  // idempotent; ensures choice_pos == alpha.
-		pprf::eval_receiver(depth - 1, choice_pos, m, ggm_tree);
+		cggm::eval_receiver(depth - 1, choice_pos, m, ggm_tree);
 		apply_punctured_correction();
 	}
 

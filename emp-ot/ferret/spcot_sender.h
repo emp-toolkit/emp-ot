@@ -4,7 +4,7 @@
 #include "emp-ot/ferret/constants.h"
 #include "emp-ot/ferret/level_correction.h"
 #include "emp-ot/ferret/test_random.h"
-#include "emp-ot/pprf.h"
+#include "emp-ot/ferret/cggm.h"
 
 namespace emp {
 
@@ -17,7 +17,7 @@ class SPCOT_Sender { public:
 
 	SPCOT_Sender(IOChannel * /*io*/, int depth_in)
 			: depth(depth_in), leave_n(1 << (depth_in - 1)),
-			  m(new block[(depth_in - 1) * 2]) {
+			  m(new block[depth_in - 1]) {
 		if (!ferret_test::maybe_test_seed(&seed)) {
 			PRG prg;
 			prg.random_block(&seed, 1);
@@ -34,15 +34,17 @@ class SPCOT_Sender { public:
 	void compute(block* ggm_tree_mem, block secret) {
 		this->delta    = secret;
 		this->ggm_tree = ggm_tree_mem;
-		pprf::build_sender(depth - 1, seed, ggm_tree, m, m + depth - 1);
+		// cGGM: build the depth-(depth-1) tree from (Δ, seed); m[]
+		// holds the per-level left-side XOR-sums K^0_i for
+		// i ∈ [1, depth-1].
+		cggm::build_sender(depth - 1, secret, seed, ggm_tree, m);
 		apply_punctured_correction(secret);
 	}
 
-	// Hand the per-level XOR-sums (m[0..depth-2] = K0, m[depth-1..]
-	// = K1) to the level-correction strategy along with the trailing
-	// secret_sum_f2.
+	// Hand the per-level K^0_i values to the level-correction
+	// strategy along with the trailing secret_sum_f2.
 	void send_levels(LevelCorrectionSender& lc, IOChannel* io2, int s) {
-		lc.send_tree(s, io2, m, &m[depth-1], depth-1, secret_sum_f2);
+		lc.send_tree(s, io2, m, depth - 1, secret_sum_f2);
 	}
 
 	// SPCOT-specific post-PPRF step: clear bit 0 of every leaf so the
