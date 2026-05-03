@@ -6,7 +6,6 @@
 #include <vector>
 #include "emp-ot/ferret/spcot_sender.h"
 #include "emp-ot/ferret/spcot_recver.h"
-#include "emp-ot/ferret/level_correction.h"
 
 namespace emp {
 using std::future;
@@ -16,6 +15,15 @@ using std::future;
 // `leave_n` + 1) through cGGM (Half-Tree, ePrint 2022/1431, Fig 4),
 // then if malicious mode is on runs the consistency check that
 // consumes 128 base COTs.
+//
+// pre_cot_data layout (passed in by FerretCOT::extend):
+//   [0 .. tree_n*(h-1)) : per-tree base COTs feeding the cGGM
+//                         level corrections. ALICE has K_{r_i};
+//                         BOB has M_{r_i} = K_{r_i} XOR r_i*Delta.
+//   [0 .. 128)          : ALSO consumed by the malicious-mode
+//                         consistency check (aliasing — both reads
+//                         are non-destructive and the security
+//                         argument covers both uses).
 class MpcotReg {
 public:
 	// Security parameter kappa (in bits). The consistency check
@@ -57,26 +65,52 @@ public:
 	// each covering `leave_n` slots of `sparse_vector`. If malicious,
 	// follows up with the F_{2^k} consistency check that binds the
 	// receiver's punctured-position choices to the base COTs.
-	void mpcot(block * sparse_vector, CGGMCorrectionSender* lc_send,
-	           CGGMCorrectionRecver* lc_recv, block *pre_cot_data) {
+	void mpcot(block * sparse_vector, block *pre_cot_data) {
 		consist_check_VW.assign(item_n, zero_block);
 		if (party == BOB) consist_check_chi_alpha.assign(item_n, zero_block);
 
+		const int n_lvl = tree_height - 1;  // cGGM corrections per tree
+
 		if (party == ALICE) {
 			std::vector<SPCOT_Sender*> senders;
-			init_spcot_workers(senders, *lc_send);
+			senders.reserve(tree_n);
+			for (int i = 0; i < tree_n; ++i)
+				senders.push_back(new SPCOT_Sender(netio, tree_height));
+			netio->flush();
+
 			exec_parallel(senders, [&](SPCOT_Sender* s, int i, int t) {
 				s->compute(sparse_vector + i * leave_n, Delta_f2k);
-				s->send_levels(*lc_send, ios[t], i);
+				// cGGM level corrections: c_i = K_{r_i} XOR K^0_i.
+				std::vector<block> c(n_lvl);
+				const block* K = pre_cot_data + i * n_lvl;
+				for (int j = 0; j < n_lvl; ++j) c[j] = K[j] ^ s->m[j];
+				ios[t]->send_block(c.data(), n_lvl);
+				ios[t]->send_data(&s->secret_sum_f2, sizeof(block));
 				ios[t]->flush();
 				if (is_malicious) s->consistency_check_msg_gen(&consist_check_VW[i]);
 			});
 			for (auto* p : senders) delete p;
 		} else {
 			std::vector<SPCOT_Recver*> recvers;
-			init_spcot_workers(recvers, *lc_recv);
+			recvers.reserve(tree_n);
+			for (int i = 0; i < tree_n; ++i) {
+				recvers.push_back(new SPCOT_Recver(netio, tree_height));
+				// b_j = NOT alpha_{j+1} = r_{j+1} = LSB(M_{r_{j+1}}).
+				const block* M = pre_cot_data + i * n_lvl;
+				for (int j = 0; j < n_lvl; ++j)
+					recvers[i]->b[j] = getLSB(M[j]);
+				recvers[i]->get_index();
+			}
+			netio->flush();
+
 			exec_parallel(recvers, [&](SPCOT_Recver* r, int i, int t) {
-				r->recv_levels(*lc_recv, ios[t], i);
+				// Receive (n_lvl corrections + secret_sum_f2); recover
+				// K^{ᾱ_j}_{j+1} = M_{r_{j+1}} XOR c_{j+1}.
+				std::vector<block> c(n_lvl);
+				ios[t]->recv_block(c.data(), n_lvl);
+				ios[t]->recv_data(&r->secret_sum_f2, sizeof(block));
+				const block* M = pre_cot_data + i * n_lvl;
+				for (int j = 0; j < n_lvl; ++j) r->m[j] = M[j] ^ c[j];
 				r->compute(sparse_vector + i * leave_n);
 				if (is_malicious)
 					r->consistency_check_msg_gen(&consist_check_chi_alpha[i],
@@ -92,25 +126,6 @@ public:
 	}
 
 private:
-	// Construct `tree_n` SPCOT workers, advancing the level-correction
-	// cursor by one batch per worker. Sender just bumps the cursor;
-	// receiver also drains the choice bits into each worker's `b` and
-	// computes its puncture index.
-	template <typename Worker, typename LC>
-	void init_spcot_workers(std::vector<Worker*>& out, LC& lc) {
-		out.reserve(tree_n);
-		for (int i = 0; i < tree_n; ++i) {
-			out.push_back(new Worker(netio, tree_height));
-			if constexpr (std::is_same_v<Worker, SPCOT_Sender>) {
-				lc.advance_one_tree();
-			} else {
-				lc.drain_choice_bits_one_tree(out[i]->b, tree_height - 1);
-				out[i]->get_index();  // populates choice_pos
-			}
-		}
-		netio->flush();
-	}
-
 	// Distribute work over `threads` worker pool threads. Each thread
 	// gets a contiguous slice of [0, tree_n) and its own IOChannel
 	// (ios[t]). The per_worker callback receives (worker, i, t).

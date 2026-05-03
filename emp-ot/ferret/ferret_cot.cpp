@@ -4,7 +4,6 @@
 #include "emp-ot/ferret/base_cot.h"
 #include "emp-ot/ferret/mpcot_reg.h"
 #include "emp-ot/ferret/lpn_f2.h"
-#include "emp-ot/ferret/level_correction.h"
 
 namespace emp {
 
@@ -67,19 +66,12 @@ void FerretCOT::extend(block* ot_output, MpcotReg *mpcot,
 		LpnF2<10> *lpn, block *ot_input, block seed) {
 	if(party == ALICE) mpcot->sender_init(Delta);
 	else mpcot->recver_init();
-	// ot_input slicing matches the pre-cGGM (OTPre) code: cGGM level
-	// corrections consume ot_input[0 .. tree_n*(h-1)) (formerly the
-	// OTPre region). The first 128 entries are also re-read by the
-	// malicious consistency check (same aliasing the OTPre code had).
-	// LPN base reads from ot_input + 128 onward.
-	const int level_cots_per_tree = mpcot->tree_height - 1;
-	if (party == ALICE) {
-		CGGMCorrectionSender lc(ot_input, level_cots_per_tree);
-		mpcot->mpcot(ot_output, &lc, nullptr, ot_input);
-	} else {
-		CGGMCorrectionRecver lc(ot_input, level_cots_per_tree);
-		mpcot->mpcot(ot_output, nullptr, &lc, ot_input);
-	}
+	// ot_input slicing: cGGM level corrections consume
+	// ot_input[0 .. tree_n*(h-1)) (mpcot reads them directly via
+	// pre_cot_data). The first 128 entries are also re-read by the
+	// malicious consistency check (aliasing both reads is fine; both
+	// are non-destructive). LPN base reads from ot_input + 128 onward.
+	mpcot->mpcot(ot_output, ot_input);
 	lpn->compute(ot_output, ot_input + mpcot->consist_check_cot_num, seed);
 }
 

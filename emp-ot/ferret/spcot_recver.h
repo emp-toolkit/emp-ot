@@ -2,7 +2,6 @@
 #define EMP_OT_SPCOT_RECVER_H__
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/ferret/constants.h"
-#include "emp-ot/ferret/level_correction.h"
 #include "emp-ot/ferret/cggm.h"
 
 namespace emp {
@@ -32,12 +31,6 @@ public:
 				choice_pos +=1;
 		}
 		return choice_pos;
-	}
-
-	// Receive per-level K^{ᾱ_i}_{i+1} into m[0..depth-2] and the
-	// trailing secret_sum_f2 via the level-correction helper.
-	void recv_levels(CGGMCorrectionRecver& lc, IOChannel* io2, int s) {
-		lc.recv_tree(s, io2, m, depth-1, &secret_sum_f2);
 	}
 
 	// Reconstruct the GGM tree (every leaf except the punctured one),

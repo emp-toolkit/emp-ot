@@ -2,7 +2,6 @@
 #define EMP_OT_SPCOT_SENDER_H__
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/ferret/constants.h"
-#include "emp-ot/ferret/level_correction.h"
 #include "emp-ot/ferret/test_random.h"
 #include "emp-ot/ferret/cggm.h"
 
@@ -39,12 +38,6 @@ class SPCOT_Sender { public:
 		// i ∈ [1, depth-1].
 		cggm::build_sender(depth - 1, secret, seed, ggm_tree, m);
 		apply_punctured_correction(secret);
-	}
-
-	// Hand the per-level K^0_i values to the level-correction
-	// helper along with the trailing secret_sum_f2.
-	void send_levels(CGGMCorrectionSender& lc, IOChannel* io2, int s) {
-		lc.send_tree(s, io2, m, depth - 1, secret_sum_f2);
 	}
 
 	// SPCOT-specific post-PPRF step: clear bit 0 of every leaf so the
