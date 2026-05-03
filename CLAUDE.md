@@ -1,15 +1,23 @@
 # Project notes for AI coding agents
 
-## Wire-trace baseline (post-cGGM migration)
+## Wire-trace baseline
 
-Commit `9f7da81` ("Migrate ferret SPCOT to Half-Tree (cGGM); drop
-OTPre from data path") incorporated the Half-Tree single-point COT
-optimization (Guo-Yang-Wang-Zhang-Xie-Liu-Zhao, ePrint 2022/1431,
-Fig 4). This was a **deliberate wire-format change**: per-tree
-level corrections went from 2·κ-bit pair-OT messages to 1·κ-bit
-cGGM corrections, halving the SPCOT communication. The pre-cGGM
-byte trace is no longer valid; **the new baseline is checked in
-under `test/baseline/`**.
+The current baseline reflects two intentional wire changes since
+the original ferret protocol:
+
+- Commit `9f7da81` — Half-Tree (cGGM) single-point COT (ePrint
+  2022/1431 Fig 4). Per-tree level corrections went from 2·κ-bit
+  pair-OT messages to 1·κ-bit cGGM corrections, halving the SPCOT
+  wire bytes.
+- **Reorg R6** — `BaseCot` calls `iknp->rcot_send/rcot_recv`
+  directly instead of the chosen-message `send_cot/recv_cot`
+  wrapper. The chosen-message wrapper added a per-COT bit
+  exchange so the receiver could specify exact choice bits;
+  ferret never specifies them, so this is pure round-trip waste.
+  Setup-phase wire bytes drop accordingly. Extend-phase wire is
+  byte-identical (same trace file size, but content differs
+  because `pre_cot_data` is now sourced from raw IKNP rcot
+  rather than the corrected variant).
 
 Files:
 - `test/baseline/ferret-cggm.{alice,bob}.snap` — post-setup state

@@ -40,34 +40,19 @@ class BaseCot { public:
 		iknp->setup_send(delta_bool);
 	}
 
-	// Generate `size` LSB-encoded base COTs into ot_data.
-	void cot_gen(block *ot_data, int64_t size, bool *pre_bool = nullptr) {
-		bool *bits = produce_cots(ot_data, size, pre_bool);
-		delete[] bits;  // delete[] nullptr is well-defined
-	}
-
-private:
-	// ALICE runs IKNP send_cot and masks bit 0; BOB picks choice bits
-	// (caller-supplied unless malicious, in which case fresh PRG-
-	// sampled), runs IKNP recv_cot, masks bit 0, then ORs the choice
-	// back in. Returns the choice-bit array (BOB only; nullptr for
-	// ALICE) — caller frees.
-	bool* produce_cots(block *ot_data, int64_t size, bool *pre_bool) {
-		if (party == ALICE) {
-			iknp->send_cot(ot_data, size);
-			io->flush();
-			for (int64_t i = 0; i < size; ++i)
-				ot_data[i] = ot_data[i] & lsb_clear_mask;
-			return nullptr;
-		}
-		bool *bits = new bool[size];
-		if (pre_bool && !malicious) memcpy(bits, pre_bool, size);
-		else                        PRG().random_bool(bits, size);
-		iknp->recv_cot(ot_data, bits, size);
-		const block ch[2] = { zero_block, lsb_only_mask };
-		for (int64_t i = 0; i < size; ++i)
-			ot_data[i] = (ot_data[i] & lsb_clear_mask) ^ ch[bits[i]];
-		return bits;
+	// Generate `size` LSB-encoded base COTs into ot_data. Calls IKNP's
+	// rcot_* directly (the chosen-message wrapper in cot.h::RandomCOT
+	// adds a per-COT bit exchange that ferret doesn't need — pre_bool
+	// is always nullptr at real call sites). IKNP's rcot already
+	// satisfies the LSB-encoded convention out of the box:
+	//   recv: bit_0(M_i) = b_i (pinned by IKNP::rcot_recv_next).
+	//   send: bit_0(K_i) = bit_0(M_i) XOR b_i·bit_0(Δ) = b XOR b = 0,
+	//         since cot_gen_pre forces bit_0(Δ) = 1.
+	// pre_bool kept on the signature so call sites need no edits; it
+	// is unused.
+	void cot_gen(block *ot_data, int64_t size, bool * /*pre_bool*/ = nullptr) {
+		if (party == ALICE) iknp->rcot_send(ot_data, size);
+		else                iknp->rcot_recv(ot_data, size);
 	}
 };
 
