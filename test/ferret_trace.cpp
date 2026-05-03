@@ -88,8 +88,13 @@ int main(int argc, char** argv) {
     constexpr int64_t N1 = (1 << 20) + 101;
     constexpr int64_t N2 = (1 << 19);
     vector<block> out1(N1), out2(N2);
-    ot.rcot(out1.data(), N1);
-    ot.rcot(out2.data(), N2);
+    if (party == ALICE) {
+        ot.rcot_send(out1.data(), N1);
+        ot.rcot_send(out2.data(), N2);
+    } else {
+        ot.rcot_recv(out1.data(), N1);
+        ot.rcot_recv(out2.data(), N2);
+    }
 
     // Suppress dtor's pre-OT data file write — not part of the wire trace.
     ot.skip_file();

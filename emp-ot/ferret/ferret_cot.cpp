@@ -1,6 +1,9 @@
 // Out-of-line definitions for FerretCOT. See ferret_cot.h for the API.
 
 #include "emp-ot/ferret/ferret_cot.h"
+#include "emp-ot/ferret/base_cot.h"
+#include "emp-ot/ferret/mpcot_reg.h"
+#include "emp-ot/ferret/lpn_f2.h"
 
 namespace emp {
 
@@ -11,9 +14,8 @@ FerretCOT::FerretCOT(int party, int threads, IOChannel **ios,
 	io = ios[0];
 	this->ios = ios;
 	this->is_malicious = malicious;
-	ch[0] = zero_block;
-	base_cot = new BaseCot(party, io, malicious);
-	pool = new ThreadPool(threads);
+	base_cot = std::make_unique<BaseCot>(party, io, malicious);
+	pool = std::make_unique<ThreadPool>(threads);
 	this->param = param;
 
 	this->extend_initialized = false;
@@ -34,28 +36,25 @@ void FerretCOT::skip_file() {
 }
 
 FerretCOT::~FerretCOT() {
+	// Persist pre-OT data to disk for the next session, if any.
 	if (ot_pre_data != nullptr) {
-		if(party == ALICE) write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)Delta, pre_ot_filename);
-		else write_pre_data128_to_file((void*)ot_pre_data, (__uint128_t)0, pre_ot_filename);
+		__uint128_t delta128 = (party == ALICE) ? (__uint128_t)Delta : 0;
+		write_pre_data128_to_file((void*)ot_pre_data, delta128, pre_ot_filename);
 		delete[] ot_pre_data;
 	}
-	if (ot_data != nullptr) delete[] ot_data;
-	if(pre_ot != nullptr) delete pre_ot;
-	delete base_cot;
-	delete pool;
-	if(lpn_f2 != nullptr) delete lpn_f2;
-	if(mpcot != nullptr) delete mpcot;
+	delete[] ot_data;
+	// unique_ptr members destroy in reverse-declared order automatically.
 }
 
 void FerretCOT::extend_initialization() {
-	lpn_f2 = new LpnF2<10>(party, param.n, param.k, pool, io, pool->size());
-	mpcot = new MpcotReg(party, threads, param.n, param.t, param.log_bin_sz, pool, ios);
-	if(is_malicious) mpcot->set_malicious();
+	lpn_f2 = std::make_unique<LpnF2<10>>(party, param.n, param.k, pool.get(), io, pool->size());
+	mpcot  = std::make_unique<MpcotReg>(party, threads, param.n, param.t, param.log_bin_sz, pool.get(), ios);
+	if (is_malicious) mpcot->set_malicious();
 
-	pre_ot = new OTPre(io, mpcot->tree_height-1, mpcot->tree_n);
-	M = param.k + pre_ot->n + mpcot->consist_check_cot_num;
+	pre_ot   = std::make_unique<OTPre>(io, mpcot->tree_height - 1, mpcot->tree_n);
+	M        = param.k + pre_ot->n + mpcot->consist_check_cot_num;
 	ot_limit = param.n - M;
-	ot_used = ot_limit;
+	ot_used  = ot_limit;
 	extend_initialized = true;
 }
 
@@ -68,26 +67,24 @@ void FerretCOT::extend(block* ot_output, MpcotReg *mpcot, OTPre *preot,
 	lpn->compute(ot_output, ot_input+mpcot->consist_check_cot_num, seed);
 }
 
-// extend f2k (customized location)
+// Run one extend round. ot_buffer = nullptr writes to the internal
+// ot_data buffer (rcot_send drains it via memcpy); a non-null buffer
+// writes directly into the caller's storage. Either way the trailing
+// M-block tail of the new output is copied back into ot_pre_data to
+// seed the next round.
 void FerretCOT::extend_f2k(block *ot_buffer) {
-	if(party == ALICE)
-	    pre_ot->send_pre(ot_pre_data, Delta);
-	else pre_ot->recv_pre(ot_pre_data);
-	extend(ot_buffer, mpcot, pre_ot, lpn_f2, ot_pre_data);
-	memcpy(ot_pre_data, ot_buffer+ot_limit, M*sizeof(block));
+	if (ot_buffer == nullptr) ot_buffer = ot_data;
+	if (party == ALICE) pre_ot->send_pre(ot_pre_data, Delta);
+	else                pre_ot->recv_pre(ot_pre_data);
+	extend(ot_buffer, mpcot.get(), pre_ot.get(), lpn_f2.get(), ot_pre_data);
+	memcpy(ot_pre_data, ot_buffer + ot_limit, M * sizeof(block));
 	ot_used = 0;
-}
-
-// extend f2k
-void FerretCOT::extend_f2k() {
-	extend_f2k(ot_data);
 }
 
 void FerretCOT::setup(block Deltain, std::string pre_file, bool *choice, block seed) {
 	this->Delta = Deltain;
 	if(this->is_malicious) seed = zero_block;
 	setup(pre_file, choice, seed);
-	ch[1] = Delta;
 }
 
 void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
@@ -112,16 +109,16 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 		io->send_data(&hasfile, sizeof(bool));
 		io->flush();
 	}
-	if(hasfile & hasfile2) {
+	if(hasfile && hasfile2) {
 		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
 	} else {
 		if(party == BOB) base_cot->cot_gen_pre();
 		else base_cot->cot_gen_pre(Delta);
 
-		MpcotReg mpcot_ini(party, threads, param.n_pre, param.t_pre, param.log_bin_sz_pre, pool, ios);
+		MpcotReg mpcot_ini(party, threads, param.n_pre, param.t_pre, param.log_bin_sz_pre, pool.get(), ios);
 		if(is_malicious) mpcot_ini.set_malicious();
 		OTPre pre_ot_ini(ios[0], mpcot_ini.tree_height-1, mpcot_ini.tree_n);
-		LpnF2<10> lpn(party, param.n_pre, param.k_pre, pool, io, pool->size());
+		LpnF2<10> lpn(party, param.n_pre, param.k_pre, pool.get(), io, pool->size());
 
 		block *pre_data_ini = new block[param.k_pre+mpcot_ini.consist_check_cot_num];
 		memset(this->ot_pre_data, 0, param.n_pre*16);
@@ -143,7 +140,7 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 	fut.get();
 }
 
-void FerretCOT::rcot(block *data, int64_t num) {
+void FerretCOT::rcot_send(block *data, int64_t num) {
 	if (!extend_initialized)
 		error("Run setup before extending");
 	if (ot_data == nullptr) {
@@ -239,39 +236,11 @@ int64_t FerretCOT::rcot_inplace(block *ot_buffer, int64_t byte_space, block seed
 		    pre_ot->send_pre(ot_pre_data, Delta);
 		else pre_ot->recv_pre(ot_pre_data);
 		if(this->is_malicious) seed = zero_block;
-		extend(pt, mpcot, pre_ot, lpn_f2, ot_pre_data, seed);
+		extend(pt, mpcot.get(), pre_ot.get(), lpn_f2.get(), ot_pre_data, seed);
 		pt += ot_limit;
 		memcpy(ot_pre_data, pt, M*sizeof(block));
 	}
 	return ot_output_n;
-}
-
-void FerretCOT::online_sender(block *data, int64_t length) {
-	bool *bo = new bool[length];
-	io->recv_bool(bo, length*sizeof(bool));
-	for(int64_t i = 0; i < length; ++i) {
-		data[i] = data[i] ^ ch[bo[i]];
-	}
-	delete[] bo;
-}
-
-void FerretCOT::online_recver(block *data, const bool *b, int64_t length) {
-	bool *bo = new bool[length];
-	for(int64_t i = 0; i < length; ++i) {
-		bo[i] = b[i] ^ getLSB(data[i]);
-	}
-	io->send_bool(bo, length*sizeof(bool));
-	delete[] bo;
-}
-
-void FerretCOT::send_cot(block * data, int64_t length) {
-	rcot(data, length);
-	online_sender(data, length);
-}
-
-void FerretCOT::recv_cot(block* data, const bool * b, int64_t length) {
-	rcot(data, length);
-	online_recver(data, b, length);
 }
 
 void FerretCOT::assemble_state(void * data, int64_t size) {
@@ -297,7 +266,6 @@ int FerretCOT::disassemble_state(const void * data, int64_t size) {
 	memcpy(ot_pre_data, cur, sizeof(block) * param.n_pre);
 
 	extend_initialization();
-	ch[1] = Delta;
 	return 0;
 }
 

@@ -134,8 +134,8 @@ bits — see the point-and-permute discussion in
 
 ```cpp
 FerretCOT<NetIO> ferretcot(party, /*threads=*/1, &io);
-if (party == ALICE) ferretcot.rcot(b0, length);    // ferretcot.Delta
-else                ferretcot.rcot(br, length);    // br[i] = b0[i] ^ LSB(br[i])*Delta
+if (party == ALICE) ferretcot.rcot_send(b0, length);   // ferretcot.Delta
+else                ferretcot.rcot_recv(br, length);   // br[i] = b0[i] ^ LSB(br[i])*Delta
 ```
 
 ## Performance

@@ -1,6 +1,5 @@
 #ifndef EMP_OT_SPCOT_SENDER_H__
 #define EMP_OT_SPCOT_SENDER_H__
-#include <iostream>
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/ferret/constants.h"
 #include "emp-ot/ferret/preot.h"
@@ -13,22 +12,16 @@ class SPCOT_Sender { public:
 	block seed;
 	block delta;
 	block *ggm_tree, *m;
-	IOChannel *io;
 	int depth, leave_n;
-	PRG prg;
 	block secret_sum_f2;
 
-	SPCOT_Sender(IOChannel *io, int depth_in) {
-		initialization(io, depth_in);
-		if (!ferret_test::maybe_test_seed(&seed))
+	SPCOT_Sender(IOChannel * /*io*/, int depth_in)
+			: depth(depth_in), leave_n(1 << (depth_in - 1)),
+			  m(new block[(depth_in - 1) * 2]) {
+		if (!ferret_test::maybe_test_seed(&seed)) {
+			PRG prg;
 			prg.random_block(&seed, 1);
-	}
-
-	void initialization(IOChannel *io, int depth_in) {
-		this->io = io;
-		this->depth = depth_in;
-		this->leave_n = 1<<(this->depth-1);
-		m = new block[(depth-1)*2];
+		}
 	}
 
 	~SPCOT_Sender() {

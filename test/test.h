@@ -141,7 +141,8 @@ double test_rcot(T* ot, NetIO *io, int party, int64_t length, bool inplace) {
 
 		// The RCOTs will be generated in the internal buffer
 		// then be copied to the user buffer
-		ot->rcot(b, length);
+		if (party == ALICE) ot->rcot_send(b, length);
+		else                ot->rcot_recv(b, length);
 	} else {
 		// Call byte_memory_need_inplace() to get the buffer size needed
 		mem_size = ot->byte_memory_need_inplace((uint64_t)length);

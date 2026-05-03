@@ -1,10 +1,20 @@
 #ifndef EMP_FERRET_COT_H_
 #define EMP_FERRET_COT_H_
 #include "emp-ot/cot.h"
-#include "emp-ot/ferret/mpcot_reg.h"
-#include "emp-ot/ferret/base_cot.h"
-#include "emp-ot/ferret/lpn_f2.h"
 #include "emp-ot/ferret/constants.h"
+#include <memory>
+
+// Forward-declare ferret internals so the public header doesn't pull
+// in the IKNP / OTPre / SPCOT / GGM / TwoKeyPRP transitive closure.
+// The .cpp #includes the real headers; std::unique_ptr<T> works with
+// forward-declared T as long as the dtor is out-of-line (it is).
+
+namespace emp {
+class BaseCot;
+class OTPre;
+class MpcotReg;
+template <int d> class LpnF2;
+}  // namespace emp
 
 namespace emp {
 
@@ -14,7 +24,7 @@ namespace emp {
  * https://eprint.iacr.org/2020/924.pdf
  *
  */
-class FerretCOT: public COT {
+class FerretCOT: public RandomCOT {
 public:
 	PrimalLPNParameter param;
 	int64_t ot_used, ot_limit;
@@ -30,11 +40,14 @@ public:
 
 	void setup(std::string pre_file = "", bool *choice = nullptr, block seed= zero_block);
 
-	void send_cot(block * data, int64_t length) override;
-
-	void recv_cot(block* data, const bool * b, int64_t length) override;
-
-	void rcot(block *data, int64_t num);
+	// RandomCOT contract: produce `num` LSB-encoded RCOT outputs. The
+	// role is fixed at construction, so the work is identical for
+	// sender and receiver — rcot_send holds the body, rcot_recv just
+	// delegates. RandomCOT::send_cot / recv_cot build the
+	// chosen-choice COT layer on top via the standard 1-bit-per-COT
+	// correction.
+	void rcot_send(block* data, int64_t num) override;
+	void rcot_recv(block* data, int64_t num) override { rcot_send(data, num); }
 
 	int64_t rcot_inplace(block *ot_buffer, int64_t length, block seed = zero_block);
 
@@ -46,41 +59,31 @@ public:
 
 	int64_t state_size();
 private:
-	block ch[2];
-
 	IOChannel **ios;
 	int party, threads;
 	int64_t M;
 	bool is_malicious;
 	bool extend_initialized;
 
-	block * ot_pre_data = nullptr;
-	block * ot_data = nullptr;
+	block * ot_pre_data = nullptr;  // sized to param.n_pre when alive
+	block * ot_data = nullptr;      // sized to param.n; lazily allocated
 
 	std::string pre_ot_filename;
 
-	BaseCot *base_cot = nullptr;
-	OTPre *pre_ot = nullptr;
-	ThreadPool *pool = nullptr;
-	MpcotReg *mpcot = nullptr;
-	LpnF2<10> *lpn_f2 = nullptr;
-
-	void online_sender(block *data, int64_t length);
-
-	void online_recver(block *data, const bool *b, int64_t length);
-
-	void set_param();
-
-	void set_preprocessing_param();
+	std::unique_ptr<BaseCot>   base_cot;
+	std::unique_ptr<OTPre>     pre_ot;
+	std::unique_ptr<ThreadPool> pool;
+	std::unique_ptr<MpcotReg>  mpcot;
+	std::unique_ptr<LpnF2<10>> lpn_f2;
 
 	void extend_initialization();
 
 	void extend(block* ot_output, MpcotReg *mpfss, OTPre *preot,
 			LpnF2<10> *lpn, block *ot_input, block seed = zero_block);
 
-	void extend_f2k(block *ot_buffer);
-
-	void extend_f2k();
+	// One-arg form. Pass nullptr to write to the internal buffer
+	// (caller will copy out); pass a user buffer to write directly.
+	void extend_f2k(block *ot_buffer = nullptr);
 
 	int64_t silent_ot_left();
 

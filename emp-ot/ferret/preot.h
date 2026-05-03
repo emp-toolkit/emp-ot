@@ -4,21 +4,20 @@
 
 namespace emp {
 
+// Pre-computed 2-of-1 OT bridge used by ferret/spcot. Holds `n =
+// length * times` pre-encrypted (m0, m1) pairs in `pre_data`. Both
+// parties advance a shared `count` cursor in `length`-sized batches
+// (one batch per spcot tree); reset() rewinds. send/recv finish each
+// batch by streaming the per-OT mask blocks over the supplied
+// per-thread `io2` channel.
 class OTPre { public:
-	IOChannel* io;
 	block * pre_data = nullptr;
 	bool * bits = nullptr;
 	int n;
-	vector<block*> pointers;
-	vector<const bool*> choices;
-	vector<const block*> pointers0;
-	vector<const block*> pointers1;
 
 	CCRH ccrh;
 	int length, count;
-	block Delta;
-	OTPre(IOChannel* io, int length, int times) {
-		this->io = io;
+	OTPre(IOChannel* /*io*/, int length, int times) {
 		this->length = length;
 		n = length*times;
 		pre_data = new block[2*n];
@@ -34,8 +33,7 @@ class OTPre { public:
 			delete[] bits;
 	}
 
-	void send_pre(block * data, block in_Delta) {
-		Delta = in_Delta;
+	void send_pre(block * data, block Delta) {
 		ccrh.Hn(pre_data, data, n, pre_data+n);
 		xorBlocks_arr(pre_data+n, data, Delta, n);
 		ccrh.Hn(pre_data+n, pre_data+n, n);

@@ -1,6 +1,5 @@
 #ifndef EMP_OT_SPCOT_RECVER_H__
 #define EMP_OT_SPCOT_RECVER_H__
-#include <iostream>
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/ferret/constants.h"
 #include "emp-ot/ferret/preot.h"
@@ -13,17 +12,12 @@ public:
 	block *ggm_tree, *m;
 	bool *b;
 	int choice_pos, depth, leave_n;
-	IOChannel *io;
 
 	block secret_sum_f2;
 
-	SPCOT_Recver(IOChannel *io, int depth_in) {
-		this->io = io;
-		this->depth = depth_in;
-		this->leave_n = 1<<(depth_in-1);
-		m = new block[depth-1];
-		b = new bool[depth-1];
-	}
+	SPCOT_Recver(IOChannel * /*io*/, int depth_in)
+			: m(new block[depth_in - 1]), b(new bool[depth_in - 1]),
+			  depth(depth_in), leave_n(1 << (depth_in - 1)) {}
 
 	~SPCOT_Recver(){
 		delete[] m;

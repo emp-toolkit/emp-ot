@@ -2,7 +2,8 @@
 #define EMP_OT_MPCOT_REG_H__
 
 #include <emp-tool/emp-tool.h>
-#include <set>
+#include <future>
+#include <vector>
 #include "emp-ot/ferret/spcot_sender.h"
 #include "emp-ot/ferret/spcot_recver.h"
 #include "emp-ot/ferret/preot.h"
@@ -10,10 +11,19 @@
 namespace emp {
 using std::future;
 
+// Multi-point COT over a regular sparse vector. Drives `tree_n`
+// parallel single-point COT trees of height `tree_height` (= log2 of
+// `leave_n` + 1) through OTPre, then if malicious mode is on runs
+// the consistency check that consumes 128 base COTs.
 class MpcotReg {
 public:
+	// Security parameter kappa (in bits). The consistency check
+	// consumes exactly this many pre-OT base COTs to bind the
+	// receiver's punctured-position choices.
+	static constexpr int kConsistCheckCotNum = 128;
+
 	int party, threads;
-	int item_n, idx_max, m;
+	int item_n, idx_max;
 	int tree_height, leave_n;
 	int tree_n;
 	int consist_check_cot_num;
@@ -22,191 +32,162 @@ public:
 	IOChannel *netio;
 	IOChannel **ios;
 	block Delta_f2k;
-	block *consist_check_chi_alpha = nullptr, *consist_check_VW = nullptr;
+	std::vector<block> consist_check_chi_alpha;
+	std::vector<block> consist_check_VW;
 	ThreadPool *pool;
 
-	std::vector<uint32_t> item_pos_recver;
 	GaloisFieldPacking pack;
 
-	MpcotReg(int party, int threads, int n, int t, int log_bin_sz, ThreadPool * pool, IOChannel **ios) {
-		this->party = party;
-		this->threads = threads;
-		netio = ios[0];
-		this->ios = ios;
-		consist_check_cot_num = 128;
+	MpcotReg(int party, int threads, int n, int t, int log_bin_sz, ThreadPool * pool, IOChannel **ios)
+			: party(party), threads(threads),
+			  item_n(t), idx_max(n),
+			  tree_height(log_bin_sz + 1), leave_n(1 << log_bin_sz),
+			  tree_n(t),
+			  consist_check_cot_num(kConsistCheckCotNum),
+			  is_malicious(false),
+			  netio(ios[0]), ios(ios), pool(pool) {}
 
-		this->pool = pool;
-		this->is_malicious = false;
+	void set_malicious() { is_malicious = true; }
 
-		this->item_n = t;
-		this->idx_max = n;
-		this->tree_height = log_bin_sz+1;
-		this->leave_n = 1<<(this->tree_height-1);
-		this->tree_n = this->item_n;
-	}
+	void sender_init(block delta) { Delta_f2k = delta; }
+	void recver_init() {}
 
-	void set_malicious() {
-		this->is_malicious = true;
-	}
-
-	void sender_init(block delta) {
-		Delta_f2k = delta;
-	}
-
-	void recver_init() {
-		item_pos_recver.resize(this->item_n);
-	}
-
-	// MPFSS F_2k
+	// MPFSS over F_{2^k}. Drives `tree_n` SPCOT trees in parallel,
+	// each covering `leave_n` slots of `sparse_vector`. If malicious,
+	// follows up with the F_{2^k} consistency check that binds the
+	// receiver's punctured-position choices to the base COTs.
 	void mpcot(block * sparse_vector, OTPre * ot, block *pre_cot_data) {
-		if(party == BOB) consist_check_chi_alpha = new block[item_n];
-		consist_check_VW = new block[item_n];
+		consist_check_VW.assign(item_n, zero_block);
+		if (party == BOB) consist_check_chi_alpha.assign(item_n, zero_block);
 
-		vector<SPCOT_Sender*> senders;
-		vector<SPCOT_Recver*> recvers;
-
-		if(party == ALICE) {
-			mpcot_init_sender(senders, ot);
-			exec_parallel_sender(senders, ot, sparse_vector);
+		if (party == ALICE) {
+			std::vector<SPCOT_Sender*> senders;
+			init_spcot_workers(senders, ot);
+			exec_parallel(senders, [&](SPCOT_Sender* s, int i, int t) {
+				s->compute(sparse_vector + i * leave_n, Delta_f2k);
+				s->send_f2k(ot, ios[t], i);
+				ios[t]->flush();
+				if (is_malicious) s->consistency_check_msg_gen(&consist_check_VW[i]);
+			});
+			for (auto* p : senders) delete p;
 		} else {
-			mpcot_init_recver(recvers, ot);
-			exec_parallel_recver(recvers, ot, sparse_vector);
+			std::vector<SPCOT_Recver*> recvers;
+			init_spcot_workers(recvers, ot);
+			exec_parallel(recvers, [&](SPCOT_Recver* r, int i, int t) {
+				r->recv_f2k(ot, ios[t], i);
+				r->compute(sparse_vector + i * leave_n);
+				if (is_malicious)
+					r->consistency_check_msg_gen(&consist_check_chi_alpha[i],
+					                             &consist_check_VW[i]);
+			});
+			for (auto* p : recvers) delete p;
 		}
 
-		if(is_malicious)
-			consistency_check_f2k(pre_cot_data, tree_n);
-
-		for (auto p : senders) delete p;
-		for (auto p : recvers) delete p;
-
-		if(party == BOB) delete[] consist_check_chi_alpha;
-		delete[] consist_check_VW;
+		if (is_malicious) {
+			if (party == ALICE) consistency_check_f2k_sender(pre_cot_data);
+			else                consistency_check_f2k_receiver(pre_cot_data);
+		}
 	}
 
-	void mpcot_init_sender(vector<SPCOT_Sender*> &senders, OTPre *ot) {
-		for(int i = 0; i < tree_n; ++i) {
-			senders.push_back(new SPCOT_Sender(netio, tree_height));
-			ot->choices_sender();
+private:
+	// Construct `tree_n` SPCOT workers, advancing the OTPre cursor by
+	// one batch per worker. Sender just bumps the cursor; receiver
+	// also drains the choice bits into each worker's `b` and computes
+	// its puncture index.
+	template <typename Worker>
+	void init_spcot_workers(std::vector<Worker*>& out, OTPre* ot) {
+		out.reserve(tree_n);
+		for (int i = 0; i < tree_n; ++i) {
+			out.push_back(new Worker(netio, tree_height));
+			if constexpr (std::is_same_v<Worker, SPCOT_Sender>) {
+				ot->choices_sender();
+			} else {
+				ot->choices_recver(out[i]->b);
+				out[i]->get_index();  // populates choice_pos
+			}
 		}
 		netio->flush();
 		ot->reset();
 	}
 
-	void mpcot_init_recver(vector<SPCOT_Recver*> &recvers, OTPre *ot) {
-		for(int i = 0; i < tree_n; ++i) {
-			recvers.push_back(new SPCOT_Recver(netio, tree_height));
-			ot->choices_recver(recvers[i]->b);
-			item_pos_recver[i] = recvers[i]->get_index();
+	// Distribute work over `threads` worker pool threads. Each thread
+	// gets a contiguous slice of [0, tree_n) and its own IOChannel
+	// (ios[t]). The per_worker callback receives (worker, i, t).
+	template <typename Worker, typename Fn>
+	void exec_parallel(std::vector<Worker*>& workers, Fn per_worker) {
+		std::vector<future<void>> fut;
+		const int width = tree_n / threads;
+		for (int t = 0; t < threads - 1; ++t) {
+			const int start = t * width, end = start + width;
+			fut.push_back(pool->enqueue([&workers, start, end, t, &per_worker]() {
+				for (int i = start; i < end; ++i)
+					per_worker(workers[i], i, t);
+			}));
 		}
+		const int start = (threads - 1) * width;
+		const int t     = threads - 1;
+		for (int i = start; i < tree_n; ++i)
+			per_worker(workers[i], i, t);
+		for (auto& f : fut) f.get();
+	}
+
+	// Sender-side malicious-check (F_{2^k}). Receives the receiver's
+	// 128-bit correction (chi_alpha applied to the base COTs), folds
+	// it into our XOR-sum of the per-tree V responses, hashes, and
+	// sends the digest.
+	void consistency_check_f2k_sender(block *pre_cot_data) {
+		block r1, r2;
+		vector_self_xor(&r1, consist_check_VW.data(), tree_n);
+
+		bool x_prime[kConsistCheckCotNum];
+		netio->recv_data(x_prime, kConsistCheckCotNum * sizeof(bool));
+		for (int i = 0; i < kConsistCheckCotNum; ++i)
+			if (x_prime[i])
+				pre_cot_data[i] = pre_cot_data[i] ^ Delta_f2k;
+		pack.packing(&r2, pre_cot_data);
+		r1 = r1 ^ r2;
+
+		block dig[2];
+		Hash hash;
+		hash.hash_once(dig, &r1, sizeof(block));
+		netio->send_data(dig, 2 * sizeof(block));
 		netio->flush();
-		ot->reset();
 	}
 
-	void exec_parallel_sender(vector<SPCOT_Sender*> &senders,
-			OTPre *ot, block* sparse_vector) {
-		vector<future<void>> fut;
-		int width = tree_n / threads;
-		int start = 0, end = width;
-		for(int i = 0; i < threads - 1; ++i) {
-			fut.push_back(this->pool->enqueue([this, start, end, width,
-						senders, ot, sparse_vector](){
-				for(int i = start; i < end; ++i)
-					exec_f2k_sender(senders[i], ot, sparse_vector+i*leave_n,
-							ios[start/width], i);
-			}));
-			start = end;
-			end += width;
-		}
-		end = tree_n;
-		for(int i = start; i < end; ++i)
-			exec_f2k_sender(senders[i], ot, sparse_vector+i*leave_n,
-					ios[threads - 1], i);
-		for (auto & f : fut) f.get();
-	}
+	// Receiver-side malicious-check (F_{2^k}). Sends a 128-bit
+	// correction derived from XOR(chi_alpha) and the LSBs of the base
+	// COTs, then hashes its own XOR-sum of W with the packed base
+	// COTs, and aborts on digest mismatch.
+	void consistency_check_f2k_receiver(block *pre_cot_data) {
+		block r1, r2;
+		vector_self_xor(&r1, consist_check_VW.data(), tree_n);
+		vector_self_xor(&r2, consist_check_chi_alpha.data(), tree_n);
 
-	void exec_parallel_recver(vector<SPCOT_Recver*> &recvers,
-			OTPre *ot, block* sparse_vector) {
-		vector<future<void>> fut;
-		int width = tree_n / threads;
-		int start = 0, end = width;
-		for(int i = 0; i < threads - 1; ++i) {
-			fut.push_back(this->pool->enqueue([this, start, end, width,
-						recvers, ot, sparse_vector](){
-				for(int i = start; i < end; ++i)
-					exec_f2k_recver(recvers[i], ot, sparse_vector+i*leave_n,
-							ios[start/width], i);
-			}));
-			start = end;
-			end += width;
-		}
-		end = tree_n;
-		for(int i = start; i < end; ++i)
-			exec_f2k_recver(recvers[i], ot, sparse_vector+i*leave_n,
-					ios[threads - 1], i);
-		for (auto & f : fut) f.get();
-	}
-
-	void exec_f2k_sender(SPCOT_Sender *sender, OTPre *ot,
-			block *ggm_tree_mem, IOChannel *io, int i) {
-		sender->compute(ggm_tree_mem, Delta_f2k);
-		sender->send_f2k(ot, io, i);
-		io->flush();
-		if(is_malicious)
-			sender->consistency_check_msg_gen(consist_check_VW+i);
-	}
-
-	void exec_f2k_recver(SPCOT_Recver *recver, OTPre *ot,
-			block *ggm_tree_mem, IOChannel *io, int i) {
-		recver->recv_f2k(ot, io, i);
-		recver->compute(ggm_tree_mem);
-		if(is_malicious)
-			recver->consistency_check_msg_gen(consist_check_chi_alpha+i, consist_check_VW+i);
-	}
-
-	// f2k consistency check
-	void consistency_check_f2k(block *pre_cot_data, int num) {
-		if(this->party == ALICE) {
-			block r1, r2;
-			vector_self_xor(&r1, this->consist_check_VW, num);
-			bool x_prime[128];
-			this->netio->recv_data(x_prime, 128*sizeof(bool));
-			for(int i = 0; i < 128; ++i) {
-				if(x_prime[i])
-					pre_cot_data[i] = pre_cot_data[i] ^ this->Delta_f2k;
+		uint64_t pos[2];
+		pos[0] = _mm_extract_epi64(r2, 0);
+		pos[1] = _mm_extract_epi64(r2, 1);
+		bool pre_cot_bool[kConsistCheckCotNum];
+		for (int i = 0; i < 2; ++i) {
+			for (int j = 0; j < 64; ++j) {
+				pre_cot_bool[i * 64 + j] =
+					((pos[i] & 1) == 1) ^ getLSB(pre_cot_data[i * 64 + j]);
+				pos[i] >>= 1;
 			}
-			pack.packing(&r2, pre_cot_data);
-			r1 = r1 ^ r2;
-			block dig[2];
-			Hash hash;
-			hash.hash_once(dig, &r1, sizeof(block));
-			this->netio->send_data(dig, 2*sizeof(block));
-			this->netio->flush();
-		} else {
-			block r1, r2, r3;
-			vector_self_xor(&r1, this->consist_check_VW, num);
-			vector_self_xor(&r2, this->consist_check_chi_alpha, num);
-			uint64_t pos[2];
-			pos[0] = _mm_extract_epi64(r2, 0);
-			pos[1] = _mm_extract_epi64(r2, 1);
-			bool pre_cot_bool[128];
-			for(int i = 0; i < 2; ++i) {
-				for(int j = 0; j < 64; ++j) {
-					pre_cot_bool[i*64+j] = ((pos[i] & 1) == 1) ^ getLSB(pre_cot_data[i*64+j]);
-					pos[i] >>= 1;
-				}
-			}
-			this->netio->send_data(pre_cot_bool, 128*sizeof(bool));
-			this->netio->flush();
-			pack.packing(&r3, pre_cot_data);
-			r1 = r1 ^ r3;
-			block dig[2];
-			Hash hash;
-			hash.hash_once(dig, &r1, sizeof(block));
-			block recv[2];
-			this->netio->recv_data(recv, 2*sizeof(block));
-			if(!cmpBlock(dig, recv, 2))
-				std::cout << "SPCOT consistency check fails" << std::endl;
 		}
+		netio->send_data(pre_cot_bool, kConsistCheckCotNum * sizeof(bool));
+		netio->flush();
+
+		block r3;
+		pack.packing(&r3, pre_cot_data);
+		r1 = r1 ^ r3;
+
+		block dig[2];
+		Hash hash;
+		hash.hash_once(dig, &r1, sizeof(block));
+		block recv[2];
+		netio->recv_data(recv, 2 * sizeof(block));
+		if (!cmpBlock(dig, recv, 2))
+			std::cout << "SPCOT consistency check fails" << std::endl;
 	}
 };
 

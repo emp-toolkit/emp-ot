@@ -1,6 +1,7 @@
 #include <iostream>
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/emp-ot.h"
+#include "emp-ot/ferret/lpn_f2.h"
 #include <stdlib.h>
 using namespace std;
 using namespace emp;
