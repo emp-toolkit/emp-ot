@@ -1,7 +1,7 @@
 #ifndef EMP_OT_PPRF_H__
 #define EMP_OT_PPRF_H__
 #include <emp-tool/emp-tool.h>
-#include "emp-ot/ferret/twokeyprp.h"
+#include "emp-ot/softspoken/twokeyprp.h"
 #include <cstdint>
 
 // Shared depth-d GGM puncturable PRF used by both ferret/spcot
