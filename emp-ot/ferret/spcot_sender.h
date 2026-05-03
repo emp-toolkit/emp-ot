@@ -2,7 +2,7 @@
 #define EMP_OT_SPCOT_SENDER_H__
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/ferret/constants.h"
-#include "emp-ot/ferret/preot.h"
+#include "emp-ot/ferret/level_correction.h"
 #include "emp-ot/ferret/test_random.h"
 #include "emp-ot/pprf.h"
 
@@ -38,10 +38,11 @@ class SPCOT_Sender { public:
 		apply_punctured_correction(secret);
 	}
 
-	// send the nodes by oblivious transfer, F2^k
-	void send_f2k(OTPre * ot, IOChannel * io2, int s) {
-		ot->send(m, &m[depth-1], depth-1, io2, s);
-		io2->send_data(&secret_sum_f2, sizeof(block));
+	// Hand the per-level XOR-sums (m[0..depth-2] = K0, m[depth-1..]
+	// = K1) to the level-correction strategy along with the trailing
+	// secret_sum_f2.
+	void send_levels(LevelCorrectionSender& lc, IOChannel* io2, int s) {
+		lc.send_tree(s, io2, m, &m[depth-1], depth-1, secret_sum_f2);
 	}
 
 	// SPCOT-specific post-PPRF step: clear bit 0 of every leaf so the

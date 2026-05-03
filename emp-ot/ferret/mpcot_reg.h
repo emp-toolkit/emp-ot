@@ -6,7 +6,7 @@
 #include <vector>
 #include "emp-ot/ferret/spcot_sender.h"
 #include "emp-ot/ferret/spcot_recver.h"
-#include "emp-ot/ferret/preot.h"
+#include "emp-ot/ferret/level_correction.h"
 
 namespace emp {
 using std::future;
@@ -56,25 +56,26 @@ public:
 	// each covering `leave_n` slots of `sparse_vector`. If malicious,
 	// follows up with the F_{2^k} consistency check that binds the
 	// receiver's punctured-position choices to the base COTs.
-	void mpcot(block * sparse_vector, OTPre * ot, block *pre_cot_data) {
+	void mpcot(block * sparse_vector, LevelCorrectionSender* lc_send,
+	           LevelCorrectionRecver* lc_recv, block *pre_cot_data) {
 		consist_check_VW.assign(item_n, zero_block);
 		if (party == BOB) consist_check_chi_alpha.assign(item_n, zero_block);
 
 		if (party == ALICE) {
 			std::vector<SPCOT_Sender*> senders;
-			init_spcot_workers(senders, ot);
+			init_spcot_workers(senders, *lc_send);
 			exec_parallel(senders, [&](SPCOT_Sender* s, int i, int t) {
 				s->compute(sparse_vector + i * leave_n, Delta_f2k);
-				s->send_f2k(ot, ios[t], i);
+				s->send_levels(*lc_send, ios[t], i);
 				ios[t]->flush();
 				if (is_malicious) s->consistency_check_msg_gen(&consist_check_VW[i]);
 			});
 			for (auto* p : senders) delete p;
 		} else {
 			std::vector<SPCOT_Recver*> recvers;
-			init_spcot_workers(recvers, ot);
+			init_spcot_workers(recvers, *lc_recv);
 			exec_parallel(recvers, [&](SPCOT_Recver* r, int i, int t) {
-				r->recv_f2k(ot, ios[t], i);
+				r->recv_levels(*lc_recv, ios[t], i);
 				r->compute(sparse_vector + i * leave_n);
 				if (is_malicious)
 					r->consistency_check_msg_gen(&consist_check_chi_alpha[i],
@@ -94,20 +95,20 @@ private:
 	// one batch per worker. Sender just bumps the cursor; receiver
 	// also drains the choice bits into each worker's `b` and computes
 	// its puncture index.
-	template <typename Worker>
-	void init_spcot_workers(std::vector<Worker*>& out, OTPre* ot) {
+	template <typename Worker, typename LC>
+	void init_spcot_workers(std::vector<Worker*>& out, LC& lc) {
 		out.reserve(tree_n);
 		for (int i = 0; i < tree_n; ++i) {
 			out.push_back(new Worker(netio, tree_height));
 			if constexpr (std::is_same_v<Worker, SPCOT_Sender>) {
-				ot->choices_sender();
+				lc.advance_one_tree();
 			} else {
-				ot->choices_recver(out[i]->b);
+				lc.drain_choice_bits_one_tree(out[i]->b, tree_height - 1);
 				out[i]->get_index();  // populates choice_pos
 			}
 		}
 		netio->flush();
-		ot->reset();
+		lc.prepare_batch();
 	}
 
 	// Distribute work over `threads` worker pool threads. Each thread

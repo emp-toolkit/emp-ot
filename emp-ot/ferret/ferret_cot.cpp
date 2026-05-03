@@ -4,6 +4,8 @@
 #include "emp-ot/ferret/base_cot.h"
 #include "emp-ot/ferret/mpcot_reg.h"
 #include "emp-ot/ferret/lpn_f2.h"
+#include "emp-ot/ferret/preot.h"
+#include "emp-ot/ferret/level_correction.h"
 
 namespace emp {
 
@@ -63,7 +65,13 @@ void FerretCOT::extend(block* ot_output, MpcotReg *mpcot, OTPre *preot,
 		LpnF2<10> *lpn, block *ot_input, block seed) {
 	if(party == ALICE) mpcot->sender_init(Delta);
 	else mpcot->recver_init();
-	mpcot->mpcot(ot_output, preot, ot_input);
+	if (party == ALICE) {
+		OTPreCorrectionSender lc(preot);
+		mpcot->mpcot(ot_output, &lc, nullptr, ot_input);
+	} else {
+		OTPreCorrectionRecver lc(preot);
+		mpcot->mpcot(ot_output, nullptr, &lc, ot_input);
+	}
 	lpn->compute(ot_output, ot_input+mpcot->consist_check_cot_num, seed);
 }
 

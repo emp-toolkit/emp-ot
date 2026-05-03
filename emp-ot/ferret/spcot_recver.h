@@ -2,7 +2,7 @@
 #define EMP_OT_SPCOT_RECVER_H__
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/ferret/constants.h"
-#include "emp-ot/ferret/preot.h"
+#include "emp-ot/ferret/level_correction.h"
 #include "emp-ot/pprf.h"
 
 namespace emp {
@@ -34,11 +34,10 @@ public:
 		return choice_pos;
 	}
 
-	// receive the message and reconstruct the tree
-	// j: position of the secret, begins from 0
-	void recv_f2k(OTPre * ot, IOChannel * io2, int s) {
-		ot->recv(m, b, depth-1, io2, s);
-		io2->recv_data(&secret_sum_f2, sizeof(block));
+	// Receive per-level K^{ᾱ_i}_{i+1} into m[0..depth-2] and the
+	// trailing secret_sum_f2 via the level-correction strategy.
+	void recv_levels(LevelCorrectionRecver& lc, IOChannel* io2, int s) {
+		lc.recv_tree(s, io2, m, b, depth-1, &secret_sum_f2);
 	}
 
 	// Reconstruct the GGM tree (every leaf except the punctured one),
