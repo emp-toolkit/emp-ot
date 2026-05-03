@@ -16,4 +16,5 @@ endfunction()
 
 add_test_case_with_run(ot)
 add_test_case_with_run(ferret)
+add_test_case_with_run(softspoken)
 add_test_case(bench_lpn)

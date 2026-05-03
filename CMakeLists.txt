@@ -37,7 +37,8 @@ find_package(emp-tool 1.0 REQUIRED)
 # the rest of the headers are still consumed inline.
 add_library(emp-ot STATIC
     emp-ot/iknp.cpp
-    emp-ot/ferret/ferret_cot.cpp)
+    emp-ot/ferret/ferret_cot.cpp
+    emp-ot/softspoken/softspoken_ot.cpp)
 add_library(emp-ot::emp-ot ALIAS emp-ot)
 
 target_compile_features(emp-ot PUBLIC cxx_std_17)

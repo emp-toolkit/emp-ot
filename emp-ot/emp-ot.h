@@ -10,4 +10,6 @@
 
 #include "emp-ot/ferret/ferret_cot.h"
 
+#include "emp-ot/softspoken/softspoken_ot.h"
+
 #endif
