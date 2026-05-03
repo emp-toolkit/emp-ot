@@ -35,8 +35,8 @@ public:
 	}
 
 	// Receive per-level K^{ᾱ_i}_{i+1} into m[0..depth-2] and the
-	// trailing secret_sum_f2 via the level-correction strategy.
-	void recv_levels(LevelCorrectionRecver& lc, IOChannel* io2, int s) {
+	// trailing secret_sum_f2 via the level-correction helper.
+	void recv_levels(CGGMCorrectionRecver& lc, IOChannel* io2, int s) {
 		lc.recv_tree(s, io2, m, depth-1, &secret_sum_f2);
 	}
 

@@ -57,8 +57,8 @@ public:
 	// each covering `leave_n` slots of `sparse_vector`. If malicious,
 	// follows up with the F_{2^k} consistency check that binds the
 	// receiver's punctured-position choices to the base COTs.
-	void mpcot(block * sparse_vector, LevelCorrectionSender* lc_send,
-	           LevelCorrectionRecver* lc_recv, block *pre_cot_data) {
+	void mpcot(block * sparse_vector, CGGMCorrectionSender* lc_send,
+	           CGGMCorrectionRecver* lc_recv, block *pre_cot_data) {
 		consist_check_VW.assign(item_n, zero_block);
 		if (party == BOB) consist_check_chi_alpha.assign(item_n, zero_block);
 
@@ -109,7 +109,6 @@ private:
 			}
 		}
 		netio->flush();
-		lc.prepare_batch();
 	}
 
 	// Distribute work over `threads` worker pool threads. Each thread

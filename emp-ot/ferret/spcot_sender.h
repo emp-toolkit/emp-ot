@@ -42,8 +42,8 @@ class SPCOT_Sender { public:
 	}
 
 	// Hand the per-level K^0_i values to the level-correction
-	// strategy along with the trailing secret_sum_f2.
-	void send_levels(LevelCorrectionSender& lc, IOChannel* io2, int s) {
+	// helper along with the trailing secret_sum_f2.
+	void send_levels(CGGMCorrectionSender& lc, IOChannel* io2, int s) {
 		lc.send_tree(s, io2, m, depth - 1, secret_sum_f2);
 	}
 
