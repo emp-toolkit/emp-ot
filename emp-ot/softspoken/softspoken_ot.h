@@ -54,6 +54,27 @@ public:
     void send_cot(block* data, int64_t length) override;
     void recv_cot(block* data, const bool* b, int64_t length) override;
 
+    // RCOT mode (LSB-of-output choice convention; matches the
+    // base-COT layout ferret/cGGM consume). Skips the per-COT
+    // d_chosen wire of send_cot/recv_cot; LSB(sender) = 0,
+    // LSB(receiver) = receiver's intrinsic random bit.
+    // Caller must have set Δ via setup_send(delta_in) with
+    // LSB(Δ) = 1 for the convention to round-trip correctly.
+    void rcot_send(block* data, int64_t length);
+    void rcot_recv(block* data, int64_t length);
+
+    // Externally-provided Δ. The decomposition unpack<k>(Δ, ...)
+    // into alphas_ works for any Δ ∈ F_{2^128}; setup proceeds
+    // identically. Lets ferret/cGGM consume softspoken-produced
+    // base COTs under a shared global Δ.
+    void setup_send(block delta_in);
+
+    // Receiver-role setup. Matches setup_send semantics; exposed so
+    // ferret can drive the bootstrap explicitly (the COT API
+    // auto-runs it on first send_cot/recv_cot, but ferret wants to
+    // synchronize the role decision with its own party flag).
+    void setup_recv();
+
 private:
     OTCO base_ot_;
     bool setup_done_ = false;
@@ -71,7 +92,6 @@ private:
     std::vector<const block*> planes_ptrs_;   // n * k pointers into planes_scratch_
 
     void setup_send();
-    void setup_recv();
 };
 
 extern template class SoftSpokenOT<2>;

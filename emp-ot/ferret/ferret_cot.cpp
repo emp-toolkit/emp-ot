@@ -4,6 +4,7 @@
 #include "emp-ot/iknp.h"
 #include "emp-ot/ferret/mpcot_reg.h"
 #include "emp-ot/ferret/lpn_f2.h"
+#include "emp-ot/softspoken/softspoken_ot.h"
 
 namespace emp {
 
@@ -117,10 +118,25 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 	}
 	if(hasfile && hasfile2) {
 		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
+	} else if (!is_malicious) {
+		// Semi-honest bootstrap: SoftSpokenOT<8> directly produces the
+		// M base COTs needed to seed the first steady-state extend.
+		// Δ is shared (the same one used in subsequent cGGM corrections
+		// and the consistency check).
+		(void)choice; (void)seed;
+		SoftSpokenOT<8> ssp(io);
+		if (party == ALICE) ssp.setup_send(Delta);
+		else                ssp.setup_recv();
+		const int64_t M_seed = mpcot->tree_n * (mpcot->tree_height - 1)
+		                       + param.k + mpcot->consist_check_cot_num;
+		// ot_pre_data is sized to param.n_pre (>= M_seed for all
+		// supported configs); fill the first M_seed entries.
+		if (party == ALICE) ssp.rcot_send(ot_pre_data, M_seed);
+		else                ssp.rcot_recv(ot_pre_data, M_seed);
 	} else {
-		// IKNP setup. ALICE binds Δ (LSB=1, set by the constructor or
-		// by the explicit setup(Deltain, ...) entry point); BOB just
-		// sets up the receiver role.
+		// Malicious bootstrap: SoftSpokenOT is semi-honest only, so we
+		// keep the IKNP + pre-extend chain. TODO: switch to malicious-
+		// secure SoftSpoken and remove this branch (and *_pre params).
 		if (party == BOB) iknp->setup_recv();
 		else {
 			bool delta_bool[128];
@@ -129,24 +145,16 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 		}
 
 		MpcotReg mpcot_ini(party, threads, param.n_pre, param.t_pre, param.log_bin_sz_pre, pool.get(), ios);
-		if(is_malicious) mpcot_ini.set_malicious();
+		mpcot_ini.set_malicious();
 		LpnF2<10> lpn(party, param.n_pre, param.k_pre, pool.get(), io, pool->size());
 
 		const int level_cots_ini = mpcot_ini.tree_n * (mpcot_ini.tree_height - 1);
 		const int total_ini = level_cots_ini + param.k_pre + mpcot_ini.consist_check_cot_num;
 		block *pre_data_ini = new block[total_ini];
 		memset(this->ot_pre_data, 0, param.n_pre*16);
-		if(this->is_malicious){
-			seed = zero_block;
-			choice = nullptr;
-		}
-		(void)choice;  // base COT choice bits are IKNP-internal random.
-		// cGGM: base COTs are consumed directly (no OTPre layer). Layout
-		// in pre_data_ini matches FerretCOT::extend's view: level COTs
-		// at offset 0 (with [0,128) aliased into the consistency check),
-		// LPN base at offset 128. IKNP's rcot already meets the LSB-
-		// encoded base-COT convention (recv: bit_0 = choice; send:
-		// bit_0 = 0 since Δ has LSB=1).
+		seed = zero_block;
+		choice = nullptr;
+		(void)choice;
 		if (party == ALICE) iknp->rcot_send(pre_data_ini, total_ini);
 		else                iknp->rcot_recv(pre_data_ini, total_ini);
 		extend(ot_pre_data, &mpcot_ini, &lpn, pre_data_ini, seed);
