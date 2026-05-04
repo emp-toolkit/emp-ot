@@ -15,9 +15,10 @@ using namespace std;
 template <int k>
 void test_softspoken_k(NetIO* io, int party, int length) {
     SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(io);
-    BW_RUN("OT ", (test_ot<SoftSpokenOT<k>>(ot, io, party, length)));
-    BW_RUN("COT", (test_cot<SoftSpokenOT<k>>(ot, io, party, length)));
-    BW_RUN("ROT", (test_rot<SoftSpokenOT<k>>(ot, io, party, length)));
+    BW_RUN("OT  ", (test_ot<SoftSpokenOT<k>>(ot, io, party, length)));
+    BW_RUN("COT ", (test_cot<SoftSpokenOT<k>>(ot, io, party, length)));
+    BW_RUN("ROT ", (test_rot<SoftSpokenOT<k>>(ot, io, party, length)));
+    BW_RUN("RCOT", (test_rcot<SoftSpokenOT<k>>(ot, io, party, length)));
     delete ot;
 }
 

@@ -14,35 +14,35 @@
 namespace emp {
 
 /*
- * SoftSpoken OT Extension — semi-honest, COT subclass.
+ * SoftSpoken OT Extension — semi-honest, RandomCOT subclass.
  * [REF] L. Roy, "SoftSpokenOT: Quieter OT Extension from Small-Field
  *       Silent VOLE in the Minicrypt Model" — Crypto '22.
  *       https://eprint.iacr.org/2022/192
  *
- * The class is templated on k, the F_{2^k} sub-field size used inside
- * the small-field VOLE. Larger k = less bandwidth (~ kappa/k bytes per
- * COT) but more compute (~ 2^k / k AES blocks per COT). Pre-instantiated
- * for k in {2, 4, 8} in softspoken_ot.cpp; other k values require an
- * extra `template class SoftSpokenOT<...>;` in a translation unit you own.
+ * The protocol is natively a RandomCOT: after sfvole_*_compute,
+ * u_canonical[j] is the receiver's intrinsic random choice bit and
+ * Conv(V[j]) ⊕ Conv(W[j]) = u_canonical[j] · Δ at the full-block
+ * level. rcot_send / rcot_recv expose this directly with the
+ * LSB-of-output choice convention (LSB(K)=0, LSB(M)=u_canonical[j]).
+ * send_cot / recv_cot are inherited from RandomCOT, which adds the
+ * standard 1-bit-per-COT chosen-message correction wrapper.
  *
- * Role mapping (the easy thing to invert): the COT-Sender (which holds
- * Delta) plays the *Receiver* role in the underlying VOLE / PPRF, so
- * during setup it runs OTCO::recv on n*k base OTs with choices derived
- * from Delta. The COT-Receiver plays the VOLE-Sender / PPRF-Sender, so
- * it generates the GGM trees and runs OTCO::send.
+ * Templated on k, the F_{2^k} sub-field size used inside the small-
+ * field VOLE. Larger k = less bandwidth (~ kappa/k bytes per COT)
+ * but more compute (~ 2^k / k AES blocks per COT). Pre-instantiated
+ * for k in {2, 4, 8} in softspoken_ot.cpp.
  *
- * setup_send / setup_recv are run lazily on the first send_cot / recv_cot
- * call; they exchange n*k = >=128 base OTs and either build (sender) or
- * puncture-evaluate (receiver) the GGM trees. After setup, leaves stay
- * resident; per-call expansion uses PRG(leaf, session_counter) so each
- * call produces an independent G''-stream.
+ * Role mapping: the COT-Sender (which holds Delta) plays the
+ * Receiver role in the underlying VOLE / PPRF, so during setup it
+ * runs OTCO::recv on n*k base OTs with choices derived from Delta.
+ * The COT-Receiver plays the VOLE-Sender / PPRF-Sender.
  *
- * No LSB-of-output choice convention. send_cot/recv_cot do explicit
- * derandomization (receiver -> sender bit per COT) on top of the protocol's
- * own VOLE-derandomization, exactly the same wire pattern as RandomCOT.
+ * Δ has LSB=1 (forced by setup_send no-arg, required of callers
+ * passing setup_send(delta_in)). Required for the LSB-encoded
+ * choice convention to round-trip the COT relation correctly.
  */
 template <int k>
-class SoftSpokenOT : public COT {
+class SoftSpokenOT : public RandomCOT {
     static_assert(k >= 1 && k <= 8, "SoftSpokenOT supports k in [1, 8]");
 public:
     static constexpr int n = softspoken::n_subvoles<k>();
@@ -51,28 +51,22 @@ public:
     explicit SoftSpokenOT(IOChannel* io_);
     ~SoftSpokenOT() override = default;
 
-    void send_cot(block* data, int64_t length) override;
-    void recv_cot(block* data, const bool* b, int64_t length) override;
+    // RandomCOT virtual contract. send_cot / recv_cot inherit from
+    // RandomCOT and run the standard 1-bit-per-COT chosen-message
+    // correction wrapper on top.
+    void rcot_send(block* data, int64_t length) override;
+    void rcot_recv(block* data, int64_t length) override;
 
-    // RCOT mode (LSB-of-output choice convention; matches the
-    // base-COT layout ferret/cGGM consume). Skips the per-COT
-    // d_chosen wire of send_cot/recv_cot; LSB(sender) = 0,
-    // LSB(receiver) = receiver's intrinsic random bit.
-    // Caller must have set Δ via setup_send(delta_in) with
-    // LSB(Δ) = 1 for the convention to round-trip correctly.
-    void rcot_send(block* data, int64_t length);
-    void rcot_recv(block* data, int64_t length);
-
-    // Externally-provided Δ. The decomposition unpack<k>(Δ, ...)
-    // into alphas_ works for any Δ ∈ F_{2^128}; setup proceeds
-    // identically. Lets ferret/cGGM consume softspoken-produced
-    // base COTs under a shared global Δ.
+    // Externally-provided Δ (must have LSB=1). The decomposition
+    // unpack<k>(Δ, ...) into alphas_ works for any Δ ∈ F_{2^128};
+    // setup proceeds identically. Used by ferret to share its
+    // global Δ with the bootstrap base-OT generator.
     void setup_send(block delta_in);
 
-    // Receiver-role setup. Matches setup_send semantics; exposed so
-    // ferret can drive the bootstrap explicitly (the COT API
-    // auto-runs it on first send_cot/recv_cot, but ferret wants to
-    // synchronize the role decision with its own party flag).
+    // Receiver-role setup. Exposed so ferret can drive the bootstrap
+    // explicitly (rcot_send/rcot_recv auto-run the matching setup
+    // on first call, but ferret wants to synchronize role selection
+    // with its own party flag).
     void setup_recv();
 
 private:

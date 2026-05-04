@@ -127,37 +127,17 @@ double test_rot(T* ot, NetIO *io, int party, int64_t length) {
 	return t;
 }
 
+// Verify the receiver's RCOT outputs against the sender's: receiver
+// XORs ch[LSB(b[i])] (= 0 if LSB=0, = Δ if LSB=1) into each block;
+// result must equal sender's b. Requires the LSB-of-output choice
+// convention (LSB(K)=0, LSB(M)=b_intrinsic) and LSB(Δ)=1.
 template <typename T>
-double test_rcot(T* ot, NetIO *io, int party, int64_t length, bool inplace) {
-	block *b = nullptr;
-	PRG prg;
-
-	io->sync();
-	auto start = clock_start();
-	int64_t mem_size;
-	if(!inplace) {
-		mem_size = length;
-		b = new block[length];
-
-		// The RCOTs will be generated in the internal buffer
-		// then be copied to the user buffer
-		if (party == ALICE) ot->rcot_send(b, length);
-		else                ot->rcot_recv(b, length);
-	} else {
-		// Call byte_memory_need_inplace() to get the buffer size needed
-		mem_size = ot->byte_memory_need_inplace((uint64_t)length);
-		b = new block[mem_size];
-
-		// The RCOTs will be generated directly to this buffer
-		ot->rcot_inplace(b, mem_size);
-	}
-	long long t = time_from(start);
+static void verify_rcot(T* ot, NetIO* io, int party, block* b, int64_t mem_size) {
 	io->sync();
 	if (party == ALICE) {
 		io->send_block(&ot->Delta, 1);
 		io->send_block(b, mem_size);
-	}
-	else if (party == BOB) {
+	} else if (party == BOB) {
 		block ch[2];
 		ch[0] = zero_block;
 		block *b0 = new block[mem_size];
@@ -171,6 +151,30 @@ double test_rcot(T* ot, NetIO *io, int party, int64_t length, bool inplace) {
 		delete[] b0;
 	}
 	std::cout << "Tests passed.\t";
+}
+
+template <typename T>
+double test_rcot(T* ot, NetIO *io, int party, int64_t length) {
+	block *b = new block[length];
+	io->sync();
+	auto start = clock_start();
+	if (party == ALICE) ot->rcot_send(b, length);
+	else                ot->rcot_recv(b, length);
+	long long t = time_from(start);
+	verify_rcot(ot, io, party, b, length);
+	delete[] b;
+	return t;
+}
+
+template <typename T>
+double test_rcot_inplace(T* ot, NetIO *io, int party, int64_t length) {
+	int64_t mem_size = ot->byte_memory_need_inplace((uint64_t)length);
+	block *b = new block[mem_size];
+	io->sync();
+	auto start = clock_start();
+	ot->rcot_inplace(b, mem_size);
+	long long t = time_from(start);
+	verify_rcot(ot, io, party, b, mem_size);
 	delete[] b;
 	return t;
 }
