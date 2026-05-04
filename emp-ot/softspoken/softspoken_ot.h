@@ -13,37 +13,28 @@ namespace emp { namespace softspoken {
 // =====================================================================
 // Conv: F_2-linear bit packing between F_{2^k}^n and F_{2^128}.
 // Bit (i*k + b) of the 128-bit output = bit b of the i-th F_{2^k} input.
-// We pick n = ceil(128/k); for k in {1,2,4,8} every bit is used,
-// otherwise the top n*k - 128 bits of the last input element are
-// unused (silently discarded by pack, set to zero by unpack).
+// Constrained to k ∈ {1, 2, 4, 8} so n*k = 128 exactly; the bulk
+// direction (Conv across many OTs at once) is then exactly a
+// 128 × (bpr*128) sse_trans of the contiguous plane buffer — call
+// sse_trans directly at the use site (see softspoken_ot.cpp).
+//
+// (The single-element scalar pack used to live here as `pack<k>`
+// alongside a `pack_row<k>` fallback for n*k != 128. With n*k==128
+// the fast path always wins, so both have been dropped. unpack<k>
+// remains as the inverse direction needed by setup_send to split Δ
+// into n alpha_i bytes — that's a single-block scalar op, no
+// transpose involved.)
 
 template <int k>
 constexpr int n_subvoles() {
-    static_assert(k >= 1 && k <= 8, "softspoken: k in [1,8]");
-    return (128 + k - 1) / k;
+    static_assert(k >= 1 && k <= 8 && (128 % k) == 0,
+                  "softspoken: k must be in {1, 2, 4, 8} so n*k == 128");
+    return 128 / k;
 }
 
-template <int k>
-inline block pack(const uint8_t* in_n) {
-    constexpr int n = n_subvoles<k>();
-    constexpr uint64_t mask = (1ull << k) - 1ull;
-    uint64_t lo = 0, hi = 0;
-    for (int i = 0; i < n; ++i) {
-        const uint64_t v = static_cast<uint64_t>(in_n[i]) & mask;
-        const int bitpos = i * k;
-        if (bitpos + k <= 64) {
-            lo |= v << bitpos;
-        } else if (bitpos >= 64) {
-            if (bitpos - 64 < 64) hi |= v << (bitpos - 64);
-        } else {
-            const int low_bits = 64 - bitpos;
-            lo |= (v & ((1ull << low_bits) - 1ull)) << bitpos;
-            hi |= v >> low_bits;
-        }
-    }
-    return makeBlock(hi, lo);
-}
-
+// Decompose a 128-bit block into n F_{2^k} elements (low k bits of
+// each output byte hold the value). Used once per session in
+// setup_send to split Δ into per-sub-VOLE alpha_i.
 template <int k>
 inline void unpack(block in, uint8_t* out_n) {
     constexpr int n = n_subvoles<k>();
@@ -53,7 +44,6 @@ inline void unpack(block in, uint8_t* out_n) {
         uint8_t v = 0;
         for (int b = 0; b < k; ++b) {
             const int bitpos = i * k + b;
-            if (bitpos >= 128) break;
             v |= ((bytes[bitpos >> 3] >> (bitpos & 7)) & 1u) << b;
         }
         out_n[i] = v;
@@ -227,68 +217,11 @@ inline void apply_derand_to_w_planes(int alpha_i,
     }
 }
 
-// Pack one row j across all n sub-VOLEs (scalar fallback used when
-// n*k != 128). For row j, byte i is sum_b ((bit j of plane[i*k+b]) << b),
-// then conv::pack<k> folds those n bytes into one block.
-template <int k>
-inline block pack_row(const block* const* planes, int n, int64_t j) {
-    uint8_t bytes[256];  // n ≤ 128; 256 is safe upper bound.
-    const int64_t blk = j >> 7;
-    const int     bit = j & 127;
-    for (int i = 0; i < n; ++i) {
-        uint8_t v = 0;
-        for (int b = 0; b < k; ++b) {
-            const block plane_blk = planes[i * k + b][blk];
-            const uint8_t* bytes_p = reinterpret_cast<const uint8_t*>(&plane_blk);
-            v |= ((bytes_p[bit >> 3] >> (bit & 7)) & 1u) << b;
-        }
-        bytes[i] = v;
-    }
-    return pack<k>(bytes);
-}
-
-// Bulk-pack ell rows into ell output blocks. Fast path when n*k == 128
-// (k in {2, 4, 8}): for each chunk of 128 rows, gather one block from
-// each of the 128 bit-planes and run a 128×128 sse_trans, which is
-// exactly the inverse of the inner-loop structure needed to assemble
-// bit (i*k+b) of out[j] from bit j of plane (i*k+b). Cuts pack work
-// by ~128× vs row-by-row pack_row. Falls back to pack_row when n*k != 128.
-template <int k>
-inline void pack_planes_to_blocks(const block* const* planes, int n,
-                                  int64_t ell, int64_t bpr,
-                                  block* out) {
-    constexpr int NK = 128;
-    if (n * k != NK) {
-        for (int64_t j = 0; j < ell; ++j)
-            out[j] = pack_row<k>(planes, n, j);
-        return;
-    }
-
-    block input[NK];
-    block output[NK];
-
-    const int64_t full_chunks = ell / 128;
-    for (int64_t chunk = 0; chunk < full_chunks; ++chunk) {
-        for (int p = 0; p < NK; ++p)
-            input[p] = planes[p][chunk];
-        sse_trans(reinterpret_cast<uint8_t*>(output),
-                  reinterpret_cast<const uint8_t*>(input), NK, NK);
-        for (int r = 0; r < 128; ++r)
-            out[chunk * 128 + r] = output[r];
-    }
-
-    const int64_t tail = ell - full_chunks * 128;
-    if (tail > 0) {
-        const int64_t chunk = full_chunks;
-        for (int p = 0; p < NK; ++p)
-            input[p] = planes[p][chunk];
-        sse_trans(reinterpret_cast<uint8_t*>(output),
-                  reinterpret_cast<const uint8_t*>(input), NK, NK);
-        for (int64_t r = 0; r < tail; ++r)
-            out[full_chunks * 128 + r] = output[r];
-    }
-    (void)bpr;  // unused in fast path
-}
+// Bulk Conv = sse_trans(out, planes, 128, bpr*128). Inlined at the
+// (few) call sites in softspoken_ot.cpp / bench_conv. The plane
+// buffer's plane-major layout (plane p at offset p*bpr blocks) is
+// already the row-major byte layout sse_trans expects; n_subvoles<k>'s
+// static_assert above guarantees n*k == 128.
 
 }}  // namespace emp::softspoken
 

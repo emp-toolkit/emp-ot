@@ -1,10 +1,11 @@
-// Microbenchmark for SoftSpoken's Conv (= softspoken::pack_planes_to_blocks).
-// For k in {2,4,8} the bulk Conv is a 128 x length bit-matrix transpose:
-// rows = n*k = 128 bit-planes (each `bpr` blocks long), cols = `length` OTs;
-// output is `length` blocks, one per OT.
+// Microbenchmark for SoftSpoken's Conv. For k in {2, 4, 8} (n*k=128)
+// the bulk Conv is a 128 × (bpr*128) bit-matrix transpose: rows = 128
+// bit-planes (each `bpr` blocks long), cols = `bpr*128` ≥ length OTs;
+// output is bpr*128 blocks (the first `length` are the valid OT
+// outputs, the rest are junk that fits in the rounded buffer).
 //
 // We isolate the Conv cost by pre-filling planes with random data and
-// calling pack_planes_to_blocks in a loop; no PRG / network in the path.
+// calling sse_trans in a loop; no PRG / network in the path.
 //
 // Sweeps both small-batch (length=1248, planes fit in L1) and
 // large-batch (length=2^20, planes ~16 MB in L3) regimes for k=2,4,8.
@@ -34,15 +35,13 @@ static void bench_one(int64_t length) {
     const size_t plane_blocks = static_cast<size_t>(n) * k * bpr;
 
     std::vector<block> scratch(plane_blocks);
-    std::vector<block> out(static_cast<size_t>(length));
-    std::vector<const block*> planes(static_cast<size_t>(n) * k);
+    // Output sized to bpr*128 (rounded up to next 128 boundary). The
+    // first `length` blocks are the valid OT outputs; sse_trans needs
+    // the rounded room since ncols must be a multiple of 128.
+    std::vector<block> out(static_cast<size_t>(bpr) * 128);
 
     PRG prg;
     prg.random_block(scratch.data(), scratch.size());
-    for (int i = 0; i < n; ++i)
-        for (int b = 0; b < k; ++b)
-            planes[i * k + b] = scratch.data() +
-                (static_cast<size_t>(i) * k + b) * bpr;
 
     // Total OTs to process per measurement: aim for ~0.2-1s wall time.
     // Conv runs at ~ns/OT, so 2^28 OTs of work is roughly the right scale.
@@ -51,13 +50,17 @@ static void bench_one(int64_t length) {
 
     // Warmup
     for (int it = 0; it < 5; ++it)
-        softspoken::pack_planes_to_blocks<k>(planes.data(), n, length, bpr, out.data());
+        sse_trans(reinterpret_cast<uint8_t*>(out.data()),
+                  reinterpret_cast<const uint8_t*>(scratch.data()),
+                  /*nrows=*/128, /*ncols=*/bpr * 128);
 
     double best_us = 1e18;
     for (int trial = 0; trial < 5; ++trial) {
         double t0 = now_us();
         for (int64_t it = 0; it < iters; ++it)
-            softspoken::pack_planes_to_blocks<k>(planes.data(), n, length, bpr, out.data());
+            sse_trans(reinterpret_cast<uint8_t*>(out.data()),
+                  reinterpret_cast<const uint8_t*>(scratch.data()),
+                  /*nrows=*/128, /*ncols=*/bpr * 128);
         double dt = now_us() - t0;
         best_us = std::min(best_us, dt);
     }
@@ -86,7 +89,7 @@ static void bench_one(int64_t length) {
 }
 
 int main() {
-    std::printf("# Conv (pack_planes_to_blocks) microbench\n");
+    std::printf("# Conv (sse_trans on the SoftSpoken plane buffer) microbench\n");
     std::printf("# best of 5 trials; ~2^28 OT-equivalents per measurement\n");
     std::printf("# planes pre-filled, output reused; no PRG / IO in hot loop\n\n");
 

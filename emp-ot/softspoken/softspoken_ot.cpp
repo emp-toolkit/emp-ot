@@ -101,10 +101,11 @@ void SoftSpokenOT<k>::setup_recv() {
 //     chunk 1's, etc.
 //
 //   * After the chunk's planes are populated (and derand-applied on
-//     the OT-sender side), the existing `pack_planes_to_blocks` runs
-//     a 128×(bs·128) sse_trans against the chunk-local plane buffer
-//     and writes `bs * 128` OT blocks to `out`. The LSB convention is
-//     applied to the same chunk-local slice.
+//     the OT-sender side), one 128×(bs·128) sse_trans against the
+//     chunk-local plane buffer writes `bs * 128` OT blocks to `out`
+//     — the plane-major layout is exactly the row-major byte layout
+//     sse_trans expects, so no gather scratch is needed. The LSB
+//     convention is applied to the same chunk-local slice.
 //
 // Memory: the dominant inner-loop scratch is `planes_chunk` of size
 // n*k*kChunkBlocks blocks = 128 * 32 = 4096 blocks = 64 KB. Sized to
@@ -166,18 +167,12 @@ void SoftSpokenOT<k>::rcot_send_next(block* out, int64_t chunk_len) {
         }
     }
 
-    // Transpose this chunk's 128 bit-planes (bs blocks each) → bs*128
-    // OT blocks. The fast path inside pack_planes_to_blocks requires
-    // n*k == 128, which holds for k ∈ {2, 4, 8}.
-    const block* planes_ptrs[128];  // n*k always ≤ 128
-    for (int i = 0; i < n; ++i)
-        for (int b = 0; b < k; ++b)
-            planes_ptrs[i * k + b] =
-                w_planes_chunk + (static_cast<size_t>(i) * k + b) * bs;
-    softspoken::pack_planes_to_blocks<k>(planes_ptrs, n,
-                                          /*ell=*/chunk_len,
-                                          /*bpr=*/bs,
-                                          out);
+    // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
+    // w_planes_chunk's plane-major layout is exactly the row-major
+    // byte layout sse_trans consumes.
+    sse_trans(reinterpret_cast<uint8_t*>(out),
+              reinterpret_cast<const uint8_t*>(w_planes_chunk),
+              /*nrows=*/128, /*ncols=*/bs * 128);
 
     // LSB convention (sender side): clear bit 0 on every OT output.
     for (int64_t j = 0; j < chunk_len; ++j)
@@ -252,16 +247,10 @@ void SoftSpokenOT<k>::rcot_recv_next(block* out, int64_t chunk_len) {
         this->io->send_block(d_bufs, total_d_blocks);
     }
 
-    // Transpose chunk → out.
-    const block* planes_ptrs[128];
-    for (int i = 0; i < n; ++i)
-        for (int b = 0; b < k; ++b)
-            planes_ptrs[i * k + b] =
-                v_planes_chunk + (static_cast<size_t>(i) * k + b) * bs;
-    softspoken::pack_planes_to_blocks<k>(planes_ptrs, n,
-                                          /*ell=*/chunk_len,
-                                          /*bpr=*/bs,
-                                          out);
+    // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
+    sse_trans(reinterpret_cast<uint8_t*>(out),
+              reinterpret_cast<const uint8_t*>(v_planes_chunk),
+              /*nrows=*/128, /*ncols=*/bs * 128);
 
     // LSB convention (receiver side): clear bit 0 and OR in the
     // intrinsic random choice u_canonical[j] (1 bit per OT). With
