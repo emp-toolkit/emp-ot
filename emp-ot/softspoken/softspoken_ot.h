@@ -54,8 +54,30 @@ public:
     // RandomCOT virtual contract. send_cot / recv_cot inherit from
     // RandomCOT and run the standard 1-bit-per-COT chosen-message
     // correction wrapper on top.
+    //
+    // rcot_send / rcot_recv are now thin wrappers around the streaming
+    // API below: each one runs a single _begin → loop _next → _end
+    // session, with internal chunk size kChunkBlocks * 128 OTs.
     void rcot_send(block* data, int64_t length) override;
     void rcot_recv(block* data, int64_t length) override;
+
+    // Streaming API — IKNP-shape. After _begin(), call _next() any
+    // number of times with chunk_len a multiple of 128 and ≤
+    // kChunkBlocks * 128, then _end() to flush. Setup must already be
+    // done (one-shot wrappers above auto-run setup; the streaming
+    // entry points assert it).
+    // Per-k chunk size (selected for cross-platform throughput; see
+    // softspoken::chunk_blocks_for in small_vole.h).
+    static constexpr int kChunkBlocks = softspoken::chunk_blocks_for<k>();
+    static constexpr int kChunkOTs    = kChunkBlocks * 128;
+
+    void rcot_send_begin();
+    void rcot_send_next(block* out, int64_t chunk_len);
+    void rcot_send_end();
+
+    void rcot_recv_begin();
+    void rcot_recv_next(block* out, int64_t chunk_len);
+    void rcot_recv_end();
 
     // Externally-provided Δ (must have LSB=1). The decomposition
     // unpack<k>(Δ, ...) into alphas_ works for any Δ ∈ F_{2^128};
@@ -81,9 +103,23 @@ private:
     // COT-Receiver (= VOLE-Sender / PPRF-Sender) state.
     std::unique_ptr<block[]> leaves_send_;  // n * Q blocks; full GGM tree
 
-    // Per-call scratch (grown lazily; reused across calls of equal length).
-    std::vector<block>      planes_scratch_;  // n * k * bpr blocks
-    std::vector<const block*> planes_ptrs_;   // n * k pointers into planes_scratch_
+    // Streaming session state. Each begin/next.../end runs one
+    // SoftSpoken session with a fresh session_id; cur_*_b0 tracks the
+    // PRG counter offset (in bpr-blocks) consumed by previous _next
+    // calls in this session.
+    bool send_session_active_ = false;
+    bool recv_session_active_ = false;
+    uint64_t cur_send_session_ = 0;
+    uint64_t cur_recv_session_ = 0;
+    int64_t cur_send_b0_ = 0;
+    int64_t cur_recv_b0_ = 0;
+
+    // Per-chunk scratch (allocated at the first _next call; reused
+    // across chunks within and across sessions). Heap-resident so we
+    // can grow B past the comfortable stack limit without changing
+    // call sites.
+    BlockVec planes_chunk_;   // n * k * kChunkBlocks blocks
+    BlockVec d_bufs_chunk_;   // (n - 1) * kChunkBlocks blocks (sized once)
 
     void setup_send();
 };

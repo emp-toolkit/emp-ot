@@ -1,7 +1,8 @@
 #include "emp-ot/softspoken/softspoken_ot.h"
 #include "emp-ot/ferret/constants.h"   // lsb_clear_mask, lsb_only_mask
+#include <algorithm>
+#include <cassert>
 #include <cstring>
-#include <vector>
 
 namespace emp {
 
@@ -60,7 +61,7 @@ void SoftSpokenOT<k>::setup_recv() {
     // Build n GGM trees and ship the per-level XOR sums via base OT.
     leaves_send_.reset(new block[static_cast<size_t>(n) * Q]);
     const int total = n * k;
-    std::vector<block> K0(total), K1(total);
+    BlockVec K0(total), K1(total);
     block K0_buf[k], K1_buf[k];
     for (int i = 0; i < n; ++i) {
         softspoken::pprf_build_sender<k>(this->prg,
@@ -76,49 +77,240 @@ void SoftSpokenOT<k>::setup_recv() {
     setup_done_ = true;
 }
 
-// RCOT mode is the protocol's natural output: u_canonical[j] is
-// the receiver's intrinsic random choice bit, and
-// Conv(V[j]) ⊕ Conv(W[j]) = u_canonical[j] · Δ at the full block
-// level. We apply the LSB-of-output convention (LSB(K)=0,
-// LSB(M)=u_canonical[j]) so the inherited RandomCOT::send_cot and
-// RandomCOT::recv_cot — which use getLSB(data) to recover the
-// intrinsic choice and then apply the standard 1-bit-per-COT
-// chosen-message correction — round-trip correctly.
+// =====================================================================
+// Streaming API
+// =====================================================================
+//
+// Each rcot_*_next call processes one chunk of `chunk_len` OTs
+// (multiple of 128, ≤ kChunkOTs). Internally:
+//
+//   * For every sub-VOLE i in [0, n), the chunk-aware sfvole_*_compute_chunk
+//     produces this chunk's u_target / v_planes (sender side, a.k.a.
+//     OT-receiver) or w_planes (receiver side, a.k.a. OT-sender),
+//     re-keying AES from per-leaf seeds rather than persisting Q PRG
+//     objects across chunks. PRG counter offset = cur_*_b0_ (advances
+//     by `bs` per chunk within the session) so the keystream slice
+//     across chunks of one session matches one bulk PRG invocation.
+//
+//   * The OT-receiver side (rcot_recv_next) batches all n-1 d_buf_i
+//     vectors of this chunk into one io->send_block call (saves
+//     n-2 NetIO ops per chunk vs sub-VOLE-by-sub-VOLE sends). The
+//     OT-sender side (rcot_send_next) reads them with a matching
+//     batched io->recv_block. Both bytes-on-the-wire orderings are
+//     fixed: chunk 0's d_bufs (sub-VOLE 1..n-1 concatenated), then
+//     chunk 1's, etc.
+//
+//   * After the chunk's planes are populated (and derand-applied on
+//     the OT-sender side), the existing `pack_planes_to_blocks` runs
+//     a 128×(bs·128) sse_trans against the chunk-local plane buffer
+//     and writes `bs * 128` OT blocks to `out`. The LSB convention is
+//     applied to the same chunk-local slice.
+//
+// Memory: the dominant inner-loop scratch is `planes_chunk` of size
+// n*k*kChunkBlocks blocks = 128 * 32 = 4096 blocks = 64 KB. Sized to
+// fit L1 on Apple M / Zen 5c / Sapphire Rapids (with B reducible if
+// needed). In contrast the bulk path held n*k*bpr = 16 MB of plane
+// data at length=2^20 — past L3 on small-cache parts.
+
+template <int k>
+void SoftSpokenOT<k>::rcot_send_begin() {
+    assert(setup_done_ && "rcot_send_begin: setup_send not run");
+    assert(!send_session_active_ && "rcot_send_begin: previous session not ended");
+    cur_send_session_ = session_++;
+    cur_send_b0_ = 0;
+    send_session_active_ = true;
+}
+
+template <int k>
+void SoftSpokenOT<k>::rcot_send_end() {
+    assert(send_session_active_ && "rcot_send_end: no active session");
+    send_session_active_ = false;
+}
+
+template <int k>
+void SoftSpokenOT<k>::rcot_send_next(block* out, int64_t chunk_len) {
+    assert(send_session_active_ && "rcot_send_next: call rcot_send_begin first");
+    assert(chunk_len > 0 && (chunk_len % 128) == 0 &&
+           "rcot_send_next: chunk_len must be a positive multiple of 128");
+    assert(chunk_len <= kChunkOTs && "rcot_send_next: chunk_len > kChunkOTs");
+
+    const int64_t bs = chunk_len / 128;          // bpr-blocks in this chunk
+    const int64_t b0 = cur_send_b0_;             // PRG counter offset
+
+    // Member-resident scratch (~128 KB at kChunkBlocks=64, n*k=128).
+    // Allocated once and reused across all chunks of all sessions.
+    if (planes_chunk_.size() < static_cast<size_t>(128) * kChunkBlocks)
+        planes_chunk_.resize(static_cast<size_t>(128) * kChunkBlocks);
+    if (n > 1 &&
+        d_bufs_chunk_.size() < static_cast<size_t>(n - 1) * kChunkBlocks)
+        d_bufs_chunk_.resize(static_cast<size_t>(n - 1) * kChunkBlocks);
+    block* w_planes_chunk = planes_chunk_.data();
+    block* d_bufs = d_bufs_chunk_.data();
+
+    // Compute every sub-VOLE's contribution to this chunk's w_planes.
+    for (int i = 0; i < n; ++i) {
+        block* w_i = w_planes_chunk + static_cast<size_t>(i) * k * bs;
+        softspoken::sfvole_receiver_compute_chunk<k>(
+            alphas_[i], &leaves_recv_[i * Q],
+            cur_send_session_, b0, bs, w_i);
+    }
+
+    // Pull this chunk's batched d_bufs (n-1 vectors of bs blocks).
+    if (n > 1) {
+        const int64_t total_d_blocks = static_cast<int64_t>(n - 1) * bs;
+        this->io->recv_block(d_bufs, total_d_blocks);
+        for (int i = 1; i < n; ++i) {
+            block* w_i = w_planes_chunk + static_cast<size_t>(i) * k * bs;
+            const block* d_i = d_bufs + static_cast<size_t>(i - 1) * bs;
+            softspoken::apply_derand_to_w_planes<k>(alphas_[i], d_i, bs, w_i);
+        }
+    }
+
+    // Transpose this chunk's 128 bit-planes (bs blocks each) → bs*128
+    // OT blocks. The fast path inside pack_planes_to_blocks requires
+    // n*k == 128, which holds for k ∈ {2, 4, 8}.
+    const block* planes_ptrs[128];  // n*k always ≤ 128
+    for (int i = 0; i < n; ++i)
+        for (int b = 0; b < k; ++b)
+            planes_ptrs[i * k + b] =
+                w_planes_chunk + (static_cast<size_t>(i) * k + b) * bs;
+    softspoken::pack_planes_to_blocks<k>(planes_ptrs, n,
+                                          /*ell=*/chunk_len,
+                                          /*bpr=*/bs,
+                                          out);
+
+    // LSB convention (sender side): clear bit 0 on every OT output.
+    for (int64_t j = 0; j < chunk_len; ++j)
+        out[j] = out[j] & lsb_clear_mask;
+
+    cur_send_b0_ += bs;
+}
+
+template <int k>
+void SoftSpokenOT<k>::rcot_recv_begin() {
+    assert(setup_done_ && "rcot_recv_begin: setup_recv not run");
+    assert(!recv_session_active_ && "rcot_recv_begin: previous session not ended");
+    cur_recv_session_ = session_++;
+    cur_recv_b0_ = 0;
+    recv_session_active_ = true;
+}
+
+template <int k>
+void SoftSpokenOT<k>::rcot_recv_end() {
+    assert(recv_session_active_ && "rcot_recv_end: no active session");
+    // Flush any d_buf bytes still buffered in NetIO so the peer's
+    // matching rcot_send_next can complete.
+    this->io->flush();
+    recv_session_active_ = false;
+}
+
+template <int k>
+void SoftSpokenOT<k>::rcot_recv_next(block* out, int64_t chunk_len) {
+    assert(recv_session_active_ && "rcot_recv_next: call rcot_recv_begin first");
+    assert(chunk_len > 0 && (chunk_len % 128) == 0 &&
+           "rcot_recv_next: chunk_len must be a positive multiple of 128");
+    assert(chunk_len <= kChunkOTs && "rcot_recv_next: chunk_len > kChunkOTs");
+
+    const int64_t bs = chunk_len / 128;
+    const int64_t b0 = cur_recv_b0_;
+
+    if (planes_chunk_.size() < static_cast<size_t>(128) * kChunkBlocks)
+        planes_chunk_.resize(static_cast<size_t>(128) * kChunkBlocks);
+    if (n > 1 &&
+        d_bufs_chunk_.size() < static_cast<size_t>(n - 1) * kChunkBlocks)
+        d_bufs_chunk_.resize(static_cast<size_t>(n - 1) * kChunkBlocks);
+    block* v_planes_chunk = planes_chunk_.data();
+    block* d_bufs = d_bufs_chunk_.data();
+
+    // u_canonical / u_temp stay on the stack — they're at most
+    // kChunkBlocks blocks each, ≤ 16 KB at kChunkBlocks=512.
+    alignas(16) block u_canonical[kChunkBlocks];   // sub-VOLE 0's u
+    alignas(16) block u_temp[kChunkBlocks];        // sub-VOLE i ≥ 1
+
+    // Sub-VOLE 0 produces u_canonical (no d_buf for i=0).
+    {
+        block* v_0 = v_planes_chunk + 0 * k * bs;
+        softspoken::sfvole_sender_compute_chunk<k>(
+            &leaves_send_[0 * Q], cur_recv_session_, b0, bs,
+            u_canonical, v_0);
+    }
+
+    // For i ≥ 1: produce u_temp and v_i, then d_buf_i = u_canonical ⊕ u_temp.
+    for (int i = 1; i < n; ++i) {
+        block* v_i = v_planes_chunk + static_cast<size_t>(i) * k * bs;
+        softspoken::sfvole_sender_compute_chunk<k>(
+            &leaves_send_[i * Q], cur_recv_session_, b0, bs,
+            u_temp, v_i);
+        block* d_i = d_bufs + static_cast<size_t>(i - 1) * bs;
+        for (int64_t bb = 0; bb < bs; ++bb)
+            d_i[bb] = u_canonical[bb] ^ u_temp[bb];
+    }
+
+    // One batched send: (n-1) * bs blocks.
+    if (n > 1) {
+        const int64_t total_d_blocks = static_cast<int64_t>(n - 1) * bs;
+        this->io->send_block(d_bufs, total_d_blocks);
+    }
+
+    // Transpose chunk → out.
+    const block* planes_ptrs[128];
+    for (int i = 0; i < n; ++i)
+        for (int b = 0; b < k; ++b)
+            planes_ptrs[i * k + b] =
+                v_planes_chunk + (static_cast<size_t>(i) * k + b) * bs;
+    softspoken::pack_planes_to_blocks<k>(planes_ptrs, n,
+                                          /*ell=*/chunk_len,
+                                          /*bpr=*/bs,
+                                          out);
+
+    // LSB convention (receiver side): clear bit 0 and OR in the
+    // intrinsic random choice u_canonical[j] (1 bit per OT). With
+    // LSB(Δ)=1 the COT relation K ⊕ M = b·Δ holds at bit 0; the
+    // upper 127 bits of the relation are preserved by Conv.
+    const uint8_t* u_bytes = reinterpret_cast<const uint8_t*>(u_canonical);
+    for (int64_t j = 0; j < chunk_len; ++j) {
+        const uint64_t u_bit = (u_bytes[j >> 3] >> (j & 7)) & 1u;
+        out[j] = (out[j] & lsb_clear_mask) ^ (u_bit ? lsb_only_mask : zero_block);
+    }
+
+    cur_recv_b0_ += bs;
+}
+
+// =====================================================================
+// One-shot wrappers
+// =====================================================================
+
 template <int k>
 void SoftSpokenOT<k>::rcot_send(block* data, int64_t length) {
     if (!setup_done_) setup_send();
     if (length <= 0) return;
 
-    const int64_t bpr = (length + 127) / 128;
-    const uint64_t my_session = session_++;
-
-    const size_t needed = static_cast<size_t>(n) * k * bpr;
-    if (planes_scratch_.size() < needed) planes_scratch_.resize(needed);
-    if (planes_ptrs_.size() < static_cast<size_t>(n) * k)
-        planes_ptrs_.resize(static_cast<size_t>(n) * k);
-    block* w_all = planes_scratch_.data();
-
-    for (int i = 0; i < n; ++i) {
-        block* w_planes_i = w_all + static_cast<size_t>(i) * k * bpr;
-        softspoken::sfvole_receiver_compute<k>(
-            alphas_[i], &leaves_recv_[i * Q], my_session, length, w_planes_i);
+    rcot_send_begin();
+    int64_t pos = 0;
+    while (pos + kChunkOTs <= length) {
+        rcot_send_next(data + pos, kChunkOTs);
+        pos += kChunkOTs;
     }
 
-    std::vector<block> d_buf(bpr);
-    for (int i = 1; i < n; ++i) {
-        this->io->recv_block(d_buf.data(), bpr);
-        block* w_planes_i = w_all + static_cast<size_t>(i) * k * bpr;
-        softspoken::apply_derand_to_w_planes<k>(alphas_[i], d_buf.data(),
-                                                bpr, w_planes_i);
+    int64_t remaining = length - pos;
+    if (remaining > 0) {
+        // Final chunk: align up to multiple of 128 (rcot_*_next requires
+        // it). Tail OTs past `remaining` are pseudorandom but unused.
+        const int64_t aligned = ((remaining + 127) / 128) * 128;
+        if (aligned == remaining) {
+            rcot_send_next(data + pos, aligned);
+        } else {
+            // The caller's buffer has only `remaining` slots past pos,
+            // so route the rounded-up output through stack scratch and
+            // copy back the requested prefix.
+            // Heap to keep the wrapper's stack frame small at large
+            // kChunkBlocks. Tail path only — runs at most once per call.
+            BlockVec scratch(kChunkOTs);
+            rcot_send_next(scratch.data(), aligned);
+            std::memcpy(data + pos, scratch.data(), sizeof(block) * remaining);
+        }
     }
-
-    for (int i = 0; i < n; ++i)
-        for (int b = 0; b < k; ++b)
-            planes_ptrs_[i * k + b] = w_all + (static_cast<size_t>(i) * k + b) * bpr;
-    softspoken::pack_planes_to_blocks<k>(planes_ptrs_.data(), n, length, bpr, data);
-
-    // LSB convention: clear bit 0 on sender side.
-    for (int64_t j = 0; j < length; ++j) data[j] = data[j] & lsb_clear_mask;
+    rcot_send_end();
 }
 
 template <int k>
@@ -126,46 +318,27 @@ void SoftSpokenOT<k>::rcot_recv(block* data, int64_t length) {
     if (!setup_done_) setup_recv();
     if (length <= 0) return;
 
-    const int64_t bpr = (length + 127) / 128;
-    const uint64_t my_session = session_++;
+    rcot_recv_begin();
+    int64_t pos = 0;
+    while (pos + kChunkOTs <= length) {
+        rcot_recv_next(data + pos, kChunkOTs);
+        pos += kChunkOTs;
+    }
 
-    const size_t needed = static_cast<size_t>(n) * k * bpr;
-    if (planes_scratch_.size() < needed) planes_scratch_.resize(needed);
-    if (planes_ptrs_.size() < static_cast<size_t>(n) * k)
-        planes_ptrs_.resize(static_cast<size_t>(n) * k);
-    block* v_all = planes_scratch_.data();
-
-    std::vector<block> u_canonical(bpr);
-    std::vector<block> u_temp(bpr);
-    std::vector<block> d_buf(bpr);
-
-    for (int i = 0; i < n; ++i) {
-        block* v_planes_i = v_all + static_cast<size_t>(i) * k * bpr;
-        block* u_target = (i == 0) ? u_canonical.data() : u_temp.data();
-        softspoken::sfvole_sender_compute<k>(
-            &leaves_send_[i * Q], my_session, length, u_target, v_planes_i);
-        if (i >= 1) {
-            for (int64_t bb = 0; bb < bpr; ++bb)
-                d_buf[bb] = u_canonical[bb] ^ u_temp[bb];
-            this->io->send_block(d_buf.data(), bpr);
+    int64_t remaining = length - pos;
+    if (remaining > 0) {
+        const int64_t aligned = ((remaining + 127) / 128) * 128;
+        if (aligned == remaining) {
+            rcot_recv_next(data + pos, aligned);
+        } else {
+            // Heap to keep the wrapper's stack frame small at large
+            // kChunkBlocks. Tail path only — runs at most once per call.
+            BlockVec scratch(kChunkOTs);
+            rcot_recv_next(scratch.data(), aligned);
+            std::memcpy(data + pos, scratch.data(), sizeof(block) * remaining);
         }
     }
-    this->io->flush();
-
-    for (int i = 0; i < n; ++i)
-        for (int bp = 0; bp < k; ++bp)
-            planes_ptrs_[i * k + bp] = v_all + (static_cast<size_t>(i) * k + bp) * bpr;
-    softspoken::pack_planes_to_blocks<k>(planes_ptrs_.data(), n, length, bpr, data);
-
-    // LSB convention: clear bit 0 and OR in the receiver's intrinsic
-    // choice bit (= u_canonical[j]). With LSB(Δ)=1 the COT relation
-    // K ⊕ M = b·Δ holds at the bit level (lower) and at the upper
-    // bits (Conv pack already preserves it).
-    const uint8_t* u_bytes = reinterpret_cast<const uint8_t*>(u_canonical.data());
-    for (int64_t j = 0; j < length; ++j) {
-        const uint64_t u_bit = (u_bytes[j >> 3] >> (j & 7)) & 1u;
-        data[j] = (data[j] & lsb_clear_mask) ^ (u_bit ? lsb_only_mask : zero_block);
-    }
+    rcot_recv_end();
 }
 
 template class SoftSpokenOT<2>;
