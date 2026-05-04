@@ -3,8 +3,14 @@
 #include <iostream>
 using namespace emp;
 
+// `bytes_sent_out` / `bytes_recv_out`: optional out-params. When non-null,
+// receive the wire bytes accrued by the protocol call only — i.e. excluding
+// the verification round-trip the test harness runs after `time_from` to
+// check OT correctness. Use these for any reported B/COT figures.
 template <typename T>
-double test_ot(T * ot, NetIO *io, int party, int64_t length) {
+double test_ot(T * ot, NetIO *io, int party, int64_t length,
+               uint64_t* bytes_sent_out = nullptr,
+               uint64_t* bytes_recv_out = nullptr) {
 	block *b0 = new block[length], *b1 = new block[length],
 	*r = new block[length];
 	PRG prg(fix_key);
@@ -14,6 +20,7 @@ double test_ot(T * ot, NetIO *io, int party, int64_t length) {
 	PRG prg2;
 	prg2.random_bool(b, length);
 
+	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
 	auto start = clock_start();
 	if (party == ALICE) {
 		ot->send(b0, b1, length);
@@ -22,6 +29,8 @@ double test_ot(T * ot, NetIO *io, int party, int64_t length) {
 	}
 	io->flush();
 	long long t = time_from(start);
+	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
+	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
 	if (party == BOB) {
 		for (int64_t i = 0; i < length; ++i) {
 			if (b[i]){ if(!cmpBlock(&r[i], &b1[i], 1)) {
@@ -44,7 +53,9 @@ double test_ot(T * ot, NetIO *io, int party, int64_t length) {
 
 
 template <typename T>
-double test_cot(T * ot, NetIO *io, int party, int64_t length) {
+double test_cot(T * ot, NetIO *io, int party, int64_t length,
+                uint64_t* bytes_sent_out = nullptr,
+                uint64_t* bytes_recv_out = nullptr) {
 	block *b0 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	block delta;
@@ -53,6 +64,7 @@ double test_cot(T * ot, NetIO *io, int party, int64_t length) {
 	prg.random_bool(b, length);
 
 	io->sync();
+	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
 	auto start = clock_start();
 	if (party == ALICE) {
 		ot->send_cot(b0, length);
@@ -62,6 +74,8 @@ double test_cot(T * ot, NetIO *io, int party, int64_t length) {
 	}
 	io->flush();
 	long long t = time_from(start);
+	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
+	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
 	if (party == ALICE) {
 		io->send_block(&delta, 1);
 		io->send_block(b0, length);
@@ -89,7 +103,9 @@ double test_cot(T * ot, NetIO *io, int party, int64_t length) {
 }
 
 template <typename T>
-double test_rot(T* ot, NetIO *io, int party, int64_t length) {
+double test_rot(T* ot, NetIO *io, int party, int64_t length,
+                uint64_t* bytes_sent_out = nullptr,
+                uint64_t* bytes_recv_out = nullptr) {
 	block *b0 = new block[length], *r = new block[length];
 	block *b1 = new block[length];
 	bool *b = new bool[length];
@@ -97,6 +113,7 @@ double test_rot(T* ot, NetIO *io, int party, int64_t length) {
 	prg.random_bool(b, length);
 
 	io->sync();
+	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
 	auto start = clock_start();
 	if (party == ALICE) {
 		ot->send_rot(b0, b1, length);
@@ -105,6 +122,8 @@ double test_rot(T* ot, NetIO *io, int party, int64_t length) {
 	}
 	io->flush();
 	long long t = time_from(start);
+	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
+	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
 	if (party == ALICE) {
 		io->send_block(b0, length);
 		io->send_block(b1, length);
@@ -154,26 +173,36 @@ static void verify_rcot(T* ot, NetIO* io, int party, block* b, int64_t mem_size)
 }
 
 template <typename T>
-double test_rcot(T* ot, NetIO *io, int party, int64_t length) {
+double test_rcot(T* ot, NetIO *io, int party, int64_t length,
+                 uint64_t* bytes_sent_out = nullptr,
+                 uint64_t* bytes_recv_out = nullptr) {
 	block *b = new block[length];
 	io->sync();
+	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
 	auto start = clock_start();
 	if (party == ALICE) ot->rcot_send(b, length);
 	else                ot->rcot_recv(b, length);
 	long long t = time_from(start);
+	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
+	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
 	verify_rcot(ot, io, party, b, length);
 	delete[] b;
 	return t;
 }
 
 template <typename T>
-double test_rcot_inplace(T* ot, NetIO *io, int party, int64_t length) {
+double test_rcot_inplace(T* ot, NetIO *io, int party, int64_t length,
+                         uint64_t* bytes_sent_out = nullptr,
+                         uint64_t* bytes_recv_out = nullptr) {
 	int64_t mem_size = ot->byte_memory_need_inplace((uint64_t)length);
 	block *b = new block[mem_size];
 	io->sync();
+	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
 	auto start = clock_start();
 	ot->rcot_inplace(b, mem_size);
 	long long t = time_from(start);
+	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
+	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
 	verify_rcot(ot, io, party, b, mem_size);
 	delete[] b;
 	return t;

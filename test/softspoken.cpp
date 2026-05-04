@@ -1,11 +1,12 @@
 #include "test/test.h"
 using namespace std;
 
+// Reports protocol-only wire (the test-harness verification round-trip
+// that follows is excluded — see test.h for the snapshot points).
 #define BW_RUN(NAME, EXPR)                                                  \
     do {                                                                    \
-        uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;                  \
+        uint64_t ds = 0, dr = 0;                                            \
         double t = (EXPR);                                                  \
-        uint64_t ds = io->bytes_sent - s0, dr = io->bytes_recv - r0;        \
         cout << "SoftSpoken<" << k << "> " << NAME << "\t"                  \
              << double(length) / t * 1e6 << " OTps  "                       \
              << "send=" << double(ds) / length << " B/COT  "                \
@@ -15,10 +16,10 @@ using namespace std;
 template <int k>
 void test_softspoken_k(NetIO* io, int party, int length) {
     SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(io);
-    BW_RUN("OT  ", (test_ot<SoftSpokenOT<k>>(ot, io, party, length)));
-    BW_RUN("COT ", (test_cot<SoftSpokenOT<k>>(ot, io, party, length)));
-    BW_RUN("ROT ", (test_rot<SoftSpokenOT<k>>(ot, io, party, length)));
-    BW_RUN("RCOT", (test_rcot<SoftSpokenOT<k>>(ot, io, party, length)));
+    BW_RUN("OT  ", (test_ot<SoftSpokenOT<k>>(ot, io, party, length, &ds, &dr)));
+    BW_RUN("COT ", (test_cot<SoftSpokenOT<k>>(ot, io, party, length, &ds, &dr)));
+    BW_RUN("ROT ", (test_rot<SoftSpokenOT<k>>(ot, io, party, length, &ds, &dr)));
+    BW_RUN("RCOT", (test_rcot<SoftSpokenOT<k>>(ot, io, party, length, &ds, &dr)));
     delete ot;
 }
 
