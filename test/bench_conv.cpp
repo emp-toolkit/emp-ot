@@ -10,7 +10,7 @@
 // large-batch (length=2^20, planes ~16 MB in L3) regimes for k=2,4,8.
 
 #include "emp-tool/emp-tool.h"
-#include "emp-ot/softspoken/subspace_vole.h"
+#include "emp-ot/softspoken/softspoken_ot.h"
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
