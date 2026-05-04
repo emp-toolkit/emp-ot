@@ -19,6 +19,7 @@ int main(int argc, char** argv) {
 	cout <<"Passive IKNP OT\t"<<double(length)/test_ot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
 	cout <<"Passive IKNP COT\t"<<double(length)/test_cot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
 	cout <<"Passive IKNP ROT\t"<<double(length)/test_rot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
+	cout <<"Passive IKNP RCOT\t"<<double(length)/test_rcot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
 	delete iknp;
 
 	OTCO * co = new OTCO(io);
@@ -32,6 +33,7 @@ int main(int argc, char** argv) {
 	cout <<"Active IKNP OT\t"<<double(length)/test_ot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
 	cout <<"Active IKNP COT\t"<<double(length)/test_cot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
 	cout <<"Active IKNP ROT\t"<<double(length)/test_rot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
+	cout <<"Active IKNP RCOT\t"<<double(length)/test_rcot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
 	delete iknp;
 
 	IOChannel* ios[1] = { io };
