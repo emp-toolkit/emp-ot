@@ -24,6 +24,7 @@ add_test_case(bench_pprf)
 add_test_case(bench_breakdown)
 add_test_case(bench_cggm_tile)
 add_test_case(bench_ferret_phase)
+add_test_case(bench_conv)
 
 # Verification harness for the ferret refactor: not added to CTest
 # (it has a two-step snap+trace flow driven by hand). Just builds.
