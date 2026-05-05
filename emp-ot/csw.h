@@ -1,12 +1,14 @@
-#ifndef EMP_OTSFROT_H__
-#define EMP_OTSFROT_H__
+#ifndef EMP_OTCSW_H__
+#define EMP_OTCSW_H__
 #include <emp-tool/emp-tool.h>
 #include <memory>
+#include <vector>
 #include "emp-ot/ot.h"
 namespace emp {
 
 /*
- * Blazing Fast OT — base OT realising π_ot^ℓ instances of F_SFROT.
+ * Canetti-Sarkar-Wang "Blazing Fast OT" — base OT realising π_ot^ℓ
+ * instances of F_SFROT.
  * [REF] Canetti, Sarkar, Wang. "Blazing Fast OT for Three-Round UC OT
  *       Extension." (Fig. SFROT_Prot in SFOT.tex)
  *
@@ -31,13 +33,13 @@ namespace emp {
  * `length` must be ≥ 80 (≈ 2σ for σ = 40); the sender-input extraction
  * argument needs ℓ > 2σ (paper sec 4 / overview.tex).
  */
-class OTSFROT : public OT { public:
+class OTCSW : public OT { public:
 	IOChannel * io;
 	Group * G = nullptr;
 	bool delete_G = true;
 	block sid;
 
-	OTSFROT(IOChannel * io_, block sid_, Group * G_ = nullptr) : sid(sid_) {
+	OTCSW(IOChannel * io_, block sid_, Group * G_ = nullptr) : sid(sid_) {
 		this->io = io_;
 		if (G_ == nullptr)
 			G = new Group();
@@ -47,7 +49,7 @@ class OTSFROT : public OT { public:
 		}
 	}
 
-	~OTSFROT() override {
+	~OTCSW() override {
 		if (delete_G)
 			delete G;
 	}
@@ -90,9 +92,7 @@ class OTSFROT : public OT { public:
 	}
 
 	// H_4(sid, h_1, …, h_ℓ) → block. Aggregates ℓ blocks into one.
-	// Uses hash_once on a contiguous buffer (sidesteps the Hash class
-	// whose stack-local lifetime tripped EVP_MD_CTX_free here). For
-	// typical ℓ = 128 the buffer is 1 + 16 + 2048 = 2065 B — heap
+	// For typical ℓ = 128 the buffer is 1 + 16 + 2048 = 2065 B — heap
 	// alloc once is fine since H_aggregate is called twice per batch.
 	block H_aggregate(const block * hs, int64_t ell) {
 		size_t hlen = 1 + sizeof(block) + (size_t)ell * sizeof(block);
@@ -106,13 +106,13 @@ class OTSFROT : public OT { public:
 	// ----- Sender side. Plays the OT sender role (S in the paper). -----
 	void send(const block * data0, const block * data1, int64_t length) override {
 		assert(length >= 80 &&
-		       "OTSFROT: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
+		       "OTCSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
 
 		// Round 1 (R→S): receive seed, {B_i}.
 		block seed;
 		io->recv_data(&seed, sizeof(block));
-		Point * B = new Point[length];
-		io->recv_pt(G, B, length);
+		std::vector<Point> B(length);
+		io->recv_pt(G, B.data(), length);
 
 		// Sender params: T = H_1(sid, seed); r ← Z_q; z = g^r.
 		// Amortize T^r over the batch: ρ_{i,1} = (B_i/T)^r = B_i^r · (T^r)^{-1}
@@ -125,9 +125,9 @@ class OTSFROT : public OT { public:
 		Point T_r_neg = T.mul(r).inv();                // -(T^r), reused per OT
 
 		// Per-OT pads p_{i,0}, p_{i,1} and h0_i = H_3(sid, p_{i,0}).
-		block * p0 = new block[length];
-		block * p1 = new block[length];
-		block * h0 = new block[length];
+		std::vector<block> p0(length);
+		std::vector<block> p1(length);
+		std::vector<block> h0(length);
 		for (int64_t i = 0; i < length; ++i) {
 			Point rho0 = B[i].mul(r);                  // ρ_{i,0} = B_i^r
 			Point rho1 = rho0.add(T_r_neg);            // ρ_{i,1} = B_i^r · (T^r)^{-1}
@@ -137,14 +137,14 @@ class OTSFROT : public OT { public:
 		}
 
 		// Aggregate otans = H_4(sid, h0_1, …, h0_ℓ) and proof Π = H_3(sid, otans).
-		block otans = H_aggregate(h0, length);
+		block otans = H_aggregate(h0.data(), length);
 		block proof = H_short(otans);
 
 		// Per-OT challenge χ_i = H_3(sid, p_{i,0}) ⊕ H_3(sid, p_{i,1});
 		// chosen-input ciphertexts c_{i,b} = p_{i,b} ⊕ data_{i,b}.
-		block * chi = new block[length];
-		block * c0 = new block[length];
-		block * c1 = new block[length];
+		std::vector<block> chi(length);
+		std::vector<block> c0(length);
+		std::vector<block> c1(length);
 		for (int64_t i = 0; i < length; ++i) {
 			block h1 = H_short(p1[i]);
 			chi[i] = h0[i] ^ h1;
@@ -154,30 +154,22 @@ class OTSFROT : public OT { public:
 
 		// Round 2 (S→R): send (z, {χ_i}, Π, {c_{i,0}, c_{i,1}}).
 		io->send_pt(&z);
-		io->send_block(chi, length);
+		io->send_block(chi.data(), length);
 		io->send_block(&proof, 1);
-		io->send_block(c0, length);
-		io->send_block(c1, length);
+		io->send_block(c0.data(), length);
+		io->send_block(c1.data(), length);
 		io->flush();
 
 		// Round 3 (R→S): receive otans' and verify against otans.
 		block otans_prime;
 		io->recv_block(&otans_prime, 1);
 		if (!cmpBlock(&otans, &otans_prime, 1))
-			error("OTSFROT::send: otans verification failed (receiver misbehavior)");
-
-		delete[] B;
-		delete[] p0;
-		delete[] p1;
-		delete[] h0;
-		delete[] chi;
-		delete[] c0;
-		delete[] c1;
+			error("OTCSW::send: otans verification failed (receiver misbehavior)");
 	}
 
 	// ----- Receiver side. Plays the OT receiver role (R in the paper). -----
 	void recv(block * data, const bool * b, int64_t length) override {
-		assert(length >= 80 && "OTSFROT: length must be ≥ 80");
+		assert(length >= 80 && "OTCSW: length must be ≥ 80");
 
 		// Receiver params: seed ← {0,1}^κ; T = H_1(sid, seed).
 		block seed;
@@ -187,8 +179,8 @@ class OTSFROT : public OT { public:
 		H_to_curve(seed, T);
 
 		// Per-OT receiver msg: α_i ← Z_q; B_i = g^{α_i} · T^{b_i}.
-		BigInt * alpha = new BigInt[length];
-		Point * B = new Point[length];
+		std::vector<BigInt> alpha(length);
+		std::vector<Point> B(length);
 		for (int64_t i = 0; i < length; ++i) {
 			G->get_rand_bn(alpha[i]);
 			B[i] = G->mul_gen(alpha[i]);
@@ -198,39 +190,46 @@ class OTSFROT : public OT { public:
 
 		// Round 1 (R→S): send seed, {B_i}.
 		io->send_data(&seed, sizeof(block));
-		io->send_pt(B, length);
+		io->send_pt(B.data(), length);
 		io->flush();
 
 		// Round 2 (S→R): recv (z, {χ_i}, Π, {c_{i,0}, c_{i,1}}).
+		// α_i·z, p_bi[i], H_short(p_bi[i]) depend only on (z, alpha), so
+		// compute them right after recv'ing z and while the bulk
+		// chi/proof/c0/c1 payload is still in flight. The XOR with chi[i]
+		// that produces otresp[i] runs after chi is in hand.
 		Point z;
 		io->recv_pt(G, &z);
-		block * chi = new block[length];
-		block proof;
-		block * c0 = new block[length];
-		block * c1 = new block[length];
-		io->recv_block(chi, length);
-		io->recv_block(&proof, 1);
-		io->recv_block(c0, length);
-		io->recv_block(c1, length);
 
-		// Per-OT response: p_{i,b_i} = H_2(sid, i, z^{α_i});
-		// otresp_i = H_3(sid, p_{i,b_i}) ⊕ (b_i · χ_i).
-		block * otresp = new block[length];
-		block * p_bi = new block[length];   // saved for decryption after Π verification
+		std::vector<block> p_bi(length);   // saved for decryption after Π verification
+		std::vector<block> h_bi(length);   // H_short(p_bi[i]); xored with chi[i] later
 		for (int64_t i = 0; i < length; ++i) {
 			Point z_alpha = z.mul(alpha[i]);
 			p_bi[i] = H_pad(i, z_alpha);
-			block h_bi = H_short(p_bi[i]);
-			otresp[i] = b[i] ? (h_bi ^ chi[i]) : h_bi;
+			h_bi[i] = H_short(p_bi[i]);
 		}
+
+		std::vector<block> chi(length);
+		block proof;
+		std::vector<block> c0(length);
+		std::vector<block> c1(length);
+		io->recv_block(chi.data(), length);
+		io->recv_block(&proof, 1);
+		io->recv_block(c0.data(), length);
+		io->recv_block(c1.data(), length);
+
+		// Per-OT response: otresp_i = H_3(sid, p_{i,b_i}) ⊕ (b_i · χ_i).
+		std::vector<block> otresp(length);
+		for (int64_t i = 0; i < length; ++i)
+			otresp[i] = b[i] ? (h_bi[i] ^ chi[i]) : h_bi[i];
 
 		// Aggregate otans' and verify Π. Aborts on mismatch — covers
 		// both honest abort (sender malformed χ_i) and the
 		// selective-failure-detected case from the paper.
-		block otans_prime = H_aggregate(otresp, length);
+		block otans_prime = H_aggregate(otresp.data(), length);
 		block proof_check = H_short(otans_prime);
 		if (!cmpBlock(&proof, &proof_check, 1))
-			error("OTSFROT::recv: proof verification failed (sender misbehavior or selective-failure attack)");
+			error("OTCSW::recv: proof verification failed (sender misbehavior or selective-failure attack)");
 
 		// Decrypt outputs.
 		for (int64_t i = 0; i < length; ++i) {
@@ -241,16 +240,8 @@ class OTSFROT : public OT { public:
 		// Round 3 (R→S): send otans'.
 		io->send_block(&otans_prime, 1);
 		io->flush();
-
-		delete[] alpha;
-		delete[] B;
-		delete[] chi;
-		delete[] c0;
-		delete[] c1;
-		delete[] otresp;
-		delete[] p_bi;
 	}
 };
 
 }  // namespace emp
-#endif  // EMP_OTSFROT_H__
+#endif  // EMP_OTCSW_H__

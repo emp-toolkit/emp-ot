@@ -12,9 +12,6 @@ int main(int argc, char** argv) {
 
 	parse_party_and_port(argv, &party, &port);
 	NetIO * io = new NetIO(party==ALICE ? nullptr:"127.0.0.1", port);
-	OTNP * np = new OTNP(io);
-	cout <<"128 NPOTs:\t"<<test_ot<OTNP>(np, io, party, 128)<<" us"<<endl;
-	delete np;
 	IKNP * iknp = new IKNP(io);
 	cout <<"Passive IKNP OT\t"<<double(length)/test_ot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
 	cout <<"Passive IKNP COT\t"<<double(length)/test_cot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
@@ -22,13 +19,6 @@ int main(int argc, char** argv) {
 	cout <<"Passive IKNP RCOT\t"<<double(length)/test_rcot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
 	delete iknp;
 
-	OTCO * co = new OTCO(io);
-	cout <<"128 COOTs:\t"<<test_ot<OTCO>(co, io, party, 128)<<" us"<<endl;
-	delete co;
-
-	OTPVW * pvw = new OTPVW(io);
-	cout <<"128 PVW OTs:\t"<<test_ot<OTPVW>(pvw, io, party, 128)<<" us"<<endl;
-	delete pvw;
 	iknp = new IKNP(io, true);
 	cout <<"Active IKNP OT\t"<<double(length)/test_ot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;
 	cout <<"Active IKNP COT\t"<<double(length)/test_cot<IKNP>(iknp, io, party, length)*1e6<<" OTps"<<endl;

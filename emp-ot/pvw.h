@@ -2,6 +2,7 @@
 #define EMP_OTPVW_H__
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/ot.h"
+#include <vector>
 
 namespace emp {
 
@@ -70,18 +71,14 @@ class OTPVW: public OT { public:
 	}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
-		// Round 1: receive (g_i, h_i) per OT instance.
-		Point *gs = new Point[length];
-		Point *hs = new Point[length];
+		// Per i: receive (g_i, h_i), build (u_b, c_b) for b in {0,1},
+		// send them and the ciphertexts. (g_i, h_i) is consumed within
+		// the iteration so no length-sized staging array is needed.
 		for (int64_t i = 0; i < length; ++i) {
-			io->recv_pt(G, &gs[i]);
-			io->recv_pt(G, &hs[i]);
-		}
+			Point gs_i, hs_i;
+			io->recv_pt(G, &gs_i);
+			io->recv_pt(G, &hs_i);
 
-		// Round 2: for each i and each b in {0,1}, pick s_b, t_b, x_b
-		// and send (u_b, c_b). Then send (ct_0, ct_1) where
-		// ct_b = data_b XOR KDF(x_b).
-		for (int64_t i = 0; i < length; ++i) {
 			BigInt s, t, k;
 			Point xb[2];
 			for (int b = 0; b < 2; ++b) {
@@ -96,7 +93,7 @@ class OTPVW: public OT { public:
 				const Point &gb = (b == 0 ? g0 : g1);
 				const Point &hb = (b == 0 ? h0 : h1);
 				Point u    = gb.mul(s).add(hb.mul(t));
-				Point c_pt = gs[i].mul(s).add(hs[i].mul(t)).add(xb[b]);
+				Point c_pt = gs_i.mul(s).add(hs_i.mul(t)).add(xb[b]);
 				io->send_pt(&u);
 				io->send_pt(&c_pt);
 			}
@@ -106,14 +103,13 @@ class OTPVW: public OT { public:
 			io->send_data(ct, 2 * sizeof(block));
 		}
 		io->flush();
-
-		delete[] gs;
-		delete[] hs;
 	}
 
 	void recv(block* data, const bool* b, int64_t length) override {
 		// Round 1: send (g, h) = (g_sigma^r, h_sigma^r) per OT instance.
-		BigInt *rs = new BigInt[length];
+		// r_i is needed across rounds (used to recover x_sigma in round
+		// 2), so keep all r_i live in an array.
+		std::vector<BigInt> rs(length);
 		for (int64_t i = 0; i < length; ++i) {
 			G->get_rand_bn(rs[i]);
 			int sigma = b[i] ? 1 : 0;
@@ -145,8 +141,6 @@ class OTPVW: public OT { public:
 
 			data[i] = Hash::KDF(x_sigma, i) ^ ct[sigma];
 		}
-
-		delete[] rs;
 	}
 };
 

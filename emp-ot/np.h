@@ -1,6 +1,7 @@
 #ifndef EMP_OTNP_H__
 #define EMP_OTNP_H__
 #include "emp-ot/ot.h"
+#include <vector>
 
 namespace emp {
 
@@ -34,12 +35,12 @@ class OTNP: public OT { public:
 		io->send_pt(&C);
 		io->flush();
 
-		BigInt * r = new BigInt[length];
-		BigInt * rc = new BigInt[length];
-		Point * pk0 = new Point[length],
-				pk1,
-				*gr = new Point[length],
-				*Cr = new Point[length];
+		std::vector<BigInt> r(length);
+		std::vector<BigInt> rc(length);
+		std::vector<Point> pk0(length);
+		std::vector<Point> gr(length);
+		std::vector<Point> Cr(length);
+		Point pk1;
 		for(int64_t i = 0; i < length; ++i) {
 			G->get_rand_bn(r[i]);
 			gr[i] = G->mul_gen(r[i]);
@@ -66,17 +67,11 @@ class OTNP: public OT { public:
 			io->send_data(m, 2*sizeof(block));
 		}
 		io->flush();
-
-		delete[] r;
-		delete[] gr;
-		delete[] Cr;
-		delete[] rc;
-		delete[] pk0;
 	}
 
 	void recv(block* data, const bool* b, int64_t length) override {
-		BigInt * k = new BigInt[length];
-		Point * gr = new Point[length];
+		std::vector<BigInt> k(length);
+		std::vector<Point> gr(length);
 		Point pk[2];
 		block m[2];
 		Point C;
@@ -105,8 +100,6 @@ class OTNP: public OT { public:
 			io->recv_data(m, 2*sizeof(block));
 			data[i] = m[ind] ^ Hash::KDF(gr[i]);
 		}
-		delete[] k;
-		delete[] gr;
 	}
 
 };

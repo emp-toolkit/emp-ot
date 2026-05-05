@@ -2,6 +2,7 @@
 #define EMP_OTCO_H__
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/ot.h"
+#include <vector>
 namespace emp {
 
 /*
@@ -31,8 +32,8 @@ class OTCO: public OT { public:
 		BigInt a;
 		Point A, AaInv;
 		block res[2];
-		Point * B = new Point[length];
-		Point * BA = new Point[length];
+		std::vector<Point> B(length);
+		std::vector<Point> BA(length);
 
 		G->get_rand_bn(a);
 		A = G->mul_gen(a);
@@ -52,16 +53,13 @@ class OTCO: public OT { public:
 			io->send_data(res, 2*sizeof(block));
 		}
 		io->flush();
-
-		delete[] BA;
-		delete[] B;
 	}
 
 	void recv(block* data, const bool* b, int64_t length) override {
-		BigInt * bb = new BigInt[length];
-		Point * B = new Point[length],
-				* As = new Point[length],
-				A;
+		std::vector<BigInt> bb(length);
+		std::vector<Point> B(length);
+		std::vector<Point> As(length);
+		Point A;
 
 		for(int64_t i = 0; i < length; ++i)
 			G->get_rand_bn(bb[i]);
@@ -88,10 +86,6 @@ class OTCO: public OT { public:
 			else
 				data[i] = data[i] ^ res[0];
 		}
-
-		delete[] bb;
-		delete[] B;
-		delete[] As;
 	}
 };
 
