@@ -123,14 +123,13 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 		// Bootstrap: SoftSpokenOT<8> directly produces the M base COTs
 		// needed to seed the first steady-state extend. Δ is shared (the
 		// same one used in subsequent cGGM corrections and the
-		// consistency check).
-		// NOTE: SoftSpokenOT is currently semi-honest; the malicious
-		// ferret path inherits that limitation until SoftSpokenOT is
-		// upgraded to malicious-secure (separate follow-up). The
-		// downstream MpcotReg consistency check still runs in malicious
-		// mode but its base COTs are not themselves malicious-secure.
+		// consistency check). Malicious mode propagates: SoftSpoken's
+		// PPRF + subspace VOLE checks compose with the downstream
+		// MpcotReg consistency check to give end-to-end malicious
+		// security.
 		(void)choice; (void)seed;
 		SoftSpokenOT<8> ssp(io);
+		if (this->is_malicious) ssp.set_malicious(true);
 		if (party == ALICE) ssp.setup_send(Delta);
 		else                ssp.setup_recv();
 		if (party == ALICE) ssp.rcot_send(ot_pre_data, M);

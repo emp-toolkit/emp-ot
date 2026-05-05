@@ -224,7 +224,9 @@ inline void apply_derand_to_w_planes(int alpha_i,
 namespace emp {
 
 /*
- * SoftSpoken OT Extension — semi-honest, RandomCOT subclass.
+ * SoftSpoken OT Extension — RandomCOT subclass, semi-honest by
+ * default; call `set_malicious(true)` before setup to enable the two
+ * malicious-security checks.
  * [REF] L. Roy, "SoftSpokenOT: Quieter OT Extension from Small-Field
  *       Silent VOLE in the Minicrypt Model" — Crypto '22.
  *       https://eprint.iacr.org/2022/192
@@ -251,6 +253,33 @@ namespace emp {
  * Δ has LSB=1 (forced by setup_send no-arg, required of callers
  * passing setup_send(delta_in)). Required for the LSB-encoded choice
  * convention to round-trip the COT relation correctly.
+ *
+ * Malicious mode (off by default). Two checks compose to upgrade from
+ * the semi-honest baseline to malicious-secure (Roy '22 Fig.
+ * `protpprfconsistency` and Fig. `protvoleconsistency`):
+ *
+ *   (1) PPRF check, run once at end of setup_send / setup_recv. The
+ *       PPRF-sender (= COT-receiver / setup_recv side) ships per-level
+ *       K^0/K^1 blocks via base OT and could lie there to corrupt the
+ *       PPRF-receiver's (= COT-sender / setup_send side) leaves at
+ *       indices y ≠ alpha_i. To bind, the PPRF-sender sends per-sub-
+ *       VOLE (s' := SHA256(leaves), t' := XOR-of-leaves); the
+ *       PPRF-receiver reconstructs leaves[alpha_i] = t' XOR
+ *       XOR_{y≠alpha_i} leaves[y], hashes the full vector, and aborts
+ *       on mismatch. Bounds the per-sub-VOLE selective-abort leakage
+ *       to affinesub(F_2^k) (Roy Prop. `pprfcheckattack`).
+ *
+ *   (2) Subspace VOLE check, run once per begin/next…/end session. A
+ *       Fiat-Shamir transcript over the d_bufs bytes of every chunk
+ *       seeds a per-chunk chi; both sides chi-fold packed F_{2^128}
+ *       elements over the post-Conv outputs (sender accumulates
+ *       check_q := Σ chi_i · Q_i, receiver check_t := Σ chi_i · T_i,
+ *       check_x := Σ chi_i · R_i where R_i = u_canonical[i]). One
+ *       128-OT sacrificial chunk runs in *_end before the (check_x,
+ *       check_t) exchange and the check_q ?= check_t ⊕ check_x · Δ
+ *       compare. Catches any deviation by the VOLE-sender (= COT-
+ *       receiver) in the d_bufs syndrome. Same chi-fold shape as IKNP
+ *       — see emp-ot/iknp.{h,cpp}.
  */
 template <int k>
 class SoftSpokenOT : public RandomCOT {
@@ -300,6 +329,12 @@ public:
     // its own party flag).
     void setup_recv();
 
+    // Enable malicious-mode checks. Must be called BEFORE setup_send /
+    // setup_recv so the PPRF check runs at the tail of setup. Once
+    // setup is done, the flag also gates the per-session subspace
+    // VOLE check in rcot_*_begin/next/end.
+    void set_malicious(bool on = true) { malicious_ = on; }
+
 private:
     OTCO base_ot_;
     bool setup_done_ = false;
@@ -330,7 +365,37 @@ private:
     BlockVec planes_chunk_;   // n * k * kChunkBlocks blocks
     BlockVec d_bufs_chunk_;   // (n - 1) * kChunkBlocks blocks
 
+    // ===== Malicious-mode state =====
+    bool malicious_ = false;
+    // Fiat-Shamir transcript over the d_bufs bytes of every chunk in
+    // the current session (reset at *_begin). Snapshots (reset_after=
+    // false) seed the per-chunk chi PRG identically on both sides.
+    Hash transcript_;
+    // Packs 128 consecutive post-Conv outputs into one F_{2^128}
+    // element via (1, X, …, X^127); see iknp.cpp::combine_*.
+    GaloisFieldPacking packer_;
+    // Running chi-fold accumulators, reset at *_begin. Sender uses
+    // check_q_; receiver uses check_t_ (folds T_i) and check_x_
+    // (folds R_i = u_canonical[i]). The end-of-session compare is
+    // check_q_ ?= check_t_ ⊕ check_x_ · Δ.
+    block check_q_  = zero_block;
+    block check_t_  = zero_block;
+    block check_x_  = zero_block;
+
     void setup_send();
+    // PPRF consistency check. _send runs on the PPRF-sender (=
+    // setup_recv side); _recv on the PPRF-receiver (= setup_send
+    // side). Implements Fig. `protpprfconsistency` directly on the
+    // cGGM leaves (no separate PRG'_0 — leaves are already PRF
+    // outputs and SHA-256 absorbs the full λ-bit input).
+    void pprf_check_send();
+    void pprf_check_recv();
+    // Per-chunk subspace VOLE chi-fold. Both take the chunk's post-
+    // Conv `out` (bs * 128 OTs) and accumulate into the matching
+    // running check. Chi seed is a snapshot of transcript_ taken
+    // after this chunk's d_bufs were absorbed. Mirrors IKNP::combine_*.
+    void combine_send_chunk(block* out, int64_t bs);
+    void combine_recv_chunk(block* out, const block* u_canonical, int64_t bs);
 };
 
 extern template class SoftSpokenOT<2>;

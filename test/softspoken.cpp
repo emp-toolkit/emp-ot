@@ -14,8 +14,9 @@ using namespace std;
     } while (0)
 
 template <int k>
-void test_softspoken_k(NetIO* io, int party, int length) {
+void test_softspoken_k(NetIO* io, int party, int length, bool malicious) {
     SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(io);
+    if (malicious) ot->set_malicious(true);
     BW_RUN("OT  ", (test_ot<SoftSpokenOT<k>>(ot, io, party, length, &ds, &dr)));
     BW_RUN("COT ", (test_cot<SoftSpokenOT<k>>(ot, io, party, length, &ds, &dr)));
     BW_RUN("ROT ", (test_rot<SoftSpokenOT<k>>(ot, io, party, length, &ds, &dr)));
@@ -33,9 +34,15 @@ int main(int argc, char** argv) {
     parse_party_and_port(argv, &party, &port);
     NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
 
-    test_softspoken_k<2>(io, party, length);
-    test_softspoken_k<4>(io, party, length);
-    test_softspoken_k<8>(io, party, length);
+    cout << "=== semi-honest ===" << endl;
+    test_softspoken_k<2>(io, party, length, /*malicious=*/false);
+    test_softspoken_k<4>(io, party, length, /*malicious=*/false);
+    test_softspoken_k<8>(io, party, length, /*malicious=*/false);
+
+    cout << "=== malicious ===" << endl;
+    test_softspoken_k<2>(io, party, length, /*malicious=*/true);
+    test_softspoken_k<4>(io, party, length, /*malicious=*/true);
+    test_softspoken_k<8>(io, party, length, /*malicious=*/true);
 
     delete io;
     return 0;
