@@ -2,7 +2,7 @@
 #define EMP_IKNP_H__
 #include <cassert>
 #include "emp-ot/cot.h"
-#include "emp-ot/co.h"
+#include "emp-ot/base_ot/co.h"
 
 namespace emp {
 

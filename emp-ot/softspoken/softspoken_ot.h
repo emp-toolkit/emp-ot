@@ -2,7 +2,7 @@
 #define EMP_SOFTSPOKEN_OT_H__
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/cot.h"
-#include "emp-ot/co.h"
+#include "emp-ot/base_ot/co.h"
 #include "emp-ot/cggm.h"
 #include "emp-ot/softspoken/aes_ctr_fold.h"
 #include "emp-ot/softspoken/sfvole_butterfly.h"

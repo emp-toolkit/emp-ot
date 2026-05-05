@@ -3,10 +3,10 @@
 
 #include "emp-ot/ot.h"
 #include "emp-ot/ideal.h"
-#include "emp-ot/co.h"
-#include "emp-ot/np.h"
-#include "emp-ot/pvw.h"
-#include "emp-ot/csw.h"
+#include "emp-ot/base_ot/co.h"
+#include "emp-ot/base_ot/np.h"
+#include "emp-ot/base_ot/pvw.h"
+#include "emp-ot/base_ot/csw.h"
 #include "emp-ot/iknp.h"
 
 #include "emp-ot/ferret/ferret_cot.h"
