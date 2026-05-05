@@ -27,6 +27,7 @@ add_test_case(bench_conv)
 add_test_case(bench_multikey_aes)
 add_test_case(bench_sfvole_v2)
 add_test_case(bench_softspoken_phase)
+add_test_case(prof_sfvole_local)
 
 # Verification harness for the ferret refactor: not added to CTest
 # (it has a two-step snap+trace flow driven by hand). Just builds.
