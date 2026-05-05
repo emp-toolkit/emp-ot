@@ -164,4 +164,128 @@ inline void sfvole_receiver_butterfly(int alpha,
 
 #endif  // __aarch64__
 
+#if defined(__x86_64__)
+
+namespace emp { namespace softspoken {
+
+namespace bfly_detail {
+
+// AES-NI scalar tile: one AES key, T plaintext blocks per call.
+// EMP_AES_TARGET_ATTR widens function-level ISA to at least aes+sse2;
+// callers may run on hardware supporting VAES512 / VAES256 too — the
+// AES-NI scalar instruction is compatible with all AVX tiers, so the
+// kernel works everywhere a VAES path would.
+template <int T>
+EMP_AES_TARGET_ATTR
+inline void aes_T_blocks_x86(__m128i pt[T], int64_t b0, const AES_KEY* kk) {
+    for (int jj = 0; jj < T; ++jj)
+        pt[jj] = _mm_set_epi64x(0, b0 + jj);
+
+    const __m128i K0 = kk->rd_key[0];
+    for (int jj = 0; jj < T; ++jj) pt[jj] = _mm_xor_si128(pt[jj], K0);
+
+    #pragma GCC unroll 9
+    for (int r = 1; r < 10; ++r) {
+        const __m128i K = kk->rd_key[r];
+        for (int jj = 0; jj < T; ++jj) pt[jj] = _mm_aesenc_si128(pt[jj], K);
+    }
+    const __m128i Klast = kk->rd_key[10];
+    for (int jj = 0; jj < T; ++jj) pt[jj] = _mm_aesenclast_si128(pt[jj], Klast);
+}
+
+// Same butterfly halve as NEON, with SSE intrinsics.
+template <int k, int T>
+EMP_AES_TARGET_ATTR
+inline void butterfly_halve_x86(block A[][T],
+                                 block* v_dst, int64_t v_stride) {
+    constexpr int Q = 1 << k;
+    int n = Q;
+    for (int b = 0; b < k; ++b) {
+        __m128i v_acc[T];
+        for (int jj = 0; jj < T; ++jj) v_acc[jj] = _mm_setzero_si128();
+        const int half = n >> 1;
+        for (int y = 0; y < half; ++y) {
+            for (int jj = 0; jj < T; ++jj) {
+                const __m128i L = _mm_load_si128((const __m128i*)&A[2*y    ][jj]);
+                const __m128i R = _mm_load_si128((const __m128i*)&A[2*y + 1][jj]);
+                v_acc[jj] = _mm_xor_si128(v_acc[jj], R);
+                _mm_store_si128((__m128i*)&A[y][jj], _mm_xor_si128(L, R));
+            }
+        }
+        block* dst = v_dst + (size_t)b * v_stride;
+        for (int jj = 0; jj < T; ++jj)
+            _mm_store_si128((__m128i*)&dst[jj], v_acc[jj]);
+        n = half;
+    }
+}
+
+}  // namespace bfly_detail
+
+template <int k, int T = 8>
+EMP_AES_TARGET_ATTR
+inline void sfvole_sender_butterfly(const block leaves[1 << k],
+                                     uint64_t session,
+                                     int64_t b0, int64_t bs,
+                                     block* u_chunk,
+                                     block* v_planes_chunk) {
+    constexpr int Q = 1 << k;
+
+    alignas(16) AES_KEY keys[Q];
+    const block session_xor = makeBlock(0LL, (int64_t)session);
+    for (int x = 0; x < Q; ++x)
+        AES_set_encrypt_key(leaves[x] ^ session_xor, &keys[x]);
+
+    alignas(16) block A[Q][T];
+
+    for (int64_t t0 = 0; t0 < bs; t0 += T) {
+        for (int x = 0; x < Q; ++x) {
+            __m128i pt[T];
+            bfly_detail::aes_T_blocks_x86<T>(pt, b0 + t0, &keys[x]);
+            for (int jj = 0; jj < T; ++jj)
+                _mm_store_si128((__m128i*)&A[x][jj], pt[jj]);
+        }
+
+        bfly_detail::butterfly_halve_x86<k, T>(
+            A, v_planes_chunk + t0, /*v_stride=*/bs);
+
+        for (int jj = 0; jj < T; ++jj) {
+            const __m128i u_val = _mm_load_si128((const __m128i*)&A[0][jj]);
+            _mm_store_si128((__m128i*)&u_chunk[t0 + jj], u_val);
+        }
+    }
+}
+
+template <int k, int T = 8>
+EMP_AES_TARGET_ATTR
+inline void sfvole_receiver_butterfly(int alpha,
+                                       const block leaves[1 << k],
+                                       uint64_t session,
+                                       int64_t b0, int64_t bs,
+                                       block* w_planes_chunk) {
+    constexpr int Q = 1 << k;
+
+    alignas(16) AES_KEY keys[Q];
+    const block session_xor = makeBlock(0LL, (int64_t)session);
+    for (int y = 0; y < Q; ++y)
+        AES_set_encrypt_key(leaves[alpha ^ y] ^ session_xor, &keys[y]);
+
+    alignas(16) block A[Q][T];
+
+    for (int64_t t0 = 0; t0 < bs; t0 += T) {
+        for (int y = 0; y < Q; ++y) {
+            __m128i pt[T];
+            bfly_detail::aes_T_blocks_x86<T>(pt, b0 + t0, &keys[y]);
+            for (int jj = 0; jj < T; ++jj)
+                _mm_store_si128((__m128i*)&A[y][jj], pt[jj]);
+        }
+
+        bfly_detail::butterfly_halve_x86<k, T>(
+            A, w_planes_chunk + t0, /*v_stride=*/bs);
+    }
+}
+
+}}  // namespace emp::softspoken
+
+#endif  // __x86_64__
+
 #endif  // EMP_SOFTSPOKEN_SFVOLE_BUTTERFLY_H__

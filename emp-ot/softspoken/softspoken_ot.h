@@ -145,7 +145,7 @@ inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
                                         int64_t bs,
                                         block* u_bits_chunk,
                                         block* v_planes_chunk) {
-#if defined(__aarch64__)
+#if defined(__aarch64__) || defined(__x86_64__)
     if constexpr (k == 8) {
         sfvole_sender_butterfly<k>(leaves, session, b0, bs,
                                     u_bits_chunk, v_planes_chunk);
@@ -192,7 +192,7 @@ inline void sfvole_receiver_compute_chunk(int alpha,
                                           int64_t b0,
                                           int64_t bs,
                                           block* w_planes_chunk) {
-#if defined(__aarch64__)
+#if defined(__aarch64__) || defined(__x86_64__)
     if constexpr (k == 8) {
         sfvole_receiver_butterfly<k>(alpha, leaves, session, b0, bs,
                                       w_planes_chunk);
