@@ -167,16 +167,24 @@ void SoftSpokenOT<k>::rcot_send_next(block* out, int64_t chunk_len) {
         }
     }
 
+    // LSB convention (IKNP-style construction): force sub-VOLE 0's plane
+    // 0 to zero, so after Conv bit_0 of every output block is zero.
+    // Mirrored on the receiver side by V_0[0] := u_canonical. The COT
+    // relation V ⊕ W = u_canonical · α at bit 0 (where bit_0(α_0) = 1
+    // is forced in setup_send) then holds trivially: 0 ⊕ u_canonical =
+    // u_canonical. Replaces the post-Conv `out[j] &= lsb_clear_mask`
+    // loop, which was ~9% of CPU at k=8 on Intel SR+. The fold work
+    // for sub-VOLE 0 plane 0 inside sfvole_receiver_compute_chunk above
+    // is now wasted (~0.6% of total), kept for now to avoid an sfvole
+    // API split.
+    std::memset(w_planes_chunk, 0, sizeof(block) * bs);
+
     // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
     // w_planes_chunk's plane-major layout is exactly the row-major
     // byte layout sse_trans consumes.
     sse_trans(reinterpret_cast<uint8_t*>(out),
               reinterpret_cast<const uint8_t*>(w_planes_chunk),
               /*nrows=*/128, /*ncols=*/bs * 128);
-
-    // LSB convention (sender side): clear bit 0 on every OT output.
-    for (int64_t j = 0; j < chunk_len; ++j)
-        out[j] = out[j] & lsb_clear_mask;
 
     cur_send_b0_ += bs;
 }
@@ -247,20 +255,20 @@ void SoftSpokenOT<k>::rcot_recv_next(block* out, int64_t chunk_len) {
         this->io->send_block(d_bufs, total_d_blocks);
     }
 
+    // LSB convention (IKNP-style construction): pin sub-VOLE 0's plane
+    // 0 to u_canonical, so after Conv bit_0(out[j]) = bit_j(u_canonical)
+    // = receiver's intrinsic choice bit. Mirrored on the sender side
+    // by W_0[0] := 0. Replaces the post-Conv bit-extracting LSB loop
+    // (which was ~9% of CPU at k=8 on Intel SR+ — slow because of the
+    // per-bit byte-load + branch). The fold work for sub-VOLE 0 plane 0
+    // inside sfvole_sender_compute_chunk above is now wasted (~0.6%
+    // of total), kept for now to avoid an sfvole API split.
+    std::memcpy(v_planes_chunk, u_canonical, sizeof(block) * bs);
+
     // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
     sse_trans(reinterpret_cast<uint8_t*>(out),
               reinterpret_cast<const uint8_t*>(v_planes_chunk),
               /*nrows=*/128, /*ncols=*/bs * 128);
-
-    // LSB convention (receiver side): clear bit 0 and OR in the
-    // intrinsic random choice u_canonical[j] (1 bit per OT). With
-    // LSB(Δ)=1 the COT relation K ⊕ M = b·Δ holds at bit 0; the
-    // upper 127 bits of the relation are preserved by Conv.
-    const uint8_t* u_bytes = reinterpret_cast<const uint8_t*>(u_canonical);
-    for (int64_t j = 0; j < chunk_len; ++j) {
-        const uint64_t u_bit = (u_bytes[j >> 3] >> (j & 7)) & 1u;
-        out[j] = (out[j] & lsb_clear_mask) ^ (u_bit ? lsb_only_mask : zero_block);
-    }
 
     cur_recv_b0_ += bs;
 }
