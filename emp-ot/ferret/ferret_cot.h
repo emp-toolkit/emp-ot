@@ -5,12 +5,11 @@
 #include <memory>
 
 // Forward-declare ferret internals so the public header doesn't pull
-// in the IKNP / SPCOT / cGGM transitive closure.
+// in the SPCOT / cGGM transitive closure.
 // The .cpp #includes the real headers; std::unique_ptr<T> works with
 // forward-declared T as long as the dtor is out-of-line (it is).
 
 namespace emp {
-class IKNP;
 class MpcotReg;
 template <int d> class LpnF2;
 }  // namespace emp
@@ -64,12 +63,11 @@ private:
 	bool is_malicious;
 	bool extend_initialized;
 
-	block * ot_pre_data = nullptr;  // sized to param.n_pre when alive
+	block * ot_pre_data = nullptr;  // sized to M when alive
 	block * ot_data = nullptr;      // sized to param.n; lazily allocated
 
 	std::string pre_ot_filename;
 
-	std::unique_ptr<IKNP>      iknp;
 	std::unique_ptr<ThreadPool> pool;
 	std::unique_ptr<MpcotReg>  mpcot;
 	std::unique_ptr<LpnF2<10>> lpn_f2;

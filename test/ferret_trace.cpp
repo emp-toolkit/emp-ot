@@ -23,10 +23,6 @@
 using namespace std;
 using namespace emp;
 
-static int64_t state_size_for(const PrimalLPNParameter& p) {
-    return sizeof(int64_t) * 4 + sizeof(block) + sizeof(block) * p.n_pre;
-}
-
 int main(int argc, char** argv) {
     if (argc < 5) {
         fprintf(stderr, "usage: %s <party> <port> <prefix> <snap|trace>\n", argv[0]);
@@ -46,7 +42,7 @@ int main(int argc, char** argv) {
         IOChannel* ios[1] = { &base };
         FerretCOT ot(party, 1, ios, /*malicious=*/false,
                      /*run_setup=*/true, ferret_b13);
-        const int64_t sz = state_size_for(ferret_b13);
+        const int64_t sz = ot.state_size();
         vector<uint8_t> buf(sz);
         ot.assemble_state(buf.data(), sz);
         ofstream out(snap_path, std::ios::binary);
@@ -60,13 +56,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Load snapshot.
-    const int64_t sz = state_size_for(ferret_b13);
-    vector<uint8_t> buf(sz);
-    ifstream in(snap_path, std::ios::binary);
-    if (!in) { fprintf(stderr, "snapshot %s missing\n", snap_path.c_str()); return 1; }
-    in.read(reinterpret_cast<char*>(buf.data()), sz);
-
     // Wrap base IO in a tracer so every byte sent/received from this point
     // on lands in the trace file. Setup-phase IO is *not* in the trace
     // (snapshot was generated in a previous run).
@@ -74,6 +63,13 @@ int main(int argc, char** argv) {
     IOChannel* ios[1] = { &trace };
     FerretCOT ot(party, 1, ios, /*malicious=*/false,
                  /*run_setup=*/false, ferret_b13);
+    // state_size() lazy-runs extend_initialization() so M (and the
+    // resulting buffer length) are known before disassemble.
+    const int64_t sz = ot.state_size();
+    vector<uint8_t> buf(sz);
+    ifstream in(snap_path, std::ios::binary);
+    if (!in) { fprintf(stderr, "snapshot %s missing\n", snap_path.c_str()); return 1; }
+    in.read(reinterpret_cast<char*>(buf.data()), sz);
     if (ot.disassemble_state(buf.data(), sz) != 0) {
         fprintf(stderr, "snapshot mismatch (params changed?)\n");
         return 1;

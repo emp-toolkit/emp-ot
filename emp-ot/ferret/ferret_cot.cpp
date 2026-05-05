@@ -1,7 +1,6 @@
 // Out-of-line definitions for FerretCOT. See ferret_cot.h for the API.
 
 #include "emp-ot/ferret/ferret_cot.h"
-#include "emp-ot/iknp.h"
 #include "emp-ot/ferret/mpcot_reg.h"
 #include "emp-ot/ferret/lpn_f2.h"
 #include "emp-ot/softspoken/softspoken_ot.h"
@@ -15,7 +14,6 @@ FerretCOT::FerretCOT(int party, int threads, IOChannel **ios,
 	io = ios[0];
 	this->ios = ios;
 	this->is_malicious = malicious;
-	iknp = std::make_unique<IKNP>(io, malicious);
 	pool = std::make_unique<ThreadPool>(threads);
 	this->param = param;
 
@@ -48,6 +46,7 @@ FerretCOT::~FerretCOT() {
 }
 
 void FerretCOT::extend_initialization() {
+	if (extend_initialized) return;
 	lpn_f2 = std::make_unique<LpnF2<10>>(party, param.n, param.k, pool.get(), io, pool->size());
 	mpcot  = std::make_unique<MpcotReg>(party, threads, param.n, param.t, param.log_bin_sz, pool.get(), ios);
 	if (is_malicious) mpcot->set_malicious();
@@ -100,12 +99,14 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 		pre_ot_filename=(party==ALICE?PRE_OT_DATA_REG_SEND_FILE:PRE_OT_DATA_REG_RECV_FILE);
 	}
 
-	ThreadPool pool2(1);
-	auto fut = pool2.enqueue([this](){
-		extend_initialization();
-	});
+	// extend_initialization() must complete before bootstrap so M and the
+	// mpcot dimensions are known: SoftSpokenOT produces exactly M COTs,
+	// and ot_pre_data is sized to M (was n_pre when the small-ferret
+	// bootstrap wrote n_pre blocks here). No reason to background it
+	// any more — bootstrap is sequential after init in the common path.
+	extend_initialization();
 
-	ot_pre_data = new block[param.n_pre];
+	ot_pre_data = new block[M];
 	bool hasfile = file_exists(pre_ot_filename), hasfile2;
 	if(party == ALICE) {
 		io->send_data(&hasfile, sizeof(bool));
@@ -118,50 +119,23 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 	}
 	if(hasfile && hasfile2) {
 		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
-	} else if (!is_malicious) {
-		// Semi-honest bootstrap: SoftSpokenOT<8> directly produces the
-		// M base COTs needed to seed the first steady-state extend.
-		// Δ is shared (the same one used in subsequent cGGM corrections
-		// and the consistency check).
+	} else {
+		// Bootstrap: SoftSpokenOT<8> directly produces the M base COTs
+		// needed to seed the first steady-state extend. Δ is shared (the
+		// same one used in subsequent cGGM corrections and the
+		// consistency check).
+		// NOTE: SoftSpokenOT is currently semi-honest; the malicious
+		// ferret path inherits that limitation until SoftSpokenOT is
+		// upgraded to malicious-secure (separate follow-up). The
+		// downstream MpcotReg consistency check still runs in malicious
+		// mode but its base COTs are not themselves malicious-secure.
 		(void)choice; (void)seed;
 		SoftSpokenOT<8> ssp(io);
 		if (party == ALICE) ssp.setup_send(Delta);
 		else                ssp.setup_recv();
-		const int64_t M_seed = mpcot->tree_n * (mpcot->tree_height - 1)
-		                       + param.k + mpcot->consist_check_cot_num;
-		// ot_pre_data is sized to param.n_pre (>= M_seed for all
-		// supported configs); fill the first M_seed entries.
-		if (party == ALICE) ssp.rcot_send(ot_pre_data, M_seed);
-		else                ssp.rcot_recv(ot_pre_data, M_seed);
-	} else {
-		// Malicious bootstrap: SoftSpokenOT is semi-honest only, so we
-		// keep the IKNP + pre-extend chain. TODO: switch to malicious-
-		// secure SoftSpoken and remove this branch (and *_pre params).
-		if (party == BOB) iknp->setup_recv();
-		else {
-			bool delta_bool[128];
-			bits_to_bools(delta_bool, &Delta, 128);
-			iknp->setup_send(delta_bool);
-		}
-
-		MpcotReg mpcot_ini(party, threads, param.n_pre, param.t_pre, param.log_bin_sz_pre, pool.get(), ios);
-		mpcot_ini.set_malicious();
-		LpnF2<10> lpn(party, param.n_pre, param.k_pre, pool.get(), io, pool->size());
-
-		const int level_cots_ini = mpcot_ini.tree_n * (mpcot_ini.tree_height - 1);
-		const int total_ini = level_cots_ini + param.k_pre + mpcot_ini.consist_check_cot_num;
-		block *pre_data_ini = new block[total_ini];
-		memset(this->ot_pre_data, 0, param.n_pre*16);
-		seed = zero_block;
-		choice = nullptr;
-		(void)choice;
-		if (party == ALICE) iknp->rcot_send(pre_data_ini, total_ini);
-		else                iknp->rcot_recv(pre_data_ini, total_ini);
-		extend(ot_pre_data, &mpcot_ini, &lpn, pre_data_ini, seed);
-		delete[] pre_data_ini;
+		if (party == ALICE) ssp.rcot_send(ot_pre_data, M);
+		else                ssp.rcot_recv(ot_pre_data, M);
 	}
-
-	fut.get();
 }
 
 void FerretCOT::rcot_send(block *data, int64_t num) {
@@ -214,7 +188,7 @@ void FerretCOT::write_pre_data128_to_file(void* loc, __uint128_t delta, std::str
 	outfile.write(reinterpret_cast<const char*>(&param.n), sizeof(int64_t));
 	outfile.write(reinterpret_cast<const char*>(&param.t), sizeof(int64_t));
 	outfile.write(reinterpret_cast<const char*>(&param.k), sizeof(int64_t));
-	outfile.write(reinterpret_cast<const char*>(loc), param.n_pre * 16);
+	outfile.write(reinterpret_cast<const char*>(loc), M * 16);
 }
 
 __uint128_t FerretCOT::read_pre_data128_from_file(void* pre_loc, std::string filename) {
@@ -234,7 +208,7 @@ __uint128_t FerretCOT::read_pre_data128_from_file(void* pre_loc, std::string fil
 	infile.read(reinterpret_cast<char*>(&kin), sizeof(int64_t));
 	if (nin != param.n || tin != param.t || kin != param.k)
 		error("wrong parameters");
-	infile.read(reinterpret_cast<char*>(pre_loc), param.n_pre * 16);
+	infile.read(reinterpret_cast<char*>(pre_loc), M * 16);
 	infile.close();
 	std::remove(filename.c_str());
 	return delta;
@@ -270,7 +244,7 @@ void FerretCOT::assemble_state(void * data, int64_t size) {
 	auto put = [&](auto const& v) { memcpy(cur, &v, sizeof v); cur += sizeof v; };
 	int64_t party64 = party;
 	put(party64); put(param.n); put(param.t); put(param.k); put(Delta);
-	memcpy(cur, ot_pre_data, sizeof(block) * param.n_pre);
+	memcpy(cur, ot_pre_data, sizeof(block) * M);
 	delete[] ot_pre_data;  // delete[] nullptr is well-defined; safe regardless
 	ot_pre_data = nullptr;
 }
@@ -283,15 +257,19 @@ int FerretCOT::disassemble_state(const void * data, int64_t size) {
 	get(party2); get(n2); get(t2); get(k2); get(Delta);
 	if (party2 != party || n2 != param.n || t2 != param.t || k2 != param.k)
 		return -1;
-	ot_pre_data = new block[param.n_pre];
-	memcpy(ot_pre_data, cur, sizeof(block) * param.n_pre);
-
+	// Init must run before sizing/allocating ot_pre_data — M is a
+	// derived constant from the steady-state mpcot/lpn dimensions.
 	extend_initialization();
+	ot_pre_data = new block[M];
+	memcpy(ot_pre_data, cur, sizeof(block) * M);
 	return 0;
 }
 
 int64_t FerretCOT::state_size() {
-	return sizeof(int64_t) * 4 + sizeof(block) + sizeof(block)*param.n_pre;
+	// M is set by extend_initialization(); ensure it has run so callers
+	// can size the state buffer before assemble/disassemble.
+	if (!extend_initialized) extend_initialization();
+	return sizeof(int64_t) * 4 + sizeof(block) + sizeof(block) * M;
 }
 
 }  // namespace emp
