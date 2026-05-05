@@ -30,39 +30,47 @@ class LpnF2 { public:
 		}
 	}
 
-	void compute_block_4(block * nn, const block * kk, int64_t i, PRP * prp) {
-		block tmp[d];
-		for(int m = 0; m < d; ++m)
-			tmp[m] = makeBlock(i, m);
-		AES_ecb_encrypt_blks(tmp, d, &prp->aes);
-		uint32_t* r = (uint32_t*)(tmp);
-		for(int m = 0; m < 4; ++m)
+	// Process M outputs per AES batch. Larger M = more in-flight kk
+	// loads, which matters at production k where kk (1.9-7.2 MB) lives
+	// in L2 and per-output throughput is gated by load-queue / MSHR
+	// depth, not arithmetic.  __restrict + local k/mask let the
+	// compiler keep nn[i+m] in a register across the d-iter fold
+	// instead of round-tripping through L1 between every XOR.
+	template <int M>
+	void compute_block(block * __restrict nn, const block * __restrict kk,
+	                   int64_t i, PRP * prp) {
+		// Each output needs d uint32_t indices. AES generates 4 per
+		// block, so ceil(M*d/4) AES blocks suffice.
+		constexpr int kNeededBlocks = (M * d + 3) / 4;
+		block tmp[kNeededBlocks];
+		for(int b = 0; b < kNeededBlocks; ++b)
+			tmp[b] = makeBlock(i, b);
+		AES_ecb_encrypt_blks(tmp, kNeededBlocks, &prp->aes);
+		const uint32_t* r = (const uint32_t*)(tmp);
+		const int lk = k, lmask = mask;
+		for (int m = 0; m < M; ++m) {
+			block acc = nn[i+m];
 			for (int j = 0; j < d; ++j) {
-				int index = (*r) & mask;
+				int index = (*r) & lmask;
 				++r;
-				index = index >= k? index-k:index;
-				nn[i+m] = nn[i+m] ^ kk[index];
+				if (index >= lk) index -= lk;
+				acc = acc ^ kk[index];
 			}
+			nn[i+m] = acc;
+		}
 	}
 
-	void compute_block_1(block * nn, const block * kk, int64_t i, PRP*prp) {
-                const auto nr_blocks = d/4 + (d % 4 != 0);
-                block tmp[nr_blocks];
-		for(int m = 0; m < nr_blocks; ++m)
-			tmp[m] = makeBlock(i, m);
-		prp->permute_block(tmp, nr_blocks);
-		uint32_t* r = (uint32_t*)(tmp);
-		for (int j = 0; j < d; ++j)
-			nn[i] = nn[i] ^ kk[r[j]%k];
-	}
-
-	void task(block * nn, const block * kk, int64_t start, int64_t end) {
+	void task(block * __restrict nn, const block * __restrict kk,
+	          int64_t start, int64_t end) {
 		PRP prp(seed);
 		int64_t j = start;
-		for(; j < end-4; j+=4)
-			compute_block_4(nn, kk, j, &prp);
-		for(; j < end; ++j)
-			compute_block_1(nn, kk, j, &prp);
+		// M=16 picked from a wide A/B sweep on Apple M (M=4 baseline 31ms,
+		// M=8 26.5ms, M=16 25.7ms, M=32 25.4ms with higher variance).
+		// Larger M extends the in-flight kk-load window into the L2-bound
+		// regime; M=16 is at the knee.
+		for(; j + 16 <= end; j += 16) compute_block<16>(nn, kk, j, &prp);
+		for(; j + 4 <= end; j += 4)   compute_block<4>(nn, kk, j, &prp);
+		for(; j < end; ++j)           compute_block<1>(nn, kk, j, &prp);
 	}
 
 	void compute(block * nn, const block * kk, block s = zero_block) {
