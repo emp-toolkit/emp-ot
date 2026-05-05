@@ -4,6 +4,7 @@
 #include "emp-ot/cot.h"
 #include "emp-ot/co.h"
 #include "emp-ot/cggm.h"
+#include "emp-ot/softspoken/aes_ctr_fold.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -95,11 +96,18 @@ inline void pprf_eval_receiver(int alpha,
 // cycles) instead of persisting Q PRG objects (~800 KB at k=8);
 // amortized over bs * ~10 cycles of encrypt+fold, the overhead is
 // ~3/bs.
+//
+// Inner loop uses the fused AES-CTR + multi-target XOR-fold kernel
+// from emp-tool aes.h: each leaf's r_x[bs] is generated and consumed
+// inside the AES tile loop (in SIMD registers, never materialized to
+// memory). Replaces the older
+//   {fill r_x with counters; ParaEnc(r_x); u^=r_x; v[b]^=r_x for set bits}
+// pattern, which round-tripped r_x through L1 four times per leaf.
 
 // Maximum chunk size (in bpr-blocks) the chunked sfvole helpers will
-// be called with. The plane-scratch working set is held in a member
-// BlockVec on SoftSpokenOT; this constant only sizes the small
-// stack-resident r_x / u_canonical / u_temp arrays.
+// be called with. Sets stack-resident scratch sizing in
+// softspoken_ot.cpp (u_canonical / u_temp). The fused kernel itself
+// no longer needs a per-leaf scratch buffer.
 constexpr int kMaxChunkBlocks = 1024;
 
 // Per-k chunk size (in bpr-blocks). Picked from a wide A/B sweep
@@ -120,9 +128,10 @@ constexpr int chunk_blocks_for() {
 }
 
 // Sender-side chunked sfvole: re-keys each leaf's AES from its 16 B
-// seed, encrypts B blocks of CTR starting at b0, folds into u_bits and
-// v_planes.
+// seed, then folds AES_seed(b0..b0+bs) directly into u_bits and the
+// selected v_planes via aes_ctr_fold (no r_x materialization).
 template <int k>
+EMP_AES_TARGET_ATTR
 inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
                                         uint64_t session,
                                         int64_t b0,
@@ -134,7 +143,6 @@ inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
     std::memset(u_bits_chunk,   0, sizeof(block) * bs);
     std::memset(v_planes_chunk, 0, sizeof(block) * k * bs);
 
-    alignas(16) block r_x[kMaxChunkBlocks];
     AES_KEY aes_local;
     const block session_xor = makeBlock(0LL, static_cast<int64_t>(session));
 
@@ -142,30 +150,24 @@ inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
         // Matches PRG(seed=leaves[x], id=session).random_block at
         // counter offset b0: emp::PRG seeds via XOR with (0,id) and
         // emits AES_seed(counter) in CTR mode.
-        const block seed = leaves[x] ^ session_xor;
-        AES_set_encrypt_key(seed, &aes_local);
-        for (int64_t b = 0; b < bs; ++b)
-            r_x[b] = makeBlock(0LL, b0 + b);
-        ParaEnc(r_x, &aes_local, 1, static_cast<int>(bs));
+        AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_local);
 
-        // u ^= r_x
-        for (int64_t b = 0; b < bs; ++b)
-            u_bits_chunk[b] = u_bits_chunk[b] ^ r_x[b];
+        // Build the leaf's fold target list: u always, v_planes[b] for
+        // each set bit b of x. n ∈ [1, 1+k].
+        block* tgts[1 + k];
+        int n = 0;
+        tgts[n++] = u_bits_chunk;
+        for (int b = 0; b < k; ++b)
+            if ((x >> b) & 1) tgts[n++] = v_planes_chunk + (size_t)b * bs;
 
-        // For each set bit b of x, plane b ^= r_x.
-        for (int b = 0; b < k; ++b) {
-            if ((x >> b) & 1) {
-                block* dst = v_planes_chunk + b * bs;
-                for (int64_t i = 0; i < bs; ++i)
-                    dst[i] = dst[i] ^ r_x[i];
-            }
-        }
+        dispatch_ctr_fold<k>(tgts, n, static_cast<int>(bs), b0, &aes_local);
     }
 }
 
-// Receiver-side chunked sfvole. Skips x = alpha; folds into w_planes
-// using (alpha XOR x) coefficient.
+// Receiver-side chunked sfvole. Skips x = alpha; folds AES_seed(b0..b0+bs)
+// into w_planes[b] for each set bit b of (alpha XOR x).
 template <int k>
+EMP_AES_TARGET_ATTR
 inline void sfvole_receiver_compute_chunk(int alpha,
                                           const block leaves[1 << k],
                                           uint64_t session,
@@ -176,27 +178,21 @@ inline void sfvole_receiver_compute_chunk(int alpha,
 
     std::memset(w_planes_chunk, 0, sizeof(block) * k * bs);
 
-    alignas(16) block r_x[kMaxChunkBlocks];
     AES_KEY aes_local;
     const block session_xor = makeBlock(0LL, static_cast<int64_t>(session));
 
     for (int x = 0; x < Q; ++x) {
         if (x == alpha) continue;
+        AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_local);
 
-        const block seed = leaves[x] ^ session_xor;
-        AES_set_encrypt_key(seed, &aes_local);
-        for (int64_t b = 0; b < bs; ++b)
-            r_x[b] = makeBlock(0LL, b0 + b);
-        ParaEnc(r_x, &aes_local, 1, static_cast<int>(bs));
-
+        // For x ≠ alpha, coeff ≠ 0, so n ≥ 1. Max n = k.
         const int coeff = alpha ^ x;
-        for (int b = 0; b < k; ++b) {
-            if ((coeff >> b) & 1) {
-                block* dst = w_planes_chunk + b * bs;
-                for (int64_t i = 0; i < bs; ++i)
-                    dst[i] = dst[i] ^ r_x[i];
-            }
-        }
+        block* tgts[k > 0 ? k : 1];
+        int n = 0;
+        for (int b = 0; b < k; ++b)
+            if ((coeff >> b) & 1) tgts[n++] = w_planes_chunk + (size_t)b * bs;
+
+        dispatch_ctr_fold<k>(tgts, n, static_cast<int>(bs), b0, &aes_local);
     }
 }
 
