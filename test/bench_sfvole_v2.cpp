@@ -74,6 +74,226 @@ void gen_prg_block(const block* leaves,
 }
 
 // ---------------------------------------------------------------------
+// View C — Recursive butterfly (Roy '22 §VOLE, "Efficient Computation").
+// Algorithm:
+//   Given r_x for x ∈ [0, q), output u = ⊕_x r_x and
+//   v_b = ⊕_{x: bit_b(x)=1} r_x for b ∈ [0, k).
+//
+//   Round b=0: pair-merge A0 → A1, where A1[y] = A0[2y] ⊕ A0[2y+1].
+//              v_0 = ⊕_y A0[2y+1]   (right children at this round).
+//   Round b=1: pair-merge A1 → A2.
+//              v_1 = ⊕_z A1[2z+1].
+//   …
+//   Round b=k-1: A_{k-1} has 2 entries; A_k[0] = u.
+//              v_{k-1} = A_{k-1}[1].
+//
+// Cost per j (k=8, q=256):
+//   q-1 = 255  pair-merge XORs   (halve from q to 1, register-only).
+//   Σ q/2^b for b ∈ [1,k] = 255  v_b extraction XORs.
+//   Total ~510 reg-XORs per j vs current's ~1280 narrow memory RMWs
+//   per j (q × avg(1+k/2)).
+//
+// Storage: A[q][T] = q × T × 16 bytes; q=256, T=4 → 16 KB scratch
+// per tile, comfortably L1-resident.
+// ---------------------------------------------------------------------
+#if defined(__aarch64__)
+template <int T>
+inline void variant_butterfly_neon_k8_T(
+    const block* leaves, uint64_t session, int64_t b0, int64_t bs,
+    block* u_chunk, block* v_planes_chunk,
+    AES_KEY* keys_scratch /* sized Q */) {
+    constexpr int k = 8;
+    constexpr int Q = 1 << k;   // 256
+
+    // 1) Hoist AES key expansion (leaf loop is inner; per-tile re-expand
+    //    would be Q*(bs/T) calls — too many).
+    const block session_xor = makeBlock(0LL, (int64_t)session);
+    for (int x = 0; x < Q; ++x)
+        AES_set_encrypt_key(leaves[x] ^ session_xor, &keys_scratch[x]);
+
+    // Tile-resident scratch for A[Q][T]. 16 KB at Q=256, T=4.
+    alignas(16) block A[Q][T];
+
+    for (int64_t t0 = 0; t0 < bs; t0 += T) {
+        // 2) AES generation: A[x][jj] = AES_x(b0 + t0 + jj).
+        for (int x = 0; x < Q; ++x) {
+            const AES_KEY* kk = &keys_scratch[x];
+            uint8x16_t pt[T];
+            for (int jj = 0; jj < T; ++jj) {
+                const uint64_t lo = (uint64_t)(b0 + t0 + jj);
+                pt[jj] = vreinterpretq_u8_u64(vsetq_lane_u64(lo, vdupq_n_u64(0), 0));
+            }
+            #pragma GCC unroll 9
+            for (int r = 0; r < 9; ++r) {
+                const uint8x16_t K = vreinterpretq_u8_m128i(kk->rd_key[r]);
+                for (int jj = 0; jj < T; ++jj)
+                    pt[jj] = vaesmcq_u8(vaeseq_u8(pt[jj], K));
+            }
+            const uint8x16_t K9  = vreinterpretq_u8_m128i(kk->rd_key[9]);
+            const uint8x16_t K10 = vreinterpretq_u8_m128i(kk->rd_key[10]);
+            for (int jj = 0; jj < T; ++jj) {
+                pt[jj] = veorq_u8(vaeseq_u8(pt[jj], K9), K10);
+                vst1q_u8((uint8_t*)&A[x][jj], pt[jj]);
+            }
+        }
+
+        // 3) Butterfly: in-place halve A; v_b is XOR of right children
+        //    at round b.
+        int n = Q;
+        for (int b = 0; b < k; ++b) {
+            uint8x16_t v_acc[T];
+            for (int jj = 0; jj < T; ++jj) v_acc[jj] = vdupq_n_u8(0);
+            const int half = n >> 1;
+            for (int y = 0; y < half; ++y) {
+                for (int jj = 0; jj < T; ++jj) {
+                    const uint8x16_t L = vld1q_u8((uint8_t*)&A[2*y    ][jj]);
+                    const uint8x16_t R = vld1q_u8((uint8_t*)&A[2*y + 1][jj]);
+                    v_acc[jj] = veorq_u8(v_acc[jj], R);
+                    vst1q_u8((uint8_t*)&A[y][jj], veorq_u8(L, R));
+                }
+            }
+            block* vb_dst = v_planes_chunk + (size_t)b * bs + t0;
+            for (int jj = 0; jj < T; ++jj)
+                vst1q_u8((uint8_t*)&vb_dst[jj], v_acc[jj]);
+            n = half;
+        }
+        // u = A[0][..]: the single remaining halved value across the T j's.
+        for (int jj = 0; jj < T; ++jj) {
+            const uint8x16_t u_val = vld1q_u8((uint8_t*)&A[0][jj]);
+            vst1q_u8((uint8_t*)&u_chunk[t0 + jj], u_val);
+        }
+    }
+}
+
+inline void variant_butterfly_neon_k8(
+    const block* leaves, uint64_t session, int64_t b0, int64_t bs,
+    block* u_chunk, block* v_planes_chunk, AES_KEY* keys_scratch) {
+    // T=8 picked from a sweep on Apple M (T=2 → 229us, T=4 → 225us,
+    // T=8 → 207us at k=8 bs=1024). Larger T amortizes the per-tile
+    // butterfly setup over more outputs; T=8 fits 32KB scratch in L1
+    // and the 8-block v_acc within NEON's 32-reg budget.
+    variant_butterfly_neon_k8_T<8>(leaves, session, b0, bs,
+                                    u_chunk, v_planes_chunk, keys_scratch);
+}
+#endif  // __aarch64__
+
+// ---------------------------------------------------------------------
+// View B (NEON, k=8): tile-outer / leaf-inner.
+// Holds (u, v_0..v_{k-1}) accumulators reg-resident for a tile of T=2 j's
+// across all Q leaves; flushes at end of tile. Requires AES_KEY hoisting
+// since the leaf loop is inner — per-tile re-expansion would balloon
+// to Q*(bs/T) AES_set_encrypt_key calls.
+// Per leaf, per j: 1 broadcast(x) + 8 (vshl/vshr derive masks once per
+// leaf) + 1 (u XOR) + 8 (plane vand+veor).  Versus current's ~5 narrow
+// memory RMWs per (leaf,j).
+// ---------------------------------------------------------------------
+#if defined(__aarch64__)
+inline void variant_b_neon_k8(const block* leaves,
+                               uint64_t session, int64_t b0, int64_t bs,
+                               block* u_chunk, block* v_planes_chunk,
+                               AES_KEY* keys_scratch /* sized Q */) {
+    constexpr int k = 8;
+    constexpr int Q = 1 << k;   // 256
+    constexpr int T = 2;        // outputs per tile in j-axis
+
+    // 1) Hoist all Q AES key expansions once per chunk.
+    const block session_xor = makeBlock(0LL, (int64_t)session);
+    for (int x = 0; x < Q; ++x)
+        AES_set_encrypt_key(leaves[x] ^ session_xor, &keys_scratch[x]);
+
+    // 2) Tile-outer loop. Per tile: reg-resident accumulators across all leaves.
+    for (int64_t t0 = 0; t0 < bs; t0 += T) {
+        uint8x16_t u0 = vdupq_n_u8(0), u1 = vdupq_n_u8(0);
+        uint8x16_t v0_0 = vdupq_n_u8(0), v0_1 = vdupq_n_u8(0);
+        uint8x16_t v1_0 = vdupq_n_u8(0), v1_1 = vdupq_n_u8(0);
+        uint8x16_t v2_0 = vdupq_n_u8(0), v2_1 = vdupq_n_u8(0);
+        uint8x16_t v3_0 = vdupq_n_u8(0), v3_1 = vdupq_n_u8(0);
+        uint8x16_t v4_0 = vdupq_n_u8(0), v4_1 = vdupq_n_u8(0);
+        uint8x16_t v5_0 = vdupq_n_u8(0), v5_1 = vdupq_n_u8(0);
+        uint8x16_t v6_0 = vdupq_n_u8(0), v6_1 = vdupq_n_u8(0);
+        uint8x16_t v7_0 = vdupq_n_u8(0), v7_1 = vdupq_n_u8(0);
+
+        for (int x = 0; x < Q; ++x) {
+            const AES_KEY* kk = &keys_scratch[x];
+
+            // Generate pt[T] = AES_x(b0+t0..b0+t0+T-1).
+            uint8x16_t pt0, pt1;
+            {
+                const uint64_t lo0 = (uint64_t)(b0 + t0);
+                const uint64_t lo1 = (uint64_t)(b0 + t0 + 1);
+                pt0 = vreinterpretq_u8_u64(vsetq_lane_u64(lo0, vdupq_n_u64(0), 0));
+                pt1 = vreinterpretq_u8_u64(vsetq_lane_u64(lo1, vdupq_n_u64(0), 0));
+            }
+            #pragma GCC unroll 9
+            for (int r = 0; r < 9; ++r) {
+                const uint8x16_t K = vreinterpretq_u8_m128i(kk->rd_key[r]);
+                pt0 = vaesmcq_u8(vaeseq_u8(pt0, K));
+                pt1 = vaesmcq_u8(vaeseq_u8(pt1, K));
+            }
+            {
+                const uint8x16_t K9  = vreinterpretq_u8_m128i(kk->rd_key[9]);
+                const uint8x16_t K10 = vreinterpretq_u8_m128i(kk->rd_key[10]);
+                pt0 = veorq_u8(vaeseq_u8(pt0, K9), K10);
+                pt1 = veorq_u8(vaeseq_u8(pt1, K9), K10);
+            }
+
+            // Derive plane masks from x: mask_b = all-1 if bit_b(x) else all-0.
+            // vshlq_n_s8(_, n) needs immediate; unroll across the 8 bits.
+            const int8x16_t x_b = vreinterpretq_s8_u8(vdupq_n_u8((uint8_t)x));
+            const uint8x16_t m0 = vreinterpretq_u8_s8(vshrq_n_s8(vshlq_n_s8(x_b, 7), 7));
+            const uint8x16_t m1 = vreinterpretq_u8_s8(vshrq_n_s8(vshlq_n_s8(x_b, 6), 7));
+            const uint8x16_t m2 = vreinterpretq_u8_s8(vshrq_n_s8(vshlq_n_s8(x_b, 5), 7));
+            const uint8x16_t m3 = vreinterpretq_u8_s8(vshrq_n_s8(vshlq_n_s8(x_b, 4), 7));
+            const uint8x16_t m4 = vreinterpretq_u8_s8(vshrq_n_s8(vshlq_n_s8(x_b, 3), 7));
+            const uint8x16_t m5 = vreinterpretq_u8_s8(vshrq_n_s8(vshlq_n_s8(x_b, 2), 7));
+            const uint8x16_t m6 = vreinterpretq_u8_s8(vshrq_n_s8(vshlq_n_s8(x_b, 1), 7));
+            const uint8x16_t m7 = vreinterpretq_u8_s8(vshrq_n_s8(x_b, 7));
+
+            // Fold pt0/pt1 into u and per-plane v accumulators.
+            u0 = veorq_u8(u0, pt0); u1 = veorq_u8(u1, pt1);
+            v0_0 = veorq_u8(v0_0, vandq_u8(pt0, m0));
+            v0_1 = veorq_u8(v0_1, vandq_u8(pt1, m0));
+            v1_0 = veorq_u8(v1_0, vandq_u8(pt0, m1));
+            v1_1 = veorq_u8(v1_1, vandq_u8(pt1, m1));
+            v2_0 = veorq_u8(v2_0, vandq_u8(pt0, m2));
+            v2_1 = veorq_u8(v2_1, vandq_u8(pt1, m2));
+            v3_0 = veorq_u8(v3_0, vandq_u8(pt0, m3));
+            v3_1 = veorq_u8(v3_1, vandq_u8(pt1, m3));
+            v4_0 = veorq_u8(v4_0, vandq_u8(pt0, m4));
+            v4_1 = veorq_u8(v4_1, vandq_u8(pt1, m4));
+            v5_0 = veorq_u8(v5_0, vandq_u8(pt0, m5));
+            v5_1 = veorq_u8(v5_1, vandq_u8(pt1, m5));
+            v6_0 = veorq_u8(v6_0, vandq_u8(pt0, m6));
+            v6_1 = veorq_u8(v6_1, vandq_u8(pt1, m6));
+            v7_0 = veorq_u8(v7_0, vandq_u8(pt0, m7));
+            v7_1 = veorq_u8(v7_1, vandq_u8(pt1, m7));
+        }
+
+        // Flush.
+        vst1q_u8((uint8_t*)&u_chunk[t0 + 0], u0);
+        vst1q_u8((uint8_t*)&u_chunk[t0 + 1], u1);
+        block* vp = v_planes_chunk;
+        vst1q_u8((uint8_t*)&vp[0 * bs + t0 + 0], v0_0);
+        vst1q_u8((uint8_t*)&vp[0 * bs + t0 + 1], v0_1);
+        vst1q_u8((uint8_t*)&vp[1 * bs + t0 + 0], v1_0);
+        vst1q_u8((uint8_t*)&vp[1 * bs + t0 + 1], v1_1);
+        vst1q_u8((uint8_t*)&vp[2 * bs + t0 + 0], v2_0);
+        vst1q_u8((uint8_t*)&vp[2 * bs + t0 + 1], v2_1);
+        vst1q_u8((uint8_t*)&vp[3 * bs + t0 + 0], v3_0);
+        vst1q_u8((uint8_t*)&vp[3 * bs + t0 + 1], v3_1);
+        vst1q_u8((uint8_t*)&vp[4 * bs + t0 + 0], v4_0);
+        vst1q_u8((uint8_t*)&vp[4 * bs + t0 + 1], v4_1);
+        vst1q_u8((uint8_t*)&vp[5 * bs + t0 + 0], v5_0);
+        vst1q_u8((uint8_t*)&vp[5 * bs + t0 + 1], v5_1);
+        vst1q_u8((uint8_t*)&vp[6 * bs + t0 + 0], v6_0);
+        vst1q_u8((uint8_t*)&vp[6 * bs + t0 + 1], v6_1);
+        vst1q_u8((uint8_t*)&vp[7 * bs + t0 + 0], v7_0);
+        vst1q_u8((uint8_t*)&vp[7 * bs + t0 + 1], v7_1);
+    }
+}
+#endif  // __aarch64__
+
+// ---------------------------------------------------------------------
 // View B (portable): per-leaf, generate r_x[bs], then for each plane d
 // XOR r_x into v_planes[d] iff bit_d(x) = 1, plus into u always.
 //
@@ -227,10 +447,8 @@ double bench_median_us(int iters, int trials, F&& fn) {
 }
 
 template <int k>
-void run_one_k(int64_t bs) {
+void run_one_k(int64_t bs, bool include_neon) {
     constexpr int Q = 1 << k;
-    constexpr int kHashSize = 32;
-    (void)kHashSize;
 
     // Inputs.
     PRG seed_prg(fix_key);
@@ -242,8 +460,11 @@ void run_one_k(int64_t bs) {
     // Outputs (one buffer per variant).
     std::vector<block> u_cur((size_t)bs), u_b((size_t)bs), u_a((size_t)bs);
     std::vector<block> v_cur((size_t)k * bs), v_b((size_t)k * bs), v_a((size_t)k * bs);
+    std::vector<block> u_neon((size_t)bs), v_neon((size_t)k * bs);
+    std::vector<block> u_bfly((size_t)bs), v_bfly((size_t)k * bs);
+    std::vector<AES_KEY> keys_scratch((size_t)Q);
 
-    // 1) Run all three once and compare.
+    // 1) Run portable variants once and compare.
     variant_current<k>(leaves.data(), session, b0, bs, u_cur.data(), v_cur.data());
     variant_b_portable<k>(leaves.data(), session, b0, bs, u_b.data(),   v_b.data());
     variant_a_portable<k>(leaves.data(), session, b0, bs, u_a.data(),   v_a.data());
@@ -252,14 +473,48 @@ void run_one_k(int64_t bs) {
     bool eq_b_v = blocks_equal(v_cur.data(), v_b.data(), (int64_t)k * bs);
     bool eq_a_u = blocks_equal(u_cur.data(), u_a.data(), bs);
     bool eq_a_v = blocks_equal(v_cur.data(), v_a.data(), (int64_t)k * bs);
-    std::printf("k=%d bs=%lld   B vs current: u=%s v=%s   A vs current: u=%s v=%s\n",
+
+#if defined(__aarch64__)
+    bool eq_neon_u = true, eq_neon_v = true;
+    bool eq_bfly_u = true, eq_bfly_v = true;
+    if (include_neon && k == 8) {
+        variant_b_neon_k8(leaves.data(), session, b0, bs,
+                          u_neon.data(), v_neon.data(), keys_scratch.data());
+        eq_neon_u = blocks_equal(u_cur.data(), u_neon.data(), bs);
+        eq_neon_v = blocks_equal(v_cur.data(), v_neon.data(), (int64_t)k * bs);
+        variant_butterfly_neon_k8(leaves.data(), session, b0, bs,
+                                   u_bfly.data(), v_bfly.data(), keys_scratch.data());
+        eq_bfly_u = blocks_equal(u_cur.data(), u_bfly.data(), bs);
+        eq_bfly_v = blocks_equal(v_cur.data(), v_bfly.data(), (int64_t)k * bs);
+    }
+#else
+    (void)include_neon; (void)u_neon; (void)v_neon; (void)u_bfly; (void)v_bfly; (void)keys_scratch;
+#endif
+
+    std::printf("k=%d bs=%lld   B-port: u=%s v=%s   A-port: u=%s v=%s",
                 k, (long long)bs,
                 eq_b_u ? "OK" : "MISMATCH", eq_b_v ? "OK" : "MISMATCH",
                 eq_a_u ? "OK" : "MISMATCH", eq_a_v ? "OK" : "MISMATCH");
+#if defined(__aarch64__)
+    if (include_neon && k == 8) {
+        std::printf("   B-neon: u=%s v=%s   bfly: u=%s v=%s",
+                    eq_neon_u ? "OK" : "MISMATCH", eq_neon_v ? "OK" : "MISMATCH",
+                    eq_bfly_u ? "OK" : "MISMATCH", eq_bfly_v ? "OK" : "MISMATCH");
+    }
+#endif
+    std::printf("\n");
+
     if (!(eq_b_u && eq_b_v && eq_a_u && eq_a_v)) {
-        std::fprintf(stderr, "byte-equality FAILED — aborting bench\n");
+        std::fprintf(stderr, "portable byte-equality FAILED — aborting bench\n");
         std::exit(1);
     }
+#if defined(__aarch64__)
+    if (include_neon && k == 8 &&
+        !(eq_neon_u && eq_neon_v && eq_bfly_u && eq_bfly_v)) {
+        std::fprintf(stderr, "NEON byte-equality FAILED — aborting bench\n");
+        std::exit(1);
+    }
+#endif
 
     // 2) Time each (median of 5 trials × `iters` per trial).
     const int iters  = std::max(1, (int)(2'000'000 / std::max<int64_t>(1, bs * Q)));
@@ -276,12 +531,32 @@ void run_one_k(int64_t bs) {
     double cur_us = bench_median_us(iters, trials, fn_cur);
     double b_us   = bench_median_us(iters, trials, fn_b);
     double a_us   = bench_median_us(iters, trials, fn_a);
+    double neon_us = -1, bfly_us = -1;
+#if defined(__aarch64__)
+    if (include_neon && k == 8) {
+        auto fn_neon = [&]() {
+            variant_b_neon_k8(leaves.data(), session, b0, bs,
+                              u_neon.data(), v_neon.data(), keys_scratch.data());
+        };
+        auto fn_bfly = [&]() {
+            variant_butterfly_neon_k8(leaves.data(), session, b0, bs,
+                                       u_bfly.data(), v_bfly.data(), keys_scratch.data());
+        };
+        neon_us = bench_median_us(iters, trials, fn_neon);
+        bfly_us = bench_median_us(iters, trials, fn_bfly);
+    }
+#endif
 
-    std::printf("k=%d bs=%lld iters=%d   current=%9.2f us   B(portable)=%9.2f us (%.2fx)   A(portable)=%9.2f us (%.2fx)\n",
+    std::printf("k=%d bs=%lld iters=%d   current=%9.2f us   B-port=%9.2f us (%.2fx)   A-port=%9.2f us (%.2fx)",
                 k, (long long)bs, iters,
                 cur_us,
                 b_us, b_us / cur_us,
                 a_us, a_us / cur_us);
+    if (neon_us > 0)
+        std::printf("   B-neon=%9.2f us (%.2fx)", neon_us, neon_us / cur_us);
+    if (bfly_us > 0)
+        std::printf("   bfly-neon=%9.2f us (%.2fx)", bfly_us, bfly_us / cur_us);
+    std::printf("\n");
 }
 
 }  // namespace
@@ -291,10 +566,10 @@ int main() {
     std::printf("# Apple M numbers are baseline only; the win for A/B requires\n");
     std::printf("# AVX-512+GFNI/vpternlogd specializations (separate AWS bench).\n\n");
 
-    run_one_k<8>(1024);
-    run_one_k<8>(128);
-    run_one_k<4>(1024);
-    run_one_k<2>(1024);
+    run_one_k<8>(1024, /*include_neon=*/true);
+    run_one_k<8>(128,  /*include_neon=*/true);
+    run_one_k<4>(1024, /*include_neon=*/false);
+    run_one_k<2>(1024, /*include_neon=*/false);
 
     return 0;
 }
