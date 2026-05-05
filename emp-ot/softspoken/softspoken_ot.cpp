@@ -181,10 +181,10 @@ void SoftSpokenOT<k>::rcot_send_next(block* out, int64_t chunk_len) {
 
     // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
     // w_planes_chunk's plane-major layout is exactly the row-major
-    // byte layout sse_trans consumes.
-    sse_trans(reinterpret_cast<uint8_t*>(out),
-              reinterpret_cast<const uint8_t*>(w_planes_chunk),
-              /*nrows=*/128, /*ncols=*/bs * 128);
+    // byte layout sse_trans_n128 consumes.
+    sse_trans_n128(reinterpret_cast<uint8_t*>(out),
+                   reinterpret_cast<const uint8_t*>(w_planes_chunk),
+                   /*ncols=*/bs * 128);
 
     cur_send_b0_ += bs;
 }
@@ -266,9 +266,9 @@ void SoftSpokenOT<k>::rcot_recv_next(block* out, int64_t chunk_len) {
     std::memcpy(v_planes_chunk, u_canonical, sizeof(block) * bs);
 
     // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
-    sse_trans(reinterpret_cast<uint8_t*>(out),
-              reinterpret_cast<const uint8_t*>(v_planes_chunk),
-              /*nrows=*/128, /*ncols=*/bs * 128);
+    sse_trans_n128(reinterpret_cast<uint8_t*>(out),
+                   reinterpret_cast<const uint8_t*>(v_planes_chunk),
+                   /*ncols=*/bs * 128);
 
     cur_recv_b0_ += bs;
 }
