@@ -64,11 +64,20 @@ class LpnF2 { public:
 	          int64_t start, int64_t end) {
 		PRP prp(seed);
 		int64_t j = start;
-		// M=16 picked from a wide A/B sweep on Apple M (M=4 baseline 31ms,
-		// M=8 26.5ms, M=16 25.7ms, M=32 25.4ms with higher variance).
-		// Larger M extends the in-flight kk-load window into the L2-bound
-		// regime; M=16 is at the knee.
-		for(; j + 16 <= end; j += 16) compute_block<16>(nn, kk, j, &prp);
+		// M = outputs per AES batch. M=32 picked from a cross-platform
+		// sweep at ferret_b13 (k=452K, kk=7.2 MB lives in L2/L3):
+		//   Apple M2  : M=16 25.6ms ≈ M=32 25.4ms (flat past 16)
+		//   Intel SR+ : M=16 78.4ms → M=32 60.5ms → M=48 62.1ms (knee=32)
+		//   AMD Zen5  : M=16 25.1ms → M=32 22.9ms → M=48 23.4ms (knee=32)
+		// Larger M extends the in-flight kk-load window into the L2-/L3-
+		// bound regime; past 32 the live nn-accumulator set starts to
+		// spill out of the 32-zmm AVX-512 pool on x86. Override at
+		// compile time via -DLPN_BATCH_M=<n> for further sweeps.
+#ifndef LPN_BATCH_M
+#define LPN_BATCH_M 32
+#endif
+		for(; j + LPN_BATCH_M <= end; j += LPN_BATCH_M)
+			compute_block<LPN_BATCH_M>(nn, kk, j, &prp);
 		for(; j + 4 <= end; j += 4)   compute_block<4>(nn, kk, j, &prp);
 		for(; j < end; ++j)           compute_block<1>(nn, kk, j, &prp);
 	}
