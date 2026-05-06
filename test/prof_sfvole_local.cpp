@@ -57,7 +57,6 @@ int main(int argc, char** argv) {
     // via the same aes_T_blocks helper that sfvole_butterfly uses, but
     // without the halve. Lets us decompose sfvole into "AES gen" vs
     // "everything else (halve + scratch traffic)".
-#if defined(__aarch64__)
     alignas(16) block tweaks[Q];
     {
         const block session_xor = makeBlock(0LL, 0xc0ffeeLL);
@@ -65,7 +64,6 @@ int main(int argc, char** argv) {
     }
     AES_KEY fixed_K;
     AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
-#endif
 
     auto t0 = std::chrono::steady_clock::now();
     int64_t chunks = 0;
@@ -86,31 +84,23 @@ int main(int argc, char** argv) {
                     /*session=*/0xc0ffeeULL, /*b0=*/0, bs, u_dst, v_i);
             }
         } else if (mode == "aes_only") {
-#if defined(__aarch64__)
             // Generate the same total amount of AES output as sfvole but
-            // skip the butterfly halve and v_b accumulation.  Same loop
+            // skip the butterfly halve and v_b accumulation. Same loop
             // structure (n × Q × bs blocks) so the comparison is fair.
             constexpr int T = 8;
             for (int i = 0; i < n; ++i) {
                 block* dst = planes_chunk.data() + (size_t)i * k * bs;
                 for (int64_t t0_inner = 0; t0_inner < bs; t0_inner += T) {
                     for (int x = 0; x < Q; ++x) {
-                        uint8x16_t pt[T];
-                        softspoken::bfly_detail::aes_T_blocks<T>(
-                            pt, t0_inner, &fixed_K, tweaks[x]);
-                        // Write to a different stride so we touch
-                        // L1 like the real kernel does.  Modulo
-                        // mapping: planes_chunk[i*k*bs + (x % k)*bs + t0_inner + jj].
+                        // Write to a different stride so we touch L1
+                        // like the real kernel does. Modulo mapping:
+                        // planes_chunk[i*k*bs + (x % k)*bs + t0_inner + jj].
                         block* row = dst + (size_t)(x & (k - 1)) * bs + t0_inner;
-                        for (int jj = 0; jj < T; ++jj)
-                            vst1q_u8((uint8_t*)&row[jj], pt[jj]);
+                        softspoken::bfly_detail::aes_T_blocks_to<T>(
+                            row, t0_inner, &fixed_K, tweaks[x]);
                     }
                 }
             }
-#else
-            std::fprintf(stderr, "aes_only mode is __aarch64__-only\n");
-            return 1;
-#endif
         } else {
             std::fprintf(stderr, "unknown mode: %s\n", mode.c_str());
             return 1;
