@@ -24,7 +24,10 @@
 // Tile size T=8 (j-axis): picked from a sweep on Apple M at k=8
 // bs=1024. Larger T amortizes the per-tile butterfly setup over more
 // outputs; T=8 fits the q×T scratch in L1 (32 KB at k=8) and the
-// 8-block v_acc within NEON's 32-reg budget.
+// 8-block v_acc within NEON's 32-reg budget. Re-checked post leaf-as-
+// tweak switch: T=12 is ~+4% slower (butterfly_halve's v_acc[T] is
+// still the dominant register-pressure term, not the round keys);
+// T=16 spills catastrophically (~2.1×). T=8 stays.
 
 #include <emp-tool/emp-tool.h>
 #include <cstdint>
@@ -35,15 +38,27 @@ namespace emp { namespace softspoken {
 
 namespace bfly_detail {
 
-// Generate T AES blocks at counters (b0..b0+T-1) from a pre-expanded
-// AES_KEY into pt[T] NEON registers. Caller's responsibility to write
-// pt[] back to memory if it wants to retain them.
+// Generate T AES blocks at plaintext (counter ⊕ tweak) for counters
+// (b0..b0+T-1) under a pre-expanded fixed AES_KEY into pt[T] NEON
+// registers. Caller's responsibility to write pt[] back to memory if
+// it wants to retain them.
+//
+// `kk` is the session-shared fixed-key AES schedule (caller hoists out
+// of the per-leaf loop). `tweak` is the per-leaf input that
+// distinguishes leaves and session — typically `leaves[x] ^ session_xor`.
+// The fixed-key AES + leaf-tweak shape mirrors libOTe's MultiKeyAES and
+// the `PRP`/`CCRH` model elsewhere in emp-tool: AES_K is treated as a
+// random permutation, and (counter ⊕ leaf ⊕ session) is the input.
 template <int T>
 EMP_AES_TARGET_ATTR
-inline void aes_T_blocks(uint8x16_t pt[T], int64_t b0, const AES_KEY* kk) {
+inline void aes_T_blocks(uint8x16_t pt[T], int64_t b0,
+                         const AES_KEY* kk, block tweak) {
+    const uint8x16_t tw = vreinterpretq_u8_m128i(tweak);
     for (int jj = 0; jj < T; ++jj) {
         const uint64_t lo = (uint64_t)(b0 + jj);
-        pt[jj] = vreinterpretq_u8_u64(vsetq_lane_u64(lo, vdupq_n_u64(0), 0));
+        const uint8x16_t ctr =
+            vreinterpretq_u8_u64(vsetq_lane_u64(lo, vdupq_n_u64(0), 0));
+        pt[jj] = veorq_u8(ctr, tw);
     }
     #pragma GCC unroll 9
     for (int r = 0; r < 9; ++r) {
@@ -106,18 +121,23 @@ inline void sfvole_sender_butterfly(const block leaves[1 << k],
                                      block* v_planes_chunk) {
     constexpr int Q = 1 << k;
 
-    // Hoist AES key expansion. ~44 KB at k=8 stack — comfortable.
-    alignas(16) AES_KEY keys[Q];
+    // Pre-fold session into per-leaf tweaks. 4 KB scratch at k=8 (vs the
+    // 44 KB AES_KEY array the per-leaf-keyed version used). Round keys
+    // come from a single fixed-key AES schedule built once below; that
+    // schedule lives in registers across the entire chunk.
+    alignas(16) block tweaks[Q];
     const block session_xor = makeBlock(0LL, (int64_t)session);
-    for (int x = 0; x < Q; ++x)
-        AES_set_encrypt_key(leaves[x] ^ session_xor, &keys[x]);
+    for (int x = 0; x < Q; ++x) tweaks[x] = leaves[x] ^ session_xor;
+
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
 
     alignas(16) block A[Q][T];
 
     auto run_tile = [&](int64_t t0, int n_valid) {
         for (int x = 0; x < Q; ++x) {
             uint8x16_t pt[T];
-            bfly_detail::aes_T_blocks<T>(pt, b0 + t0, &keys[x]);
+            bfly_detail::aes_T_blocks<T>(pt, b0 + t0, &fixed_K, tweaks[x]);
             for (int jj = 0; jj < T; ++jj)
                 vst1q_u8((uint8_t*)&A[x][jj], pt[jj]);
         }
@@ -148,18 +168,24 @@ inline void sfvole_receiver_butterfly(int alpha,
                                        block* w_planes_chunk) {
     constexpr int Q = 1 << k;
 
-    // Hoist α-permuted AES key expansion: keys[y] = expanded leaves[α ⊕ y].
-    alignas(16) AES_KEY keys[Q];
+    // α-permuted tweaks: tweaks[y] = leaves[α ⊕ y] ⊕ session_xor.
+    // Same fixed-key AES + leaf-tweak shape as the sender; see notes
+    // there. y=0 uses leaves[α] = zero_block (set by pprf_eval_receiver),
+    // so r_α lands at A[0][..] — bogus AES output, but it's absorbed
+    // into u which the receiver discards.
+    alignas(16) block tweaks[Q];
     const block session_xor = makeBlock(0LL, (int64_t)session);
-    for (int y = 0; y < Q; ++y)
-        AES_set_encrypt_key(leaves[alpha ^ y] ^ session_xor, &keys[y]);
+    for (int y = 0; y < Q; ++y) tweaks[y] = leaves[alpha ^ y] ^ session_xor;
+
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
 
     alignas(16) block A[Q][T];
 
     auto run_tile = [&](int64_t t0, int n_valid) {
         for (int y = 0; y < Q; ++y) {
             uint8x16_t pt[T];
-            bfly_detail::aes_T_blocks<T>(pt, b0 + t0, &keys[y]);
+            bfly_detail::aes_T_blocks<T>(pt, b0 + t0, &fixed_K, tweaks[y]);
             for (int jj = 0; jj < T; ++jj)
                 vst1q_u8((uint8_t*)&A[y][jj], pt[jj]);
         }

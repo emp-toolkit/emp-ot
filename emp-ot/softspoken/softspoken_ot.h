@@ -87,16 +87,19 @@ inline void pprf_eval_receiver(int alpha,
 //
 // Chunked variants take a counter offset b0 and chunk length bs (in
 // bpr-blocks). Chunk c reads PRG output blocks [b0, b0+bs). Output is
-// bit-identical to a single PRG.random_block(buf, b0+bs) covering the
-// same range — emp::PRG is plain CTR (output[j] = AES_seed(makeBlock(0,j))),
-// so re-keying per chunk + setting the counter to b0 reproduces the
-// slice. We pay one AES_set_encrypt_key per leaf per chunk (~30
-// cycles) instead of persisting Q PRG objects (~800 KB at k=8);
-// amortized over bs * ~10 cycles of encrypt+fold, the overhead is
-// ~3/bs.
+// bit-identical to a single PRG.random_block over the same range —
+// chunking + setting the counter to b0 reproduces the slice.
+//
+// PRG semantics: PRG_x(j) = AES_K(j ⊕ leaves[x] ⊕ session_xor) where
+// K is a session-shared fixed AES key (built from emp-tool's `fix_key`
+// constant). Treats AES_K as a random permutation, mirroring the
+// PRP / CCRH / MITCCRH model already in emp-tool. The leaf is folded
+// into the AES plaintext as a tweak rather than the AES key, so round
+// keys persist across all Q × bs encryptions in a chunk and the key
+// schedule is one-shot per kernel call instead of per-leaf.
 //
 // Inner loop uses the fused AES-CTR + multi-target XOR-fold kernel
-// from emp-tool aes.h: each leaf's r_x[bs] is generated and consumed
+// from aes_ctr_fold.h: each leaf's r_x[bs] is generated and consumed
 // inside the AES tile loop (in SIMD registers, never materialized to
 // memory). Replaces the older
 //   {fill r_x with counters; ParaEnc(r_x); u^=r_x; v[b]^=r_x for set bits}
@@ -111,9 +114,11 @@ constexpr int kMaxChunkBlocks = 1024;
 // Per-k chunk size (in bpr-blocks). Picked from a wide A/B sweep
 // across Apple M / Sapphire Rapids+ / Zen 5c at length=2^19 (ferret
 // regime) and 2^24 (standalone). Curves are unimodal; these are the
-// joint optima at length=2^19.
-//   k=2 → 128: re-key cost is already ≤5% at bs=128; bigger just adds
-//              cache pressure on small-L1 parts.
+// joint optima at length=2^19. Re-validated post leaf-as-tweak switch
+// on Apple M: bs ∈ {128, 256, 512, 1024, 2048, 4096} sweep at e2e
+// SoftSpoken<k> RCOT, current values still win.
+//   k=2 → 128: enough leaf work to amortize per-chunk overhead;
+//              bigger adds cache pressure on small-L1 parts.
 //   k=4 → 1024: heavy compute per leaf, larger amortization window
 //              wins. Apple M flat across 256–1024.
 //   k=8 → 1024: Q=256 means each leaf produces a lot of fold work;
@@ -125,11 +130,12 @@ constexpr int chunk_blocks_for() {
     else                       return 1024;
 }
 
-// Sender-side chunked sfvole: re-keys each leaf's AES from its 16 B
-// seed, then folds AES_seed(b0..b0+bs) directly into u_bits and the
-// selected v_planes (no r_x materialization). Platform-specialized
-// kernels are routed via sfvole_sender_try_optimized() (sfvole_dispatch.h);
-// the fallback below is the portable leaf-major path via aes_ctr_fold.
+// Sender-side chunked sfvole: under a session-shared fixed AES key,
+// folds AES_K(j ⊕ leaves[x] ⊕ session_xor) directly into u_bits and
+// the selected v_planes (no r_x materialization, no per-leaf key
+// schedule). Platform-specialized kernels are routed via
+// sfvole_sender_try_optimized() (sfvole_dispatch.h); the fallback below
+// is the portable leaf-major path via aes_ctr_fold.
 template <int k>
 EMP_AES_TARGET_ATTR
 inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
@@ -147,14 +153,14 @@ inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
     std::memset(u_bits_chunk,   0, sizeof(block) * bs);
     std::memset(v_planes_chunk, 0, sizeof(block) * k * bs);
 
-    AES_KEY aes_local;
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
     const block session_xor = makeBlock(0LL, static_cast<int64_t>(session));
 
     for (int x = 0; x < Q; ++x) {
-        // Matches PRG(seed=leaves[x], id=session).random_block at
-        // counter offset b0: emp::PRG seeds via XOR with (0,id) and
-        // emits AES_seed(counter) in CTR mode.
-        AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_local);
+        // PRG_x(j) = AES_K(j ⊕ leaves[x] ⊕ session_xor). Fixed-key AES
+        // as random permutation, leaf folded into the plaintext tweak.
+        const block tweak = leaves[x] ^ session_xor;
 
         // Build the leaf's fold target list: u always, v_planes[b] for
         // each set bit b of x. n ∈ [1, 1+k].
@@ -164,7 +170,7 @@ inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
         for (int b = 0; b < k; ++b)
             if ((x >> b) & 1) tgts[n++] = v_planes_chunk + (size_t)b * bs;
 
-        dispatch_ctr_fold<k>(tgts, n, static_cast<int>(bs), b0, &aes_local);
+        dispatch_ctr_fold<k>(tgts, n, static_cast<int>(bs), b0, &fixed_K, tweak);
     }
 }
 
@@ -189,12 +195,13 @@ inline void sfvole_receiver_compute_chunk(int alpha,
 
     std::memset(w_planes_chunk, 0, sizeof(block) * k * bs);
 
-    AES_KEY aes_local;
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
     const block session_xor = makeBlock(0LL, static_cast<int64_t>(session));
 
     for (int x = 0; x < Q; ++x) {
         if (x == alpha) continue;
-        AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_local);
+        const block tweak = leaves[x] ^ session_xor;
 
         // For x ≠ alpha, coeff ≠ 0, so n ≥ 1. Max n = k.
         const int coeff = alpha ^ x;
@@ -203,7 +210,7 @@ inline void sfvole_receiver_compute_chunk(int alpha,
         for (int b = 0; b < k; ++b)
             if ((coeff >> b) & 1) tgts[n++] = w_planes_chunk + (size_t)b * bs;
 
-        dispatch_ctr_fold<k>(tgts, n, static_cast<int>(bs), b0, &aes_local);
+        dispatch_ctr_fold<k>(tgts, n, static_cast<int>(bs), b0, &fixed_K, tweak);
     }
 }
 

@@ -52,18 +52,19 @@ int main(int argc, char** argv) {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    // For aes_only mode: pre-expand all keys once; then in the loop
-    // generate AES output directly into planes_chunk via the same
-    // aes_T_blocks helper that sfvole_butterfly uses, but without
-    // the halve.  This lets us decompose sfvole into "AES gen" vs
+    // For aes_only mode: pre-fold session into per-leaf tweaks once;
+    // then in the loop generate AES output directly into planes_chunk
+    // via the same aes_T_blocks helper that sfvole_butterfly uses, but
+    // without the halve. Lets us decompose sfvole into "AES gen" vs
     // "everything else (halve + scratch traffic)".
 #if defined(__aarch64__)
-    alignas(16) AES_KEY aes_keys[Q];
+    alignas(16) block tweaks[Q];
     {
         const block session_xor = makeBlock(0LL, 0xc0ffeeLL);
-        for (int x = 0; x < Q; ++x)
-            AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_keys[x]);
+        for (int x = 0; x < Q; ++x) tweaks[x] = leaves[x] ^ session_xor;
     }
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
 #endif
 
     auto t0 = std::chrono::steady_clock::now();
@@ -96,7 +97,7 @@ int main(int argc, char** argv) {
                     for (int x = 0; x < Q; ++x) {
                         uint8x16_t pt[T];
                         softspoken::bfly_detail::aes_T_blocks<T>(
-                            pt, t0_inner, &aes_keys[x]);
+                            pt, t0_inner, &fixed_K, tweaks[x]);
                         // Write to a different stride so we touch
                         // L1 like the real kernel does.  Modulo
                         // mapping: planes_chunk[i*k*bs + (x % k)*bs + t0_inner + jj].

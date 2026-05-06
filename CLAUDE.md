@@ -39,3 +39,10 @@ an older baseline knows which deltas to expect.
   accordingly. Extend-phase wire is byte-identical content-wise but
   pre-COT data is now sourced from raw IKNP rcot rather than the
   corrected variant.
+- SoftSpoken sfvole leaf-as-tweak switch — the SoftSpoken sub-VOLE
+  PRG changed from `AES_{leaves[x]}(j)` (leaf-as-key) to
+  `AES_K(j ⊕ leaves[x])` under a session-shared fixed AES key K
+  (mirrors libOTe's MultiKeyAES and emp-tool's PRP / CCRH model).
+  Output bytes change for every SoftSpoken-derived stream, including
+  Ferret's bootstrap (which uses SoftSpoken<8>). IKNP traces are
+  unaffected — IKNP doesn't touch SoftSpoken kernels.

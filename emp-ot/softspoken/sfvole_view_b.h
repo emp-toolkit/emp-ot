@@ -75,13 +75,15 @@ inline constexpr __mmask16 kMaskTab[16] = {
     build_mask_for_nibble(14), build_mask_for_nibble(15),
 };
 
-// Generate 4 AES-CTR blocks at counters (b0..b0+3) using VAES-512.
-// Counter format = makeBlock(0, b0+j): low-64 = ctr, high-64 = 0.
-// Lane t of the returned zmm = AES_kk(makeBlock(0, b0+t)).
+// Generate 4 AES-CTR blocks at plaintext (counter ⊕ tweak) for counters
+// (b0..b0+3) under a session-shared fixed AES key. Lane t of the
+// returned zmm = AES_K(makeBlock(0, b0+t) ⊕ tweak). `tw_zmm` must be
+// the tweak broadcast across all four 128-bit lanes (caller hoists).
 EMP_AES_TARGET_ATTR
-inline __m512i aes_4blocks(int64_t b0, const AES_KEY* kk) {
+inline __m512i aes_4blocks(int64_t b0, const AES_KEY* kk, __m512i tw_zmm) {
     __m512i pt = _mm512_set_epi64(0, b0 + 3, 0, b0 + 2,
                                   0, b0 + 1, 0, b0 + 0);
+    pt = _mm512_xor_si512(pt, tw_zmm);
     __m512i rk = _mm512_broadcast_i32x4(kk->rd_key[0]);
     pt = _mm512_xor_si512(pt, rk);
     #pragma GCC unroll 9
@@ -109,12 +111,16 @@ inline void sfvole_sender_view_b(const block leaves[1 << k],
     static_assert(T == 4, "sfvole_sender_view_b: T=4 (single VAES-512 zmm per tile)");
     constexpr int Q = 1 << k;
 
-    // Hoist all Q AES key expansions once per chunk. ~44 KB stack at
-    // k=8 — same footprint as the NEON butterfly path.
-    alignas(16) AES_KEY keys[Q];
+    // Pre-fold session into per-leaf tweaks (4 KB at k=8, vs the 44 KB
+    // AES_KEY array the per-leaf-keyed version used) and broadcast each
+    // tweak across all four 128-bit lanes for the VAES-512 fold.
+    alignas(64) __m512i tweaks_zmm[Q];
     const block session_xor = makeBlock(0LL, (int64_t)session);
     for (int x = 0; x < Q; ++x)
-        AES_set_encrypt_key(leaves[x] ^ session_xor, &keys[x]);
+        tweaks_zmm[x] = _mm512_broadcast_i32x4(leaves[x] ^ session_xor);
+
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
 
     // Tile body and flush are factored as lambdas: the main loop and the
     // (possibly partial) tail share the accumulate logic; only the flush
@@ -130,7 +136,7 @@ inline void sfvole_sender_view_b(const block leaves[1 << k],
         u_acc = _mm512_setzero_si512();
 
         for (int x = 0; x < Q; ++x) {
-            __m512i r_zmm = view_b_detail::aes_4blocks(b0 + t0, &keys[x]);
+            __m512i r_zmm = view_b_detail::aes_4blocks(b0 + t0, &fixed_K, tweaks_zmm[x]);
             const __mmask16 m_lo = view_b_detail::kMaskTab[x & 0xF];
             const __mmask16 m_hi = view_b_detail::kMaskTab[(x >> 4) & 0xF];
 
@@ -222,11 +228,16 @@ inline void sfvole_receiver_view_b(int alpha,
     static_assert(T == 4, "sfvole_receiver_view_b: T=4");
     constexpr int Q = 1 << k;
 
-    // α-permuted key expansion: keys[y] = expand(leaves[α ⊕ y]).
-    alignas(16) AES_KEY keys[Q];
+    // α-permuted tweaks: tweaks_zmm[y] = broadcast(leaves[α ⊕ y] ⊕ session_xor).
+    // y=0 uses leaves[α] = zero_block (set by pprf_eval_receiver) — its
+    // bogus AES output is harmlessly absorbed since bit_b(0)=0 ∀ b.
+    alignas(64) __m512i tweaks_zmm[Q];
     const block session_xor = makeBlock(0LL, (int64_t)session);
     for (int y = 0; y < Q; ++y)
-        AES_set_encrypt_key(leaves[alpha ^ y] ^ session_xor, &keys[y]);
+        tweaks_zmm[y] = _mm512_broadcast_i32x4(leaves[alpha ^ y] ^ session_xor);
+
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
 
     auto tile_accumulate = [&](int64_t t0, __m512i acc_lo[T],
                                __m512i acc_hi[T]) {
@@ -235,7 +246,7 @@ inline void sfvole_receiver_view_b(int alpha,
             acc_hi[t] = _mm512_setzero_si512();
         }
         for (int y = 0; y < Q; ++y) {
-            __m512i r_zmm = view_b_detail::aes_4blocks(b0 + t0, &keys[y]);
+            __m512i r_zmm = view_b_detail::aes_4blocks(b0 + t0, &fixed_K, tweaks_zmm[y]);
             const __mmask16 m_lo = view_b_detail::kMaskTab[y & 0xF];
             const __mmask16 m_hi = view_b_detail::kMaskTab[(y >> 4) & 0xF];
 

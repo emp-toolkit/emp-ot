@@ -4,11 +4,17 @@
 // Fused AES-CTR + multi-target XOR-fold kernel for SoftSpoken's small-
 // field VOLE inner loop. Computes
 //   for j in [0, n_blocks):
-//     ct = AES_key(makeBlock(0, base_ctr + j))
+//     ct = AES_K(makeBlock(0, base_ctr + j) ⊕ tweak)
 //     for t in [0, N_TARGETS): tgts[t][j] ^= ct
 // keeping `ct` in SIMD registers from AES last-round through the
 // multi-target XOR-store — no intermediate r_x[bs] scratch is ever
 // materialized in memory.
+//
+// `key` is a session-shared fixed AES schedule (caller hoists out of
+// the per-leaf loop). `tweak` is the per-leaf input that distinguishes
+// leaves and session — typically `leaves[x] ⊕ session_xor`. Treats
+// AES_K as a random permutation, matching the PRP/CCRH model in
+// emp-tool.
 //
 // Replaces the older
 //   {fill r_x with counters; ParaEnc(r_x); for t: tgts[t] ^= r_x;}
@@ -52,11 +58,12 @@ template <int N_TARGETS>
 EMP_AES_TARGET_ATTR
 static inline void fold_tiles_x1(block* const tgts[N_TARGETS],
                                  int n_tiles, int64_t base_ctr,
-                                 const AES_KEY* kk) {
+                                 const AES_KEY* kk, block tweak) {
     block rk[11];
     for (int r = 0; r < 11; ++r) rk[r] = kk->rd_key[r];
+    const block tw = tweak;
     for (int t = 0; t < n_tiles; ++t) {
-        block pt = ctr_x1(base_ctr + t);
+        block pt = _mm_xor_si128(ctr_x1(base_ctr + t), tw);
         pt = _mm_xor_si128(pt, rk[0]);
         for (int r = 1; r < 10; ++r) pt = _mm_aesenc_si128(pt, rk[r]);
         pt = _mm_aesenclast_si128(pt, rk[10]);
@@ -73,11 +80,12 @@ template <int N_TARGETS>
 EMP_AES_TARGET_ATTR
 static inline void fold_tiles_x2(block* const tgts[N_TARGETS],
                                  int n_tiles, int64_t base_ctr,
-                                 const AES_KEY* kk) {
+                                 const AES_KEY* kk, block tweak) {
     __m256i rk[11];
     for (int r = 0; r < 11; ++r) rk[r] = _mm256_broadcastsi128_si256(kk->rd_key[r]);
+    const __m256i tw = _mm256_broadcastsi128_si256(tweak);
     for (int t = 0; t < n_tiles; ++t) {
-        __m256i pt = ctr_x2(base_ctr + (int64_t)t * 2);
+        __m256i pt = _mm256_xor_si256(ctr_x2(base_ctr + (int64_t)t * 2), tw);
         pt = _mm256_xor_si256(pt, rk[0]);
         for (int r = 1; r < 10; ++r) pt = _mm256_aesenc_epi128(pt, rk[r]);
         pt = _mm256_aesenclast_epi128(pt, rk[10]);
@@ -96,11 +104,12 @@ template <int N_TARGETS>
 EMP_AES_TARGET_ATTR
 static inline void fold_tiles_x4(block* const tgts[N_TARGETS],
                                  int n_tiles, int64_t base_ctr,
-                                 const AES_KEY* kk) {
+                                 const AES_KEY* kk, block tweak) {
     __m512i rk[11];
     for (int r = 0; r < 11; ++r) rk[r] = _mm512_broadcast_i32x4(kk->rd_key[r]);
+    const __m512i tw = _mm512_broadcast_i32x4(tweak);
     for (int t = 0; t < n_tiles; ++t) {
-        __m512i pt = ctr_x4(base_ctr + (int64_t)t * 4);
+        __m512i pt = _mm512_xor_si512(ctr_x4(base_ctr + (int64_t)t * 4), tw);
         pt = _mm512_xor_si512(pt, rk[0]);
         for (int r = 1; r < 10; ++r) pt = _mm512_aesenc_epi128(pt, rk[r]);
         pt = _mm512_aesenclast_epi128(pt, rk[10]);
@@ -121,7 +130,7 @@ static inline void fold_tiles_x4(block* const tgts[N_TARGETS],
 template <int N_TARGETS>
 EMP_AES_TARGET_ATTR
 inline void aes_ctr_fold(block* const tgts_in[N_TARGETS], int n_blocks,
-                         int64_t base_ctr, const AES_KEY* key) {
+                         int64_t base_ctr, const AES_KEY* key, block tweak) {
     block* tgts[N_TARGETS];
     for (int j = 0; j < N_TARGETS; ++j) tgts[j] = tgts_in[j];
     int64_t ctr = base_ctr;
@@ -130,7 +139,7 @@ inline void aes_ctr_fold(block* const tgts_in[N_TARGETS], int n_blocks,
     {
         const int n4 = n_blocks / 4;
         if (n4 > 0) {
-            detail::fold_tiles_x4<N_TARGETS>(tgts, n4, ctr, key);
+            detail::fold_tiles_x4<N_TARGETS>(tgts, n4, ctr, key, tweak);
             const int b = n4 * 4;
             for (int j = 0; j < N_TARGETS; ++j) tgts[j] += b;
             ctr += b; n_blocks -= b;
@@ -141,7 +150,7 @@ inline void aes_ctr_fold(block* const tgts_in[N_TARGETS], int n_blocks,
     {
         const int n2 = n_blocks / 2;
         if (n2 > 0) {
-            detail::fold_tiles_x2<N_TARGETS>(tgts, n2, ctr, key);
+            detail::fold_tiles_x2<N_TARGETS>(tgts, n2, ctr, key, tweak);
             const int b = n2 * 2;
             for (int j = 0; j < N_TARGETS; ++j) tgts[j] += b;
             ctr += b; n_blocks -= b;
@@ -149,7 +158,7 @@ inline void aes_ctr_fold(block* const tgts_in[N_TARGETS], int n_blocks,
     }
 #endif
     if (n_blocks > 0) {
-        detail::fold_tiles_x1<N_TARGETS>(tgts, n_blocks, ctr, key);
+        detail::fold_tiles_x1<N_TARGETS>(tgts, n_blocks, ctr, key, tweak);
     }
 }
 
@@ -160,17 +169,20 @@ inline void aes_ctr_fold(block* const tgts_in[N_TARGETS], int n_blocks,
 // per-block.
 template <int N_TARGETS>
 inline void aes_ctr_fold(block* const tgts_in[N_TARGETS], int n_blocks,
-                         int64_t base_ctr, const AES_KEY* key) {
+                         int64_t base_ctr, const AES_KEY* key, block tweak) {
     constexpr int T = 4;
     const int n_full = n_blocks / T;
     const int tail   = n_blocks - n_full * T;
+    const uint8x16_t tw = vreinterpretq_u8_m128i(tweak);
 
     for (int t = 0; t < n_full; ++t) {
         const int64_t base = base_ctr + (int64_t)t * T;
         uint8x16_t pt[T];
         for (int j = 0; j < T; ++j) {
             uint64_t lo = (uint64_t)(base + j);
-            pt[j] = vreinterpretq_u8_u64(vsetq_lane_u64(lo, vdupq_n_u64(0), 0));
+            const uint8x16_t ctr =
+                vreinterpretq_u8_u64(vsetq_lane_u64(lo, vdupq_n_u64(0), 0));
+            pt[j] = veorq_u8(ctr, tw);
         }
         for (unsigned int r = 0; r < 9; ++r) {
             uint8x16_t K = vreinterpretq_u8_m128i(key->rd_key[r]);
@@ -193,7 +205,9 @@ inline void aes_ctr_fold(block* const tgts_in[N_TARGETS], int n_blocks,
     for (int t = 0; t < tail; ++t) {
         const int64_t off = (int64_t)n_full * T + t;
         uint64_t lo = (uint64_t)(base_ctr + off);
-        uint8x16_t pt = vreinterpretq_u8_u64(vsetq_lane_u64(lo, vdupq_n_u64(0), 0));
+        const uint8x16_t ctr =
+            vreinterpretq_u8_u64(vsetq_lane_u64(lo, vdupq_n_u64(0), 0));
+        uint8x16_t pt = veorq_u8(ctr, tw);
         for (unsigned int r = 0; r < 9; ++r) {
             uint8x16_t K = vreinterpretq_u8_m128i(key->rd_key[r]);
             pt = vaesmcq_u8(vaeseq_u8(pt, K));
@@ -219,18 +233,19 @@ inline void aes_ctr_fold(block* const tgts_in[N_TARGETS], int n_blocks,
 template <int k>
 EMP_AES_TARGET_ATTR
 inline void dispatch_ctr_fold(block** tgts, int n, int n_blocks,
-                              int64_t base_ctr, const AES_KEY* key) {
+                              int64_t base_ctr, const AES_KEY* key,
+                              block tweak) {
     constexpr int N_MAX = 1 + k;
     switch (n) {
-        case 1: aes_ctr_fold<1>(tgts, n_blocks, base_ctr, key); return;
-        case 2: aes_ctr_fold<2>(tgts, n_blocks, base_ctr, key); return;
-        case 3: if constexpr (N_MAX >= 3) { aes_ctr_fold<3>(tgts, n_blocks, base_ctr, key); return; } break;
-        case 4: if constexpr (N_MAX >= 4) { aes_ctr_fold<4>(tgts, n_blocks, base_ctr, key); return; } break;
-        case 5: if constexpr (N_MAX >= 5) { aes_ctr_fold<5>(tgts, n_blocks, base_ctr, key); return; } break;
-        case 6: if constexpr (N_MAX >= 6) { aes_ctr_fold<6>(tgts, n_blocks, base_ctr, key); return; } break;
-        case 7: if constexpr (N_MAX >= 7) { aes_ctr_fold<7>(tgts, n_blocks, base_ctr, key); return; } break;
-        case 8: if constexpr (N_MAX >= 8) { aes_ctr_fold<8>(tgts, n_blocks, base_ctr, key); return; } break;
-        case 9: if constexpr (N_MAX >= 9) { aes_ctr_fold<9>(tgts, n_blocks, base_ctr, key); return; } break;
+        case 1: aes_ctr_fold<1>(tgts, n_blocks, base_ctr, key, tweak); return;
+        case 2: aes_ctr_fold<2>(tgts, n_blocks, base_ctr, key, tweak); return;
+        case 3: if constexpr (N_MAX >= 3) { aes_ctr_fold<3>(tgts, n_blocks, base_ctr, key, tweak); return; } break;
+        case 4: if constexpr (N_MAX >= 4) { aes_ctr_fold<4>(tgts, n_blocks, base_ctr, key, tweak); return; } break;
+        case 5: if constexpr (N_MAX >= 5) { aes_ctr_fold<5>(tgts, n_blocks, base_ctr, key, tweak); return; } break;
+        case 6: if constexpr (N_MAX >= 6) { aes_ctr_fold<6>(tgts, n_blocks, base_ctr, key, tweak); return; } break;
+        case 7: if constexpr (N_MAX >= 7) { aes_ctr_fold<7>(tgts, n_blocks, base_ctr, key, tweak); return; } break;
+        case 8: if constexpr (N_MAX >= 8) { aes_ctr_fold<8>(tgts, n_blocks, base_ctr, key, tweak); return; } break;
+        case 9: if constexpr (N_MAX >= 9) { aes_ctr_fold<9>(tgts, n_blocks, base_ctr, key, tweak); return; } break;
     }
 }
 

@@ -67,16 +67,17 @@ void variant_old_path_sender(const block* leaves,
     std::memset(u_chunk,         0, sizeof(block) * (size_t)bs);
     std::memset(v_planes_chunk,  0, sizeof(block) * (size_t)k * bs);
 
-    AES_KEY aes_local;
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
     const block session_xor = makeBlock(0LL, (int64_t)session);
     for (int x = 0; x < Q; ++x) {
-        AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_local);
+        const block tweak = leaves[x] ^ session_xor;
         block* tgts[1 + k];
         int n = 0;
         tgts[n++] = u_chunk;
         for (int b = 0; b < k; ++b)
             if ((x >> b) & 1) tgts[n++] = v_planes_chunk + (size_t)b * bs;
-        softspoken::dispatch_ctr_fold<k>(tgts, n, (int)bs, b0, &aes_local);
+        softspoken::dispatch_ctr_fold<k>(tgts, n, (int)bs, b0, &fixed_K, tweak);
     }
 }
 
@@ -88,17 +89,18 @@ void variant_old_path_recv(int alpha,
     constexpr int Q = 1 << k;
     std::memset(w_planes_chunk, 0, sizeof(block) * (size_t)k * bs);
 
-    AES_KEY aes_local;
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
     const block session_xor = makeBlock(0LL, (int64_t)session);
     for (int x = 0; x < Q; ++x) {
         if (x == alpha) continue;
-        AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_local);
+        const block tweak = leaves[x] ^ session_xor;
         const int coeff = alpha ^ x;
         block* tgts[k > 0 ? k : 1];
         int n = 0;
         for (int b = 0; b < k; ++b)
             if ((coeff >> b) & 1) tgts[n++] = w_planes_chunk + (size_t)b * bs;
-        softspoken::dispatch_ctr_fold<k>(tgts, n, (int)bs, b0, &aes_local);
+        softspoken::dispatch_ctr_fold<k>(tgts, n, (int)bs, b0, &fixed_K, tweak);
     }
 }
 
@@ -130,7 +132,7 @@ void variant_b_avx512_recv(int alpha,
 // ---------------------------------------------------------------------
 // Generate q × bs PRG outputs into a flat (q, bs) block array.
 // Used by View A (and as a building block for the portable View B).
-// R[x * bs + j] = AES_{leaves[x] ^ session_xor}(makeBlock(0, b0 + j)).
+// R[x * bs + j] = AES_K(makeBlock(0, b0 + j) ⊕ leaves[x] ⊕ session_xor).
 // ---------------------------------------------------------------------
 template <int k>
 void gen_prg_block(const block* leaves,
@@ -138,12 +140,13 @@ void gen_prg_block(const block* leaves,
                    block* R) {
     constexpr int Q = 1 << k;
     const block session_xor = makeBlock(0LL, (int64_t)session);
-    AES_KEY aes_local;
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
     for (int x = 0; x < Q; ++x) {
-        AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_local);
+        const block tweak = leaves[x] ^ session_xor;
         block* row = R + (size_t)x * bs;
-        for (int64_t j = 0; j < bs; ++j) row[j] = makeBlock(0LL, b0 + j);
-        AES_ecb_encrypt_blks(row, (unsigned)bs, &aes_local);
+        for (int64_t j = 0; j < bs; ++j) row[j] = makeBlock(0LL, b0 + j) ^ tweak;
+        AES_ecb_encrypt_blks(row, (unsigned)bs, &fixed_K);
     }
 }
 
@@ -363,15 +366,21 @@ inline void variant_butterfly_neon_recv(
 inline void variant_b_neon_k8(const block* leaves,
                                uint64_t session, int64_t b0, int64_t bs,
                                block* u_chunk, block* v_planes_chunk,
-                               AES_KEY* keys_scratch /* sized Q */) {
+                               AES_KEY* keys_scratch /* unused, kept for ABI */) {
+    (void)keys_scratch;
     constexpr int k = 8;
     constexpr int Q = 1 << k;   // 256
     constexpr int T = 2;        // outputs per tile in j-axis
 
-    // 1) Hoist all Q AES key expansions once per chunk.
+    // Pre-fold session into per-leaf tweaks (4 KB at k=8, vs the 44 KB
+    // AES_KEY array the per-leaf-keyed version used). One session-shared
+    // fixed AES schedule covers all leaf encryptions.
+    alignas(16) block tweaks[Q];
     const block session_xor = makeBlock(0LL, (int64_t)session);
-    for (int x = 0; x < Q; ++x)
-        AES_set_encrypt_key(leaves[x] ^ session_xor, &keys_scratch[x]);
+    for (int x = 0; x < Q; ++x) tweaks[x] = leaves[x] ^ session_xor;
+
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
 
     // 2) Tile-outer loop. Per tile: reg-resident accumulators across all leaves.
     for (int64_t t0 = 0; t0 < bs; t0 += T) {
@@ -386,25 +395,29 @@ inline void variant_b_neon_k8(const block* leaves,
         uint8x16_t v7_0 = vdupq_n_u8(0), v7_1 = vdupq_n_u8(0);
 
         for (int x = 0; x < Q; ++x) {
-            const AES_KEY* kk = &keys_scratch[x];
+            const uint8x16_t tw = vreinterpretq_u8_m128i(tweaks[x]);
 
-            // Generate pt[T] = AES_x(b0+t0..b0+t0+T-1).
+            // Generate pt[T] = AES_K(counter ⊕ tweaks[x]).
             uint8x16_t pt0, pt1;
             {
                 const uint64_t lo0 = (uint64_t)(b0 + t0);
                 const uint64_t lo1 = (uint64_t)(b0 + t0 + 1);
-                pt0 = vreinterpretq_u8_u64(vsetq_lane_u64(lo0, vdupq_n_u64(0), 0));
-                pt1 = vreinterpretq_u8_u64(vsetq_lane_u64(lo1, vdupq_n_u64(0), 0));
+                const uint8x16_t c0 =
+                    vreinterpretq_u8_u64(vsetq_lane_u64(lo0, vdupq_n_u64(0), 0));
+                const uint8x16_t c1 =
+                    vreinterpretq_u8_u64(vsetq_lane_u64(lo1, vdupq_n_u64(0), 0));
+                pt0 = veorq_u8(c0, tw);
+                pt1 = veorq_u8(c1, tw);
             }
             #pragma GCC unroll 9
             for (int r = 0; r < 9; ++r) {
-                const uint8x16_t K = vreinterpretq_u8_m128i(kk->rd_key[r]);
+                const uint8x16_t K = vreinterpretq_u8_m128i(fixed_K.rd_key[r]);
                 pt0 = vaesmcq_u8(vaeseq_u8(pt0, K));
                 pt1 = vaesmcq_u8(vaeseq_u8(pt1, K));
             }
             {
-                const uint8x16_t K9  = vreinterpretq_u8_m128i(kk->rd_key[9]);
-                const uint8x16_t K10 = vreinterpretq_u8_m128i(kk->rd_key[10]);
+                const uint8x16_t K9  = vreinterpretq_u8_m128i(fixed_K.rd_key[9]);
+                const uint8x16_t K10 = vreinterpretq_u8_m128i(fixed_K.rd_key[10]);
                 pt0 = veorq_u8(vaeseq_u8(pt0, K9), K10);
                 pt1 = veorq_u8(vaeseq_u8(pt1, K9), K10);
             }
@@ -483,13 +496,14 @@ void variant_b_portable(const block* leaves,
     std::memset(v_planes_chunk, 0, sizeof(block) * (size_t)k * bs);
 
     const block session_xor = makeBlock(0LL, (int64_t)session);
-    AES_KEY aes_local;
+    AES_KEY fixed_K;
+    AES_set_encrypt_key(_mm_loadu_si128((const __m128i*)fix_key), &fixed_K);
     std::vector<block> r_x((size_t)bs);
 
     for (int x = 0; x < Q; ++x) {
-        AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_local);
-        for (int64_t j = 0; j < bs; ++j) r_x[j] = makeBlock(0LL, b0 + j);
-        AES_ecb_encrypt_blks(r_x.data(), (unsigned)bs, &aes_local);
+        const block tweak = leaves[x] ^ session_xor;
+        for (int64_t j = 0; j < bs; ++j) r_x[j] = makeBlock(0LL, b0 + j) ^ tweak;
+        AES_ecb_encrypt_blks(r_x.data(), (unsigned)bs, &fixed_K);
 
         // Always fold into u.
         for (int64_t j = 0; j < bs; ++j) u_chunk[j] = u_chunk[j] ^ r_x[j];
