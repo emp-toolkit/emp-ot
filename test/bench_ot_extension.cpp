@@ -1,0 +1,98 @@
+// Cross-protocol OT-extension bench. Reports throughput + B/COT for
+// IKNP / SoftSpoken / FerretCOT in one table, across all four flavors
+// (RCOT → COT → ROT → OT). Two-party via the `run` script.
+//
+// Re-uses test_{rcot,cot,rot,ot} from test/test.h, so each row also
+// asserts correctness — the bench's output is preceded by the helpers'
+// "Tests passed.\t" markers (one per flavor call).
+//
+// Length default: (1 << 24) + 101 (~16M OTs). Smaller lengths
+// (e.g. 2^20) leave constant base-OT setup bytes visible in the
+// per-OT bandwidth column — at 16M OTs the protocol's asymptotic
+// per-OT wire cost is what the table reports.
+#include "test/test.h"
+using namespace std;
+
+const static int threads = 1;
+
+#define BW_ROW(FLAVOR, FN) do {                                               \
+    uint64_t ds = 0, dr = 0;                                                  \
+    double us = FN(ot, io, party, length, &ds, &dr);                          \
+    cout << FLAVOR << "\t" << row_name << "\t"                                \
+         << double(length) / us << " MOTps  "                                 \
+         << "send=" << double(ds) / length << " B/COT  "                      \
+         << "recv=" << double(dr) / length << " B/COT" << endl;               \
+} while (0)
+
+template <typename T>
+void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) {
+    BW_ROW("RCOT", test_rcot<T>);
+    BW_ROW("COT ", test_cot<T>);
+    BW_ROW("ROT ", test_rot<T>);
+    BW_ROW("OT  ", test_ot<T>);
+}
+
+template <int k>
+void run_softspoken_k(NetIO* io, int party, int64_t length) {
+    char name[32];
+    {
+        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(io);
+        snprintf(name, sizeof(name), "SoftSpoken<%d> semi", k);
+        run_row(ot, io, party, length, name);
+        delete ot;
+    }
+    {
+        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(io);
+        ot->set_malicious(true);
+        snprintf(name, sizeof(name), "SoftSpoken<%d> mali", k);
+        run_row(ot, io, party, length, name);
+        delete ot;
+    }
+}
+
+int main(int argc, char** argv) {
+    int length, port, party;
+    if (argc <= 3) length = (1 << 24) + 101;
+    else           length = (1 << atoi(argv[3])) + 101;
+
+    parse_party_and_port(argv, &party, &port);
+    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+
+    cout << "# bench_ot_extension: length=" << length << "  (3 protocols × 4 flavors)" << endl;
+
+    // IKNP
+    {
+        IKNP* iknp = new IKNP(io, false);
+        run_row(iknp, io, party, length, "IKNP semi");
+        delete iknp;
+    }
+    {
+        IKNP* iknp = new IKNP(io, true);
+        run_row(iknp, io, party, length, "IKNP mali");
+        delete iknp;
+    }
+
+    // SoftSpoken<k>, k ∈ {2, 4, 8}, semi + mali.
+    run_softspoken_k<2>(io, party, length);
+    run_softspoken_k<4>(io, party, length);
+    run_softspoken_k<8>(io, party, length);
+
+    // FerretCOT (semi + mali). FerretCOT's inherited send/recv,
+    // send_cot/recv_cot, send_rot/recv_rot all dispatch through its
+    // rcot_send/rcot_recv override, so the four-flavor matrix exercises
+    // the same ferret extend pipeline at the bottom.
+    IOChannel* ios[1] = { io };
+    {
+        FerretCOT* ot = new FerretCOT(party, threads, ios, false);
+        run_row(ot, io, party, length, "FerretCOT semi");
+        delete ot;
+    }
+    {
+        FerretCOT* ot = new FerretCOT(party, threads, ios, true);
+        run_row(ot, io, party, length, "FerretCOT mali");
+        delete ot;
+    }
+
+    delete io;
+    return 0;
+}
