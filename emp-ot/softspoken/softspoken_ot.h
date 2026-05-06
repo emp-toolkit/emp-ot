@@ -4,7 +4,7 @@
 #include "emp-ot/cot.h"
 #include "emp-ot/base_ot/co.h"
 #include "emp-ot/cggm.h"
-#include "emp-ot/softspoken/sfvole_dispatch.h"
+#include "emp-ot/softspoken/sfvole_butterfly.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -272,9 +272,7 @@ inline void pprf_eval_receiver(int alpha,
 // Inner loop uses the fused AES-CTR + multi-target XOR-fold kernel
 // (defined above): each leaf's r_x[bs] is generated and consumed
 // inside the AES tile loop (in SIMD registers, never materialized to
-// memory). Replaces the older
-//   {fill r_x with counters; ParaEnc(r_x); u^=r_x; v[b]^=r_x for set bits}
-// pattern, which round-tripped r_x through L1 four times per leaf.
+// memory).
 
 // Maximum chunk size (in bpr-blocks) the chunked sfvole helpers will
 // be called with. Sets stack-resident scratch sizing in
@@ -285,9 +283,7 @@ constexpr int kMaxChunkBlocks = 1024;
 // Per-k chunk size (in bpr-blocks). Picked from a wide A/B sweep
 // across Apple M / Sapphire Rapids+ / Zen 5c at length=2^19 (ferret
 // regime) and 2^24 (standalone). Curves are unimodal; these are the
-// joint optima at length=2^19. Re-validated post leaf-as-tweak switch
-// on Apple M: bs ∈ {128, 256, 512, 1024, 2048, 4096} sweep at e2e
-// SoftSpoken<k> RCOT, current values still win.
+// joint optima.
 //   k=2 → 128: enough leaf work to amortize per-chunk overhead;
 //              bigger adds cache pressure on small-L1 parts.
 //   k=4 → 1024: heavy compute per leaf, larger amortization window
@@ -304,9 +300,8 @@ constexpr int chunk_blocks_for() {
 // Sender-side chunked sfvole: under a session-shared fixed AES key,
 // folds AES_K(j ⊕ leaves[x] ⊕ session_xor) directly into u_bits and
 // the selected v_planes (no r_x materialization, no per-leaf key
-// schedule). Platform-specialized kernels are routed via
-// sfvole_sender_try_optimized() (sfvole_dispatch.h); the fallback below
-// is the portable leaf-major path via aes_ctr_fold.
+// schedule). k=8 routes to the cross-platform butterfly kernel
+// (sfvole_butterfly.h); k=2 / k=4 take the leaf-major path below.
 template <int k>
 EMP_AES_TARGET_ATTR
 inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
@@ -315,9 +310,11 @@ inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
                                         int64_t bs,
                                         block* u_bits_chunk,
                                         block* v_planes_chunk) {
-    if (sfvole_sender_try_optimized<k>(leaves, session, b0, bs,
-                                        u_bits_chunk, v_planes_chunk))
+    if constexpr (k == 8) {
+        sfvole_sender_butterfly<k>(leaves, session, b0, bs,
+                                    u_bits_chunk, v_planes_chunk);
         return;
+    }
 
     constexpr int Q = 1 << k;
 
@@ -346,10 +343,9 @@ inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
 }
 
 // Receiver-side chunked sfvole. Skips x = alpha; folds AES_seed(b0..b0+bs)
-// into w_planes[b] for each set bit b of (alpha XOR x). Platform-
-// specialized kernels are routed via sfvole_receiver_try_optimized()
-// (sfvole_dispatch.h); the fallback below is the portable leaf-major
-// path via aes_ctr_fold.
+// into w_planes[b] for each set bit b of (alpha XOR x). k=8 routes to
+// the cross-platform butterfly kernel (sfvole_butterfly.h); k=2 / k=4
+// take the leaf-major path below.
 template <int k>
 EMP_AES_TARGET_ATTR
 inline void sfvole_receiver_compute_chunk(int alpha,
@@ -358,9 +354,11 @@ inline void sfvole_receiver_compute_chunk(int alpha,
                                           int64_t b0,
                                           int64_t bs,
                                           block* w_planes_chunk) {
-    if (sfvole_receiver_try_optimized<k>(alpha, leaves, session, b0, bs,
-                                          w_planes_chunk))
+    if constexpr (k == 8) {
+        sfvole_receiver_butterfly<k>(alpha, leaves, session, b0, bs,
+                                      w_planes_chunk);
         return;
+    }
 
     constexpr int Q = 1 << k;
 

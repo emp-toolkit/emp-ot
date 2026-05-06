@@ -269,11 +269,8 @@ void SoftSpokenOT<k>::rcot_send_next(block* out, int64_t chunk_len) {
     // Mirrored on the receiver side by V_0[0] := u_canonical. The COT
     // relation V ⊕ W = u_canonical · α at bit 0 (where bit_0(α_0) = 1
     // is forced in setup_send) then holds trivially: 0 ⊕ u_canonical =
-    // u_canonical. Replaces the post-Conv `out[j] &= lsb_clear_mask`
-    // loop, which was ~9% of CPU at k=8 on Intel SR+. The fold work
-    // for sub-VOLE 0 plane 0 inside sfvole_receiver_compute_chunk above
-    // is now wasted (~0.6% of total), kept for now to avoid an sfvole
-    // API split.
+    // u_canonical. The fold work for sub-VOLE 0 plane 0 above is wasted,
+    // kept for now to avoid splitting the sfvole API.
     std::memset(w_planes_chunk, 0, sizeof(block) * bs);
 
     // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
@@ -371,11 +368,8 @@ void SoftSpokenOT<k>::rcot_recv_next(block* out, int64_t chunk_len) {
     // LSB convention (IKNP-style construction): pin sub-VOLE 0's plane
     // 0 to u_canonical, so after Conv bit_0(out[j]) = bit_j(u_canonical)
     // = receiver's intrinsic choice bit. Mirrored on the sender side
-    // by W_0[0] := 0. Replaces the post-Conv bit-extracting LSB loop
-    // (which was ~9% of CPU at k=8 on Intel SR+ — slow because of the
-    // per-bit byte-load + branch). The fold work for sub-VOLE 0 plane 0
-    // inside sfvole_sender_compute_chunk above is now wasted (~0.6%
-    // of total), kept for now to avoid an sfvole API split.
+    // by W_0[0] := 0. The fold work for sub-VOLE 0 plane 0 above is
+    // wasted, kept for now to avoid splitting the sfvole API.
     std::memcpy(v_planes_chunk, u_canonical, sizeof(block) * bs);
 
     // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.

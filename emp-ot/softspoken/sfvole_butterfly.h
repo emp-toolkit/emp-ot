@@ -25,10 +25,9 @@
 //
 // Tile size T=8 (j-axis): picked from a sweep on Apple M at k=8
 // bs=1024. T=8 fits the q×T scratch in L1 (32 KB at k=8) and the
-// 8-block v_acc within NEON's 32-reg budget. Re-checked post leaf-as-
-// tweak switch: T=12 is ~+4% slower (butterfly_halve's v_acc[T] is
-// still the dominant register-pressure term, not the round keys);
-// T=16 spills catastrophically (~2.1×). T=8 stays.
+// 8-block v_acc within NEON's 32-reg budget. T=12 is ~+4% slower
+// (butterfly_halve's v_acc[T] is the dominant register-pressure term);
+// T=16 spills catastrophically (~2.1×).
 //
 // On x86: T=8 fits comfortably under VAES-512 (2 zmm of plaintext + 11
 // zmm round-key broadcasts = 13 / 32 zmm) and VAES-256 (4 ymm + 11
@@ -152,9 +151,8 @@ inline void sfvole_sender_butterfly(const block leaves[1 << k],
                                      block* v_planes_chunk) {
     constexpr int Q = 1 << k;
 
-    // Pre-fold session into per-leaf tweaks (4 KB scratch at k=8 vs the
-    // 44 KB AES_KEY array the per-leaf-keyed version used). One
-    // session-shared fixed AES schedule covers all leaf encryptions.
+    // Pre-fold session into per-leaf tweaks; one session-shared fixed
+    // AES schedule covers all leaf encryptions.
     alignas(16) block tweaks[Q];
     const block session_xor = makeBlock(0LL, (int64_t)session);
     for (int x = 0; x < Q; ++x) tweaks[x] = leaves[x] ^ session_xor;

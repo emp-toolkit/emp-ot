@@ -196,9 +196,8 @@ inline void variant_b_neon_k8(const block* leaves,
     constexpr int Q = 1 << k;   // 256
     constexpr int T = 2;        // outputs per tile in j-axis
 
-    // Pre-fold session into per-leaf tweaks (4 KB at k=8, vs the 44 KB
-    // AES_KEY array the per-leaf-keyed version used). One session-shared
-    // fixed AES schedule covers all leaf encryptions.
+    // Pre-fold session into per-leaf tweaks; one session-shared fixed
+    // AES schedule covers all leaf encryptions.
     alignas(16) block tweaks[Q];
     const block session_xor = makeBlock(0LL, (int64_t)session);
     for (int x = 0; x < Q; ++x) tweaks[x] = leaves[x] ^ session_xor;
