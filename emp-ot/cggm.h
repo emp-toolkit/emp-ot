@@ -22,12 +22,15 @@
 
 namespace emp { namespace cggm {
 
-// Per-platform tile size for batched H. Bench-derived from
-// test/bench_cggm_tile.cpp at d=13 (the production ferret depth),
-// NOT from raw CCRH::H<N> peaks — at d=13 the leaves array is
-// 128 KB (past L1), so per-tile working-set fit dominates over
-// AES port saturation. Smaller tiles win when the tree exceeds
-// L1; larger tiles only help when everything stays L1-resident.
+// Per-platform default tile size for batched H. Bench-derived from
+// test/bench_cggm.cpp at d=13 (the production ferret depth), NOT
+// from raw CCRH::H<N> peaks — at d=13 the leaves array is 128 KB
+// (past L1), so per-tile working-set fit dominates over AES port
+// saturation. Smaller tiles win when the tree exceeds L1; larger
+// tiles only help when everything stays L1-resident. The Tile
+// template parameter on expand_level / build_sender / eval_receiver
+// defaults to kTile but can be overridden — the bench uses that to
+// sweep tiles without rebuilding cggm.h.
 //
 // Measured d=13 cGGM throughput per (tile, platform):
 //   Apple NEON  : tile=4   peak (658 MH/s); other tiles ≤ 60% of peak
@@ -56,7 +59,7 @@ namespace detail {
 struct ExpandSums { block left, right; };
 
 // Expand `parents` parents at leaves[0..parents) into children at
-// leaves[0..2*parents) using batched CCRH::H<kTile> over the whole
+// leaves[0..2*parents) using batched CCRH::H<Tile> over the whole
 // level. Returns per-level (left_sum, right_sum) so callers don't
 // have to re-read the just-written child array.
 //
@@ -65,18 +68,19 @@ struct ExpandSums { block left, right; };
 // `[2*base, 2*(base+n))`. The next iteration's parents at
 // `[0, base)` are strictly below the just-written `[2*base, ...)`
 // region — no clobber.
+template <int Tile = kTile>
 inline ExpandSums expand_level(CCRH& ccrh, block* leaves, int parents) {
-    block lefts_buf[kTile];
+    block lefts_buf[Tile];
     block left_sum = zero_block, right_sum = zero_block;
     for (int s = parents; s > 0; ) {
-        const int n    = std::min(s, kTile);
+        const int n    = std::min(s, Tile);
         const int base = s - n;
         // CCRH::H reads `in` once per element, doesn't alias `out`,
         // so we can pass leaves+base directly. Within the second
         // loop below, reads of leaves[j] at j=base..base+n-1 don't
         // overlap the just-written children at indices ≥ 2*base.
-        if (n == kTile) ccrh.H<kTile>(lefts_buf, leaves + base);
-        else            ccrh.Hn(lefts_buf, leaves + base, n);
+        if (n == Tile) ccrh.H<Tile>(lefts_buf, leaves + base);
+        else           ccrh.Hn(lefts_buf, leaves + base, n);
         for (int t = n - 1; t >= 0; --t) {
             const int j = base + t;
             const block parent = leaves[j];
@@ -99,6 +103,9 @@ inline ExpandSums expand_level(CCRH& ccrh, block* leaves, int parents) {
 // XOR-sums K^0_i for i ∈ [1, d] into `K0[i-1]`. The right-side
 // sum at each level is K^1_i = K^0_i XOR Δ (leveled correlation),
 // derivable by callers that need both sides.
+//
+// Tile defaults to the platform's kTile. Override only for benches.
+template <int Tile = kTile>
 inline void build_sender(int d, block Delta, block k,
                          block* leaves, block* K0) {
     CCRH ccrh;
@@ -112,7 +119,7 @@ inline void build_sender(int d, block Delta, block k,
     // register; K^0_i = sum of left children.
     for (int i = 2; i <= d; ++i) {
         const int parents = 1 << (i - 1);
-        K0[i - 1] = detail::expand_level(ccrh, leaves, parents).left;
+        K0[i - 1] = detail::expand_level<Tile>(ccrh, leaves, parents).left;
     }
 }
 
@@ -120,6 +127,7 @@ inline void build_sender(int d, block Delta, block k,
 // path `alpha` (d bits, MSB-first) and d corrections K_recv[i] =
 // K^{ᾱ_{i+1}}_{i+1}. After return, leaves[x] holds the correct
 // cGGM leaf for every x != alpha; leaves[alpha] is zero_block.
+template <int Tile = kTile>
 inline void eval_receiver(int d, int alpha,
                           const block* K_recv, block* leaves) {
     const int Q = 1 << d;
@@ -146,7 +154,7 @@ inline void eval_receiver(int d, int alpha,
     // K_recv[i-1] XOR (XOR of expanded alpha_bar_i-side nodes).
     for (int i = 2; i <= d; ++i) {
         const int parents = 1 << (i - 1);
-        const auto sums = detail::expand_level(ccrh, leaves, parents);
+        const auto sums = detail::expand_level<Tile>(ccrh, leaves, parents);
 
         const int alpha_i     = (alpha >> (d - i)) & 1;
         const int alpha_bar_i = 1 - alpha_i;
