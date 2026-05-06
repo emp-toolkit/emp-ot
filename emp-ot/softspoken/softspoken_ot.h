@@ -280,16 +280,15 @@ inline void pprf_eval_receiver(int alpha,
 // no longer needs a per-leaf scratch buffer.
 constexpr int kMaxChunkBlocks = 1024;
 
-// Per-k chunk size (in bpr-blocks). Picked from a wide A/B sweep
-// across Apple M / Sapphire Rapids+ / Zen 5c at length=2^19 (ferret
-// regime) and 2^24 (standalone). Curves are unimodal; these are the
-// joint optima.
-//   k=2 → 128: enough leaf work to amortize per-chunk overhead;
-//              bigger adds cache pressure on small-L1 parts.
-//   k=4 → 1024: heavy compute per leaf, larger amortization window
-//              wins. Apple M flat across 256–1024.
-//   k=8 → 1024: Q=256 means each leaf produces a lot of fold work;
-//              amortization keeps winning until L2 cliff.
+// Per-k chunk size (in bpr-blocks). Larger chunks amortize per-chunk
+// overhead better but eventually hit cache pressure; per-leaf compute
+// grows as 2^k, so larger k tolerates a larger chunk before the cliff.
+//   k=2 → 128:  little compute per leaf — small chunk avoids L1
+//               pressure on small-cache parts.
+//   k=4 → 1024: heavier compute per leaf supports a larger
+//               amortization window.
+//   k=8 → 1024: Q=256 leaves means lots of fold work per chunk;
+//               amortization wins up to the L2 cliff.
 template <int k>
 constexpr int chunk_blocks_for() {
     if constexpr (k <= 2)      return 128;

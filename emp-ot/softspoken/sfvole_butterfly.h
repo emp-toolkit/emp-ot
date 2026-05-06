@@ -23,11 +23,10 @@
 // AES output never appears in any w_b output because bit_b(0) = 0 for
 // all b.
 //
-// Tile size T=8 (j-axis): picked from a sweep on Apple M at k=8
-// bs=1024. T=8 fits the q×T scratch in L1 (32 KB at k=8) and the
-// 8-block v_acc within NEON's 32-reg budget. T=12 is ~+4% slower
-// (butterfly_halve's v_acc[T] is the dominant register-pressure term);
-// T=16 spills catastrophically (~2.1×).
+// Tile size T=8 (j-axis). T=8 fits the q×T scratch in L1 (32 KB at
+// k=8) and the 8-block v_acc within NEON's 32-reg budget;
+// butterfly_halve's v_acc[T] is the dominant register-pressure term,
+// so T much past 8 spills.
 //
 // On x86: T=8 fits comfortably under VAES-512 (2 zmm of plaintext + 11
 // zmm round-key broadcasts = 13 / 32 zmm) and VAES-256 (4 ymm + 11
