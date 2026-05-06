@@ -5,7 +5,7 @@
 #include "emp-ot/base_ot/co.h"
 #include "emp-ot/cggm.h"
 #include "emp-ot/softspoken/aes_ctr_fold.h"
-#include "emp-ot/softspoken/sfvole_butterfly.h"
+#include "emp-ot/softspoken/sfvole_dispatch.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -130,13 +130,9 @@ constexpr int chunk_blocks_for() {
 
 // Sender-side chunked sfvole: re-keys each leaf's AES from its 16 B
 // seed, then folds AES_seed(b0..b0+bs) directly into u_bits and the
-// selected v_planes via aes_ctr_fold (no r_x materialization).
-//
-// Apple M (NEON) k=8 path: dispatched to the recursive O(q) butterfly
-// kernel in sfvole_butterfly.h. ~1.8x faster on Apple M at production
-// bs (paper §VOLE "Efficient Computation"; preserves r_x bit-by-bit
-// against the leaf-major aes_ctr_fold output). Other (k, arch) tiers
-// keep the leaf-major fan-out.
+// selected v_planes (no r_x materialization). Platform-specialized
+// kernels are routed via sfvole_sender_try_optimized() (sfvole_dispatch.h);
+// the fallback below is the portable leaf-major path via aes_ctr_fold.
 template <int k>
 EMP_AES_TARGET_ATTR
 inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
@@ -145,18 +141,9 @@ inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
                                         int64_t bs,
                                         block* u_bits_chunk,
                                         block* v_planes_chunk) {
-#if defined(__aarch64__)
-    // x86 dispatch deliberately omitted: AWS bench (Intel c8i Granite
-    // Rapids, AMD c8a Zen 5) showed butterfly's scalar AES-NI generation
-    // can't beat the existing aes_ctr_fold path's VAES-512 4-block
-    // batching. Sender RCOT on AMD regressed ~46% end-to-end. Re-enable
-    // when the x86 butterfly itself uses VAES batched AES generation.
-    if constexpr (k == 8) {
-        sfvole_sender_butterfly<k>(leaves, session, b0, bs,
-                                    u_bits_chunk, v_planes_chunk);
+    if (sfvole_sender_try_optimized<k>(leaves, session, b0, bs,
+                                        u_bits_chunk, v_planes_chunk))
         return;
-    }
-#endif
 
     constexpr int Q = 1 << k;
 
@@ -185,10 +172,10 @@ inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
 }
 
 // Receiver-side chunked sfvole. Skips x = alpha; folds AES_seed(b0..b0+bs)
-// into w_planes[b] for each set bit b of (alpha XOR x).
-//
-// Apple M (NEON) k=8 path: dispatched to the receiver butterfly in
-// sfvole_butterfly.h (~1.25x faster at production bs).
+// into w_planes[b] for each set bit b of (alpha XOR x). Platform-
+// specialized kernels are routed via sfvole_receiver_try_optimized()
+// (sfvole_dispatch.h); the fallback below is the portable leaf-major
+// path via aes_ctr_fold.
 template <int k>
 EMP_AES_TARGET_ATTR
 inline void sfvole_receiver_compute_chunk(int alpha,
@@ -197,16 +184,9 @@ inline void sfvole_receiver_compute_chunk(int alpha,
                                           int64_t b0,
                                           int64_t bs,
                                           block* w_planes_chunk) {
-#if defined(__aarch64__)
-    // x86 dispatch omitted: see sender comment above (the receiver-side
-    // regression was even larger because the receiver doesn't compute u,
-    // making the lost VAES-512 batching proportionally more costly).
-    if constexpr (k == 8) {
-        sfvole_receiver_butterfly<k>(alpha, leaves, session, b0, bs,
-                                      w_planes_chunk);
+    if (sfvole_receiver_try_optimized<k>(alpha, leaves, session, b0, bs,
+                                          w_planes_chunk))
         return;
-    }
-#endif
 
     constexpr int Q = 1 << k;
 

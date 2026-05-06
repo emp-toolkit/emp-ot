@@ -43,7 +43,9 @@ double now_us() {
 }
 
 // ---------------------------------------------------------------------
-// Variant Current: thin wrapper around the existing kernel.
+// Variant Current: dispatched kernel (whatever softspoken_ot.h selects
+// for this (k, arch) — on Apple M k=8 = NEON butterfly; on x86 k=8
+// with VAES-512 = View B AVX-512; otherwise = leaf-major aes_ctr_fold).
 // ---------------------------------------------------------------------
 template <int k>
 void variant_current(const block* leaves,
@@ -52,6 +54,81 @@ void variant_current(const block* leaves,
     softspoken::sfvole_sender_compute_chunk<k>(
         leaves, session, b0, bs, u_chunk, v_planes_chunk);
 }
+
+// ---------------------------------------------------------------------
+// Variant "old aes_ctr_fold path": the pre-View-B / pre-butterfly
+// leaf-major baseline. Replicates softspoken_ot.h's fallback body
+// (memset → per-leaf rekey → dispatch_ctr_fold) without the dispatch.
+// On AVX-512 hosts this is the apples-to-apples baseline against
+// variant_b_avx512_*.
+// ---------------------------------------------------------------------
+template <int k>
+void variant_old_path_sender(const block* leaves,
+                              uint64_t session, int64_t b0, int64_t bs,
+                              block* u_chunk, block* v_planes_chunk) {
+    constexpr int Q = 1 << k;
+    std::memset(u_chunk,         0, sizeof(block) * (size_t)bs);
+    std::memset(v_planes_chunk,  0, sizeof(block) * (size_t)k * bs);
+
+    AES_KEY aes_local;
+    const block session_xor = makeBlock(0LL, (int64_t)session);
+    for (int x = 0; x < Q; ++x) {
+        AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_local);
+        block* tgts[1 + k];
+        int n = 0;
+        tgts[n++] = u_chunk;
+        for (int b = 0; b < k; ++b)
+            if ((x >> b) & 1) tgts[n++] = v_planes_chunk + (size_t)b * bs;
+        softspoken::dispatch_ctr_fold<k>(tgts, n, (int)bs, b0, &aes_local);
+    }
+}
+
+template <int k>
+void variant_old_path_recv(int alpha,
+                            const block* leaves,
+                            uint64_t session, int64_t b0, int64_t bs,
+                            block* w_planes_chunk) {
+    constexpr int Q = 1 << k;
+    std::memset(w_planes_chunk, 0, sizeof(block) * (size_t)k * bs);
+
+    AES_KEY aes_local;
+    const block session_xor = makeBlock(0LL, (int64_t)session);
+    for (int x = 0; x < Q; ++x) {
+        if (x == alpha) continue;
+        AES_set_encrypt_key(leaves[x] ^ session_xor, &aes_local);
+        const int coeff = alpha ^ x;
+        block* tgts[k > 0 ? k : 1];
+        int n = 0;
+        for (int b = 0; b < k; ++b)
+            if ((coeff >> b) & 1) tgts[n++] = w_planes_chunk + (size_t)b * bs;
+        softspoken::dispatch_ctr_fold<k>(tgts, n, (int)bs, b0, &aes_local);
+    }
+}
+
+// ---------------------------------------------------------------------
+// Variant View B AVX-512: directly calls the View B kernel from
+// sfvole_view_b.h. Identical to variant_current on AVX-512 hosts at k=8
+// (since dispatch goes here too) — kept as an explicit name in the
+// bench output so the comparison vs variant_old_path_* is unambiguous.
+// ---------------------------------------------------------------------
+#if EMP_AES_HAS_VAES512
+template <int k>
+void variant_b_avx512_sender(const block* leaves,
+                              uint64_t session, int64_t b0, int64_t bs,
+                              block* u_chunk, block* v_planes_chunk) {
+    softspoken::sfvole_sender_view_b<k>(
+        leaves, session, b0, bs, u_chunk, v_planes_chunk);
+}
+
+template <int k>
+void variant_b_avx512_recv(int alpha,
+                            const block* leaves,
+                            uint64_t session, int64_t b0, int64_t bs,
+                            block* w_planes_chunk) {
+    softspoken::sfvole_receiver_view_b<k>(
+        alpha, leaves, session, b0, bs, w_planes_chunk);
+}
+#endif
 
 // ---------------------------------------------------------------------
 // Generate q × bs PRG outputs into a flat (q, bs) block array.
@@ -164,18 +241,19 @@ inline void variant_butterfly_neon_sender_T(
     }
 }
 
-// Default butterfly kernel for the bench. T=8 picked from a sweep on
-// Apple M at k=8, bs=1024 (T=2 → 229us, T=4 → 225us, T=8 → 207us).
-// Larger T amortizes the per-tile butterfly setup over more outputs;
-// T=8 fits 32KB scratch in L1 (at k=8) and the 8-block v_acc within
-// NEON's 32-reg budget. For smaller k (smaller Q), T=8 still fits
-// trivially but the win is smaller since AES dominates.
+// Default butterfly kernel for the bench: the production
+// sfvole_sender_butterfly from emp-ot/softspoken/sfvole_butterfly.h
+// (T=8 default, with bs-tail handling). The earlier in-bench duplicate
+// variant_butterfly_neon_sender_T was kept for T-sweep experimentation
+// (T ∈ {2, 4, 8}); T=8 won and the duplicate's missing tail-handling
+// triggered spurious bench MISMATCH at bs ∈ {3, 5, 6, 7}.
 template <int k>
 inline void variant_butterfly_neon_sender(
     const block* leaves, uint64_t session, int64_t b0, int64_t bs,
     block* u_chunk, block* v_planes_chunk, AES_KEY* keys_scratch) {
-    variant_butterfly_neon_sender_T<k, 8>(leaves, session, b0, bs,
-                                           u_chunk, v_planes_chunk, keys_scratch);
+    (void)keys_scratch;  // production kernel hoists keys internally
+    softspoken::sfvole_sender_butterfly<k>(leaves, session, b0, bs,
+                                            u_chunk, v_planes_chunk);
 }
 
 // Backwards-compat alias for the existing call sites.
@@ -268,8 +346,9 @@ inline void variant_butterfly_neon_recv(
     int alpha,
     const block* leaves, uint64_t session, int64_t b0, int64_t bs,
     block* w_planes_chunk, AES_KEY* keys_scratch) {
-    variant_butterfly_neon_recv_T<k, 8>(alpha, leaves, session, b0, bs,
-                                         w_planes_chunk, keys_scratch);
+    (void)keys_scratch;
+    softspoken::sfvole_receiver_butterfly<k>(alpha, leaves, session, b0, bs,
+                                              w_planes_chunk);
 }
 #endif  // __aarch64__
 
@@ -561,11 +640,15 @@ void run_one_k_recv(int64_t bs, bool include_neon) {
     const int64_t b0 = 0;
 
     std::vector<block> w_cur((size_t)k * bs);
+    std::vector<block> w_old((size_t)k * bs);
     std::vector<block> w_bfly((size_t)k * bs);
+    std::vector<block> w_avx((size_t)k * bs);
     std::vector<AES_KEY> keys_scratch((size_t)Q);
 
     softspoken::sfvole_receiver_compute_chunk<k>(
         alpha, leaves.data(), session, b0, bs, w_cur.data());
+    variant_old_path_recv<k>(alpha, leaves.data(), session, b0, bs, w_old.data());
+    bool eq_old = blocks_equal(w_cur.data(), w_old.data(), (int64_t)k * bs);
 
 #if defined(__aarch64__)
     bool eq_recv = true;
@@ -578,14 +661,35 @@ void run_one_k_recv(int64_t bs, bool include_neon) {
     (void)include_neon; (void)w_bfly; (void)keys_scratch;
     bool eq_recv = true;
 #endif
+#if EMP_AES_HAS_VAES512
+    bool eq_avx = true;
+    if constexpr (k == 8) {
+        variant_b_avx512_recv<k>(alpha, leaves.data(), session, b0, bs,
+                                  w_avx.data());
+        eq_avx = blocks_equal(w_cur.data(), w_avx.data(), (int64_t)k * bs);
+    }
+#else
+    (void)w_avx;
+#endif
 
-    std::printf("RECV k=%d bs=%lld   bfly: w=%s\n",
+    std::printf("RECV k=%d bs=%lld   old: w=%s   bfly: w=%s",
                 k, (long long)bs,
+                eq_old ? "OK" : "MISMATCH",
                 eq_recv ? "OK" : "MISMATCH");
-    if (!eq_recv) {
+#if EMP_AES_HAS_VAES512
+    if (k == 8) std::printf("   B-avx512: w=%s", eq_avx ? "OK" : "MISMATCH");
+#endif
+    std::printf("\n");
+    if (!eq_old || !eq_recv) {
         std::fprintf(stderr, "RECV byte-equality FAILED — aborting bench\n");
         std::exit(1);
     }
+#if EMP_AES_HAS_VAES512
+    if (k == 8 && !eq_avx) {
+        std::fprintf(stderr, "RECV B-avx512 byte-equality FAILED — aborting bench\n");
+        std::exit(1);
+    }
+#endif
 
     const int iters  = std::max(1, (int)(2'000'000 / std::max<int64_t>(1, bs * Q)));
     const int trials = 5;
@@ -593,8 +697,12 @@ void run_one_k_recv(int64_t bs, bool include_neon) {
         softspoken::sfvole_receiver_compute_chunk<k>(
             alpha, leaves.data(), session, b0, bs, w_cur.data());
     };
+    auto fn_old = [&]() {
+        variant_old_path_recv<k>(alpha, leaves.data(), session, b0, bs, w_old.data());
+    };
     double cur_us = bench_median_us(iters, trials, fn_cur);
-    double bfly_us = -1;
+    double old_us = bench_median_us(iters, trials, fn_old);
+    double bfly_us = -1, avx_us = -1;
 #if defined(__aarch64__)
     if (include_neon) {
         auto fn_bfly = [&]() {
@@ -604,10 +712,23 @@ void run_one_k_recv(int64_t bs, bool include_neon) {
         bfly_us = bench_median_us(iters, trials, fn_bfly);
     }
 #endif
-    std::printf("RECV k=%d bs=%lld iters=%d   current=%9.2f us",
-                k, (long long)bs, iters, cur_us);
+#if EMP_AES_HAS_VAES512
+    if constexpr (k == 8) {
+        auto fn_avx = [&]() {
+            variant_b_avx512_recv<k>(alpha, leaves.data(), session, b0, bs, w_avx.data());
+        };
+        avx_us = bench_median_us(iters, trials, fn_avx);
+    }
+#endif
+
+    std::printf("RECV k=%d bs=%lld iters=%d   current=%9.2f us   old=%9.2f us (%.2fx)",
+                k, (long long)bs, iters, cur_us,
+                old_us, old_us / cur_us);
     if (bfly_us > 0)
         std::printf("   bfly=%9.2f us (%.2fx)", bfly_us, bfly_us / cur_us);
+    if (avx_us > 0)
+        std::printf("   B-avx512=%9.2f us (%.2fx vs current; %.2fx vs old)",
+                    avx_us, avx_us / cur_us, avx_us / old_us);
     std::printf("\n");
 }
 
@@ -625,15 +746,20 @@ void run_one_k(int64_t bs, bool include_neon) {
     // Outputs (one buffer per variant).
     std::vector<block> u_cur((size_t)bs), u_b((size_t)bs), u_a((size_t)bs);
     std::vector<block> v_cur((size_t)k * bs), v_b((size_t)k * bs), v_a((size_t)k * bs);
+    std::vector<block> u_old((size_t)bs), v_old((size_t)k * bs);
     std::vector<block> u_neon((size_t)bs), v_neon((size_t)k * bs);
     std::vector<block> u_bfly((size_t)bs), v_bfly((size_t)k * bs);
+    std::vector<block> u_avx((size_t)bs), v_avx((size_t)k * bs);
     std::vector<AES_KEY> keys_scratch((size_t)Q);
 
     // 1) Run portable variants once and compare.
     variant_current<k>(leaves.data(), session, b0, bs, u_cur.data(), v_cur.data());
+    variant_old_path_sender<k>(leaves.data(), session, b0, bs, u_old.data(), v_old.data());
     variant_b_portable<k>(leaves.data(), session, b0, bs, u_b.data(),   v_b.data());
     variant_a_portable<k>(leaves.data(), session, b0, bs, u_a.data(),   v_a.data());
 
+    bool eq_old_u = blocks_equal(u_cur.data(), u_old.data(), bs);
+    bool eq_old_v = blocks_equal(v_cur.data(), v_old.data(), (int64_t)k * bs);
     bool eq_b_u = blocks_equal(u_cur.data(), u_b.data(), bs);
     bool eq_b_v = blocks_equal(v_cur.data(), v_b.data(), (int64_t)k * bs);
     bool eq_a_u = blocks_equal(u_cur.data(), u_a.data(), bs);
@@ -648,7 +774,10 @@ void run_one_k(int64_t bs, bool include_neon) {
         eq_bfly_v = blocks_equal(v_cur.data(), v_bfly.data(), (int64_t)k * bs);
     }
     bool eq_neon_u = true, eq_neon_v = true;
-    if (include_neon && k == 8) {
+    // variant_b_neon_k8 is bench-only and uses T=2 without tail handling;
+    // skip it for odd bs to avoid spurious MISMATCH from buffer-end spillover.
+    const bool run_neon_b = (include_neon && k == 8 && (bs % 2) == 0);
+    if (run_neon_b) {
         variant_b_neon_k8(leaves.data(), session, b0, bs,
                           u_neon.data(), v_neon.data(), keys_scratch.data());
         eq_neon_u = blocks_equal(u_cur.data(), u_neon.data(), bs);
@@ -658,22 +787,40 @@ void run_one_k(int64_t bs, bool include_neon) {
     (void)include_neon; (void)u_neon; (void)v_neon; (void)u_bfly; (void)v_bfly; (void)keys_scratch;
 #endif
 
-    std::printf("k=%d bs=%lld   B-port: u=%s v=%s   A-port: u=%s v=%s",
+#if EMP_AES_HAS_VAES512
+    bool eq_avx_u = true, eq_avx_v = true;
+    if constexpr (k == 8) {
+        variant_b_avx512_sender<k>(leaves.data(), session, b0, bs,
+                                    u_avx.data(), v_avx.data());
+        eq_avx_u = blocks_equal(u_cur.data(), u_avx.data(), bs);
+        eq_avx_v = blocks_equal(v_cur.data(), v_avx.data(), (int64_t)k * bs);
+    }
+#else
+    (void)u_avx; (void)v_avx;
+#endif
+
+    std::printf("k=%d bs=%lld   old: u=%s v=%s   B-port: u=%s v=%s   A-port: u=%s v=%s",
                 k, (long long)bs,
+                eq_old_u ? "OK" : "MISMATCH", eq_old_v ? "OK" : "MISMATCH",
                 eq_b_u ? "OK" : "MISMATCH", eq_b_v ? "OK" : "MISMATCH",
                 eq_a_u ? "OK" : "MISMATCH", eq_a_v ? "OK" : "MISMATCH");
 #if defined(__aarch64__)
     if (include_neon) {
         std::printf("   bfly: u=%s v=%s",
                     eq_bfly_u ? "OK" : "MISMATCH", eq_bfly_v ? "OK" : "MISMATCH");
-        if (k == 8)
+        if (run_neon_b)
             std::printf("   B-neon: u=%s v=%s",
                         eq_neon_u ? "OK" : "MISMATCH", eq_neon_v ? "OK" : "MISMATCH");
     }
 #endif
+#if EMP_AES_HAS_VAES512
+    if (k == 8)
+        std::printf("   B-avx512: u=%s v=%s",
+                    eq_avx_u ? "OK" : "MISMATCH", eq_avx_v ? "OK" : "MISMATCH");
+#endif
     std::printf("\n");
 
-    if (!(eq_b_u && eq_b_v && eq_a_u && eq_a_v)) {
+    if (!(eq_old_u && eq_old_v && eq_b_u && eq_b_v && eq_a_u && eq_a_v)) {
         std::fprintf(stderr, "portable byte-equality FAILED — aborting bench\n");
         std::exit(1);
     }
@@ -682,8 +829,14 @@ void run_one_k(int64_t bs, bool include_neon) {
         std::fprintf(stderr, "NEON butterfly byte-equality FAILED — aborting bench\n");
         std::exit(1);
     }
-    if (include_neon && k == 8 && !(eq_neon_u && eq_neon_v)) {
+    if (run_neon_b && !(eq_neon_u && eq_neon_v)) {
         std::fprintf(stderr, "NEON View B byte-equality FAILED — aborting bench\n");
+        std::exit(1);
+    }
+#endif
+#if EMP_AES_HAS_VAES512
+    if (k == 8 && !(eq_avx_u && eq_avx_v)) {
+        std::fprintf(stderr, "AVX-512 View B byte-equality FAILED — aborting bench\n");
         std::exit(1);
     }
 #endif
@@ -694,6 +847,10 @@ void run_one_k(int64_t bs, bool include_neon) {
     auto fn_cur = [&]() {
         variant_current<k>(leaves.data(), session, b0, bs, u_cur.data(), v_cur.data());
     };
+    auto fn_old = [&]() {
+        variant_old_path_sender<k>(leaves.data(), session, b0, bs,
+                                    u_old.data(), v_old.data());
+    };
     auto fn_b = [&]() {
         variant_b_portable<k>(leaves.data(), session, b0, bs, u_b.data(), v_b.data());
     };
@@ -701,9 +858,10 @@ void run_one_k(int64_t bs, bool include_neon) {
         variant_a_portable<k>(leaves.data(), session, b0, bs, u_a.data(), v_a.data());
     };
     double cur_us = bench_median_us(iters, trials, fn_cur);
+    double old_us = bench_median_us(iters, trials, fn_old);
     double b_us   = bench_median_us(iters, trials, fn_b);
     double a_us   = bench_median_us(iters, trials, fn_a);
-    double neon_us = -1, bfly_us = -1;
+    double neon_us = -1, bfly_us = -1, avx_us = -1;
 #if defined(__aarch64__)
     if (include_neon) {
         auto fn_bfly = [&]() {
@@ -712,7 +870,7 @@ void run_one_k(int64_t bs, bool include_neon) {
                                               keys_scratch.data());
         };
         bfly_us = bench_median_us(iters, trials, fn_bfly);
-        if (k == 8) {
+        if (run_neon_b) {
             auto fn_neon = [&]() {
                 variant_b_neon_k8(leaves.data(), session, b0, bs,
                                   u_neon.data(), v_neon.data(), keys_scratch.data());
@@ -722,15 +880,29 @@ void run_one_k(int64_t bs, bool include_neon) {
     }
 #endif
 
-    std::printf("k=%d bs=%lld iters=%d   current=%9.2f us   B-port=%9.2f us (%.2fx)   A-port=%9.2f us (%.2fx)",
+#if EMP_AES_HAS_VAES512
+    if constexpr (k == 8) {
+        auto fn_avx = [&]() {
+            variant_b_avx512_sender<k>(leaves.data(), session, b0, bs,
+                                        u_avx.data(), v_avx.data());
+        };
+        avx_us = bench_median_us(iters, trials, fn_avx);
+    }
+#endif
+
+    std::printf("k=%d bs=%lld iters=%d   current=%9.2f us   old=%9.2f us (%.2fx)   B-port=%9.2f us (%.2fx)   A-port=%9.2f us (%.2fx)",
                 k, (long long)bs, iters,
                 cur_us,
+                old_us, old_us / cur_us,
                 b_us, b_us / cur_us,
                 a_us, a_us / cur_us);
     if (bfly_us > 0)
         std::printf("   bfly=%9.2f us (%.2fx)", bfly_us, bfly_us / cur_us);
     if (neon_us > 0)
         std::printf("   B-neon=%9.2f us (%.2fx)", neon_us, neon_us / cur_us);
+    if (avx_us > 0)
+        std::printf("   B-avx512=%9.2f us (%.2fx vs current; %.2fx vs old)",
+                    avx_us, avx_us / cur_us, avx_us / old_us);
     std::printf("\n");
 }
 
@@ -748,6 +920,18 @@ int main() {
     run_one_k<2>(1024, /*include_neon=*/true);
     run_one_k<2>(128,  /*include_neon=*/true);
 
+    // Tail-handling correctness: AVX-512 View B kernel processes 4
+    // j-positions per tile; SoftSpokenOT calls compute_chunk with
+    // bs=1 (malicious sacrificial chunk) and any positive value, so
+    // bs not divisible by 4 must work. These extra k=8 sweeps catch
+    // tail-overrun bugs that the larger-bs runs miss.
+    std::printf("\n# Tail-bs sweep (k=8) for AVX-512 View B correctness:\n");
+    run_one_k<8>(1, /*include_neon=*/true);
+    run_one_k<8>(2, /*include_neon=*/true);
+    run_one_k<8>(3, /*include_neon=*/true);
+    run_one_k<8>(5, /*include_neon=*/true);
+    run_one_k<8>(7, /*include_neon=*/true);
+
     std::printf("\n# Receiver-side bench:\n");
     run_one_k_recv<8>(1024, /*include_neon=*/true);
     run_one_k_recv<8>(128,  /*include_neon=*/true);
@@ -755,6 +939,13 @@ int main() {
     run_one_k_recv<4>(128,  /*include_neon=*/true);
     run_one_k_recv<2>(1024, /*include_neon=*/true);
     run_one_k_recv<2>(128,  /*include_neon=*/true);
+
+    std::printf("\n# Tail-bs sweep (k=8) for AVX-512 View B receiver:\n");
+    run_one_k_recv<8>(1, /*include_neon=*/true);
+    run_one_k_recv<8>(2, /*include_neon=*/true);
+    run_one_k_recv<8>(3, /*include_neon=*/true);
+    run_one_k_recv<8>(5, /*include_neon=*/true);
+    run_one_k_recv<8>(7, /*include_neon=*/true);
 
     return 0;
 }
