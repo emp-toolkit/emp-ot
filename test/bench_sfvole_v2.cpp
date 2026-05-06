@@ -106,7 +106,7 @@ void variant_old_path_recv(int alpha,
 
 // ---------------------------------------------------------------------
 // Generate q × bs PRG outputs into a flat (q, bs) block array.
-// Used by View A (and as a building block for the portable View B).
+// Used by the portable View A and View B reference variants.
 // R[x * bs + j] = AES_K(makeBlock(0, b0 + j) ⊕ leaves[x] ⊕ session_xor).
 // ---------------------------------------------------------------------
 template <int k>
@@ -149,10 +149,9 @@ void gen_prg_block(const block* leaves,
 // per tile, comfortably L1-resident.
 //
 // Production kernel lives in emp-ot/softspoken/sfvole_butterfly.h
-// (T=8 default, with bs-tail handling) and now works on every
-// platform; the bench wrappers below just call it directly so that
-// `bfly` shows up as a labeled column alongside `current` (which on
-// Intel may be View B and on AMD/Apple M is butterfly).
+// (T=8 default, with bs-tail handling) and works on every platform;
+// the bench wrappers below just call it directly so that `bfly` shows
+// up as a labeled column alongside `current`.
 // ---------------------------------------------------------------------
 template <int k>
 inline void variant_butterfly_sender(
@@ -181,14 +180,11 @@ inline void variant_butterfly_recv(
 }
 
 // ---------------------------------------------------------------------
-// View B (NEON, k=8): tile-outer / leaf-inner.
-// Holds (u, v_0..v_{k-1}) accumulators reg-resident for a tile of T=2 j's
-// across all Q leaves; flushes at end of tile. Requires AES_KEY hoisting
-// since the leaf loop is inner — per-tile re-expansion would balloon
-// to Q*(bs/T) AES_set_encrypt_key calls.
-// Per leaf, per j: 1 broadcast(x) + 8 (vshl/vshr derive masks once per
-// leaf) + 1 (u XOR) + 8 (plane vand+veor).  Versus current's ~5 narrow
-// memory RMWs per (leaf,j).
+// "B-neon": NEON-only k=8 reference using a tile-outer / leaf-inner
+// loop. Holds (u, v_0..v_{k-1}) accumulators reg-resident for a tile of
+// T=2 j's across all Q leaves; flushes at end of tile. Bench-only
+// reference for the lift-and-mask algorithmic shape (the production
+// kernel is sfvole_butterfly with a recursive halve).
 // ---------------------------------------------------------------------
 #if defined(__aarch64__)
 inline void variant_b_neon_k8(const block* leaves,
@@ -617,7 +613,7 @@ void run_one_k(int64_t bs, bool include_bfly) {
     }
 #if defined(__aarch64__)
     if (run_neon_b && !(eq_neon_u && eq_neon_v)) {
-        std::fprintf(stderr, "NEON View B byte-equality FAILED — aborting bench\n");
+        std::fprintf(stderr, "B-neon byte-equality FAILED — aborting bench\n");
         std::exit(1);
     }
 #endif
@@ -712,7 +708,7 @@ int main() {
     run_one_k_recv<2>(1024, /*include_bfly=*/true);
     run_one_k_recv<2>(128,  /*include_bfly=*/true);
 
-    std::printf("\n# Tail-bs sweep (k=8) for AVX-512 View B receiver:\n");
+    std::printf("\n# Tail-bs sweep (k=8) for butterfly receiver tail correctness:\n");
     run_one_k_recv<8>(1, /*include_bfly=*/true);
     run_one_k_recv<8>(2, /*include_bfly=*/true);
     run_one_k_recv<8>(3, /*include_bfly=*/true);

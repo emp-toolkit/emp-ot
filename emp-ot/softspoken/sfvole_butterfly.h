@@ -45,12 +45,17 @@ namespace bfly_detail {
 // (b0..b0+T-1) under a session-shared fixed AES_KEY, writing the
 // outputs directly to dst[0..T).
 //
-// `kk` is the session-shared fixed-key AES schedule (caller hoists
-// out of the per-leaf loop). `tweak` is the per-leaf input that
+// `kk` is the session-shared fixed-key AES schedule (caller hoists out
+// of the per-leaf loop). `tweak` is the per-leaf input that
 // distinguishes leaves and session — typically `leaves[x] ^ session_xor`.
 // The fixed-key AES + leaf-tweak shape mirrors libOTe's MultiKeyAES and
 // the `PRP`/`CCRH` model elsewhere in emp-tool: AES_K is treated as a
 // random permutation, and (counter ⊕ leaf ⊕ session) is the input.
+//
+// One platform body per build, picked by the widest available SIMD
+// tier: NEON / VAES-512 (4 blocks/zmm) / VAES-256 (2 blocks/ymm) /
+// AES-NI baseline (1 block/xmm). T must divide evenly into the chosen
+// lane width — production T=8 satisfies all of them.
 template <int T>
 EMP_AES_TARGET_ATTR
 inline void aes_T_blocks_to(block* dst, int64_t b0,
@@ -79,72 +84,20 @@ inline void aes_T_blocks_to(block* dst, int64_t b0,
         vst1q_u8((uint8_t*)&dst[jj], out);
     }
 #elif defined(__x86_64__)
-    // x86: pick the widest VAES tier that divides T evenly.
+    // x86: pick the widest Lane the build can emit, encrypt T/L::N tiles
+    // via emp-tool's aes_tiles_src using L::ctr_xor_tweak as the source.
   #if EMP_AES_HAS_VAES512
-    if constexpr (T >= 4 && (T % 4) == 0) {
-        constexpr int W = T / 4;
-        const __m512i tw512 = _mm512_broadcast_i32x4(tweak);
-        __m512i rk[11];
-        for (int r = 0; r < 11; ++r)
-            rk[r] = _mm512_broadcast_i32x4(kk->rd_key[r]);
-        __m512i v[W];
-        for (int w = 0; w < W; ++w) {
-            const int64_t base = b0 + (int64_t)w * 4;
-            v[w] = _mm512_set_epi64(0, base + 3, 0, base + 2,
-                                    0, base + 1, 0, base);
-            v[w] = _mm512_xor_si512(v[w], tw512);
-            v[w] = _mm512_xor_si512(v[w], rk[0]);
-        }
-        for (int r = 1; r < 10; ++r)
-            for (int w = 0; w < W; ++w)
-                v[w] = _mm512_aesenc_epi128(v[w], rk[r]);
-        for (int w = 0; w < W; ++w) {
-            v[w] = _mm512_aesenclast_epi128(v[w], rk[10]);
-            _mm512_storeu_si512((__m512i*)&dst[w * 4], v[w]);
-        }
-        return;
-    }
+    using L = emp::detail::Lane512;
+  #elif EMP_AES_HAS_VAES256
+    using L = emp::detail::Lane256;
+  #else
+    using L = emp::detail::Lane128;
   #endif
-  #if EMP_AES_HAS_VAES256
-    if constexpr (T >= 2 && (T % 2) == 0) {
-        constexpr int W = T / 2;
-        const __m256i tw256 = _mm256_broadcastsi128_si256(tweak);
-        __m256i rk[11];
-        for (int r = 0; r < 11; ++r)
-            rk[r] = _mm256_broadcastsi128_si256(kk->rd_key[r]);
-        __m256i v[W];
-        for (int w = 0; w < W; ++w) {
-            const int64_t base = b0 + (int64_t)w * 2;
-            v[w] = _mm256_set_epi64x(0, base + 1, 0, base);
-            v[w] = _mm256_xor_si256(v[w], tw256);
-            v[w] = _mm256_xor_si256(v[w], rk[0]);
-        }
-        for (int r = 1; r < 10; ++r)
-            for (int w = 0; w < W; ++w)
-                v[w] = _mm256_aesenc_epi128(v[w], rk[r]);
-        for (int w = 0; w < W; ++w) {
-            v[w] = _mm256_aesenclast_epi128(v[w], rk[10]);
-            _mm256_storeu_si256((__m256i*)&dst[w * 2], v[w]);
-        }
-        return;
-    }
-  #endif
-    // AES-NI baseline: 1 block per xmm.
-    block rk[11];
-    for (int r = 0; r < 11; ++r) rk[r] = kk->rd_key[r];
-    block v[T];
-    for (int jj = 0; jj < T; ++jj) {
-        v[jj] = _mm_set_epi64x(0, b0 + jj);
-        v[jj] = _mm_xor_si128(v[jj], tweak);
-        v[jj] = _mm_xor_si128(v[jj], rk[0]);
-    }
-    for (int r = 1; r < 10; ++r)
-        for (int jj = 0; jj < T; ++jj)
-            v[jj] = _mm_aesenc_si128(v[jj], rk[r]);
-    for (int jj = 0; jj < T; ++jj) {
-        v[jj] = _mm_aesenclast_si128(v[jj], rk[10]);
-        _mm_storeu_si128((__m128i*)&dst[jj], v[jj]);
-    }
+    static_assert(T % L::N == 0,
+                  "aes_T_blocks_to: T must be a multiple of L::N");
+    const typename L::vec_t tw = L::broadcast(tweak);
+    emp::detail::aes_tiles_src<L, T / L::N>(
+        dst, [&](int t) { return L::ctr_xor_tweak(b0, t, tw); }, kk);
 #else
     #error "sfvole_butterfly: unsupported architecture"
 #endif

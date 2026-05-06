@@ -179,6 +179,17 @@ void SoftSpokenOT<k>::pprf_check_recv() {
 // data at length=2^20 — past L3 on small-cache parts.
 
 template <int k>
+void SoftSpokenOT<k>::ensure_chunk_scratch_() {
+    // n*k = 128 always (static_assert in n_subvoles<k>).
+    if (planes_chunk_.size() < static_cast<size_t>(128) * kChunkBlocks)
+        planes_chunk_.resize(static_cast<size_t>(128) * kChunkBlocks);
+    if constexpr (n > 1) {
+        if (d_bufs_chunk_.size() < static_cast<size_t>(n - 1) * kChunkBlocks)
+            d_bufs_chunk_.resize(static_cast<size_t>(n - 1) * kChunkBlocks);
+    }
+}
+
+template <int k>
 void SoftSpokenOT<k>::rcot_send_begin() {
     assert(setup_done_ && "rcot_send_begin: setup_send not run");
     assert(!send_session_active_ && "rcot_send_begin: previous session not ended");
@@ -225,13 +236,7 @@ void SoftSpokenOT<k>::rcot_send_next(block* out, int64_t chunk_len) {
     const int64_t bs = chunk_len / 128;          // bpr-blocks in this chunk
     const int64_t b0 = cur_send_b0_;             // PRG counter offset
 
-    // Member-resident scratch (~128 KB at kChunkBlocks=64, n*k=128).
-    // Allocated once and reused across all chunks of all sessions.
-    if (planes_chunk_.size() < static_cast<size_t>(128) * kChunkBlocks)
-        planes_chunk_.resize(static_cast<size_t>(128) * kChunkBlocks);
-    if (n > 1 &&
-        d_bufs_chunk_.size() < static_cast<size_t>(n - 1) * kChunkBlocks)
-        d_bufs_chunk_.resize(static_cast<size_t>(n - 1) * kChunkBlocks);
+    ensure_chunk_scratch_();
     block* w_planes_chunk = planes_chunk_.data();
     block* d_bufs = d_bufs_chunk_.data();
 
@@ -324,16 +329,14 @@ void SoftSpokenOT<k>::rcot_recv_next(block* out, int64_t chunk_len) {
     const int64_t bs = chunk_len / 128;
     const int64_t b0 = cur_recv_b0_;
 
-    if (planes_chunk_.size() < static_cast<size_t>(128) * kChunkBlocks)
-        planes_chunk_.resize(static_cast<size_t>(128) * kChunkBlocks);
-    if (n > 1 &&
-        d_bufs_chunk_.size() < static_cast<size_t>(n - 1) * kChunkBlocks)
-        d_bufs_chunk_.resize(static_cast<size_t>(n - 1) * kChunkBlocks);
+    ensure_chunk_scratch_();
     block* v_planes_chunk = planes_chunk_.data();
     block* d_bufs = d_bufs_chunk_.data();
 
-    // u_canonical / u_temp stay on the stack — they're at most
-    // kChunkBlocks blocks each, ≤ 16 KB at kChunkBlocks=512.
+    // u_canonical / u_temp stay on the stack — kChunkBlocks blocks each
+    // (16 KB at kChunkBlocks=1024). Default 8 MB main-thread stack and
+    // typical thread stacks (256 KB+) handle the 32 KB pair comfortably;
+    // the inner loop benefits from the buffers being reliably hot.
     alignas(16) block u_canonical[kChunkBlocks];   // sub-VOLE 0's u
     alignas(16) block u_temp[kChunkBlocks];        // sub-VOLE i ≥ 1
 

@@ -29,116 +29,51 @@ namespace emp { namespace softspoken {
 // to small-field VOLE.
 
 #ifdef __x86_64__
-namespace ctr_fold_detail {
 
-// AES-CTR plaintext blocks: each 128-bit block has high-64 = 0,
-// low-64 = sequential counter starting at base.
-EMP_AES_TARGET_ATTR static inline block       ctr_x1(int64_t base) {
-    return _mm_set_epi64x(0, base);
-}
-#if EMP_AES_HAS_VAES256
-EMP_AES_TARGET_ATTR static inline __m256i     ctr_x2(int64_t base) {
-    return _mm256_set_epi64x(0, base + 1, 0, base);
-}
-#endif
-#if EMP_AES_HAS_VAES512
-EMP_AES_TARGET_ATTR static inline __m512i     ctr_x4(int64_t base) {
-    return _mm512_set_epi64(0, base + 3, 0, base + 2,
-                            0, base + 1, 0, base);
-}
-#endif
-
-// Tile-loop parameterized by lane width W ∈ {1, 2, 4} and target count.
-// The W tiles match the VAES512 / VAES256 / AES-NI tier widths.
-template <int N_TARGETS>
+// Tile-loop kernel: encrypt n_tiles tiles of L::N blocks each from
+// (counter ⊕ tweak) under fixed key, folding each cipher block into
+// tgts[j][off..] (XOR-store) for j in [0, N_TARGETS). Same shape as
+// emp::detail::aes_tiles_src but with a runtime n_tiles and a fold-XOR
+// sink instead of a store sink.
+template <class L, int N_TARGETS>
 EMP_AES_TARGET_ATTR
-static inline void fold_tiles_x1(block* const tgts[N_TARGETS],
-                                 int n_tiles, int64_t base_ctr,
-                                 const AES_KEY* kk, block tweak) {
-    block rk[11];
-    for (int r = 0; r < 11; ++r) rk[r] = kk->rd_key[r];
-    const block tw = tweak;
+static inline void aes_ctr_fold_tiles(block* const tgts[N_TARGETS],
+                                      int n_tiles, int64_t base_off,
+                                      int64_t b0, const AES_KEY* kk,
+                                      block tweak) {
+    if (n_tiles == 0) return;
+    typename L::vec_t rk[11];
+    for (int r = 0; r < 11; ++r) rk[r] = L::broadcast(kk->rd_key[r]);
+    const typename L::vec_t tw = L::broadcast(tweak);
     for (int t = 0; t < n_tiles; ++t) {
-        block pt = _mm_xor_si128(ctr_x1(base_ctr + t), tw);
-        pt = _mm_xor_si128(pt, rk[0]);
-        for (int r = 1; r < 10; ++r) pt = _mm_aesenc_si128(pt, rk[r]);
-        pt = _mm_aesenclast_si128(pt, rk[10]);
-        for (int j = 0; j < N_TARGETS; ++j) {
-            block v = _mm_loadu_si128((const __m128i*)(tgts[j] + t));
-            v = _mm_xor_si128(v, pt);
-            _mm_storeu_si128((__m128i*)(tgts[j] + t), v);
-        }
+        auto x = L::ctr_xor_tweak(b0, t, tw);
+        x = L::xorv(x, rk[0]);
+        for (int r = 1; r < 10; ++r) x = L::aesenc(x, rk[r]);
+        x = L::aesenclast(x, rk[10]);
+        const size_t off = (size_t)base_off + (size_t)t * L::N;
+        for (int j = 0; j < N_TARGETS; ++j)
+            L::store(tgts[j] + off, L::xorv(L::load(tgts[j] + off), x));
     }
 }
-
-#if EMP_AES_HAS_VAES256
-template <int N_TARGETS>
-EMP_AES_TARGET_ATTR
-static inline void fold_tiles_x2(block* const tgts[N_TARGETS],
-                                 int n_tiles, int64_t base_ctr,
-                                 const AES_KEY* kk, block tweak) {
-    __m256i rk[11];
-    for (int r = 0; r < 11; ++r) rk[r] = _mm256_broadcastsi128_si256(kk->rd_key[r]);
-    const __m256i tw = _mm256_broadcastsi128_si256(tweak);
-    for (int t = 0; t < n_tiles; ++t) {
-        __m256i pt = _mm256_xor_si256(ctr_x2(base_ctr + (int64_t)t * 2), tw);
-        pt = _mm256_xor_si256(pt, rk[0]);
-        for (int r = 1; r < 10; ++r) pt = _mm256_aesenc_epi128(pt, rk[r]);
-        pt = _mm256_aesenclast_epi128(pt, rk[10]);
-        const size_t off = (size_t)t * 2;
-        for (int j = 0; j < N_TARGETS; ++j) {
-            __m256i v = _mm256_loadu_si256((const __m256i*)(tgts[j] + off));
-            v = _mm256_xor_si256(v, pt);
-            _mm256_storeu_si256((__m256i*)(tgts[j] + off), v);
-        }
-    }
-}
-#endif
-
-#if EMP_AES_HAS_VAES512
-template <int N_TARGETS>
-EMP_AES_TARGET_ATTR
-static inline void fold_tiles_x4(block* const tgts[N_TARGETS],
-                                 int n_tiles, int64_t base_ctr,
-                                 const AES_KEY* kk, block tweak) {
-    __m512i rk[11];
-    for (int r = 0; r < 11; ++r) rk[r] = _mm512_broadcast_i32x4(kk->rd_key[r]);
-    const __m512i tw = _mm512_broadcast_i32x4(tweak);
-    for (int t = 0; t < n_tiles; ++t) {
-        __m512i pt = _mm512_xor_si512(ctr_x4(base_ctr + (int64_t)t * 4), tw);
-        pt = _mm512_xor_si512(pt, rk[0]);
-        for (int r = 1; r < 10; ++r) pt = _mm512_aesenc_epi128(pt, rk[r]);
-        pt = _mm512_aesenclast_epi128(pt, rk[10]);
-        const size_t off = (size_t)t * 4;
-        for (int j = 0; j < N_TARGETS; ++j) {
-            __m512i v = _mm512_loadu_si512((const __m512i*)(tgts[j] + off));
-            v = _mm512_xor_si512(v, pt);
-            _mm512_storeu_si512((__m512i*)(tgts[j] + off), v);
-        }
-    }
-}
-#endif
-
-}  // namespace ctr_fold_detail
 
 // Public entry point. Per-call tile schedule mirrors ParaEnc<1, N>:
-// VAES512 4-tiles → VAES256 2-tiles → AES-NI 1-tiles.
+// VAES512 4-tiles → VAES256 2-tiles → AES-NI 1-tiles. Lane traits and
+// ctr_xor_tweak come from emp-tool/crypto/aes.h.
 template <int N_TARGETS>
 EMP_AES_TARGET_ATTR
-inline void aes_ctr_fold(block* const tgts_in[N_TARGETS], int n_blocks,
+inline void aes_ctr_fold(block* const tgts[N_TARGETS], int n_blocks,
                          int64_t base_ctr, const AES_KEY* key, block tweak) {
-    block* tgts[N_TARGETS];
-    for (int j = 0; j < N_TARGETS; ++j) tgts[j] = tgts_in[j];
     int64_t ctr = base_ctr;
+    int64_t off = 0;
 
 #if EMP_AES_HAS_VAES512
     {
         const int n4 = n_blocks / 4;
         if (n4 > 0) {
-            ctr_fold_detail::fold_tiles_x4<N_TARGETS>(tgts, n4, ctr, key, tweak);
+            aes_ctr_fold_tiles<emp::detail::Lane512, N_TARGETS>(
+                tgts, n4, off, ctr, key, tweak);
             const int b = n4 * 4;
-            for (int j = 0; j < N_TARGETS; ++j) tgts[j] += b;
-            ctr += b; n_blocks -= b;
+            off += b; ctr += b; n_blocks -= b;
         }
     }
 #endif
@@ -146,15 +81,16 @@ inline void aes_ctr_fold(block* const tgts_in[N_TARGETS], int n_blocks,
     {
         const int n2 = n_blocks / 2;
         if (n2 > 0) {
-            ctr_fold_detail::fold_tiles_x2<N_TARGETS>(tgts, n2, ctr, key, tweak);
+            aes_ctr_fold_tiles<emp::detail::Lane256, N_TARGETS>(
+                tgts, n2, off, ctr, key, tweak);
             const int b = n2 * 2;
-            for (int j = 0; j < N_TARGETS; ++j) tgts[j] += b;
-            ctr += b; n_blocks -= b;
+            off += b; ctr += b; n_blocks -= b;
         }
     }
 #endif
     if (n_blocks > 0) {
-        ctr_fold_detail::fold_tiles_x1<N_TARGETS>(tgts, n_blocks, ctr, key, tweak);
+        aes_ctr_fold_tiles<emp::detail::Lane128, N_TARGETS>(
+            tgts, n_blocks, off, ctr, key, tweak);
     }
 }
 
@@ -636,6 +572,10 @@ private:
     block check_x_  = zero_block;
 
     void setup_send();
+    // Resize the per-chunk scratch buffers to their full kChunkBlocks
+    // capacity on first call; cheap no-op afterwards. Called at the
+    // top of rcot_send_next / rcot_recv_next.
+    void ensure_chunk_scratch_();
     // PPRF consistency check. _send runs on the PPRF-sender (=
     // setup_recv side); _recv on the PPRF-receiver (= setup_send
     // side). Implements Fig. `protpprfconsistency` directly on the
