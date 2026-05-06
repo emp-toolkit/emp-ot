@@ -6,7 +6,7 @@
 // with a tile-resident, lane-packed accumulator and a mask-gated XOR.
 // Targets the per-target vmovdqu64 + vpxorq fold traffic that `perf`
 // shows accounts for ~30-37% of the existing kernel on Intel c8i /
-// AMD c8a — see `/Users/wangxiao/.claude/plans/if-i-implement-libc-agile-cosmos.md`.
+// AMD c8a.
 //
 // Algorithm (sender, k=8): for each j-tile of T=4 contiguous chunk
 // positions, hold acc_lo, acc_hi ∈ zmm where:
@@ -34,7 +34,7 @@
 
 namespace emp { namespace softspoken {
 
-// Vendor gate. AWS bench (`if-i-implement-libc-agile-cosmos.md` round-2):
+// Vendor gate. AWS c8i / c8a bench:
 // View B wins on Intel Sapphire Rapids+ (e2e SoftSpoken<8> RCOT +19-37%
 // across modes/directions) but regresses on AMD Zen 5 (kernel -18-32%
 // at bs=1024/128, e2e -7-12%). Zen 5's existing aes_ctr_fold VAES-512

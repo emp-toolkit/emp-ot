@@ -10,9 +10,7 @@ static std::string PRE_OT_DATA_REG_RECV_FILE = "./data/pre_ot_data_reg_recv";
 // LSB-convention masks used throughout ferret. The COT correlation
 // `delta` always has bit 0 = 1, so each per-leaf SPCOT output is
 // masked to clear bit 0 before the punctured leaf gets `delta` XORed
-// in (so its bit 0 carries the choice signal). Naming is deliberately
-// self-describing — the previous mix of `one`/`minusone` for these
-// two complementary patterns was a routine source of confusion.
+// in (so its bit 0 carries the choice signal).
 inline const block lsb_clear_mask = makeBlock(0xFFFFFFFFFFFFFFFFLL,
                                               0xFFFFFFFFFFFFFFFELL);
 inline const block lsb_only_mask  = makeBlock(0LL, 1LL);

@@ -61,7 +61,6 @@ void FerretCOT::extend_initialization() {
 	extend_initialized = true;
 }
 
-// extend f2k in detail
 void FerretCOT::extend(block* ot_output, MpcotReg *mpcot,
 		LpnF2<10> *lpn, block *ot_input, block seed) {
 	if(party == ALICE) mpcot->sender_init(Delta);
@@ -101,9 +100,7 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 
 	// extend_initialization() must complete before bootstrap so M and the
 	// mpcot dimensions are known: SoftSpokenOT produces exactly M COTs,
-	// and ot_pre_data is sized to M (was n_pre when the small-ferret
-	// bootstrap wrote n_pre blocks here). No reason to background it
-	// any more — bootstrap is sequential after init in the common path.
+	// and ot_pre_data is sized to M.
 	extend_initialization();
 
 	ot_pre_data = new block[M];
@@ -218,9 +215,9 @@ int64_t FerretCOT::byte_memory_need_inplace(int64_t ot_need) {
 	return round * ot_limit + param.n;
 }
 
-// extend f2k (benchmark)
-// parameter "length" should be the return of "byte_memory_need_inplace"
-// output the number of COTs that can be used
+// In-place extend: write directly into the caller's buffer with no
+// intermediate copy through ot_data. `byte_space` must equal
+// byte_memory_need_inplace(ot_need); returns the number of usable COTs.
 int64_t FerretCOT::rcot_inplace(block *ot_buffer, int64_t byte_space, block seed) {
 	if(byte_space < param.n) error("space not enough");
 	if((byte_space - M) % ot_limit != 0) error("call byte_memory_need_inplace \

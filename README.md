@@ -22,7 +22,7 @@
 State-of-the-art OT implementations on top of [emp-tool](https://github.com/emp-toolkit/emp-tool):
 two base OTs (Naor-Pinkas, Chou-Orlandi), IKNP OT extension (semi-honest +
 malicious), and Ferret silent COT extension. All hash functions used for OT are
-instantiated with [MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/master/emp-tool/crypto/mitccrh.h)
+instantiated with [MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/main/emp-tool/crypto/mitccrh.h)
 for optimal concrete security.
 
 ## Requirements
@@ -32,7 +32,9 @@ for optimal concrete security.
 - [emp-tool](https://github.com/emp-toolkit/emp-tool) ≥ 1.0
 - pthreads
 
-emp-ot is header-only; the only thing it builds is its tests.
+emp-ot builds a small static library (`emp-ot::emp-ot`) that bundles
+the IKNP, SoftSpoken, and Ferret OT bodies; the rest of the surface
+(base OTs, headers consumed inline) lives in headers.
 
 ## Build and install
 
@@ -87,9 +89,11 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-The two end-to-end tests (`ot`, `ferret`) launch ALICE/BOB on localhost via
-the `run` script. `bench_lpn` is a single-process benchmark of the LPN
-encoding kernel.
+The two-party benches (`bench_iknp_rcot`, `bench_softspoken_rcot`,
+`bench_ferret_rcot`, `bench_ot_extension`, `base_ot`, `trace_equiv`)
+launch ALICE/BOB on localhost via the `run` script. `bench_lpn`,
+`bench_cggm`, `bench_sfvole_v2`, and `prof_sfvole_local` are single-
+process benchmarks of internal kernels.
 
 ## Usage
 
@@ -107,13 +111,13 @@ NetIO io(party == ALICE ? nullptr : "127.0.0.1", port);
 block b0[length], b1[length];
 bool  c[length];
 
-OTNP<NetIO> np(&io);
+OTNP np(&io);
 if (party == ALICE) np.send(b0, b1, length);   // sender supplies both messages
 else                np.recv(b0, c, length);    // receiver gets b_{c[i]}
 ```
 
 `OTNP` can be replaced by `OTCO`, `IKNP`, or `FerretCOT` and the
-`send`/`recv` calls stay identical — they all implement the [`OT<IO>`](emp-ot/ot.h)
+`send`/`recv` calls stay identical — they all implement the [`OT`](emp-ot/ot.h)
 interface. Their constructors differ; in particular `FerretCOT` takes
 `(party, threads, ios[], malicious, run_setup, param, pre_file)` rather
 than just `(io)`.
@@ -121,7 +125,7 @@ than just `(io)`.
 ### Correlated OT and Random OT (IKNP, FerretCOT)
 
 ```cpp
-IKNP<NetIO> ote(&io, /*malicious=*/false);
+IKNP ote(&io, /*malicious=*/false);
 
 // COT: ote.Delta is the correlation
 if (party == ALICE) ote.send_cot(b0, length);
@@ -144,10 +148,11 @@ specific size (no memcpy, but the size is fixed per call —
 The receiver's choice bit is embedded in the LSB of the returned `block`,
 and `Delta`'s LSB is set to 1 to keep the correlation valid across all
 bits — see the point-and-permute discussion in
-[`ferret_cot.hpp`](emp-ot/ferret/ferret_cot.hpp).
+[`ferret_cot.cpp`](emp-ot/ferret/ferret_cot.cpp).
 
 ```cpp
-FerretCOT<NetIO> ferretcot(party, /*threads=*/1, &io);
+IOChannel* ios[1] = { &io };
+FerretCOT ferretcot(party, /*threads=*/1, ios);
 if (party == ALICE) ferretcot.rcot_send(b0, length);   // ferretcot.Delta
 else                ferretcot.rcot_recv(br, length);   // br[i] = b0[i] ^ LSB(br[i])*Delta
 ```

@@ -1,6 +1,6 @@
 // IKNP RCOT-only bench (semi-honest + malicious). Two-party via `run`.
-// Larger default length than test_ot for tighter timing on the RCOT
-// path; matches what e.g. perf record / sample want.
+// Default length is sized for tighter timing on the RCOT path; matches
+// what e.g. perf record / sample want.
 #include "test/test.h"
 using namespace std;
 

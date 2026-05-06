@@ -1,23 +1,20 @@
-// Microbench three sfvole-fold strategies for the SoftSpoken small-
-// field VOLE inner loop (sender side, k=8). All variants compute the
-// same (u, v_planes) from the same (leaves, session, b0, bs) inputs
-// via different reduction strategies — see
-// /Users/wangxiao/.claude/plans/if-i-implement-libc-agile-cosmos.md.
+// Microbench sfvole-fold strategies for the SoftSpoken small-field
+// VOLE inner loop (sender side, k=8). All variants compute the same
+// (u, v_planes) from the same (leaves, session, b0, bs) inputs via
+// different reduction strategies:
 //
-//   Current: existing aes_ctr_fold<N_TARGETS> per leaf — narrow
-//            memory-RMW XOR-stores (1 + popcount(x) per (leaf, j)).
-//   View B   (lift + wide masked XOR): per-leaf wide register-
-//            resident accumulator, one masked XOR per (leaf, j).
-//            Output: v_planes (plane-major), still feeds Conv.
-//   View A   (transpose + parallel IPs): generate q PRG outputs →
-//            q×128 bit transpose per j → 128 parallel inner products
-//            of length q with the identity vector (0,1,…,q-1) over
-//            F_{2^k}^k. Output is *post-Conv shape*.
+//   Current:   existing aes_ctr_fold<N_TARGETS> per leaf — narrow
+//              memory-RMW XOR-stores (1 + popcount(x) per (leaf, j)).
+//   View B:    lift + wide masked XOR: per-leaf wide register-
+//              resident accumulator, one masked XOR per (leaf, j).
+//   View A:    transpose + parallel inner products: 128 parallel
+//              length-Q dot products against precomputed plane masks.
+//   Butterfly: register-only XOR halving, no memory RMW in the leaf
+//              inner loop (NEON Apple M k=8 path; production kernel
+//              lives in emp-ot/softspoken/sfvole_butterfly.h).
 //
-// First cut: portable C++ for all 3 variants. Byte-equality verified;
-// timing on Apple M is just a baseline (the win is on AVX-512+GFNI).
-// SIMD-specialized A/B kernels (vpternlogd / vgf2p8affineqb) land in
-// a follow-up before the AWS bench.
+// All variants share the same output shape (plane-major v_planes_chunk)
+// and are byte-equality checked against `variant_current`.
 
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/softspoken/aes_ctr_fold.h"
@@ -107,9 +104,9 @@ void variant_old_path_recv(int alpha,
 
 // ---------------------------------------------------------------------
 // Variant View B AVX-512: directly calls the View B kernel from
-// sfvole_view_b.h. Identical to variant_current on AVX-512 hosts at k=8
-// (since dispatch goes here too) — kept as an explicit name in the
-// bench output so the comparison vs variant_old_path_* is unambiguous.
+// sfvole_view_b.h. The production dispatcher gates this kernel on
+// GenuineIntel only (AMD Zen 5 regressed on it — see sfvole_view_b.h);
+// this variant exposes the kernel unconditionally for bench comparison.
 // ---------------------------------------------------------------------
 #if EMP_AES_HAS_VAES512
 template <int k>

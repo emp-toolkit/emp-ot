@@ -20,12 +20,9 @@ namespace emp { namespace softspoken {
 // 128 × (bpr*128) sse_trans of the contiguous plane buffer — call
 // sse_trans directly at the use site (see softspoken_ot.cpp).
 //
-// (The single-element scalar pack used to live here as `pack<k>`
-// alongside a `pack_row<k>` fallback for n*k != 128. With n*k==128
-// the fast path always wins, so both have been dropped. unpack<k>
-// remains as the inverse direction needed by setup_send to split Δ
-// into n alpha_i bytes — that's a single-block scalar op, no
-// transpose involved.)
+// `unpack<k>` is the inverse direction, used by setup_send to split
+// Δ into n alpha_i bytes — a single-block scalar op, no transpose
+// involved.
 
 template <int k>
 constexpr int n_subvoles() {

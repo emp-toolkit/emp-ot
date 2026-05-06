@@ -1,6 +1,6 @@
 // SoftSpokenOT<k> RCOT-only bench, k ∈ {2, 4, 8}, semi + malicious.
-// Two-party via `run`. Larger default length than test_softspoken for
-// tighter RCOT-path timing.
+// Two-party via `run`. Default length is sized for tighter RCOT-path
+// timing.
 #include "test/test.h"
 using namespace std;
 
