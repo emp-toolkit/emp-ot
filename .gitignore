@@ -1,5 +1,6 @@
 Testing/
 build/
+build-*/
 *.DS_Store
 *.txt.cpp
 *CTestTestfile.cmake
