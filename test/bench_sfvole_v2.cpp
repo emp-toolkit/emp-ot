@@ -3,21 +3,22 @@
 // (u, v_planes) from the same (leaves, session, b0, bs) inputs via
 // different reduction strategies:
 //
-//   Current:   existing aes_ctr_fold<N_TARGETS> per leaf — narrow
-//              memory-RMW XOR-stores (1 + popcount(x) per (leaf, j)).
-//   View B:    lift + wide masked XOR: per-leaf wide register-
-//              resident accumulator, one masked XOR per (leaf, j).
+//   Current:   the dispatched production kernel.
+//   Old path:  leaf-major aes_ctr_fold per leaf — narrow memory-RMW
+//              XOR-stores (1 + popcount(x) per (leaf, j)). Production
+//              for k=2/k=4; baseline for k=8.
+//   View B:    lift + wide masked XOR (portable reference impl in this
+//              file only). Compares the algorithmic shape libOTe uses.
 //   View A:    transpose + parallel inner products: 128 parallel
 //              length-Q dot products against precomputed plane masks.
 //   Butterfly: register-only XOR halving, no memory RMW in the leaf
-//              inner loop (NEON Apple M k=8 path; production kernel
+//              inner loop (production kernel for k=8 on every platform;
 //              lives in emp-ot/softspoken/sfvole_butterfly.h).
 //
 // All variants share the same output shape (plane-major v_planes_chunk)
 // and are byte-equality checked against `variant_current`.
 
 #include <emp-tool/emp-tool.h>
-#include "emp-ot/softspoken/aes_ctr_fold.h"
 #include "emp-ot/softspoken/softspoken_ot.h"
 
 #include <algorithm>
@@ -41,8 +42,8 @@ double now_us() {
 
 // ---------------------------------------------------------------------
 // Variant Current: dispatched kernel (whatever softspoken_ot.h selects
-// for this (k, arch) — on Apple M k=8 = NEON butterfly; on x86 k=8
-// with VAES-512 = View B AVX-512; otherwise = leaf-major aes_ctr_fold).
+// for this (k, arch) — k=8 = butterfly everywhere; k=2 / k=4 fall
+// through to leaf-major aes_ctr_fold).
 // ---------------------------------------------------------------------
 template <int k>
 void variant_current(const block* leaves,
@@ -53,11 +54,10 @@ void variant_current(const block* leaves,
 }
 
 // ---------------------------------------------------------------------
-// Variant "old aes_ctr_fold path": the pre-View-B / pre-butterfly
-// leaf-major baseline. Replicates softspoken_ot.h's fallback body
-// (memset → per-leaf rekey → dispatch_ctr_fold) without the dispatch.
-// On AVX-512 hosts this is the apples-to-apples baseline against
-// variant_b_avx512_*.
+// Variant "old aes_ctr_fold path": the pre-butterfly leaf-major
+// baseline. Replicates softspoken_ot.h's fallback body
+// (memset → per-leaf tweak → dispatch_ctr_fold) without the dispatch,
+// so it remains a baseline even when current routes elsewhere.
 // ---------------------------------------------------------------------
 template <int k>
 void variant_old_path_sender(const block* leaves,
@@ -103,31 +103,6 @@ void variant_old_path_recv(int alpha,
         softspoken::dispatch_ctr_fold<k>(tgts, n, (int)bs, b0, &fixed_K, tweak);
     }
 }
-
-// ---------------------------------------------------------------------
-// Variant View B AVX-512: directly calls the View B kernel from
-// sfvole_view_b.h. The production dispatcher gates this kernel on
-// GenuineIntel only (AMD Zen 5 regressed on it — see sfvole_view_b.h);
-// this variant exposes the kernel unconditionally for bench comparison.
-// ---------------------------------------------------------------------
-#if EMP_AES_HAS_VAES512
-template <int k>
-void variant_b_avx512_sender(const block* leaves,
-                              uint64_t session, int64_t b0, int64_t bs,
-                              block* u_chunk, block* v_planes_chunk) {
-    softspoken::sfvole_sender_view_b<k>(
-        leaves, session, b0, bs, u_chunk, v_planes_chunk);
-}
-
-template <int k>
-void variant_b_avx512_recv(int alpha,
-                            const block* leaves,
-                            uint64_t session, int64_t b0, int64_t bs,
-                            block* w_planes_chunk) {
-    softspoken::sfvole_receiver_view_b<k>(
-        alpha, leaves, session, b0, bs, w_planes_chunk);
-}
-#endif
 
 // ---------------------------------------------------------------------
 // Generate q × bs PRG outputs into a flat (q, bs) block array.
@@ -506,7 +481,6 @@ void run_one_k_recv(int64_t bs, bool include_bfly) {
     std::vector<block> w_cur((size_t)k * bs);
     std::vector<block> w_old((size_t)k * bs);
     std::vector<block> w_bfly((size_t)k * bs);
-    std::vector<block> w_avx((size_t)k * bs);
     std::vector<AES_KEY> keys_scratch((size_t)Q);
 
     softspoken::sfvole_receiver_compute_chunk<k>(
@@ -520,35 +494,15 @@ void run_one_k_recv(int64_t bs, bool include_bfly) {
                                         w_bfly.data(), keys_scratch.data());
         eq_recv = blocks_equal(w_cur.data(), w_bfly.data(), (int64_t)k * bs);
     }
-#if EMP_AES_HAS_VAES512
-    bool eq_avx = true;
-    if constexpr (k == 8) {
-        variant_b_avx512_recv<k>(alpha, leaves.data(), session, b0, bs,
-                                  w_avx.data());
-        eq_avx = blocks_equal(w_cur.data(), w_avx.data(), (int64_t)k * bs);
-    }
-#else
-    (void)w_avx;
-#endif
 
-    std::printf("RECV k=%d bs=%lld   old: w=%s   bfly: w=%s",
+    std::printf("RECV k=%d bs=%lld   old: w=%s   bfly: w=%s\n",
                 k, (long long)bs,
                 eq_old ? "OK" : "MISMATCH",
                 eq_recv ? "OK" : "MISMATCH");
-#if EMP_AES_HAS_VAES512
-    if (k == 8) std::printf("   B-avx512: w=%s", eq_avx ? "OK" : "MISMATCH");
-#endif
-    std::printf("\n");
     if (!eq_old || !eq_recv) {
         std::fprintf(stderr, "RECV byte-equality FAILED — aborting bench\n");
         std::exit(1);
     }
-#if EMP_AES_HAS_VAES512
-    if (k == 8 && !eq_avx) {
-        std::fprintf(stderr, "RECV B-avx512 byte-equality FAILED — aborting bench\n");
-        std::exit(1);
-    }
-#endif
 
 #ifdef NDEBUG
     const int iters  = std::max(1, (int)(2'000'000 / std::max<int64_t>(1, bs * Q)));
@@ -566,7 +520,7 @@ void run_one_k_recv(int64_t bs, bool include_bfly) {
     };
     double cur_us = bench_median_us(iters, trials, fn_cur);
     double old_us = bench_median_us(iters, trials, fn_old);
-    double bfly_us = -1, avx_us = -1;
+    double bfly_us = -1;
     if (include_bfly) {
         auto fn_bfly = [&]() {
             variant_butterfly_recv<k>(alpha, leaves.data(), session, b0, bs,
@@ -574,23 +528,12 @@ void run_one_k_recv(int64_t bs, bool include_bfly) {
         };
         bfly_us = bench_median_us(iters, trials, fn_bfly);
     }
-#if EMP_AES_HAS_VAES512
-    if constexpr (k == 8) {
-        auto fn_avx = [&]() {
-            variant_b_avx512_recv<k>(alpha, leaves.data(), session, b0, bs, w_avx.data());
-        };
-        avx_us = bench_median_us(iters, trials, fn_avx);
-    }
-#endif
 
     std::printf("RECV k=%d bs=%lld iters=%d   current=%9.2f us   old=%9.2f us (%.2fx)",
                 k, (long long)bs, iters, cur_us,
                 old_us, old_us / cur_us);
     if (bfly_us > 0)
         std::printf("   bfly=%9.2f us (%.2fx)", bfly_us, bfly_us / cur_us);
-    if (avx_us > 0)
-        std::printf("   B-avx512=%9.2f us (%.2fx vs current; %.2fx vs old)",
-                    avx_us, avx_us / cur_us, avx_us / old_us);
     std::printf("\n");
 }
 
@@ -611,7 +554,6 @@ void run_one_k(int64_t bs, bool include_bfly) {
     std::vector<block> u_old((size_t)bs), v_old((size_t)k * bs);
     std::vector<block> u_neon((size_t)bs), v_neon((size_t)k * bs);
     std::vector<block> u_bfly((size_t)bs), v_bfly((size_t)k * bs);
-    std::vector<block> u_avx((size_t)bs), v_avx((size_t)k * bs);
     std::vector<AES_KEY> keys_scratch((size_t)Q);
 
     // 1) Run portable variants once and compare.
@@ -649,18 +591,6 @@ void run_one_k(int64_t bs, bool include_bfly) {
     (void)u_neon; (void)v_neon;
 #endif
 
-#if EMP_AES_HAS_VAES512
-    bool eq_avx_u = true, eq_avx_v = true;
-    if constexpr (k == 8) {
-        variant_b_avx512_sender<k>(leaves.data(), session, b0, bs,
-                                    u_avx.data(), v_avx.data());
-        eq_avx_u = blocks_equal(u_cur.data(), u_avx.data(), bs);
-        eq_avx_v = blocks_equal(v_cur.data(), v_avx.data(), (int64_t)k * bs);
-    }
-#else
-    (void)u_avx; (void)v_avx;
-#endif
-
     std::printf("k=%d bs=%lld   old: u=%s v=%s   B-port: u=%s v=%s   A-port: u=%s v=%s",
                 k, (long long)bs,
                 eq_old_u ? "OK" : "MISMATCH", eq_old_v ? "OK" : "MISMATCH",
@@ -675,11 +605,6 @@ void run_one_k(int64_t bs, bool include_bfly) {
                         eq_neon_u ? "OK" : "MISMATCH", eq_neon_v ? "OK" : "MISMATCH");
 #endif
     }
-#if EMP_AES_HAS_VAES512
-    if (k == 8)
-        std::printf("   B-avx512: u=%s v=%s",
-                    eq_avx_u ? "OK" : "MISMATCH", eq_avx_v ? "OK" : "MISMATCH");
-#endif
     std::printf("\n");
 
     if (!(eq_old_u && eq_old_v && eq_b_u && eq_b_v && eq_a_u && eq_a_v)) {
@@ -693,12 +618,6 @@ void run_one_k(int64_t bs, bool include_bfly) {
 #if defined(__aarch64__)
     if (run_neon_b && !(eq_neon_u && eq_neon_v)) {
         std::fprintf(stderr, "NEON View B byte-equality FAILED — aborting bench\n");
-        std::exit(1);
-    }
-#endif
-#if EMP_AES_HAS_VAES512
-    if (k == 8 && !(eq_avx_u && eq_avx_v)) {
-        std::fprintf(stderr, "AVX-512 View B byte-equality FAILED — aborting bench\n");
         std::exit(1);
     }
 #endif
@@ -728,7 +647,7 @@ void run_one_k(int64_t bs, bool include_bfly) {
     double old_us = bench_median_us(iters, trials, fn_old);
     double b_us   = bench_median_us(iters, trials, fn_b);
     double a_us   = bench_median_us(iters, trials, fn_a);
-    double neon_us = -1, bfly_us = -1, avx_us = -1;
+    double neon_us = -1, bfly_us = -1;
     if (include_bfly) {
         auto fn_bfly = [&]() {
             variant_butterfly_sender<k>(leaves.data(), session, b0, bs,
@@ -747,16 +666,6 @@ void run_one_k(int64_t bs, bool include_bfly) {
 #endif
     }
 
-#if EMP_AES_HAS_VAES512
-    if constexpr (k == 8) {
-        auto fn_avx = [&]() {
-            variant_b_avx512_sender<k>(leaves.data(), session, b0, bs,
-                                        u_avx.data(), v_avx.data());
-        };
-        avx_us = bench_median_us(iters, trials, fn_avx);
-    }
-#endif
-
     std::printf("k=%d bs=%lld iters=%d   current=%9.2f us   old=%9.2f us (%.2fx)   B-port=%9.2f us (%.2fx)   A-port=%9.2f us (%.2fx)",
                 k, (long long)bs, iters,
                 cur_us,
@@ -767,9 +676,6 @@ void run_one_k(int64_t bs, bool include_bfly) {
         std::printf("   bfly=%9.2f us (%.2fx)", bfly_us, bfly_us / cur_us);
     if (neon_us > 0)
         std::printf("   B-neon=%9.2f us (%.2fx)", neon_us, neon_us / cur_us);
-    if (avx_us > 0)
-        std::printf("   B-avx512=%9.2f us (%.2fx vs current; %.2fx vs old)",
-                    avx_us, avx_us / cur_us, avx_us / old_us);
     std::printf("\n");
 }
 
@@ -787,12 +693,11 @@ int main() {
     run_one_k<2>(1024, /*include_bfly=*/true);
     run_one_k<2>(128,  /*include_bfly=*/true);
 
-    // Tail-handling correctness: AVX-512 View B kernel processes 4
-    // j-positions per tile; SoftSpokenOT calls compute_chunk with
+    // Tail-handling correctness: SoftSpokenOT calls compute_chunk with
     // bs=1 (malicious sacrificial chunk) and any positive value, so
-    // bs not divisible by 4 must work. These extra k=8 sweeps catch
+    // bs not divisible by T must work. These extra k=8 sweeps catch
     // tail-overrun bugs that the larger-bs runs miss.
-    std::printf("\n# Tail-bs sweep (k=8) for AVX-512 View B correctness:\n");
+    std::printf("\n# Tail-bs sweep (k=8) for butterfly tail correctness:\n");
     run_one_k<8>(1, /*include_bfly=*/true);
     run_one_k<8>(2, /*include_bfly=*/true);
     run_one_k<8>(3, /*include_bfly=*/true);
