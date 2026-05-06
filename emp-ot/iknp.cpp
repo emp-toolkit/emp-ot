@@ -4,8 +4,23 @@
 
 namespace emp {
 
+// Naming convention worth knowing: on the sender, `k0[i]` (and the
+// derived `G0[i]`) is the base-OT-chosen key — i.e. whichever of the
+// receiver's (k0_i, k1_i) matches s_i — NOT the literal "zero side".
+// So sender's `G0[i]` plays the role of receiver's `G_{s_i}[i]`; the
+// receiver's `G1[i]` has no sender counterpart (the un-chosen base
+// key is unknown to the sender, which is the point of the base OT).
+// The IKNP arithmetic relies on this: when s_i = 1,
+//   q_i = G0_S[i].rand ⊕ u_i
+//       = G1_R[i].rand ⊕ (G0_R[i].rand ⊕ G1_R[i].rand ⊕ r)
+//       = G0_R[i].rand ⊕ r
+// which gives the desired q_i ⊕ t_i = s_i · r per row.
 void IKNP::setup_send(const bool *delta_bool_in) {
 	is_sender = true;
+	// bit_0(Δ) = 1 is required by the row-0 collapse (see class header).
+	// Caller must pre-set delta_bool_in[0]; the random-Δ overload does
+	// this internally.
+	assert(delta_bool_in[0] && "IKNP::setup_send: delta_bool_in[0] must be true (bit_0(Δ) = 1 invariant)");
 	memcpy(s, delta_bool_in, 128);
 	block k0[128];
 	OTCO base_ot(io);
