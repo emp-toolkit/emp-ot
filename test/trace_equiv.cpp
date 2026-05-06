@@ -27,13 +27,22 @@ using namespace std;
 
 int main(int argc, char** argv) {
     int port, party;
-    if (argc < 4) {
-        cerr << "usage: trace_equiv <party 1|2> <port> <prefix> [length_log]\n";
+    if (argc < 3) {
+        cerr << "usage: trace_equiv <party 1|2> <port> [prefix] [length_log]\n";
         return 1;
     }
     parse_party_and_port(argv, &party, &port);
-    const string prefix = argv[3];
-    const int length_log = (argc > 4) ? atoi(argv[4]) : 16;
+    // Default prefix lands in /tmp so ctest invocations (which don't
+    // pass one) succeed without polluting the source tree. Manual
+    // refactor-verification runs should pass an explicit prefix so
+    // before/after diffs find each other.
+    const string prefix = (argc > 3) ? argv[3] : "/tmp/trace_equiv";
+#ifdef NDEBUG
+    const int default_length_log = 16;
+#else
+    const int default_length_log = 10;
+#endif
+    const int length_log = (argc > 4) ? atoi(argv[4]) : default_length_log;
     const int64_t length = (1LL << length_log) + 101;
 
     if (!is_test_mode()) {

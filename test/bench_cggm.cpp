@@ -75,7 +75,11 @@ template <int Tile>
 static void run_row(CCRH& ccrh, block* raw_in, block* raw_out,
                     block* leaves, block* K0, block Delta, block k,
                     const int* depths, int n_depths) {
-    constexpr int64_t total_H_target = 1LL << 28;  // ~256M H
+#ifdef NDEBUG
+    constexpr int64_t total_H_target = 1LL << 22;  // ~4M H
+#else
+    constexpr int64_t total_H_target = 1LL << 18;  // ~256K H — Debug-CI fast path
+#endif
 
     const double raw_us = bench_raw_H<Tile>(ccrh, raw_in, raw_out, total_H_target);
     const double raw_ns = raw_us * 1000.0 / (double)total_H_target;

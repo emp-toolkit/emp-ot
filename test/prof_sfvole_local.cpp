@@ -25,7 +25,12 @@ int main(int argc, char** argv) {
     constexpr int Q = 1 << k;
     const int64_t bs = SoftSpokenOT<k>::kChunkBlocks;
 
-    double secs = (argc >= 2) ? atof(argv[1]) : 10.0;
+#ifdef NDEBUG
+    constexpr double default_secs = 10.0;
+#else
+    constexpr double default_secs = 1.0;
+#endif
+    double secs = (argc >= 2) ? atof(argv[1]) : default_secs;
     std::string mode = (argc >= 3) ? argv[2] : "recv";
 
     PRG prg(fix_key);

@@ -13,8 +13,13 @@ int main(int argc, char** argv) {
 		k = atoi(argv[1]);
 		n = atoi(argv[2]);
 	} else {
+#ifdef NDEBUG
 		k = 11;
 		n = 20;
+#else
+		k = 11;
+		n = 14;
+#endif
 	}
 	if(n > 30 or k > 30) {
 		cout <<"Large test size! comment me if you want to run this size\n";

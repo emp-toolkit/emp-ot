@@ -688,8 +688,13 @@ void run_one_k_recv(int64_t bs, bool include_neon) {
     }
 #endif
 
+#ifdef NDEBUG
     const int iters  = std::max(1, (int)(2'000'000 / std::max<int64_t>(1, bs * Q)));
     const int trials = 5;
+#else
+    const int iters  = 1;
+    const int trials = 1;
+#endif
     auto fn_cur = [&]() {
         softspoken::sfvole_receiver_compute_chunk<k>(
             alpha, leaves.data(), session, b0, bs, w_cur.data());
@@ -839,8 +844,13 @@ void run_one_k(int64_t bs, bool include_neon) {
 #endif
 
     // 2) Time each (median of 5 trials × `iters` per trial).
+#ifdef NDEBUG
     const int iters  = std::max(1, (int)(2'000'000 / std::max<int64_t>(1, bs * Q)));
     const int trials = 5;
+#else
+    const int iters  = 1;
+    const int trials = 1;
+#endif
     auto fn_cur = [&]() {
         variant_current<k>(leaves.data(), session, b0, bs, u_cur.data(), v_cur.data());
     };

@@ -35,7 +35,12 @@ static void bench_one(IOChannel* ios[], NetIO* netio, int party,
 
 int main(int argc, char** argv) {
     int length_log, port, party;
-    if (argc <= 3) length_log = 24;
+#ifdef NDEBUG
+    constexpr int default_length_log = 24;
+#else
+    constexpr int default_length_log = 14;
+#endif
+    if (argc <= 3) length_log = default_length_log;
     else           length_log = atoi(argv[3]);
     if (length_log > 30) {
         cerr << "Large test size! comment me if you want to run this size" << endl;

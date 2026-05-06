@@ -29,7 +29,12 @@ void run_k(NetIO* io, int party, int64_t length) {
 
 int main(int argc, char** argv) {
     int length, port, party;
-    if (argc <= 3) length = (1 << 24) + 101;
+#ifdef NDEBUG
+    constexpr int default_length_log = 24;
+#else
+    constexpr int default_length_log = 12;
+#endif
+    if (argc <= 3) length = (1 << default_length_log) + 101;
     else           length = (1 << atoi(argv[3])) + 101;
 
     parse_party_and_port(argv, &party, &port);
