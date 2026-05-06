@@ -5,6 +5,20 @@
 
 <img src="https://raw.githubusercontent.com/emp-toolkit/emp-readme/master/art/logo-full.jpg" width=300px/>
 
+> **Which version do I want?**
+>
+> - **Existing projects pinned to a published release: stay on `0.3.0`** —
+>   tag [`0.3.0`](https://github.com/emp-toolkit/emp-ot/releases/tag/0.3.0)
+>   or branch [`v0.3.x`](https://github.com/emp-toolkit/emp-ot/tree/v0.3.x).
+>   Bug fixes and security patches will be backported to `v0.3.x`.
+> - **New projects, or willing to migrate: track the development branch**
+>   (this branch). It will become `1.0.0-alpha` after a polish pass and
+>   then `1.0.0`. New SoftSpokenOT kernels (NEON butterfly on Apple M,
+>   View B AVX-512 on Intel Sapphire Rapids+), reorganized base OTs,
+>   restructured benches, and the wire-equivalence framework from
+>   emp-tool 1.0 — but the API is not yet frozen and headers may move
+>   between alphas. Requires emp-tool ≥ 1.0.0-alpha.
+
 State-of-the-art OT implementations on top of [emp-tool](https://github.com/emp-toolkit/emp-tool):
 two base OTs (Naor-Pinkas, Chou-Orlandi), IKNP OT extension (semi-honest +
 malicious), and Ferret silent COT extension. All hash functions used for OT are
