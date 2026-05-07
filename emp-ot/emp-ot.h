@@ -7,6 +7,7 @@
 #include "emp-ot/base_ot/np.h"
 #include "emp-ot/base_ot/pvw.h"
 #include "emp-ot/base_ot/csw.h"
+#include "emp-ot/base_ot/pvw_kyber.h"
 #include "emp-ot/iknp.h"
 
 #include "emp-ot/ferret/ferret_cot.h"

@@ -47,6 +47,13 @@ int main(int argc, char **argv) {
 		OTCSW csw(io, sid);
 		run_one("CSW", &csw, io, party, length);
 	}
+	{
+		// PVW-Kyber: post-quantum base OT (Module-LWE / ML-KEM-512).
+		// Same sid convention as CSW.
+		block sid = makeBlock(0xCAFEBABE12345678ULL, 0x0BADC0DE0DEFACE0ULL);
+		OTPVWKyber pvw_kyber(io, sid);
+		run_one("PVWKy", &pvw_kyber, io, party, length);
+	}
 
 	delete io;
 	return 0;

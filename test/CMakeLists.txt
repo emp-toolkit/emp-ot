@@ -18,7 +18,7 @@ function(add_test_case_with_run name)
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 endfunction()
 
-add_test_case_with_run(base_ot)
+add_test_case_with_run(bench_base_ot)
 add_test_case(bench_lpn)
 add_test_case(bench_cggm)
 add_test_case(bench_sfvole_v2)
