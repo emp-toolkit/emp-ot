@@ -25,11 +25,27 @@ malicious), and Ferret silent COT extension. All hash functions used for OT are
 instantiated with [MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/main/emp-tool/crypto/mitccrh.h)
 for optimal concrete security.
 
+> **Heads up — AI-assisted drafts, not yet audited.** The development
+> branch adds `OTPVW`, `OTCSW`, `OTPVWKyber`, and `SoftSpokenOT` on
+> top of the long-standing `OTNP` / `OTCO` / `IKNP` / `FerretCOT`
+> core. These were implemented largely through AI-assisted coding
+> against their published specifications; the byte-equality and
+> cross-protocol consistency tests pass end-to-end, but the careful
+> line-by-line human review usually expected of cryptographic code
+> hasn't happened yet — these should be treated more as research-
+> grade drafts than vetted releases. Fine for prototyping and
+> exploration; for production paths today, stick to `OTNP` / `OTCO`
+> with `IKNP` / `FerretCOT`, or pin to the
+> [`v0.3.x`](https://github.com/emp-toolkit/emp-ot/tree/v0.3.x) branch.
+
 ## Requirements
 
 - CMake ≥ 3.21
 - A C++17 compiler (Clang ≥ 12, GCC ≥ 9, AppleClang 14+)
 - [emp-tool](https://github.com/emp-toolkit/emp-tool) ≥ 1.0
+- OpenSSL ≥ 3.3 (the OTPVWKyber base OT uses `EVP_DigestSqueeze` for
+  SHAKE; Ubuntu 22.04 ships 3.0.2, so build OpenSSL 3.3+ from source
+  there)
 - pthreads
 
 emp-ot builds a small static library (`emp-ot::emp-ot`) that bundles
@@ -90,8 +106,8 @@ ctest --test-dir build --output-on-failure
 ```
 
 The two-party benches (`bench_iknp_rcot`, `bench_softspoken_rcot`,
-`bench_ferret_rcot`, `bench_ot_extension`, `base_ot`, `trace_equiv`)
-launch ALICE/BOB on localhost via the `run` script. `bench_lpn`,
+`bench_ferret_rcot`, `bench_ot_extension`, `bench_base_ot`,
+`trace_equiv`) launch ALICE/BOB on localhost via the `run` script. `bench_lpn`,
 `bench_cggm`, `bench_sfvole_v2`, and `prof_sfvole_local` are single-
 process benchmarks of internal kernels.
 
@@ -159,42 +175,54 @@ else                ferretcot.rcot_recv(br, length);   // br[i] = b0[i] ^ LSB(br
 
 ## Performance
 
-Numbers below are from c5.4xlarge AWS instances. They predate the
-emp-tool 1.0 modernization (VAES / VPCLMULQDQ-256 dispatch, faster
-PRG/Hash kernels) and should be re-measured on current CPUs; the
-relative shapes (semi-honest vs malicious, single- vs multi-thread) are
-representative.
+Numbers from AWS `c8a.2xlarge` (AMD EPYC 9R45, Zen 5c), single-thread,
+both parties on localhost. Network is not a bottleneck — these are
+compute-bound numbers (`bench_base_ot` and `bench_ot_extension`). Run
+against `main` at commit `76226bb`, OpenSSL 3.3.2.
 
-### IKNP
+### Base OTs
 
-```
-50 Mbps
-128 NPOTs:        12577 us
-Passive IKNP OT   129262 OTps        Passive IKNP COT  388316 OTps
-Passive IKNP ROT  386190 OTps
-128 COOTs:        11073 us
-Active IKNP OT    129152 OTps        Active IKNP COT   387380 OTps
-Active IKNP ROT   385235 OTps
+Time and total wire bytes for one batch of 128 base OTs. Time is the
+wall-clock duration on Alice's side.
 
-10 Gbps
-128 NPOTs:        11739 us
-Passive IKNP OT   1.55e7 OTps        Passive IKNP COT  2.97e7 OTps
-Passive IKNP ROT  1.66e7 OTps
-128 COOTs:        20064 us
-Active IKNP OT    1.40e7 OTps        Active IKNP COT   2.43e7 OTps
-Active IKNP ROT   1.47e7 OTps
-```
+| Protocol     | Time   |  Send B |  Recv B | Security                                     |
+|--------------|-------:|--------:|--------:|----------------------------------------------|
+| `OTCO`       | 5.6 ms |   4,165 |   8,832 | semi-honest                                  |
+| `OTNP`       | 6.7 ms |  12,997 |   8,832 | semi-honest                                  |
+| `OTCSW`      | 9.2 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
+| `OTPVW`      |  39 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
+| `OTPVWKyber` | 7.7 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
 
-### Ferret (million RCOT/s)
+The three OT extensions (`IKNP`, `SoftSpokenOT`, `FerretCOT`) accept
+any of these via the optional `std::unique_ptr<OT> base_ot` constructor
+arg; they default to `OTPVW`. Pair an extension's malicious mode with
+a malicious-secure base — a runtime check fires otherwise.
 
-| Threads | Semi-honest 10/30/50 Mbps | Malicious 10/30/50 Mbps |
-|---|---|---|
-| 1 | 12.1 / 16.0 / 16.0 | 11.6 / 13.9 / 13.9 |
-| 2 | 16.3 / 27.0 / 30.8 | 16.0 / 26.6 / 27.1 |
-| 3 | 18.3 / 34.2 / 40.7 | 18.3 / 33.8 / 40.0 |
-| 4 | 19.7 / 39.5 / 48.8 | 19.6 / 38.3 / 47.4 |
-| 5 | 20.5 / 43.2 / 55.0 | 20.4 / 42.4 / 53.7 |
-| 6 | 21.4 / 47.1 / 61.2 | 21.3 / 46.5 / 59.8 |
+### OT extensions
+
+Length ≈ 2²⁴ OTs (~16M), single-thread. MOT/s = million OTs per
+second; rows show the average of two role-flipped runs (the throughput
+is approximately symmetric, ±5%). The `bits/OT` column is the total
+wire footprint per RCOT output (send + receive, divided by length).
+
+| Protocol         | Mode      | bits/OT | RCOT | COT | ROT | OT  |
+|------------------|-----------|--------:|-----:|----:|----:|----:|
+| `IKNP`           | semi      |     127 |   92 |  95 |  49 |  44 |
+| `IKNP`           | malicious |     127 |   38 |  38 |  28 |  26 |
+| `SoftSpoken<2>`  | semi      |      63 |  112 | 117 |  54 |  48 |
+| `SoftSpoken<2>`  | malicious |      63 |   76 |  77 |  44 |  39 |
+| `SoftSpoken<4>`  | semi      |      31 |   92 |  93 |  48 |  44 |
+| `SoftSpoken<4>`  | malicious |      31 |   75 |  76 |  43 |  40 |
+| `SoftSpoken<8>`  | semi      |      15 |   35 |  36 |  26 |  25 |
+| `SoftSpoken<8>`  | malicious |      15 |   33 |  34 |  25 |  24 |
+| `FerretCOT`      | semi      |    0.27 |   39 |  39 |  27 |  35 |
+| `FerretCOT`      | malicious |    0.27 |   35 |  35 |  25 |  33 |
+
+`RCOT` = random correlated OT (raw extension output); `COT` = chosen-
+correlation; `ROT` = random OT; `OT` = chosen-input. `SoftSpoken<k>`
+trades wire bytes for compute as `k` grows: at high bandwidth `k=2`
+wins; on bandwidth-constrained links larger `k` amortises more
+compute per byte.
 
 ## Citation
 
