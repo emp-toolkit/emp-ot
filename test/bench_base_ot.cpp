@@ -29,10 +29,6 @@ int main(int argc, char **argv) {
 	     << " — " << length << " base OTs:\n";
 
 	{
-		OTNP np(io);
-		run_one("NP", &np, io, party, length);
-	}
-	{
 		OTCO co(io);
 		run_one("CO", &co, io, party, length);
 	}

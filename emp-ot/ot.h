@@ -12,8 +12,8 @@ class OT { public:
 
 	// Static security level of the protocol. Base OTs override to true
 	// when malicious-secure (OTPVW / OTCSW / OTPVWKyber) and false
-	// otherwise (OTCO / OTNP). Used by extensions (IKNP / SoftSpokenOT
-	// / FerretCOT) to verify at runtime that their own malicious mode
+	// otherwise (OTCO). Used by extensions (IKNP / SoftSpokenOT /
+	// FerretCOT) to verify at runtime that their own malicious mode
 	// is paired with a malicious-secure base OT. Default returns false
 	// — safest for any unannotated subclass.
 	virtual bool is_malicious_secure() const { return false; }

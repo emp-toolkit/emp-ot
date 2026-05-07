@@ -20,22 +20,23 @@
 >   between alphas. Requires emp-tool ≥ 1.0.0-alpha.
 
 State-of-the-art OT implementations on top of [emp-tool](https://github.com/emp-toolkit/emp-tool):
-two base OTs (Naor-Pinkas, Chou-Orlandi), IKNP OT extension (semi-honest +
-malicious), and Ferret silent COT extension. All hash functions used for OT are
-instantiated with [MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/main/emp-tool/crypto/mitccrh.h)
+four base OTs (`OTCO`, `OTPVW`, `OTCSW`, `OTPVWKyber`), IKNP and
+SoftSpoken OT extensions (semi-honest + malicious), and Ferret silent
+COT extension. All hash functions used for OT are instantiated with
+[MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/main/emp-tool/crypto/mitccrh.h)
 for optimal concrete security.
 
 > **Heads up — AI-assisted drafts, not yet audited.** The development
 > branch adds `OTPVW`, `OTCSW`, `OTPVWKyber`, and `SoftSpokenOT` on
-> top of the long-standing `OTNP` / `OTCO` / `IKNP` / `FerretCOT`
-> core. These were implemented largely through AI-assisted coding
-> against their published specifications; the byte-equality and
-> cross-protocol consistency tests pass end-to-end, but the careful
-> line-by-line human review usually expected of cryptographic code
-> hasn't happened yet — these should be treated more as research-
-> grade drafts than vetted releases. Fine for prototyping and
-> exploration; for production paths today, stick to `OTNP` / `OTCO`
-> with `IKNP` / `FerretCOT`, or pin to the
+> top of the long-standing `OTCO` / `IKNP` / `FerretCOT` core. These
+> were implemented largely through AI-assisted coding against their
+> published specifications; the byte-equality and cross-protocol
+> consistency tests pass end-to-end, but the careful line-by-line
+> human review usually expected of cryptographic code hasn't happened
+> yet — these should be treated more as research-grade drafts than
+> vetted releases. Fine for prototyping and exploration; for
+> production paths today, stick to `OTCO` with `IKNP` / `FerretCOT`,
+> or pin to the
 > [`v0.3.x`](https://github.com/emp-toolkit/emp-ot/tree/v0.3.x) branch.
 
 ## Requirements
@@ -127,14 +128,15 @@ NetIO io(party == ALICE ? nullptr : "127.0.0.1", port);
 block b0[length], b1[length];
 bool  c[length];
 
-OTNP np(&io);
-if (party == ALICE) np.send(b0, b1, length);   // sender supplies both messages
-else                np.recv(b0, c, length);    // receiver gets b_{c[i]}
+OTCO co(&io);
+if (party == ALICE) co.send(b0, b1, length);   // sender supplies both messages
+else                co.recv(b0, c, length);    // receiver gets b_{c[i]}
 ```
 
-`OTNP` can be replaced by `OTCO`, `IKNP`, or `FerretCOT` and the
-`send`/`recv` calls stay identical — they all implement the [`OT`](emp-ot/ot.h)
-interface. Their constructors differ; in particular `FerretCOT` takes
+`OTCO` can be replaced by `OTPVW`, `OTCSW`, `OTPVWKyber`, `IKNP`,
+`SoftSpokenOT`, or `FerretCOT` and the `send`/`recv` calls stay
+identical — they all implement the [`OT`](emp-ot/ot.h) interface.
+Their constructors differ; in particular `FerretCOT` takes
 `(party, threads, ios[], malicious, run_setup, param, pre_file)` rather
 than just `(io)`.
 
@@ -188,7 +190,6 @@ wall-clock duration on Alice's side.
 | Protocol     | Time   |  Send B |  Recv B | Security                                     |
 |--------------|-------:|--------:|--------:|----------------------------------------------|
 | `OTCO`       | 5.6 ms |   4,165 |   8,832 | semi-honest                                  |
-| `OTNP`       | 6.7 ms |  12,997 |   8,832 | semi-honest                                  |
 | `OTCSW`      | 9.2 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `OTPVW`      |  39 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
 | `OTPVWKyber` | 7.7 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
