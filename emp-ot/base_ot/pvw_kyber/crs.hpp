@@ -18,7 +18,7 @@
 // polyvec_ntt before doing polyvec_basemul_acc_montgomery, and they
 // only NTT once per CRS expansion.
 
-#include "emp-ot/pvw_kyber/params.hpp"
+#include "emp-ot/base_ot/pvw_kyber/params.hpp"
 #include <cstdint>
 #include <cstring>
 
@@ -46,7 +46,11 @@ inline int rej_uniform(int16_t *r, int n, const uint8_t *buf, int buflen) {
 inline void poly_uniform_from_seed(poly *p,
                                    const uint8_t seed[kSymBytes],
                                    uint8_t x, uint8_t y) {
-    keccak_state state;
+    // The OpenSSL-EVP-backed shim wraps a heap EVP_MD_CTX inside
+    // keccak_state.opaque; zero-init enforces "no ctx yet" so the
+    // shim's lazy-allocation path triggers (and so we don't crash on
+    // a garbage pointer at first use).
+    keccak_state state = {};
     kyber_shake128_absorb(&state, seed, x, y);
 
     constexpr int kBlocks = (12 * kN / 8 + XOF_BLOCKBYTES) / XOF_BLOCKBYTES;
@@ -65,6 +69,11 @@ inline void poly_uniform_from_seed(poly *p,
         buflen = off + XOF_BLOCKBYTES;
         ctr += rej_uniform(p->coeffs + ctr, kN - ctr, buf, buflen);
     }
+
+    // The OpenSSL-EVP-backed shim allocates a heap EVP_MD_CTX inside
+    // keccak_state lazily on absorb; release it before this function
+    // returns and the stack-resident state goes out of scope.
+    shake_state_release(&state);
 }
 
 // Derive a sub-seed from session_seed via SHAKE-256(session_seed || tag).

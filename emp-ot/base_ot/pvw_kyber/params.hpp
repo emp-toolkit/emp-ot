@@ -1,7 +1,7 @@
 #ifndef EMP_OT_PVW_KYBER_PARAMS_HPP__
 #define EMP_OT_PVW_KYBER_PARAMS_HPP__
 
-// Internal header — only included by emp-ot/pvw_kyber/*.cpp / *.hpp.
+// Internal header — only included by emp-ot/base_ot/pvw_kyber/*.cpp / *.hpp.
 // Pulls in Kyber's reference C headers under the ML-KEM-512 parameter
 // set (KYBER_K = 2) and re-exposes the constants we need as constexpr
 // values. KYBER_K is set here, before the Kyber header includes, so it
@@ -16,12 +16,11 @@
 #define KYBER_K 2
 
 extern "C" {
-#include "emp-ot/pvw_kyber/kyber/params.h"
-#include "emp-ot/pvw_kyber/kyber/poly.h"
-#include "emp-ot/pvw_kyber/kyber/polyvec.h"
-#include "emp-ot/pvw_kyber/kyber/cbd.h"
-#include "emp-ot/pvw_kyber/kyber/fips202.h"
-#include "emp-ot/pvw_kyber/kyber/symmetric.h"
+#include "emp-ot/base_ot/pvw_kyber/kyber/params.h"
+#include "emp-ot/base_ot/pvw_kyber/kyber/poly.h"
+#include "emp-ot/base_ot/pvw_kyber/kyber/polyvec.h"
+#include "emp-ot/base_ot/pvw_kyber/kyber/cbd.h"
+#include "emp-ot/base_ot/pvw_kyber/symmetric.h"  /* keccak_state, prf, kyber_shake128_*, etc. */
 }
 
 namespace emp { namespace pvw_kyber {

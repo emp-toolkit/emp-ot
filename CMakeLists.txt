@@ -39,31 +39,34 @@ add_library(emp-ot STATIC
     emp-ot/iknp.cpp
     emp-ot/ferret/ferret_cot.cpp
     emp-ot/softspoken/softspoken_ot.cpp
-    emp-ot/pvw_kyber/pvw_kyber.cpp
-    emp-ot/pvw_kyber/kyber/poly.c
-    emp-ot/pvw_kyber/kyber/polyvec.c
-    emp-ot/pvw_kyber/kyber/ntt.c
-    emp-ot/pvw_kyber/kyber/reduce.c
-    emp-ot/pvw_kyber/kyber/cbd.c
-    emp-ot/pvw_kyber/kyber/fips202.c
-    emp-ot/pvw_kyber/kyber/symmetric-shake.c
-    emp-ot/pvw_kyber/kyber/verify.c)
+    emp-ot/base_ot/pvw_kyber/pvw_kyber.cpp
+    emp-ot/base_ot/pvw_kyber/kyber/poly.c
+    emp-ot/base_ot/pvw_kyber/kyber/polyvec.c
+    emp-ot/base_ot/pvw_kyber/kyber/ntt.c
+    emp-ot/base_ot/pvw_kyber/kyber/reduce.c
+    emp-ot/base_ot/pvw_kyber/kyber/cbd.c
+    emp-ot/base_ot/pvw_kyber/kyber/verify.c)
 add_library(emp-ot::emp-ot ALIAS emp-ot)
 
 target_compile_features(emp-ot PUBLIC cxx_std_17)
 
-# Kyber sources (lifted into emp-ot/pvw_kyber/kyber/) parameterized for
-# ML-KEM-512: KYBER_K=2 → namespace prefix pqcrystals_kyber512_ref_*.
-# Scoped to the .c files only so KYBER_K doesn't leak into our C++ TUs.
+# Verbatim pq-crystals/kyber sources sit in emp-ot/base_ot/pvw_kyber/kyber/;
+# the SHAKE / Keccak shim is a single header at emp-ot/base_ot/pvw_kyber/
+# symmetric.h. Kyber's poly.c does `#include "symmetric.h"`, so we add
+# pvw_kyber/ to the include path PRIVATELY for that resolution.
+target_include_directories(emp-ot PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/emp-ot/base_ot/pvw_kyber)
+
+# Kyber sources parameterized for ML-KEM-512: KYBER_K=2 → namespace
+# prefix pqcrystals_kyber512_ref_*. Scoped to the .c files only so
+# KYBER_K doesn't leak into our C++ TUs.
 set_source_files_properties(
-    emp-ot/pvw_kyber/kyber/poly.c
-    emp-ot/pvw_kyber/kyber/polyvec.c
-    emp-ot/pvw_kyber/kyber/ntt.c
-    emp-ot/pvw_kyber/kyber/reduce.c
-    emp-ot/pvw_kyber/kyber/cbd.c
-    emp-ot/pvw_kyber/kyber/fips202.c
-    emp-ot/pvw_kyber/kyber/symmetric-shake.c
-    emp-ot/pvw_kyber/kyber/verify.c
+    emp-ot/base_ot/pvw_kyber/kyber/poly.c
+    emp-ot/base_ot/pvw_kyber/kyber/polyvec.c
+    emp-ot/base_ot/pvw_kyber/kyber/ntt.c
+    emp-ot/base_ot/pvw_kyber/kyber/reduce.c
+    emp-ot/base_ot/pvw_kyber/kyber/cbd.c
+    emp-ot/base_ot/pvw_kyber/kyber/verify.c
     PROPERTIES COMPILE_DEFINITIONS "KYBER_K=2")
 
 target_include_directories(emp-ot PUBLIC

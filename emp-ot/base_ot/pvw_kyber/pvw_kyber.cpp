@@ -1,7 +1,12 @@
 #include "emp-ot/base_ot/pvw_kyber.h"
-#include "emp-ot/pvw_kyber/params.hpp"
-#include "emp-ot/pvw_kyber/encode.hpp"
-#include "emp-ot/pvw_kyber/crs.hpp"
+#include "emp-ot/base_ot/pvw_kyber/params.hpp"
+#include "emp-ot/base_ot/pvw_kyber/crs.hpp"
+
+// PVW's "Encode" / "Decode" map directly to Kyber's poly_frommsg /
+// poly_tomsg (32 B ↔ R_q element with bit_i × ⌊(q+1)/2⌋ embedding;
+// poly_tomsg rounds each coefficient to the nearest of {0, 1665} with
+// boundary at q/4 and 3q/4). Both are constant-time in Kyber's
+// reference. We call them directly — no wrapper layer.
 
 #include <cstdint>
 #include <cstring>
@@ -132,7 +137,7 @@ void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
             poly_invntt_tomont(&v);
             poly_add(&v, &v, &err2);
             poly enc;
-            encode_msg(&enc, m);
+            poly_frommsg(&enc, m);
             poly_add(&v, &v, &enc);
             poly_reduce(&v);
 
@@ -233,7 +238,7 @@ void OTPVWKyber::recv(block* data, const bool* b, int64_t length) {
         poly_reduce(&v);
 
         uint8_t m_b[kSymBytes];
-        decode_msg(m_b, &v);
+        poly_tomsg(m_b, &v);
 
         const block K = derive_output_key(sid_, i, chosen, m_b);
         data[i] = K ^ c;
