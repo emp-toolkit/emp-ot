@@ -107,8 +107,8 @@ void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
             // Sample m_β (256-bit message) and a noise seed.
             uint8_t m[kSymBytes];
             uint8_t noise_seed[kSymBytes];
-            prg.random_data(m, kSymBytes);
-            prg.random_data(noise_seed, kSymBytes);
+            prg.random_data_unaligned(m, kSymBytes);
+            prg.random_data_unaligned(noise_seed, kSymBytes);
 
             polyvec rho, err1;
             poly err2;
@@ -185,7 +185,7 @@ void OTPVWKyber::recv(block* data, const bool* b, int64_t length) {
 
     for (int64_t i = 0; i < length; ++i) {
         uint8_t noise_seed[kSymBytes];
-        prg.random_data(noise_seed, kSymBytes);
+        prg.random_data_unaligned(noise_seed, kSymBytes);
 
         polyvec s, e;
         sample_polyvec_eta1(&s, noise_seed, /*base=*/0);
