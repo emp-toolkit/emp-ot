@@ -44,9 +44,11 @@ for optimal concrete security.
 - CMake ≥ 3.21
 - A C++17 compiler (Clang ≥ 12, GCC ≥ 9, AppleClang 14+)
 - [emp-tool](https://github.com/emp-toolkit/emp-tool) ≥ 1.0
-- OpenSSL ≥ 3.3 (the OTPVWKyber base OT uses `EVP_DigestSqueeze` for
-  SHAKE; Ubuntu 22.04 ships 3.0.2, so build OpenSSL 3.3+ from source
-  there)
+- OpenSSL ≥ 3.0. `OTPVWKyber`'s SHAKE shim uses `EVP_DigestSqueeze` on
+  ≥ 3.3 (one-shot squeeze) and falls back to a re-init / re-absorb
+  loop on 3.0.x — same answers, slightly slower CRS expansion. No
+  build-time configuration needed; the version is detected from
+  `OPENSSL_VERSION_NUMBER`.
 - pthreads
 
 emp-ot builds a small static library (`emp-ot::emp-ot`) that bundles
