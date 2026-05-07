@@ -2,7 +2,7 @@
 #define EMP_SOFTSPOKEN_OT_H__
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/cot.h"
-#include "emp-ot/base_ot/co.h"
+#include "emp-ot/base_ot/pvw.h"
 #include "emp-ot/cggm.h"
 #include "emp-ot/softspoken/sfvole_butterfly.h"
 #include <cstdint>
@@ -474,7 +474,10 @@ public:
     static constexpr int n = softspoken::n_subvoles<k>();
     static constexpr int Q = 1 << k;
 
-    explicit SoftSpokenOT(IOChannel* io_);
+    // User-supplied base OT, owned by SoftSpokenOT. Defaults to OTPVW
+    // (DDH messy-mode PVW '08 — malicious-secure). Pass a different
+    // one (e.g., OTCSW or OTPVWKyber) via the second ctor arg.
+    explicit SoftSpokenOT(IOChannel* io_, std::unique_ptr<OT> base_ot = nullptr);
     ~SoftSpokenOT() override = default;
 
     // RandomCOT virtual contract. send_cot / recv_cot inherit from
@@ -518,11 +521,17 @@ public:
     // Enable malicious-mode checks. Must be called BEFORE setup_send /
     // setup_recv so the PPRF check runs at the tail of setup. Once
     // setup is done, the flag also gates the per-session subspace
-    // VOLE check in rcot_*_begin/next/end.
-    void set_malicious(bool on = true) { malicious_ = on; }
+    // VOLE check in rcot_*_begin/next/end. Asserts that the base OT
+    // is itself malicious-secure (a semi-honest base would invalidate
+    // the malicious-mode security claim).
+    void set_malicious(bool on = true) {
+        if (on && !base_ot_->is_malicious_secure())
+            error("SoftSpokenOT::set_malicious(true) requires a malicious-secure base OT");
+        malicious_ = on;
+    }
 
 private:
-    OTCO base_ot_;
+    std::unique_ptr<OT> base_ot_;
     bool setup_done_ = false;
     uint64_t session_ = 0;
 

@@ -23,8 +23,9 @@ void IKNP::setup_send(const bool *delta_bool_in) {
 	assert(delta_bool_in[0] && "IKNP::setup_send: delta_bool_in[0] must be true (bit_0(Δ) = 1 invariant)");
 	memcpy(s, delta_bool_in, 128);
 	block k0[128];
-	OTCO base_ot(io);
-	base_ot.recv(k0+1, s+1, 127);
+	if (malicious && !base_ot->is_malicious_secure())
+		error("IKNP malicious mode requires a malicious-secure base OT");
+	base_ot->recv(k0+1, s+1, 127);
 	for (int64_t i = 1; i < 128; ++i)
 		G0[i].reseed(&k0[i]);
 	Delta = bool_to_block(s);
@@ -41,10 +42,11 @@ void IKNP::setup_send() {
 void IKNP::setup_recv() {
 	is_sender = false;
 	block k0[128], k1[128];
-	OTCO base_ot(io);
+	if (malicious && !base_ot->is_malicious_secure())
+		error("IKNP malicious mode requires a malicious-secure base OT");
 	prg.random_block(k0, 128);
 	prg.random_block(k1, 128);
-	base_ot.send(k0+1, k1+1, 127);   // OTCO::send flushes internally
+	base_ot->send(k0+1, k1+1, 127);   // base_ot->send flushes internally
 	for (int64_t i = 1; i < 128; ++i) {
 		G0[i].reseed(&k0[i]);
 		G1[i].reseed(&k1[i]);

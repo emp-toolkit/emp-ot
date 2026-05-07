@@ -8,7 +8,8 @@
 namespace emp {
 
 FerretCOT::FerretCOT(int party, int threads, IOChannel **ios,
-		bool malicious, bool run_setup, PrimalLPNParameter param, std::string pre_file) {
+		bool malicious, bool run_setup, PrimalLPNParameter param, std::string pre_file,
+		std::unique_ptr<OT> base_ot) {
 	this->party = party;
 	this->threads = threads;
 	io = ios[0];
@@ -16,6 +17,7 @@ FerretCOT::FerretCOT(int party, int threads, IOChannel **ios,
 	this->is_malicious = malicious;
 	pool = std::make_unique<ThreadPool>(threads);
 	this->param = param;
+	this->base_ot_ = std::move(base_ot);
 
 	this->extend_initialized = false;
 
@@ -125,7 +127,10 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 		// MpcotReg consistency check to give end-to-end malicious
 		// security.
 		(void)choice; (void)seed;
-		SoftSpokenOT<8> ssp(io);
+		// Forward the user-supplied base OT into SoftSpoken's bootstrap;
+		// SoftSpoken owns it from here. If we didn't get one, SoftSpoken
+		// constructs its own OTPVW.
+		SoftSpokenOT<8> ssp(io, std::move(base_ot_));
 		if (this->is_malicious) ssp.set_malicious(true);
 		if (party == ALICE) ssp.setup_send(Delta);
 		else                ssp.setup_recv();

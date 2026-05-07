@@ -1,8 +1,9 @@
 #ifndef EMP_IKNP_H__
 #define EMP_IKNP_H__
 #include <cassert>
+#include <memory>
 #include "emp-ot/cot.h"
-#include "emp-ot/base_ot/co.h"
+#include "emp-ot/base_ot/pvw.h"
 
 namespace emp {
 
@@ -72,9 +73,18 @@ class IKNP : public RandomCOT { public:
 	bool in_send_session = false;
 	bool in_recv_session = false;
 
+	// User-supplied base OT, owned by IKNP. Defaults to OTPVW (DDH
+	// messy-mode PVW '08 — malicious-secure). Pass a different one
+	// (e.g., OTCSW or OTPVWKyber) via the third ctor arg to swap the
+	// bootstrap base.
+	std::unique_ptr<OT> base_ot;
+
 	IKNP() = default;
-	explicit IKNP(IOChannel *io_, bool malicious_ = true) : malicious(malicious_) {
+	explicit IKNP(IOChannel *io_, bool malicious_ = true,
+	              std::unique_ptr<OT> base_ot_ = nullptr) : malicious(malicious_) {
 		this->io = io_;
+		base_ot = base_ot_ ? std::move(base_ot_)
+		                   : std::unique_ptr<OT>(new OTPVW(io_));
 	}
 
 	~IKNP() {

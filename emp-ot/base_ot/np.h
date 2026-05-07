@@ -9,8 +9,13 @@ namespace emp {
  * Noar Pinkas OT
  * [REF] Implementation of "Efficient Oblivious Transfer Protocols"
  * https://dl.acm.org/doi/10.5555/365411.365502
+ *
+ * Semi-honest only as implemented (the standard 3-message DDH variant).
+ * Malicious-secure NP variants require extra commitment / proof rounds
+ * not present here.
  */
 class OTNP: public OT { public:
+	bool is_malicious_secure() const override { return false; }
 	IOChannel* io;
 	Group *G = nullptr;
 	bool delete_G = true;

@@ -40,6 +40,10 @@ namespace emp {
  * ciphertext_sigma.
  */
 class OTPVW: public OT { public:
+	// Messy-mode PVW: receiver-secure under DDH against a malicious
+	// sender; sender statistically secure against a malicious receiver.
+	bool is_malicious_secure() const override { return true; }
+
 	IOChannel* io;
 	Group *G = nullptr;
 	bool delete_G = true;

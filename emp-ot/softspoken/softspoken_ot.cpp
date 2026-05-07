@@ -7,7 +7,9 @@
 namespace emp {
 
 template <int k>
-SoftSpokenOT<k>::SoftSpokenOT(IOChannel* io_) : base_ot_(io_) {
+SoftSpokenOT<k>::SoftSpokenOT(IOChannel* io_, std::unique_ptr<OT> base_ot)
+    : base_ot_(base_ot ? std::move(base_ot)
+                       : std::unique_ptr<OT>(new OTPVW(io_))) {
     this->io = io_;
     this->Delta = zero_block;
 }
@@ -43,7 +45,7 @@ void SoftSpokenOT<k>::setup_send(block delta_in) {
     }
 
     std::unique_ptr<block[]> received(new block[total]);
-    base_ot_.recv(received.get(), choices.get(), total);
+    base_ot_->recv(received.get(), choices.get(), total);
 
     // Reconstruct each sub-VOLE's punctured GGM tree.
     leaves_recv_.reset(new block[static_cast<size_t>(n) * Q]);
@@ -74,7 +76,7 @@ void SoftSpokenOT<k>::setup_recv() {
             K1[i * k + j] = K1_buf[j];
         }
     }
-    base_ot_.send(K0.data(), K1.data(), total);
+    base_ot_->send(K0.data(), K1.data(), total);
 
     if (malicious_) pprf_check_send();
 

@@ -9,8 +9,15 @@ namespace emp {
  * Chou Orlandi OT
  * [REF] Implementation of "The Simplest Protocol for Oblivious Transfer"
  * https://eprint.iacr.org/2015/267.pdf
+ *
+ * Semi-honest only: the simple two-message CO transcript has known
+ * malicious-receiver attacks (Genc et al., eprint 2017/596) — the
+ * patched UC variant requires extra messages that this implementation
+ * doesn't carry. Use OTPVW / OTCSW / OTPVWKyber for malicious-secure
+ * base OTs.
  */
 class OTCO: public OT { public:
+	bool is_malicious_secure() const override { return false; }
 	IOChannel* io;
 	Group *G = nullptr;
 	bool delete_G = true;

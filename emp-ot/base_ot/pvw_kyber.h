@@ -52,6 +52,12 @@ namespace emp {
  */
 class OTPVWKyber : public OT {
 public:
+    // Messy-mode PVW over Module-LWE: receiver-secure under DMLWE
+    // against a malicious sender; sender statistically secure against
+    // a malicious receiver. Same security shape as OTPVW (DDH-based)
+    // but post-quantum.
+    bool is_malicious_secure() const override { return true; }
+
     // `sid` must be agreed out-of-band by both parties (e.g., via the
     // calling protocol's session counter). Distinct sids yield
     // independent CRSs.

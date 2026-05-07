@@ -34,6 +34,10 @@ namespace emp {
  * argument needs ℓ > 2σ (paper sec 4 / overview.tex).
  */
 class OTCSW : public OT { public:
+	// UC-secure under CDH in the random oracle model, with selective-
+	// failure resistance via the aggregated-proof check (length ≥ 80).
+	bool is_malicious_secure() const override { return true; }
+
 	IOChannel * io;
 	Group * G = nullptr;
 	bool delete_G = true;
