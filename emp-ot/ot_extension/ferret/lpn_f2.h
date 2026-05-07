@@ -2,7 +2,7 @@
 #define EMP_OT_LPN_F2_H__
 
 #include "emp-tool/emp-tool.h"
-#include "emp-ot/ferret/test_random.h"
+#include "emp-ot/ot_extension/ferret/test_random.h"
 
 namespace emp {
 

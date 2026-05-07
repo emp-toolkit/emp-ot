@@ -7,10 +7,10 @@
 #include "emp-ot/base_ot/pvw.h"
 #include "emp-ot/base_ot/csw.h"
 #include "emp-ot/base_ot/pvw_kyber.h"
-#include "emp-ot/iknp.h"
+#include "emp-ot/ot_extension/iknp.h"
 
-#include "emp-ot/ferret/ferret_cot.h"
+#include "emp-ot/ot_extension/ferret/ferret_cot.h"
 
-#include "emp-ot/softspoken/softspoken_ot.h"
+#include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
 
 #endif

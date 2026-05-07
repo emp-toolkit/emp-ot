@@ -13,13 +13,13 @@
 //              length-Q dot products against precomputed plane masks.
 //   Butterfly: register-only XOR halving, no memory RMW in the leaf
 //              inner loop (production kernel for k=8 on every platform;
-//              lives in emp-ot/softspoken/sfvole_butterfly.h).
+//              lives in emp-ot/ot_extension/softspoken/sfvole_butterfly.h).
 //
 // All variants share the same output shape (plane-major v_planes_chunk)
 // and are byte-equality checked against `variant_current`.
 
 #include <emp-tool/emp-tool.h>
-#include "emp-ot/softspoken/softspoken_ot.h"
+#include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
 
 #include <algorithm>
 #include <chrono>
@@ -148,7 +148,7 @@ void gen_prg_block(const block* leaves,
 // Storage: A[q][T] = q × T × 16 bytes; q=256, T=8 → 32 KB scratch
 // per tile, comfortably L1-resident.
 //
-// Production kernel lives in emp-ot/softspoken/sfvole_butterfly.h
+// Production kernel lives in emp-ot/ot_extension/softspoken/sfvole_butterfly.h
 // (T=8 default, with bs-tail handling) and works on every platform;
 // the bench wrappers below just call it directly so that `bfly` shows
 // up as a labeled column alongside `current`.

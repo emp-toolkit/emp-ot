@@ -7,8 +7,8 @@
 //   sample $(pgrep test_prof_sfvole_local) <secs-1> -mayDie >/tmp/profile.txt
 
 #include <emp-tool/emp-tool.h>
-#include "emp-ot/softspoken/softspoken_ot.h"
-#include "emp-ot/softspoken/sfvole_butterfly.h"
+#include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
+#include "emp-ot/ot_extension/softspoken/sfvole_butterfly.h"
 
 #include <chrono>
 #include <cstdio>

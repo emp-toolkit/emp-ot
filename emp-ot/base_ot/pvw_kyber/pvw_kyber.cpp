@@ -84,13 +84,11 @@ void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
 
     // Pull all of receiver's t's in one batched recv (one round-trip
     // for the entire batch — matches the OTCSW pattern).
-    std::unique_ptr<uint8_t[]> recv_t_batch(
-        new uint8_t[(size_t)length * kRecvBytesPerOT]);
-    io->recv_data(recv_t_batch.get(), (size_t)length * kRecvBytesPerOT);
+    default_init_vector<uint8_t> recv_t_batch((size_t)length * kRecvBytesPerOT);
+    io->recv_data(recv_t_batch.data(), (size_t)length * kRecvBytesPerOT);
 
     // Per-OT sender output: (u_0, v_0, u_1, v_1, c_0, c_1).
-    std::unique_ptr<uint8_t[]> send_buf(
-        new uint8_t[(size_t)length * kSendBytesPerOT]);
+    default_init_vector<uint8_t> send_buf((size_t)length * kSendBytesPerOT);
 
     // PRG keyed from system entropy at construction; seeds per-OT
     // randomness for m_β and the noise terms.
@@ -98,10 +96,10 @@ void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
 
     for (int64_t i = 0; i < length; ++i) {
         polyvec t;
-        polyvec_frombytes(&t, recv_t_batch.get() + (size_t)i * kRecvBytesPerOT);
+        polyvec_frombytes(&t, recv_t_batch.data() + (size_t)i * kRecvBytesPerOT);
         polyvec_ntt(&t);
 
-        uint8_t* out_ptr = send_buf.get() + (size_t)i * kSendBytesPerOT;
+        uint8_t* out_ptr = send_buf.data() + (size_t)i * kSendBytesPerOT;
 
         for (int beta = 0; beta < 2; ++beta) {
             // Sample m_β (256-bit message) and a noise seed.
@@ -155,7 +153,7 @@ void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
         }
     }
 
-    io->send_data(send_buf.get(), (size_t)length * kSendBytesPerOT);
+    io->send_data(send_buf.data(), (size_t)length * kSendBytesPerOT);
 }
 
 void OTPVWKyber::recv(block* data, const bool* b, int64_t length) {
@@ -175,11 +173,10 @@ void OTPVWKyber::recv(block* data, const bool* b, int64_t length) {
     for (int j = 0; j < kK; ++j) polyvec_ntt(&A[j]);
 
     // Per-OT receiver state: s in NTT domain (re-used at decryption).
-    std::unique_ptr<polyvec[]> s_ntt(new polyvec[length]);
+    default_init_vector<polyvec> s_ntt(length);
 
     // First pass: build the t batch.
-    std::unique_ptr<uint8_t[]> send_t_batch(
-        new uint8_t[(size_t)length * kRecvBytesPerOT]);
+    default_init_vector<uint8_t> send_t_batch((size_t)length * kRecvBytesPerOT);
 
     PRG prg;
 
@@ -203,20 +200,19 @@ void OTPVWKyber::recv(block* data, const bool* b, int64_t length) {
         polyvec_add(&t, &t, &V[b[i] ? 1 : 0]);
         polyvec_reduce(&t);
 
-        polyvec_tobytes(send_t_batch.get() + (size_t)i * kRecvBytesPerOT, &t);
+        polyvec_tobytes(send_t_batch.data() + (size_t)i * kRecvBytesPerOT, &t);
     }
 
-    io->send_data(send_t_batch.get(), (size_t)length * kRecvBytesPerOT);
+    io->send_data(send_t_batch.data(), (size_t)length * kRecvBytesPerOT);
 
     // Second pass: receive (u, v, c) batch and decrypt the chosen
     // branch per OT.
-    std::unique_ptr<uint8_t[]> recv_buf(
-        new uint8_t[(size_t)length * kSendBytesPerOT]);
-    io->recv_data(recv_buf.get(), (size_t)length * kSendBytesPerOT);
+    default_init_vector<uint8_t> recv_buf((size_t)length * kSendBytesPerOT);
+    io->recv_data(recv_buf.data(), (size_t)length * kSendBytesPerOT);
 
     for (int64_t i = 0; i < length; ++i) {
         const int chosen = b[i] ? 1 : 0;
-        const uint8_t* branch_ptr = recv_buf.get()
+        const uint8_t* branch_ptr = recv_buf.data()
                                   + (size_t)i * kSendBytesPerOT
                                   + (size_t)chosen * kSendBytesPerBranch;
 

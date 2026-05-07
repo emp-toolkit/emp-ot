@@ -100,11 +100,11 @@ class OTCSW : public OT { public:
 	// alloc once is fine since H_aggregate is called twice per batch.
 	block H_aggregate(const block * hs, int64_t ell) {
 		size_t hlen = 1 + sizeof(block) + (size_t)ell * sizeof(block);
-		std::unique_ptr<unsigned char[]> buf(new unsigned char[hlen]);
+		default_init_vector<unsigned char> buf(hlen);
 		buf[0] = '4';
-		memcpy(buf.get() + 1, &sid, sizeof(block));
-		memcpy(buf.get() + 1 + sizeof(block), hs, (size_t)ell * sizeof(block));
-		return Hash::hash_for_block(buf.get(), (int)hlen);
+		memcpy(buf.data() + 1, &sid, sizeof(block));
+		memcpy(buf.data() + 1 + sizeof(block), hs, (size_t)ell * sizeof(block));
+		return Hash::hash_for_block(buf.data(), (int)hlen);
 	}
 
 	// ----- Sender side. Plays the OT sender role (S in the paper). -----

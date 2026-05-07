@@ -1,7 +1,7 @@
 #ifndef EMP_FERRET_COT_H_
 #define EMP_FERRET_COT_H_
-#include "emp-ot/cot.h"
-#include "emp-ot/ferret/constants.h"
+#include "emp-ot/ot.h"
+#include "emp-ot/ot_extension/ferret/constants.h"
 #include "emp-ot/ot.h"
 #include <memory>
 
@@ -70,8 +70,8 @@ private:
 	bool is_malicious;
 	bool extend_initialized;
 
-	block * ot_pre_data = nullptr;  // sized to M when alive
-	block * ot_data = nullptr;      // sized to param.n; lazily allocated
+	BlockVec ot_pre_data;  // sized to M when active; .empty() means "none"
+	BlockVec ot_data;      // sized to param.n; lazily resized on first use
 
 	std::string pre_ot_filename;
 

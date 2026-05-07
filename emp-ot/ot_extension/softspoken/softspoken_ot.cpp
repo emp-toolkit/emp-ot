@@ -1,5 +1,5 @@
-#include "emp-ot/softspoken/softspoken_ot.h"
-#include "emp-ot/ferret/constants.h"   // lsb_clear_mask, lsb_only_mask
+#include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
+#include "emp-ot/ot_extension/ferret/constants.h"   // lsb_clear_mask, lsb_only_mask
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -36,7 +36,10 @@ void SoftSpokenOT<k>::setup_send(block delta_in) {
 
     // Base OT choice bits: ᾱ_{i,j} = 1 - alpha_{i,j}, with alpha_{i,1} = MSB.
     const int total = n * k;
-    std::unique_ptr<bool[]> choices(new bool[total]);
+    // unsigned char (not bool) so .data() is contiguous one-byte-each
+    // storage; the OT::recv signature still expects bool* so we
+    // reinterpret_cast at the call boundary.
+    default_init_vector<unsigned char> choices(total);
     for (int i = 0; i < n; ++i) {
         for (int j = 1; j <= k; ++j) {
             const int alpha_j = (alphas_[i] >> (k - j)) & 1;
@@ -44,11 +47,12 @@ void SoftSpokenOT<k>::setup_send(block delta_in) {
         }
     }
 
-    std::unique_ptr<block[]> received(new block[total]);
-    base_ot_->recv(received.get(), choices.get(), total);
+    BlockVec received(total);
+    base_ot_->recv(received.data(),
+                   reinterpret_cast<bool*>(choices.data()), total);
 
     // Reconstruct each sub-VOLE's punctured GGM tree.
-    leaves_recv_.reset(new block[static_cast<size_t>(n) * Q]);
+    leaves_recv_.resize(static_cast<size_t>(n) * Q);
     block K_recv[k];
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < k; ++j) K_recv[j] = received[i * k + j];
@@ -63,7 +67,7 @@ void SoftSpokenOT<k>::setup_send(block delta_in) {
 template <int k>
 void SoftSpokenOT<k>::setup_recv() {
     // Build n GGM trees and ship the per-level XOR sums via base OT.
-    leaves_send_.reset(new block[static_cast<size_t>(n) * Q]);
+    leaves_send_.resize(static_cast<size_t>(n) * Q);
     const int total = n * k;
     BlockVec K0(total), K1(total);
     block K0_buf[k], K1_buf[k];
@@ -101,19 +105,19 @@ template <int k>
 void SoftSpokenOT<k>::pprf_check_send() {
     constexpr int kHashSize = Hash::DIGEST_SIZE;  // 32 B
     BlockVec t_buf(n);
-    std::unique_ptr<unsigned char[]> s_buf(new unsigned char[(size_t)n * kHashSize]);
+    default_init_vector<unsigned char> s_buf((size_t)n * kHashSize);
 
     for (int i = 0; i < n; ++i) {
         const block* leaves_i = &leaves_send_[(size_t)i * Q];
         block t = zero_block;
         for (int y = 0; y < Q; ++y) t = t ^ leaves_i[y];
         t_buf[i] = t;
-        Hash::hash_once(s_buf.get() + (size_t)i * kHashSize,
+        Hash::hash_once(s_buf.data() + (size_t)i * kHashSize,
                         leaves_i, Q * (int)sizeof(block));
     }
 
     this->io->send_block(t_buf.data(), n);
-    this->io->send_data(s_buf.get(), (size_t)n * kHashSize);
+    this->io->send_data(s_buf.data(), (size_t)n * kHashSize);
     this->io->flush();
 }
 
@@ -121,9 +125,9 @@ template <int k>
 void SoftSpokenOT<k>::pprf_check_recv() {
     constexpr int kHashSize = Hash::DIGEST_SIZE;
     BlockVec t_buf(n);
-    std::unique_ptr<unsigned char[]> s_buf(new unsigned char[(size_t)n * kHashSize]);
+    default_init_vector<unsigned char> s_buf((size_t)n * kHashSize);
     this->io->recv_block(t_buf.data(), n);
-    this->io->recv_data(s_buf.get(), (size_t)n * kHashSize);
+    this->io->recv_data(s_buf.data(), (size_t)n * kHashSize);
 
     unsigned char dgst[kHashSize];
     for (int i = 0; i < n; ++i) {
@@ -139,7 +143,7 @@ void SoftSpokenOT<k>::pprf_check_recv() {
         for (int y = 0; y < Q; ++y) missing = missing ^ leaves_i[y];
         leaves_i[alphas_[i]] = missing;
         Hash::hash_once(dgst, leaves_i, Q * (int)sizeof(block));
-        if (std::memcmp(dgst, s_buf.get() + (size_t)i * kHashSize, kHashSize) != 0)
+        if (std::memcmp(dgst, s_buf.data() + (size_t)i * kHashSize, kHashSize) != 0)
             error("SoftSpoken PPRF check failed");
     }
 }

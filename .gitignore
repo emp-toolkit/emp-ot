@@ -43,6 +43,11 @@ install_manifest.txt
 # Emacs
 *~
 
+# Vim swap / temp files
+*.swp
+*.swo
+*.swn
+
 # CMake generated .h files
 emp-ot/latticeInclude.h
 

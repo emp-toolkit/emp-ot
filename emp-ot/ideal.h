@@ -1,6 +1,6 @@
 #ifndef EMP_OTIDEAL_H__
 #define EMP_OTIDEAL_H__
-#include "emp-ot/cot.h"
+#include "emp-ot/ot.h"
 
 namespace emp {
 class OTIdeal: public COT { public:

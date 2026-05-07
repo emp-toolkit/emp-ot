@@ -17,7 +17,7 @@
 // constexpr). No code duplicated from cggm.h.
 
 #include "emp-tool/emp-tool.h"
-#include "emp-ot/cggm.h"
+#include "emp-ot/ot_extension/cggm.h"
 #include <cstdio>
 #include <cstdlib>
 #include <chrono>

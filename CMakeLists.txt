@@ -36,9 +36,9 @@ find_package(emp-tool 1.0 REQUIRED)
 # IKNP and FerretCOT bodies live in .cpp now (no longer header-only) —
 # the rest of the headers are still consumed inline.
 add_library(emp-ot STATIC
-    emp-ot/iknp.cpp
-    emp-ot/ferret/ferret_cot.cpp
-    emp-ot/softspoken/softspoken_ot.cpp
+    emp-ot/ot_extension/iknp.cpp
+    emp-ot/ot_extension/ferret/ferret_cot.cpp
+    emp-ot/ot_extension/softspoken/softspoken_ot.cpp
     emp-ot/base_ot/pvw_kyber/pvw_kyber.cpp
     emp-ot/base_ot/pvw_kyber/kyber/poly.c
     emp-ot/base_ot/pvw_kyber/kyber/polyvec.c

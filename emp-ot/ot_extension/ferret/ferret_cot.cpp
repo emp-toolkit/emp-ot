@@ -1,9 +1,9 @@
 // Out-of-line definitions for FerretCOT. See ferret_cot.h for the API.
 
-#include "emp-ot/ferret/ferret_cot.h"
-#include "emp-ot/ferret/mpcot_reg.h"
-#include "emp-ot/ferret/lpn_f2.h"
-#include "emp-ot/softspoken/softspoken_ot.h"
+#include "emp-ot/ot_extension/ferret/ferret_cot.h"
+#include "emp-ot/ot_extension/ferret/mpcot_reg.h"
+#include "emp-ot/ot_extension/ferret/lpn_f2.h"
+#include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
 
 namespace emp {
 
@@ -32,19 +32,18 @@ FerretCOT::FerretCOT(int party, int threads, IOChannel **ios,
 }
 
 void FerretCOT::skip_file() {
-	delete[] ot_pre_data;
-	ot_pre_data = nullptr;
+	ot_pre_data.clear();
+	ot_pre_data.shrink_to_fit();
 }
 
 FerretCOT::~FerretCOT() {
 	// Persist pre-OT data to disk for the next session, if any.
-	if (ot_pre_data != nullptr) {
+	if (!ot_pre_data.empty()) {
 		__uint128_t delta128 = (party == ALICE) ? (__uint128_t)Delta : 0;
-		write_pre_data128_to_file((void*)ot_pre_data, delta128, pre_ot_filename);
-		delete[] ot_pre_data;
+		write_pre_data128_to_file((void*)ot_pre_data.data(), delta128, pre_ot_filename);
 	}
-	delete[] ot_data;
-	// unique_ptr members destroy in reverse-declared order automatically.
+	// unique_ptr / BlockVec members destroy in reverse-declared order
+	// automatically.
 }
 
 void FerretCOT::extend_initialization() {
@@ -82,9 +81,9 @@ void FerretCOT::extend(block* ot_output, MpcotReg *mpcot,
 // M-block tail of the new output is copied back into ot_pre_data to
 // seed the next round.
 void FerretCOT::extend_f2k(block *ot_buffer) {
-	if (ot_buffer == nullptr) ot_buffer = ot_data;
-	extend(ot_buffer, mpcot.get(), lpn_f2.get(), ot_pre_data);
-	memcpy(ot_pre_data, ot_buffer + ot_limit, M * sizeof(block));
+	if (ot_buffer == nullptr) ot_buffer = ot_data.data();
+	extend(ot_buffer, mpcot.get(), lpn_f2.get(), ot_pre_data.data());
+	memcpy(ot_pre_data.data(), ot_buffer + ot_limit, M * sizeof(block));
 	ot_used = 0;
 }
 
@@ -105,7 +104,7 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 	// and ot_pre_data is sized to M.
 	extend_initialization();
 
-	ot_pre_data = new block[M];
+	ot_pre_data.resize(M);
 	bool hasfile = file_exists(pre_ot_filename), hasfile2;
 	if(party == ALICE) {
 		io->send_data(&hasfile, sizeof(bool));
@@ -117,7 +116,7 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 		io->flush();
 	}
 	if(hasfile && hasfile2) {
-		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data, pre_ot_filename);
+		Delta = (block)read_pre_data128_from_file((void*)ot_pre_data.data(), pre_ot_filename);
 	} else {
 		// Bootstrap: SoftSpokenOT<8> directly produces the M base COTs
 		// needed to seed the first steady-state extend. Δ is shared (the
@@ -134,16 +133,21 @@ void FerretCOT::setup(std::string pre_file, bool *choice, block seed) {
 		if (this->is_malicious) ssp.set_malicious(true);
 		if (party == ALICE) ssp.setup_send(Delta);
 		else                ssp.setup_recv();
-		if (party == ALICE) ssp.rcot_send(ot_pre_data, M);
-		else                ssp.rcot_recv(ot_pre_data, M);
+		if (party == ALICE) ssp.rcot_send(ot_pre_data.data(), M);
+		else                ssp.rcot_recv(ot_pre_data.data(), M);
 	}
 }
 
 void FerretCOT::rcot_send(block *data, int64_t num) {
 	if (!extend_initialized)
 		error("Run setup before extending");
-	if (ot_data == nullptr) {
-		ot_data = new block[param.n]();  // value-init zero-fills
+	if (ot_data.empty()) {
+		ot_data.resize(param.n);
+		// Zero-fill on first allocation: matches the historical
+		// value-init behaviour. Some code paths read ot_data slots
+		// before any extend() has populated them (e.g. silent_ot_left
+		// underflow protection).
+		std::fill(ot_data.begin(), ot_data.end(), zero_block);
 	}
 
 	int64_t produced = 0;
@@ -151,7 +155,7 @@ void FerretCOT::rcot_send(block *data, int64_t num) {
 	// 1) Drain whatever's already buffered from a previous call.
 	if (silent_ot_left() > 0) {
 		int64_t take = std::min<int64_t>(num, silent_ot_left());
-		memcpy(data, ot_data + ot_used, take * sizeof(block));
+		memcpy(data, ot_data.data() + ot_used, take * sizeof(block));
 		ot_used  += take;
 		produced += take;
 	}
@@ -168,7 +172,7 @@ void FerretCOT::rcot_send(block *data, int64_t num) {
 	while (produced < num) {
 		extend_f2k();
 		int64_t take = std::min<int64_t>(num - produced, ot_limit);
-		memcpy(data + produced, ot_data, take * sizeof(block));
+		memcpy(data + produced, ot_data.data(), take * sizeof(block));
 		ot_used   = take;
 		produced += take;
 	}
@@ -232,9 +236,9 @@ int64_t FerretCOT::rcot_inplace(block *ot_buffer, int64_t byte_space, block seed
 	block *pt = ot_buffer;
 	for(int64_t i = 0; i < round; ++i) {
 		if(this->is_malicious) seed = zero_block;
-		extend(pt, mpcot.get(), lpn_f2.get(), ot_pre_data, seed);
+		extend(pt, mpcot.get(), lpn_f2.get(), ot_pre_data.data(), seed);
 		pt += ot_limit;
-		memcpy(ot_pre_data, pt, M*sizeof(block));
+		memcpy(ot_pre_data.data(), pt, M*sizeof(block));
 	}
 	return ot_output_n;
 }
@@ -245,9 +249,9 @@ void FerretCOT::assemble_state(void * data, int64_t size) {
 	auto put = [&](auto const& v) { memcpy(cur, &v, sizeof v); cur += sizeof v; };
 	int64_t party64 = party;
 	put(party64); put(param.n); put(param.t); put(param.k); put(Delta);
-	memcpy(cur, ot_pre_data, sizeof(block) * M);
-	delete[] ot_pre_data;  // delete[] nullptr is well-defined; safe regardless
-	ot_pre_data = nullptr;
+	memcpy(cur, ot_pre_data.data(), sizeof(block) * M);
+	ot_pre_data.clear();
+	ot_pre_data.shrink_to_fit();
 }
 
 int FerretCOT::disassemble_state(const void * data, int64_t size) {
@@ -261,8 +265,8 @@ int FerretCOT::disassemble_state(const void * data, int64_t size) {
 	// Init must run before sizing/allocating ot_pre_data — M is a
 	// derived constant from the steady-state mpcot/lpn dimensions.
 	extend_initialization();
-	ot_pre_data = new block[M];
-	memcpy(ot_pre_data, cur, sizeof(block) * M);
+	ot_pre_data.resize(M);
+	memcpy(ot_pre_data.data(), cur, sizeof(block) * M);
 	return 0;
 }
 

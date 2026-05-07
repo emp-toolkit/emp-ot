@@ -1,9 +1,9 @@
 #ifndef EMP_OT_SPCOT_H__
 #define EMP_OT_SPCOT_H__
 #include <emp-tool/emp-tool.h>
-#include "emp-ot/cggm.h"
-#include "emp-ot/ferret/constants.h"
-#include "emp-ot/ferret/test_random.h"
+#include "emp-ot/ot_extension/cggm.h"
+#include "emp-ot/ot_extension/ferret/constants.h"
+#include "emp-ot/ot_extension/ferret/test_random.h"
 
 // Single-point COT under Half-Tree (cGGM, Guo-Yang-Wang-Zhang-
 // Xie-Liu-Zhao, ePrint 2022/1431, Figure 4 in the F_COT-hybrid
@@ -27,21 +27,18 @@ namespace emp {
 class SPCOT_Sender { public:
 	block seed;
 	block delta;
-	block *ggm_tree, *m;
+	block *ggm_tree;
+	BlockVec m;             // depth-1 entries; MpcotReg accesses via m[j]
 	int depth, leave_n;
 	block secret_sum_f2;
 
 	SPCOT_Sender(IOChannel * /*io*/, int depth_in)
-			: depth(depth_in), leave_n(1 << (depth_in - 1)),
-			  m(new block[depth_in - 1]) {
+			: m(depth_in - 1),
+			  depth(depth_in), leave_n(1 << (depth_in - 1)) {
 		if (!ferret_test::maybe_test_seed(&seed)) {
 			PRG prg;
 			prg.random_block(&seed, 1);
 		}
-	}
-
-	~SPCOT_Sender() {
-		delete[] m;
 	}
 
 	// Build the depth-`depth` cGGM tree, then apply the SPCOT-specific
@@ -51,7 +48,7 @@ class SPCOT_Sender { public:
 		this->delta    = secret;
 		this->ggm_tree = ggm_tree_mem;
 		// m[i] = K^0_{i+1} for i ∈ [0, depth-1).
-		cggm::build_sender(depth - 1, secret, seed, ggm_tree, m);
+		cggm::build_sender(depth - 1, secret, seed, ggm_tree, m.data());
 		apply_punctured_correction(secret);
 	}
 
@@ -72,13 +69,12 @@ class SPCOT_Sender { public:
 	}
 
 	void consistency_check_msg_gen(block *V) {
-		block *chi = new block[leave_n];
+		BlockVec chi(leave_n);
 		Hash hash;
 		block digest[2];
 		hash.hash_once(digest, &secret_sum_f2, sizeof(block));
-		uni_hash_coeff_gen(chi, digest[0], leave_n);
-		vector_inn_prdt_sum_red(V, chi, ggm_tree, leave_n);
-		delete[] chi;
+		uni_hash_coeff_gen(chi.data(), digest[0], leave_n);
+		vector_inn_prdt_sum_red(V, chi.data(), ggm_tree, leave_n);
 	}
 };
 
@@ -88,19 +84,17 @@ class SPCOT_Sender { public:
 
 class SPCOT_Recver {
 public:
-	block *ggm_tree, *m;
-	bool *b;
+	block *ggm_tree;
+	BlockVec m;                              // depth-1 entries
+	default_init_vector<unsigned char> b;    // depth-1 entries; one byte
+	                                         // each. MpcotReg writes via b[j]
+	                                         // = getLSB(...); reads as truthy.
 	int choice_pos, depth, leave_n;
 	block secret_sum_f2;
 
 	SPCOT_Recver(IOChannel * /*io*/, int depth_in)
-			: m(new block[depth_in - 1]), b(new bool[depth_in - 1]),
+			: m(depth_in - 1), b(depth_in - 1),
 			  depth(depth_in), leave_n(1 << (depth_in - 1)) {}
-
-	~SPCOT_Recver(){
-		delete[] m;
-		delete[] b;
-	}
 
 	// Pack b[0..depth-2] (NOT alpha_j, MSB-first) into choice_pos == alpha.
 	int get_index() {
@@ -120,7 +114,7 @@ public:
 	void compute(block* ggm_tree_mem) {
 		this->ggm_tree = ggm_tree_mem;
 		get_index();  // idempotent; ensures choice_pos == alpha.
-		cggm::eval_receiver(depth - 1, choice_pos, m, ggm_tree);
+		cggm::eval_receiver(depth - 1, choice_pos, m.data(), ggm_tree);
 		apply_punctured_correction();
 	}
 
@@ -139,14 +133,13 @@ public:
 	}
 
 	void consistency_check_msg_gen(block *chi_alpha, block *W) {
-		block *chi = new block[leave_n];
+		BlockVec chi(leave_n);
 		Hash hash;
 		block digest[2];
 		hash.hash_once(digest, &secret_sum_f2, sizeof(block));
-		uni_hash_coeff_gen(chi, digest[0], leave_n);
+		uni_hash_coeff_gen(chi.data(), digest[0], leave_n);
 		*chi_alpha = chi[choice_pos];
-		vector_inn_prdt_sum_red(W, chi, ggm_tree, leave_n);
-		delete[] chi;
+		vector_inn_prdt_sum_red(W, chi.data(), ggm_tree, leave_n);
 	}
 };
 

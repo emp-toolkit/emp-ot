@@ -1,10 +1,10 @@
 #ifndef EMP_SOFTSPOKEN_OT_H__
 #define EMP_SOFTSPOKEN_OT_H__
 #include <emp-tool/emp-tool.h>
-#include "emp-ot/cot.h"
+#include "emp-ot/ot.h"
 #include "emp-ot/base_ot/pvw.h"
-#include "emp-ot/cggm.h"
-#include "emp-ot/softspoken/sfvole_butterfly.h"
+#include "emp-ot/ot_extension/cggm.h"
+#include "emp-ot/ot_extension/softspoken/sfvole_butterfly.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -221,7 +221,7 @@ inline void unpack(block in, uint8_t* out_n) {
 }
 
 // =====================================================================
-// PPRF: thin wrappers around the shared cGGM tree (emp-ot/cggm.h),
+// PPRF: thin wrappers around the shared cGGM tree (emp-ot/ot_extension/cggm.h),
 // reused as a punctured PRF here because softspoken never reveals Δ to
 // the receiver (no per-COT correction byte, no global-Δ base-COT
 // layer). With per-tree fresh Δ, the receiver's view of leaves[α]
@@ -537,10 +537,10 @@ private:
 
     // COT-Sender (= VOLE-Receiver / PPRF-Receiver) state.
     int alphas_[n] = {0};
-    std::unique_ptr<block[]> leaves_recv_;  // n * Q blocks; punctured at alphas_[i]
+    BlockVec leaves_recv_;  // n * Q blocks; punctured at alphas_[i]
 
     // COT-Receiver (= VOLE-Sender / PPRF-Sender) state.
-    std::unique_ptr<block[]> leaves_send_;  // n * Q blocks; full GGM tree
+    BlockVec leaves_send_;  // n * Q blocks; full GGM tree
 
     // Streaming session state. Each begin/next.../end runs one
     // SoftSpoken session with a fresh session_id; cur_*_b0 tracks the

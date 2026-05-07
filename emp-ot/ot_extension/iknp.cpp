@@ -1,6 +1,6 @@
 // Out-of-line definitions for IKNP. See iknp.h for the API surface.
 
-#include "emp-ot/iknp.h"
+#include "emp-ot/ot_extension/iknp.h"
 
 namespace emp {
 
