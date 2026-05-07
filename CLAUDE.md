@@ -9,9 +9,9 @@ trace files. Determinism comes from emp-tool's test-mode hook (see
 which swaps every randomness source for a counter-derived stream.
 
 ```bash
-EMP_TEST_MODE=1 ./run ./build/test/trace_equiv before
+EMP_TEST_MODE=1 ./run ./build/trace_equiv before
 # … apply the refactor, rebuild …
-EMP_TEST_MODE=1 ./run ./build/test/trace_equiv after
+EMP_TEST_MODE=1 ./run ./build/trace_equiv after
 
 diff before.alice.send after.alice.send   # must be empty
 diff before.alice.recv after.alice.recv   # must be empty
