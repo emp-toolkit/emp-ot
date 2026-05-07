@@ -2,7 +2,6 @@
 #define EMP_OT_LPN_F2_H__
 
 #include "emp-tool/emp-tool.h"
-#include "emp-ot/ot_extension/ferret/test_random.h"
 
 namespace emp {
 
@@ -104,14 +103,13 @@ class LpnF2 { public:
 	block seed_gen() {
 		block seed;
 		if(party == ALICE) {
-			if (!ferret_test::maybe_test_seed(&seed)) {
-				PRG prg;
-				prg.random_block(&seed, 1);
-			}
+			PRG prg;
+			prg.random_block(&seed, 1);
 			io->send_data(&seed, sizeof(block));
 		} else {
 			io->recv_data(&seed, sizeof(block));
-		}io->flush();
+		}
+		io->flush();
 		return seed;
 	}
 

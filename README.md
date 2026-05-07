@@ -139,7 +139,7 @@ else                co.recv(b0, c, length);    // receiver gets b_{c[i]}
 `SoftSpokenOT`, or `FerretCOT` and the `send`/`recv` calls stay
 identical — they all implement the [`OT`](emp-ot/ot.h) interface.
 Their constructors differ; in particular `FerretCOT` takes
-`(party, threads, ios[], malicious, run_setup, param, pre_file)` rather
+`(party, threads, ios[], malicious, run_setup, param)` rather
 than just `(io)`.
 
 ### Correlated OT and Random OT (IKNP, FerretCOT)

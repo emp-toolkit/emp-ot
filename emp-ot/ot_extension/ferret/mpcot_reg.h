@@ -34,7 +34,6 @@ public:
 	int item_n, idx_max;
 	int tree_height, leave_n;
 	int tree_n;
-	int consist_check_cot_num;
 	bool is_malicious;
 
 	IOChannel *netio;
@@ -51,7 +50,6 @@ public:
 			  item_n(t), idx_max(n),
 			  tree_height(log_bin_sz + 1), leave_n(1 << log_bin_sz),
 			  tree_n(t),
-			  consist_check_cot_num(kConsistCheckCotNum),
 			  is_malicious(false),
 			  netio(ios[0]), ios(ios), pool(pool) {}
 

@@ -3,7 +3,6 @@
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/ot_extension/cggm.h"
 #include "emp-ot/ot_extension/ferret/constants.h"
-#include "emp-ot/ot_extension/ferret/test_random.h"
 
 // Single-point COT under Half-Tree (cGGM, Guo-Yang-Wang-Zhang-
 // Xie-Liu-Zhao, ePrint 2022/1431, Figure 4 in the F_COT-hybrid
@@ -35,10 +34,8 @@ class SPCOT_Sender { public:
 	SPCOT_Sender(IOChannel * /*io*/, int depth_in)
 			: m(depth_in - 1),
 			  depth(depth_in), leave_n(1 << (depth_in - 1)) {
-		if (!ferret_test::maybe_test_seed(&seed)) {
-			PRG prg;
-			prg.random_block(&seed, 1);
-		}
+		PRG prg;
+		prg.random_block(&seed, 1);
 	}
 
 	// Build the depth-`depth` cGGM tree, then apply the SPCOT-specific

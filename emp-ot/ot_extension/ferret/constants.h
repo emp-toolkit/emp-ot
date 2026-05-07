@@ -4,9 +4,6 @@
 #include "emp-tool/emp-tool.h"
 
 namespace emp {
-static std::string PRE_OT_DATA_REG_SEND_FILE = "./data/pre_ot_data_reg_send";
-static std::string PRE_OT_DATA_REG_RECV_FILE = "./data/pre_ot_data_reg_recv";
-
 // LSB-convention masks used throughout ferret. The COT correlation
 // `delta` always has bit 0 = 1, so each per-leaf SPCOT output is
 // masked to clear bit 0 before the punctured leaf gets `delta` XORed
