@@ -32,6 +32,14 @@
  *     Hash::hash_once amortization. Each TU including this header
  *     gets its own thread_local ctx (static-inline → internal
  *     linkage); fine — there are only two TUs (poly.c, crs.hpp).
+ *
+ *   - shake128_squeezeblocks uses EVP_DigestSqueeze on OpenSSL ≥ 3.3.
+ *     Older OpenSSL — including the 3.0.x shipped by Ubuntu 24.04 —
+ *     has neither EVP_DigestSqueeze nor multi-call EVP_DigestFinalXOF,
+ *     so we fall back to buffering the absorbed seed and
+ *     re-init/re-absorb/finalize-XOF for cumulative output, returning
+ *     only the trailing new bytes. O(n²) in bytes squeezed, but
+ *     gen_matrix tops out at ~10 SHAKE-128 blocks per polynomial.
  */
 
 #include <stddef.h>
@@ -39,7 +47,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <openssl/evp.h>
+#include <openssl/evp.h>  /* transitively pulls in OPENSSL_VERSION_NUMBER */
+
+/* EVP_DigestSqueeze + multi-call EVP_DigestFinalXOF land in OpenSSL 3.3. */
+#define EMP_PVW_HAVE_DIGEST_SQUEEZE (OPENSSL_VERSION_NUMBER >= 0x30300000L)
 
 #include "kyber/params.h"  /* KYBER_SYMBYTES */
 
@@ -52,6 +63,14 @@ extern "C" {
 
 typedef struct {
     void *opaque;  /* EVP_MD_CTX*, heap-allocated lazily on first init */
+#if !EMP_PVW_HAVE_DIGEST_SQUEEZE
+    /* OpenSSL < 3.3 fallback: remember the absorbed seed and how many
+     * bytes we have already produced, so each squeeze can re-derive the
+     * cumulative XOF stream and return only the new tail. */
+    uint8_t  absorbed[KYBER_SYMBYTES + 2];
+    uint16_t absorbed_len;
+    uint32_t produced;
+#endif
 } keccak_state;
 
 static inline EVP_MD_CTX *_emp_kst_ensure(keccak_state *s, const EVP_MD *md) {
@@ -79,17 +98,46 @@ static inline void shake_state_release(keccak_state *s) {
 static inline void kyber_shake128_absorb(keccak_state *s,
                                           const uint8_t seed[KYBER_SYMBYTES],
                                           uint8_t x, uint8_t y) {
+#if EMP_PVW_HAVE_DIGEST_SQUEEZE
     EVP_MD_CTX *c = _emp_kst_ensure(s, EVP_shake128());
     uint8_t extseed[KYBER_SYMBYTES + 2];
     memcpy(extseed, seed, KYBER_SYMBYTES);
     extseed[KYBER_SYMBYTES + 0] = x;
     extseed[KYBER_SYMBYTES + 1] = y;
     EVP_DigestUpdate(c, extseed, sizeof(extseed));
+#else
+    /* No live ctx yet — squeeze allocates one lazily and re-inits each
+     * call, so we just stash the absorbed bytes. */
+    memcpy(s->absorbed, seed, KYBER_SYMBYTES);
+    s->absorbed[KYBER_SYMBYTES + 0] = x;
+    s->absorbed[KYBER_SYMBYTES + 1] = y;
+    s->absorbed_len = (uint16_t)(KYBER_SYMBYTES + 2);
+    s->produced = 0;
+#endif
 }
 
 static inline void shake128_squeezeblocks(uint8_t *out, size_t nblocks,
                                            keccak_state *s) {
+#if EMP_PVW_HAVE_DIGEST_SQUEEZE
     EVP_DigestSqueeze((EVP_MD_CTX *)s->opaque, out, nblocks * SHAKE128_RATE);
+#else
+    const size_t need = nblocks * SHAKE128_RATE;
+    const size_t total = (size_t)s->produced + need;
+    EVP_MD_CTX *c = (EVP_MD_CTX *)s->opaque;
+    if (c == NULL) {
+        c = EVP_MD_CTX_new();
+        if (c == NULL) abort();
+        s->opaque = (void *)c;
+    }
+    uint8_t *tmp = (uint8_t *)malloc(total);
+    if (tmp == NULL) abort();
+    EVP_DigestInit_ex(c, EVP_shake128(), NULL);
+    EVP_DigestUpdate(c, s->absorbed, s->absorbed_len);
+    EVP_DigestFinalXOF(c, tmp, total);
+    memcpy(out, tmp + s->produced, need);
+    free(tmp);
+    s->produced = (uint32_t)total;
+#endif
 }
 
 /* Per-thread persistent EVP_MD_CTX for the one-shot SHAKE-256 PRF.
