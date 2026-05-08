@@ -9,33 +9,37 @@ namespace emp {
 //
 // Each output position consumes d uint32_t pseudorandom indices; for
 // each index, we XOR kk[index] into the accumulator. The randomness
-// is generated via a single sequential PRG (AES-CTR keyed by the
-// per-round seed). PRG state advances naturally as compute_slice is
-// called per-tree across the round, so per-tree slices map cleanly
-// onto contiguous PRG output ranges — no global AES counter to
-// thread through the call chain.
+// is generated via a single sequential PRG (AES-CTR keyed by
+// caller-supplied seed). PRG state advances naturally as
+// compute_slice is called per-tree across the round, so per-tree
+// slices map cleanly onto contiguous PRG output ranges — no global
+// AES counter to thread through the call chain.
+//
+// LpnF2 is a pure compute class — no IO, no party. The caller is
+// responsible for sourcing a fresh per-round seed (e.g. ferret
+// passes io->get_digest() from its IOChannel FS transcript) and
+// reseeding before the first compute_slice of each round.
 //
 // Performance is highly dependent on CPU cache size: kk lives in L2
 // at production k (~7 MB at ferret_b13).
 template<int d = 10>
 class LpnF2 { public:
-	int party;
-	int64_t n;
-	IOChannel *io;
 	int k, mask;
-	PRG prg_;            // sequential, reseeded per round via begin_round()
+	PRG prg_;
 
-	LpnF2 (int party, int64_t n, int k, IOChannel *io) {
-		this->party = party;
-		this->k = k;
-		this->n = n;
-		this->io = io;
+	explicit LpnF2(int k) : k(k) {
 		mask = 1;
 		while(mask < k) {
 			mask <<=1;
 			mask = mask | 0x1;
 		}
 	}
+
+	// Reseed the internal PRG. Caller picks the seed source — for
+	// ferret, that's io->get_digest() snapshotted once per round.
+	// Subsequent compute_slice calls in the same round consume the
+	// PRG sequentially.
+	void reseed(block seed) { prg_.reseed(&seed); }
 
 	// Process M outputs per AES batch. Larger M = more in-flight kk
 	// loads, which matters at production k where kk (1.9-7.2 MB) lives
@@ -86,22 +90,7 @@ class LpnF2 { public:
 		for(; j < end; ++j)           compute_block<1>(nn, kk, j);
 	}
 
-	// One-shot: seed PRG (from `s` if provided, else network seed
-	// exchange) and process all n outputs. PRG is left at its
-	// post-task counter; subsequent compute_slice calls would
-	// continue from there, which is rarely what you want — pair
-	// compute() with full-vector usage, or use begin_round() +
-	// compute_slice() for streaming.
-	void compute(block * nn, const block * kk, block s = zero_block) {
-		if(!cmpBlock(&s, &zero_block, 1)) prg_.reseed(&s);
-		else                              begin_round();
-		task(nn, kk, 0, n);
-	}
-
 	// Streaming API for ferret's per-tree LPN slicing.
-	//
-	// begin_round: exchange a fresh seed with the peer and reseed the
-	// internal PRG. PRG counter resets to 0.
 	//
 	// compute_slice(out, kk, length): consume `length * d/4` PRG blocks
 	// (rounded up by batching) sequentially from prg_ and write
@@ -111,32 +100,8 @@ class LpnF2 { public:
 	// per-tree order within a round: tree 0's slice, then tree 1's,
 	// etc. PRG state advances monotonically; consuming slices in the
 	// expected order preserves the round-fixed LPN matrix.
-	void begin_round() {
-		block s = seed_gen();
-		prg_.reseed(&s);
-	}
 	void compute_slice(block * out, const block * kk, int64_t length) {
 		task(out, kk, 0, length);
-	}
-
-	block seed_gen() {
-		block seed;
-		if(party == ALICE) {
-			PRG prg;
-			prg.random_block(&seed, 1);
-			io->send_data(&seed, sizeof(block));
-		} else {
-			io->recv_data(&seed, sizeof(block));
-		}
-		io->flush();
-		return seed;
-	}
-
-	// Local-only benchmark of the compute kernel — uses a fixed seed to
-	// skip the network handshake in compute(), so callers can pass
-	// io=nullptr.
-	void bench(block * nn, const block * kk) {
-		compute(nn, kk, makeBlock(0, 1));
 	}
 };
 

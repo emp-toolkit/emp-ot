@@ -51,7 +51,7 @@ void FerretCOT::setup(block Deltain) {
 }
 
 void FerretCOT::setup() {
-	lpn_f2 = std::make_unique<LpnF2<10>>(party, param.n, param.k, io);
+	lpn_f2 = std::make_unique<LpnF2<10>>(param.k);
 	if (party == ALICE) {
 		mpcot_sender = std::make_unique<MPCOT_Sender>(param.n, param.t, param.log_bin_sz, io);
 		if (is_malicious) mpcot_sender->set_malicious();
@@ -86,10 +86,14 @@ void FerretCOT::setup() {
 	// populates next_ via the refill trees, every begin swaps —
 	// steady state with no special-case for "first call".
 	//
-	// IOChannel FS transcript is enabled before bootstrap so every
-	// byte from setup onward binds the per-tree chi seeds pulled by
-	// MPCOT via netio->get_digest() (no-op for semi-honest).
-	if (is_malicious) io->enable_fs(/*send_first=*/party == ALICE);
+	// IOChannel FS transcript is enabled before bootstrap. In mali
+	// mode it binds the per-tree chi seeds pulled by MPCOT via
+	// io->get_digest(); in both modes it gives FerretCOT a fresh
+	// per-round LPN seed (do_rcot_*_begin reseeds lpn_f2 from the
+	// digest at round entry). Cost is two SHA-256 transcripts that
+	// absorb every byte sent/received — at ferret's ~0.027 B/COT
+	// wire footprint, well under 0.1% of total runtime.
+	io->enable_fs(/*send_first=*/party == ALICE);
 
 	SoftSpokenOT<8> ssp(io, std::move(base_ot_));
 	if (is_malicious) ssp.set_malicious(true);
@@ -110,7 +114,11 @@ void FerretCOT::do_rcot_send_begin() {
 	std::swap(ot_pre_data_curr_, ot_pre_data_next_);
 	tree_idx_ = 0;
 	mpcot_sender->run_begin();
-	lpn_f2->begin_round();   // network seed exchange (one block)
+	// Per-round LPN seed snapshotted from the FS transcript: binds
+	// every byte exchanged from setup through the previous round's
+	// chi-fold check. Both parties absorb the same byte stream so
+	// they derive the same seed.
+	lpn_f2->reseed(io->get_digest());
 }
 
 void FerretCOT::do_rcot_send_next(block* out) {
@@ -165,7 +173,7 @@ void FerretCOT::do_rcot_recv_begin() {
 	std::swap(ot_pre_data_curr_, ot_pre_data_next_);
 	tree_idx_ = 0;
 	mpcot_receiver->run_begin();
-	lpn_f2->begin_round();
+	lpn_f2->reseed(io->get_digest());
 }
 
 void FerretCOT::do_rcot_recv_next(block* out) {

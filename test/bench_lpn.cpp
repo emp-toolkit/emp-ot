@@ -34,10 +34,11 @@ int main(int argc, char** argv) {
 	prg.random_block(nn, 1<<n);
 
 	for (int kkk = 10; kkk < k; ++kkk) {
+		LpnF2<10> lpn(1<<kkk);
 		auto t1 = clock_start();
 		for (int ttt = 0; ttt < 20; ttt++) {
-			LpnF2<10> lpn(ALICE, 1<<n, 1<<kkk, nullptr);
-			lpn.bench(nn, kk);
+			lpn.reseed(makeBlock(0, 1));
+			lpn.compute_slice(nn, kk, 1<<n);
 			kk[0] = nn[0];
 		}
 		cout << n<<"\t"<<kkk<<"\t";
