@@ -1,7 +1,7 @@
 // Out-of-line definitions for FerretCOT. See ferret_cot.h for the API.
 
 #include "emp-ot/ot_extension/ferret/ferret_cot.h"
-#include "emp-ot/ot_extension/ferret/mpcot_reg.h"
+#include "emp-ot/ot_extension/ferret/mpcot.h"
 #include "emp-ot/ot_extension/ferret/lpn_f2.h"
 #include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
 
@@ -30,17 +30,15 @@ FerretCOT::FerretCOT(int party, IOChannel *io,
 
 FerretCOT::~FerretCOT() = default;
 
-void FerretCOT::extend(block* ot_output, MpcotReg *mpcot,
-		LpnF2<10> *lpn, block *ot_input) {
-	if(party == ALICE) mpcot->sender_init(Delta);
-	else mpcot->recver_init();
+void FerretCOT::extend(block *ot_output, block *ot_input) {
 	// ot_input slicing: cGGM level corrections consume
 	// ot_input[0 .. tree_n*(h-1)) (mpcot reads them directly via
 	// pre_cot_data). The first 128 entries are also re-read by the
 	// malicious consistency check (aliasing both reads is fine; both
 	// are non-destructive). LPN base reads from ot_input + 128 onward.
-	mpcot->mpcot(ot_output, ot_input);
-	lpn->compute(ot_output, ot_input + MpcotReg::kConsistCheckCotNum);
+	if (party == ALICE) mpcot_sender->run(ot_output, ot_input);
+	else                mpcot_receiver->run(ot_output, ot_input);
+	lpn_f2->compute(ot_output, ot_input + MPCOT_Sender::kConsistCheckCotNum);
 }
 
 // Run one extend round. ot_buffer = nullptr writes to the internal
@@ -50,7 +48,7 @@ void FerretCOT::extend(block* ot_output, MpcotReg *mpcot,
 // seed the next round.
 void FerretCOT::extend_f2k(block *ot_buffer) {
 	if (ot_buffer == nullptr) ot_buffer = ot_data.data();
-	extend(ot_buffer, mpcot.get(), lpn_f2.get(), ot_pre_data.data());
+	extend(ot_buffer, ot_pre_data.data());
 	memcpy(ot_pre_data.data(), ot_buffer + ot_limit, M * sizeof(block));
 	ot_used = 0;
 }
@@ -62,13 +60,21 @@ void FerretCOT::setup(block Deltain) {
 
 void FerretCOT::setup() {
 	lpn_f2 = std::make_unique<LpnF2<10>>(party, param.n, param.k, io);
-	mpcot  = std::make_unique<MpcotReg>(party, param.n, param.t, param.log_bin_sz, io);
-	if (is_malicious) mpcot->set_malicious();
+	if (party == ALICE) {
+		mpcot_sender = std::make_unique<MPCOT_Sender>(param.n, param.t, param.log_bin_sz, io);
+		if (is_malicious) mpcot_sender->set_malicious();
+		mpcot_sender->set_delta(Delta);
+	} else {
+		mpcot_receiver = std::make_unique<MPCOT_Receiver>(param.n, param.t, param.log_bin_sz, io);
+		if (is_malicious) mpcot_receiver->set_malicious();
+	}
 
+	const int tree_n = param.t;
+	const int tree_h = param.log_bin_sz + 1;
 	// M base COTs per extend round = LPN k + cGGM level corrections
 	// (tree_n × (h-1)) + 128 for the malicious consistency check.
-	M        = param.k + mpcot->tree_n * (mpcot->tree_height - 1)
-	           + MpcotReg::kConsistCheckCotNum;
+	M        = param.k + tree_n * (tree_h - 1)
+	           + MPCOT_Sender::kConsistCheckCotNum;
 	ot_limit = param.n - M;
 	ot_used  = ot_limit;
 	extend_initialized = true;

@@ -5,12 +5,13 @@
 #include <memory>
 
 // Forward-declare ferret internals so the public header doesn't pull
-// in the SPCOT / cGGM transitive closure.
+// in the cGGM transitive closure.
 // The .cpp #includes the real headers; std::unique_ptr<T> works with
 // forward-declared T as long as the dtor is out-of-line (it is).
 
 namespace emp {
-class MpcotReg;
+class MPCOT_Sender;
+class MPCOT_Receiver;
 template <int d> class LpnF2;
 }  // namespace emp
 
@@ -58,12 +59,13 @@ private:
 	BlockVec ot_pre_data;  // sized to M when active; .empty() means "none"
 	BlockVec ot_data;      // sized to param.n; lazily resized on first use
 
-	std::unique_ptr<MpcotReg>  mpcot;
+	// Exactly one of these is populated, depending on `party`.
+	std::unique_ptr<MPCOT_Sender>   mpcot_sender;
+	std::unique_ptr<MPCOT_Receiver> mpcot_receiver;
 	std::unique_ptr<LpnF2<10>> lpn_f2;
 	std::unique_ptr<OT> base_ot_;  // forwarded into SoftSpoken on first cold-start bootstrap
 
-	void extend(block* ot_output, MpcotReg *mpfss,
-			LpnF2<10> *lpn, block *ot_input);
+	void extend(block *ot_output, block *ot_input);
 
 	// One-arg form. Pass nullptr to write to the internal buffer
 	// (caller will copy out); pass a user buffer to write directly.

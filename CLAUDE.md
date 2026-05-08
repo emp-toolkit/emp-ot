@@ -46,3 +46,13 @@ an older baseline knows which deltas to expect.
   Output bytes change for every SoftSpoken-derived stream, including
   Ferret's bootstrap (which uses SoftSpoken<8>). IKNP traces are
   unaffected — IKNP doesn't touch SoftSpoken kernels.
+- Ferret malicious mpcot consistency-check chi binding — the per-
+  tree chi vector used in the F_{2^k} chi-fold was previously
+  derived as `chi_i = expand(Hash(secret_sum_f2_i))`, binding only
+  to the per-tree value. It now uses Fiat-Shamir: both parties
+  absorb every per-tree (c[], secret_sum_f2) into a transcript
+  hasher, derive `chi_seed = Hash(round_transcript)`, then per-
+  tree `chi_i = expand(Hash(chi_seed || i))`. Same wire bytes
+  (no extra send), but chi binds to the full round. Mirrors
+  IKNP-malicious's FS pattern. Output COTs are byte-different
+  in malicious mode.
