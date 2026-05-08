@@ -29,7 +29,7 @@ public:
 
 	// `base_ot` is forwarded to the internal SoftSpokenOT<8> bootstrap.
 	// Default (nullptr) → SoftSpoken constructs its own OTPVW base.
-	FerretCOT(int party, int threads, IOChannel **ios, bool malicious = false, bool run_setup = true,
+	FerretCOT(int party, IOChannel *io, bool malicious = false, bool run_setup = true,
 			PrimalLPNParameter param = ferret_b13,
 			std::unique_ptr<OT> base_ot = nullptr);
 
@@ -54,8 +54,7 @@ public:
 	int64_t byte_memory_need_inplace(int64_t ot_need);
 
 private:
-	IOChannel **ios;
-	int party, threads;
+	int party;
 	int64_t M;
 	bool is_malicious;
 	bool extend_initialized;
@@ -63,7 +62,6 @@ private:
 	BlockVec ot_pre_data;  // sized to M when active; .empty() means "none"
 	BlockVec ot_data;      // sized to param.n; lazily resized on first use
 
-	std::unique_ptr<ThreadPool> pool;
 	std::unique_ptr<MpcotReg>  mpcot;
 	std::unique_ptr<LpnF2<10>> lpn_f2;
 	std::unique_ptr<OT> base_ot_;  // forwarded into SoftSpoken on first cold-start bootstrap

@@ -13,8 +13,6 @@
 #include "test/test.h"
 using namespace std;
 
-const static int threads = 1;
-
 #define BW_ROW(FLAVOR, FN) do {                                               \
     uint64_t ds = 0, dr = 0;                                                  \
     double us = FN(ot, io, party, length, &ds, &dr);                          \
@@ -86,14 +84,13 @@ int main(int argc, char** argv) {
     // send_cot/recv_cot, send_rot/recv_rot all dispatch through its
     // rcot_send/rcot_recv override, so the four-flavor matrix exercises
     // the same ferret extend pipeline at the bottom.
-    IOChannel* ios[1] = { io };
     {
-        FerretCOT* ot = new FerretCOT(party, threads, ios, false);
+        FerretCOT* ot = new FerretCOT(party, io, false);
         run_row(ot, io, party, length, "FerretCOT semi");
         delete ot;
     }
     {
-        FerretCOT* ot = new FerretCOT(party, threads, ios, true);
+        FerretCOT* ot = new FerretCOT(party, io, true);
         run_row(ot, io, party, length, "FerretCOT mali");
         delete ot;
     }

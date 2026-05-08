@@ -33,11 +33,10 @@ int main(int argc, char** argv) {
 	prg.random_block(kk, 1<<k);
 	prg.random_block(nn, 1<<n);
 
-	ThreadPool * pool = new ThreadPool(4);
-	for (int kkk = 10; kkk < k; ++kkk) {	
+	for (int kkk = 10; kkk < k; ++kkk) {
 		auto t1 = clock_start();
 		for (int ttt = 0; ttt < 20; ttt++) {
-			LpnF2<10> lpn(ALICE, 1<<n, 1<<kkk, pool, nullptr, pool->size());
+			LpnF2<10> lpn(ALICE, 1<<n, 1<<kkk, nullptr);
 			lpn.bench(nn, kk);
 			kk[0] = nn[0];
 		}

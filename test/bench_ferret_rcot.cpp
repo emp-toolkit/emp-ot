@@ -5,16 +5,13 @@
 #include "test/test.h"
 using namespace std;
 
-const static int threads = 1;
-
-static void bench_one(IOChannel* ios[], NetIO* netio, int party,
-                      int64_t length, bool malicious) {
+static void bench_one(NetIO* io, int party, int64_t length, bool malicious) {
     const char* mode_name = malicious ? "mali" : "semi";
-    FerretCOT* ot = new FerretCOT(party, threads, ios, malicious, true, ferret_b13);
+    FerretCOT* ot = new FerretCOT(party, io, malicious, true, ferret_b13);
 
     {
         uint64_t ds = 0, dr = 0;
-        double us = test_rcot<FerretCOT>(ot, netio, party, length, &ds, &dr);
+        double us = test_rcot<FerretCOT>(ot, io, party, length, &ds, &dr);
         cout << "FerretCOT " << mode_name << " RCOT\t"
              << double(length) / us << " MOTps  "
              << "send=" << double(ds) / length << " B/COT  "
@@ -23,7 +20,7 @@ static void bench_one(IOChannel* ios[], NetIO* netio, int party,
     {
         const uint64_t batch = ot->ot_limit;
         uint64_t ds = 0, dr = 0;
-        double us = test_rcot_inplace<FerretCOT>(ot, netio, party, batch, &ds, &dr);
+        double us = test_rcot_inplace<FerretCOT>(ot, io, party, batch, &ds, &dr);
         cout << "FerretCOT " << mode_name << " RCOT inplace\t"
              << double(batch) / us << " MOTps  "
              << "send=" << double(ds) / batch << " B/COT  "
@@ -49,16 +46,12 @@ int main(int argc, char** argv) {
     const int64_t length = 1LL << length_log;
 
     parse_party_and_port(argv, &party, &port);
-    NetIO* ios[threads];
-    for (int i = 0; i < threads; ++i)
-        ios[i] = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port + 2 * i);
-    IOChannel* iochans[threads];
-    for (int i = 0; i < threads; ++i) iochans[i] = ios[i];
+    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
 
     cout << "# bench_ferret_rcot: length=" << length << endl;
-    bench_one(iochans, ios[0], party, length, /*malicious=*/false);
-    bench_one(iochans, ios[0], party, length, /*malicious=*/true);
+    bench_one(io, party, length, /*malicious=*/false);
+    bench_one(io, party, length, /*malicious=*/true);
 
-    for (int i = 0; i < threads; ++i) delete ios[i];
+    delete io;
     return 0;
 }

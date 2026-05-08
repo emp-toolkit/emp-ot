@@ -2,12 +2,10 @@
 #define EMP_OT_MPCOT_REG_H__
 
 #include <emp-tool/emp-tool.h>
-#include <future>
 #include <vector>
 #include "emp-ot/ot_extension/ferret/spcot.h"
 
 namespace emp {
-using std::future;
 
 // Multi-point COT over a regular sparse vector. Drives `tree_n`
 // parallel single-point COT trees of height `tree_height` (= log2 of
@@ -30,28 +28,26 @@ public:
 	// receiver's punctured-position choices.
 	static constexpr int kConsistCheckCotNum = 128;
 
-	int party, threads;
+	int party;
 	int item_n, idx_max;
 	int tree_height, leave_n;
 	int tree_n;
 	bool is_malicious;
 
 	IOChannel *netio;
-	IOChannel **ios;
 	block Delta_f2k;
 	std::vector<block> consist_check_chi_alpha;
 	std::vector<block> consist_check_VW;
-	ThreadPool *pool;
 
 	GaloisFieldPacking pack;
 
-	MpcotReg(int party, int threads, int n, int t, int log_bin_sz, ThreadPool * pool, IOChannel **ios)
-			: party(party), threads(threads),
+	MpcotReg(int party, int n, int t, int log_bin_sz, IOChannel *io)
+			: party(party),
 			  item_n(t), idx_max(n),
 			  tree_height(log_bin_sz + 1), leave_n(1 << log_bin_sz),
 			  tree_n(t),
 			  is_malicious(false),
-			  netio(ios[0]), ios(ios), pool(pool) {}
+			  netio(io) {}
 
 	void set_malicious() { is_malicious = true; }
 
@@ -75,17 +71,18 @@ public:
 				senders.push_back(new SPCOT_Sender(netio, tree_height));
 			netio->flush();
 
-			exec_parallel(senders, [&](SPCOT_Sender* s, int i, int t) {
+			for (int i = 0; i < tree_n; ++i) {
+				SPCOT_Sender* s = senders[i];
 				s->compute(sparse_vector + i * leave_n, Delta_f2k);
 				// cGGM level corrections: c_i = K_{r_i} XOR K^0_i.
 				std::vector<block> c(n_lvl);
 				const block* K = pre_cot_data + i * n_lvl;
 				for (int j = 0; j < n_lvl; ++j) c[j] = K[j] ^ s->m[j];
-				ios[t]->send_block(c.data(), n_lvl);
-				ios[t]->send_data(&s->secret_sum_f2, sizeof(block));
-				ios[t]->flush();
+				netio->send_block(c.data(), n_lvl);
+				netio->send_data(&s->secret_sum_f2, sizeof(block));
+				netio->flush();
 				if (is_malicious) s->consistency_check_msg_gen(&consist_check_VW[i]);
-			});
+			}
 			for (auto* p : senders) delete p;
 		} else {
 			std::vector<SPCOT_Recver*> recvers;
@@ -100,19 +97,20 @@ public:
 			}
 			netio->flush();
 
-			exec_parallel(recvers, [&](SPCOT_Recver* r, int i, int t) {
+			for (int i = 0; i < tree_n; ++i) {
+				SPCOT_Recver* r = recvers[i];
 				// Receive (n_lvl corrections + secret_sum_f2); recover
 				// K^{ᾱ_j}_{j+1} = M_{r_{j+1}} XOR c_{j+1}.
 				std::vector<block> c(n_lvl);
-				ios[t]->recv_block(c.data(), n_lvl);
-				ios[t]->recv_data(&r->secret_sum_f2, sizeof(block));
+				netio->recv_block(c.data(), n_lvl);
+				netio->recv_data(&r->secret_sum_f2, sizeof(block));
 				const block* M = pre_cot_data + i * n_lvl;
 				for (int j = 0; j < n_lvl; ++j) r->m[j] = M[j] ^ c[j];
 				r->compute(sparse_vector + i * leave_n);
 				if (is_malicious)
 					r->consistency_check_msg_gen(&consist_check_chi_alpha[i],
 					                             &consist_check_VW[i]);
-			});
+			}
 			for (auto* p : recvers) delete p;
 		}
 
@@ -123,27 +121,6 @@ public:
 	}
 
 private:
-	// Distribute work over `threads` worker pool threads. Each thread
-	// gets a contiguous slice of [0, tree_n) and its own IOChannel
-	// (ios[t]). The per_worker callback receives (worker, i, t).
-	template <typename Worker, typename Fn>
-	void exec_parallel(std::vector<Worker*>& workers, Fn per_worker) {
-		std::vector<future<void>> fut;
-		const int width = tree_n / threads;
-		for (int t = 0; t < threads - 1; ++t) {
-			const int start = t * width, end = start + width;
-			fut.push_back(pool->enqueue([&workers, start, end, t, &per_worker]() {
-				for (int i = start; i < end; ++i)
-					per_worker(workers[i], i, t);
-			}));
-		}
-		const int start = (threads - 1) * width;
-		const int t     = threads - 1;
-		for (int i = start; i < tree_n; ++i)
-			per_worker(workers[i], i, t);
-		for (auto& f : fut) f.get();
-	}
-
 	// Sender-side malicious-check (F_{2^k}). Receives the receiver's
 	// 128-bit correction (chi_alpha applied to the base COTs), folds
 	// it into our XOR-sum of the per-tree V responses, hashes, and

@@ -11,17 +11,14 @@ template<int d = 10>
 class LpnF2 { public:
 	int party;
 	int64_t n;
-	ThreadPool * pool;
 	IOChannel *io;
-	int threads, k, mask;
+	int k, mask;
 	block seed;
-	LpnF2 (int party, int64_t n, int k, ThreadPool * pool, IOChannel *io, int threads) {
+	LpnF2 (int party, int64_t n, int k, IOChannel *io) {
 		this->party = party;
 		this->k = k;
 		this->n = n;
-		this->pool = pool;
 		this->io = io;
-		this->threads = threads;
 		mask = 1;
 		while(mask < k) {
 			mask <<=1;
@@ -82,22 +79,9 @@ class LpnF2 { public:
 	}
 
 	void compute(block * nn, const block * kk, block s = zero_block) {
-		vector<std::future<void>> fut;
-		int64_t width = n/threads;
-        if(!cmpBlock(&s, &zero_block, 1)) seed = s;
+		if(!cmpBlock(&s, &zero_block, 1)) seed = s;
 		else seed = seed_gen();
-		for(int i = 0; i < threads - 1; ++i) {
-			int64_t start = i * width;
-			int64_t end = std::min((i+1)* width, n);
-			fut.push_back(pool->enqueue([this, nn, kk, start, end]() {
-				task(nn, kk, start, end);
-			}));
-		}
-		int64_t start = (threads - 1) * width;
-        	int64_t end = n;
-		task(nn, kk, start, end);
-
-		for (auto &f: fut) f.get();
+		task(nn, kk, 0, n);
 	}
 
 	block seed_gen() {

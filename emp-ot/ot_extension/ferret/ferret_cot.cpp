@@ -7,15 +7,12 @@
 
 namespace emp {
 
-FerretCOT::FerretCOT(int party, int threads, IOChannel **ios,
+FerretCOT::FerretCOT(int party, IOChannel *io,
 		bool malicious, bool run_setup, PrimalLPNParameter param,
 		std::unique_ptr<OT> base_ot) {
 	this->party = party;
-	this->threads = threads;
-	io = ios[0];
-	this->ios = ios;
+	this->io = io;
 	this->is_malicious = malicious;
-	pool = std::make_unique<ThreadPool>(threads);
 	this->param = param;
 	this->base_ot_ = std::move(base_ot);
 
@@ -64,8 +61,8 @@ void FerretCOT::setup(block Deltain) {
 }
 
 void FerretCOT::setup() {
-	lpn_f2 = std::make_unique<LpnF2<10>>(party, param.n, param.k, pool.get(), io, pool->size());
-	mpcot  = std::make_unique<MpcotReg>(party, threads, param.n, param.t, param.log_bin_sz, pool.get(), ios);
+	lpn_f2 = std::make_unique<LpnF2<10>>(party, param.n, param.k, io);
+	mpcot  = std::make_unique<MpcotReg>(party, param.n, param.t, param.log_bin_sz, io);
 	if (is_malicious) mpcot->set_malicious();
 
 	// M base COTs per extend round = LPN k + cGGM level corrections
