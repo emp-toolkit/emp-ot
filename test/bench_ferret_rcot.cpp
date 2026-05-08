@@ -1,6 +1,5 @@
-// FerretCOT RCOT-only bench: RCOT (test_rcot) + RCOT inplace
-// (test_rcot_inplace, batch_size = ferret->ot_limit). Two-party via
-// `run`. Both semi-honest and malicious modes.
+// FerretCOT RCOT-only bench: RCOT (test_rcot). Two-party via `run`.
+// Both semi-honest and malicious modes.
 #include "emp-ot/emp-ot.h"
 #include "test/test.h"
 using namespace std;
@@ -9,23 +8,12 @@ static void bench_one(NetIO* io, int party, int64_t length, bool malicious) {
     const char* mode_name = malicious ? "mali" : "semi";
     FerretCOT* ot = new FerretCOT(party, io, malicious, true, ferret_b13);
 
-    {
-        uint64_t ds = 0, dr = 0;
-        double us = test_rcot<FerretCOT>(ot, io, party, length, &ds, &dr);
-        cout << "FerretCOT " << mode_name << " RCOT\t"
-             << double(length) / us << " MOTps  "
-             << "send=" << double(ds) / length << " B/COT  "
-             << "recv=" << double(dr) / length << " B/COT" << endl;
-    }
-    {
-        const uint64_t batch = ot->ot_limit;
-        uint64_t ds = 0, dr = 0;
-        double us = test_rcot_inplace<FerretCOT>(ot, io, party, batch, &ds, &dr);
-        cout << "FerretCOT " << mode_name << " RCOT inplace\t"
-             << double(batch) / us << " MOTps  "
-             << "send=" << double(ds) / batch << " B/COT  "
-             << "recv=" << double(dr) / batch << " B/COT" << endl;
-    }
+    uint64_t ds = 0, dr = 0;
+    double us = test_rcot<FerretCOT>(ot, io, party, length, &ds, &dr);
+    cout << "FerretCOT " << mode_name << " RCOT\t"
+         << double(length) / us << " MOTps  "
+         << "send=" << double(ds) / length << " B/COT  "
+         << "recv=" << double(dr) / length << " B/COT" << endl;
 
     delete ot;
 }

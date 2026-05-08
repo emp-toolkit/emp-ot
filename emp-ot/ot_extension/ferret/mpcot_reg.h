@@ -54,64 +54,46 @@ public:
 	void sender_init(block delta) { Delta_f2k = delta; }
 	void recver_init() {}
 
-	// MPFSS over F_{2^k}. Drives `tree_n` SPCOT trees in parallel,
-	// each covering `leave_n` slots of `sparse_vector`. If malicious,
-	// follows up with the F_{2^k} consistency check that binds the
-	// receiver's punctured-position choices to the base COTs.
+	// MPFSS over F_{2^k}. Drives `tree_n` SPCOT trees, each covering
+	// `leave_n` slots of `sparse_vector`. Trees expand one at a time:
+	// each iteration is a full mini-SPCOT (build/recv corrections,
+	// reconstruct cGGM tree, accumulate consistency-check msg) before
+	// the next tree starts. If malicious, the round-final F_{2^k}
+	// consistency check binds the receiver's punctured-position
+	// choices to the base COTs across all trees.
 	void mpcot(block * sparse_vector, block *pre_cot_data) {
 		consist_check_VW.assign(item_n, zero_block);
 		if (party == BOB) consist_check_chi_alpha.assign(item_n, zero_block);
 
 		const int n_lvl = tree_height - 1;  // cGGM corrections per tree
+		BlockVec c(n_lvl);                  // reused across trees
 
-		if (party == ALICE) {
-			std::vector<SPCOT_Sender*> senders;
-			senders.reserve(tree_n);
-			for (int i = 0; i < tree_n; ++i)
-				senders.push_back(new SPCOT_Sender(netio, tree_height));
-			netio->flush();
+		for (int i = 0; i < tree_n; ++i) {
+			block* leaves_i = sparse_vector + i * leave_n;
+			const block* base_i = pre_cot_data + i * n_lvl;
 
-			for (int i = 0; i < tree_n; ++i) {
-				SPCOT_Sender* s = senders[i];
-				s->compute(sparse_vector + i * leave_n, Delta_f2k);
-				// cGGM level corrections: c_i = K_{r_i} XOR K^0_i.
-				std::vector<block> c(n_lvl);
-				const block* K = pre_cot_data + i * n_lvl;
-				for (int j = 0; j < n_lvl; ++j) c[j] = K[j] ^ s->m[j];
+			if (party == ALICE) {
+				SPCOT_Sender s(netio, tree_height);
+				s.compute(leaves_i, Delta_f2k);
+				// cGGM level corrections: c_j = K_{r_j} XOR K^0_j.
+				for (int j = 0; j < n_lvl; ++j) c[j] = base_i[j] ^ s.m[j];
 				netio->send_block(c.data(), n_lvl);
-				netio->send_data(&s->secret_sum_f2, sizeof(block));
+				netio->send_data(&s.secret_sum_f2, sizeof(block));
 				netio->flush();
-				if (is_malicious) s->consistency_check_msg_gen(&consist_check_VW[i]);
-			}
-			for (auto* p : senders) delete p;
-		} else {
-			std::vector<SPCOT_Recver*> recvers;
-			recvers.reserve(tree_n);
-			for (int i = 0; i < tree_n; ++i) {
-				recvers.push_back(new SPCOT_Recver(netio, tree_height));
+				if (is_malicious) s.consistency_check_msg_gen(&consist_check_VW[i]);
+			} else {
+				SPCOT_Recver r(netio, tree_height);
 				// b_j = NOT alpha_{j+1} = r_{j+1} = LSB(M_{r_{j+1}}).
-				const block* M = pre_cot_data + i * n_lvl;
-				for (int j = 0; j < n_lvl; ++j)
-					recvers[i]->b[j] = getLSB(M[j]);
-				recvers[i]->get_index();
-			}
-			netio->flush();
-
-			for (int i = 0; i < tree_n; ++i) {
-				SPCOT_Recver* r = recvers[i];
-				// Receive (n_lvl corrections + secret_sum_f2); recover
-				// K^{ᾱ_j}_{j+1} = M_{r_{j+1}} XOR c_{j+1}.
-				std::vector<block> c(n_lvl);
+				for (int j = 0; j < n_lvl; ++j) r.b[j] = getLSB(base_i[j]);
 				netio->recv_block(c.data(), n_lvl);
-				netio->recv_data(&r->secret_sum_f2, sizeof(block));
-				const block* M = pre_cot_data + i * n_lvl;
-				for (int j = 0; j < n_lvl; ++j) r->m[j] = M[j] ^ c[j];
-				r->compute(sparse_vector + i * leave_n);
+				netio->recv_data(&r.secret_sum_f2, sizeof(block));
+				// Recover K^{ᾱ_j}_{j+1} = M_{r_{j+1}} XOR c_{j+1}.
+				for (int j = 0; j < n_lvl; ++j) r.m[j] = base_i[j] ^ c[j];
+				r.compute(leaves_i);
 				if (is_malicious)
-					r->consistency_check_msg_gen(&consist_check_chi_alpha[i],
-					                             &consist_check_VW[i]);
+					r.consistency_check_msg_gen(&consist_check_chi_alpha[i],
+					                            &consist_check_VW[i]);
 			}
-			for (auto* p : recvers) delete p;
 		}
 
 		if (is_malicious) {

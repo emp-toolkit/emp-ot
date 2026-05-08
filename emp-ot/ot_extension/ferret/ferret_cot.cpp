@@ -31,7 +31,7 @@ FerretCOT::FerretCOT(int party, IOChannel *io,
 FerretCOT::~FerretCOT() = default;
 
 void FerretCOT::extend(block* ot_output, MpcotReg *mpcot,
-		LpnF2<10> *lpn, block *ot_input, block seed) {
+		LpnF2<10> *lpn, block *ot_input) {
 	if(party == ALICE) mpcot->sender_init(Delta);
 	else mpcot->recver_init();
 	// ot_input slicing: cGGM level corrections consume
@@ -40,7 +40,7 @@ void FerretCOT::extend(block* ot_output, MpcotReg *mpcot,
 	// malicious consistency check (aliasing both reads is fine; both
 	// are non-destructive). LPN base reads from ot_input + 128 onward.
 	mpcot->mpcot(ot_output, ot_input);
-	lpn->compute(ot_output, ot_input + MpcotReg::kConsistCheckCotNum, seed);
+	lpn->compute(ot_output, ot_input + MpcotReg::kConsistCheckCotNum);
 }
 
 // Run one extend round. ot_buffer = nullptr writes to the internal
@@ -123,30 +123,6 @@ void FerretCOT::rcot_send(block *data, int64_t num) {
 		ot_used   = take;
 		produced += take;
 	}
-}
-
-int64_t FerretCOT::byte_memory_need_inplace(int64_t ot_need) {
-	int64_t round = (ot_need - 1) / ot_limit;
-	return round * ot_limit + param.n;
-}
-
-// In-place extend: write directly into the caller's buffer with no
-// intermediate copy through ot_data. `byte_space` must equal
-// byte_memory_need_inplace(ot_need); returns the number of usable COTs.
-int64_t FerretCOT::rcot_inplace(block *ot_buffer, int64_t byte_space, block seed) {
-	if(byte_space < param.n) error("space not enough");
-	if((byte_space - M) % ot_limit != 0) error("call byte_memory_need_inplace \
-			to get the correct length of memory space");
-	int64_t ot_output_n = byte_space - M;
-	int64_t round = ot_output_n / ot_limit;
-	block *pt = ot_buffer;
-	for(int64_t i = 0; i < round; ++i) {
-		if(this->is_malicious) seed = zero_block;
-		extend(pt, mpcot.get(), lpn_f2.get(), ot_pre_data.data(), seed);
-		pt += ot_limit;
-		memcpy(ot_pre_data.data(), pt, M*sizeof(block));
-	}
-	return ot_output_n;
 }
 
 }  // namespace emp

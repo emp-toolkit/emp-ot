@@ -49,10 +49,6 @@ public:
 	void rcot_send(block* data, int64_t num) override;
 	void rcot_recv(block* data, int64_t num) override { rcot_send(data, num); }
 
-	int64_t rcot_inplace(block *ot_buffer, int64_t length, block seed = zero_block);
-
-	int64_t byte_memory_need_inplace(int64_t ot_need);
-
 private:
 	int party;
 	int64_t M;
@@ -67,7 +63,7 @@ private:
 	std::unique_ptr<OT> base_ot_;  // forwarded into SoftSpoken on first cold-start bootstrap
 
 	void extend(block* ot_output, MpcotReg *mpfss,
-			LpnF2<10> *lpn, block *ot_input, block seed = zero_block);
+			LpnF2<10> *lpn, block *ot_input);
 
 	// One-arg form. Pass nullptr to write to the internal buffer
 	// (caller will copy out); pass a user buffer to write directly.

@@ -189,21 +189,3 @@ double test_rcot(T* ot, NetIO *io, int party, int64_t length,
 	delete[] b;
 	return t;
 }
-
-template <typename T>
-double test_rcot_inplace(T* ot, NetIO *io, int party, int64_t length,
-                         uint64_t* bytes_sent_out = nullptr,
-                         uint64_t* bytes_recv_out = nullptr) {
-	int64_t mem_size = ot->byte_memory_need_inplace((uint64_t)length);
-	block *b = new block[mem_size];
-	io->sync();
-	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
-	auto start = clock_start();
-	ot->rcot_inplace(b, mem_size);
-	long long t = time_from(start);
-	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
-	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
-	verify_rcot(ot, io, party, b, mem_size);
-	delete[] b;
-	return t;
-}
