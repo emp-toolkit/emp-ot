@@ -49,10 +49,19 @@ an older baseline knows which deltas to expect.
 - Ferret malicious mpcot consistency-check chi binding — the per-
   tree chi vector used in the F_{2^k} chi-fold was previously
   derived as `chi_i = expand(Hash(secret_sum_f2_i))`, binding only
-  to the per-tree value. It now uses Fiat-Shamir: both parties
-  absorb every per-tree (c[], secret_sum_f2) into a transcript
-  hasher, derive `chi_seed = Hash(round_transcript)`, then per-
-  tree `chi_i = expand(Hash(chi_seed || i))`. Same wire bytes
-  (no extra send), but chi binds to the full round. Mirrors
-  IKNP-malicious's FS pattern. Output COTs are byte-different
-  in malicious mode.
+  to the per-tree value. It now uses Fiat-Shamir over the full
+  protocol transcript: FerretCOT::setup calls
+  `io->enable_fs(party == ALICE)`, which has IOChannel maintain two
+  per-direction SHA-256 transcripts that absorb every byte sent and
+  received. mpcot.run() pulls `chi_seed = io->get_digest() =
+  H(d_AB ‖ H(d_BA))`, then derives per-tree `chi_i = expand(Hash(
+  chi_seed ‖ i))`. Same wire bytes (no extra send), but chi binds to
+  the full transcript so far. Output COTs are byte-different in
+  malicious mode.
+- Ferret mpcot drops `secret_sum_f2` from the wire — under cGGM the
+  leveled correlation gives XOR(leaves) = Δ, and the per-tree
+  punctured-correction value reduces to a constant
+  `lsb_only_mask = makeBlock(0,1)` for every tree of every round.
+  Both sides hardcode the constant; the per-tree 16-B field is no
+  longer transmitted nor absorbed into the FS transcript. Steady-
+  state RCOT wire drops from 0.27 to 0.25 bits/OT (~7%).

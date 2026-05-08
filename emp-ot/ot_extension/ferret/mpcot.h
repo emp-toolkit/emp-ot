@@ -59,46 +59,51 @@ public:
     void run(block *sparse_vector, block *pre_cot_data) {
         const int n_lvl = tree_height - 1;
         BlockVec K0(n_lvl), c(n_lvl);
-        Hash transcript;
         if (is_malicious) consist_check_VW.assign(item_n, zero_block);
 
-        // Pass 1: per-tree cGGM build, ship corrections + secret_sum_f2.
+        // Pass 1: per-tree cGGM build, ship corrections.
+        //
+        // Two protocol details folded out of sight here:
+        //
+        // (1) No per-tree `secret_sum_f2` on the wire. Under cGGM the
+        //     leveled correlation gives XOR(leaves) = Δ, and Δ has
+        //     bit 0 = 1 by construction. Clearing bit 0 of every leaf
+        //     turns the leaf XOR into Δ XOR lsb_only_mask, so
+        //         secret_sum_f2 = Δ XOR XOR(LSB-cleared leaves)
+        //                       = lsb_only_mask
+        //     for *every* tree of *every* round. Both sides hardcode
+        //     the constant; nothing about it needs transmitting.
+        //
+        // (2) The per-leaf LSB-clear is folded into cggm::build_sender
+        //     via ClearLeafLSB=true. K0[d-1] is then the sum over
+        //     LSB-cleared left children; the receiver uses the matching
+        //     ClearLeafLSB on eval_receiver and the algebra lines up.
+        //     Saves a separate AND-pass over 2^d-leaf arrays.
+        //
+        // The chi_seed for the malicious consistency check (Pass 2) is
+        // pulled from netio->get_digest(): IOChannel's FS transcript
+        // automatically absorbed every byte of c[] as it went on the
+        // wire (FS was enabled in FerretCOT::setup for malicious mode).
+        // Both parties' transcripts agree byte-for-byte.
         for (int i = 0; i < tree_n; ++i) {
             block *leaves_i = sparse_vector + i * leave_n;
             const block *base_i = pre_cot_data + i * n_lvl;
 
             block seed;
             { PRG prg; prg.random_block(&seed, 1); }
-            cggm::build_sender(n_lvl, Delta_f2k, seed, leaves_i, K0.data());
-
-            // Apply punctured correction: clear LSB on every leaf and
-            // emit secret_sum_f2 = (XOR of all leaves) XOR Delta. Under
-            // cGGM the leaf XOR is Delta itself, so this reduces to a
-            // per-tree LSB parity bit.
-            block secret_sum_f2 = Delta_f2k;
-            for (int k = 0; k < leave_n; ++k) {
-                leaves_i[k] = leaves_i[k] & lsb_clear_mask;
-                secret_sum_f2 = secret_sum_f2 ^ leaves_i[k];
-            }
+            cggm::build_sender<cggm::kTile, /*ClearLeafLSB=*/true>(
+                n_lvl, Delta_f2k, seed, leaves_i, K0.data());
 
             // c_j = K_{r_j} XOR K^0_j.
             for (int j = 0; j < n_lvl; ++j) c[j] = base_i[j] ^ K0[j];
             netio->send_block(c.data(), n_lvl);
-            netio->send_data(&secret_sum_f2, sizeof(block));
             netio->flush();
-            if (is_malicious) {
-                transcript.put(c.data(), n_lvl * sizeof(block));
-                transcript.put(&secret_sum_f2, sizeof(block));
-            }
         }
 
         if (!is_malicious) return;
 
-        // Pass 2: FS-derived per-tree chi, fold against leaves into VW.
-        block chi_seed_buf[2];
-        transcript.digest(chi_seed_buf);
-        const block chi_seed = chi_seed_buf[0];
-
+        // Pass 2: per-tree chi from FS digest, fold against leaves.
+        const block chi_seed = netio->get_digest();
         BlockVec chi(leave_n);
         for (int i = 0; i < tree_n; ++i) {
             block tree_inp[2] = { chi_seed, makeBlock(0, i) };
@@ -164,7 +169,6 @@ public:
         BlockVec K_recv(n_lvl), c(n_lvl);
         default_init_vector<unsigned char> b(n_lvl);
         std::vector<int> choice_pos_arr;
-        Hash transcript;
         if (is_malicious) {
             consist_check_VW.assign(item_n, zero_block);
             consist_check_chi_alpha.assign(item_n, zero_block);
@@ -172,6 +176,10 @@ public:
         }
 
         // Pass 1: per-tree recv corrections + reconstruct cGGM tree.
+        // Same two folded-in details as the sender (no secret_sum_f2
+        // on the wire, ClearLeafLSB folded into eval_receiver).
+        // chi_seed for Pass 2 comes from netio->get_digest() — IOChannel
+        // absorbed every recv'd c[] into the FS transcript automatically.
         for (int i = 0; i < tree_n; ++i) {
             block *leaves_i = sparse_vector + i * leave_n;
             const block *base_i = pre_cot_data + i * n_lvl;
@@ -180,12 +188,6 @@ public:
             for (int j = 0; j < n_lvl; ++j) b[j] = getLSB(base_i[j]);
 
             netio->recv_block(c.data(), n_lvl);
-            block secret_sum_f2;
-            netio->recv_data(&secret_sum_f2, sizeof(block));
-            if (is_malicious) {
-                transcript.put(c.data(), n_lvl * sizeof(block));
-                transcript.put(&secret_sum_f2, sizeof(block));
-            }
 
             // K_recv[j] = K^{ᾱ_j}_{j+1} = M_{r_j} XOR c_j.
             for (int j = 0; j < n_lvl; ++j) K_recv[j] = base_i[j] ^ c[j];
@@ -198,27 +200,25 @@ public:
             }
             if (is_malicious) choice_pos_arr[i] = choice_pos;
 
-            cggm::eval_receiver(n_lvl, choice_pos, K_recv.data(), leaves_i);
+            cggm::eval_receiver<cggm::kTile, /*ClearLeafLSB=*/true>(
+                n_lvl, choice_pos, K_recv.data(), leaves_i);
 
-            // Apply punctured correction. eval_receiver leaves
-            // leaves_i[choice_pos] = zero_block; the XOR-then-overwrite
-            // fills it with (XOR of known leaves) XOR secret_sum_f2,
-            // depositing `delta` at bit 0 of that leaf.
+            // eval_receiver left every level-d leaf with bit 0 clear,
+            // including the zero placeholder at choice_pos. nodes_sum =
+            // XOR of all leaves (the choice_pos zero contributes
+            // nothing); leaves[choice_pos] = nodes_sum XOR lsb_only_mask
+            // then equals the sender's LSB-cleared leaf XOR Δ (bit 0 = 1
+            // marking the punctured position).
             block nodes_sum = zero_block;
-            for (int k = 0; k < leave_n; ++k) {
-                leaves_i[k] = leaves_i[k] & lsb_clear_mask;
-                nodes_sum   = nodes_sum ^ leaves_i[k];
-            }
-            leaves_i[choice_pos] = nodes_sum ^ secret_sum_f2;
+            for (int k = 0; k < leave_n; ++k)
+                nodes_sum = nodes_sum ^ leaves_i[k];
+            leaves_i[choice_pos] = nodes_sum ^ lsb_only_mask;
         }
 
         if (!is_malicious) return;
 
-        // Pass 2: FS-derived per-tree chi.
-        block chi_seed_buf[2];
-        transcript.digest(chi_seed_buf);
-        const block chi_seed = chi_seed_buf[0];
-
+        // Pass 2: per-tree chi from FS digest.
+        const block chi_seed = netio->get_digest();
         BlockVec chi(leave_n);
         for (int i = 0; i < tree_n; ++i) {
             block tree_inp[2] = { chi_seed, makeBlock(0, i) };

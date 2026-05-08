@@ -84,6 +84,14 @@ void FerretCOT::setup() {
 	// Bootstrap: SoftSpokenOT<8> produces the M base COTs that seed
 	// the first extend. Δ and malicious mode flow through; if no
 	// base_ot was supplied, SoftSpoken builds its own OTPVW.
+	//
+	// Enable IOChannel's FS transcript before the bootstrap so every
+	// byte from setup onward is bound into the chi_seed that the
+	// per-round mpcot consistency check pulls via netio->get_digest().
+	// (No-op for semi-honest — get_digest() is only called when
+	// is_malicious.)
+	if (is_malicious) io->enable_fs(/*send_first=*/party == ALICE);
+
 	SoftSpokenOT<8> ssp(io, std::move(base_ot_));
 	if (is_malicious) ssp.set_malicious(true);
 	if (party == ALICE) { ssp.setup_send(Delta); ssp.rcot_send(ot_pre_data.data(), M); }

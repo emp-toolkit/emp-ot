@@ -216,8 +216,8 @@ wire footprint per RCOT output (send + receive, divided by length).
 | `SoftSpoken<4>`  | malicious |      31 |   75 |  76 |  43 |  40 |
 | `SoftSpoken<8>`  | semi      |      15 |   35 |  36 |  26 |  25 |
 | `SoftSpoken<8>`  | malicious |      15 |   33 |  34 |  25 |  24 |
-| `FerretCOT`      | semi      |    0.27 |   39 |  39 |  27 |  35 |
-| `FerretCOT`      | malicious |    0.27 |   35 |  35 |  25 |  33 |
+| `FerretCOT`      | semi      |    0.25 |   39 |  39 |  27 |  35 |
+| `FerretCOT`      | malicious |    0.25 |   35 |  35 |  25 |  33 |
 
 `RCOT` = random correlated OT (raw extension output); `COT` = chosen-
 correlation; `ROT` = random OT; `OT` = chosen-input. `SoftSpoken<k>`

@@ -2,6 +2,7 @@
 #define EMP_OT_CGGM_H__
 #include <emp-tool/emp-tool.h>
 #include <algorithm>
+#include <type_traits>
 
 // Half-Tree correlated GGM tree (Guo-Yang-Wang-Zhang-Xie-Liu-Zhao,
 // ePrint 2022/1431, Figure 3). At every non-leaf:
@@ -58,17 +59,30 @@ namespace detail {
 // the on-path junk; see eval_receiver).
 struct ExpandSums { block left, right; };
 
+// Bit-0-clear mask for the COT LSB convention. Used when callers
+// want the final-level leaves to carry the choice signal in bit 0
+// rather than its raw cGGM bit (currently ferret's MPCOT). The mask
+// is applied both to the written leaf and the XOR-sum so K0 stays
+// consistent on both sides.
+inline const block kCggmLsbClearMask = makeBlock(0xFFFFFFFFFFFFFFFFLL,
+                                                 0xFFFFFFFFFFFFFFFELL);
+
 // Expand `parents` parents at leaves[0..parents) into children at
 // leaves[0..2*parents) using batched CCRH::H<Tile> over the whole
 // level. Returns per-level (left_sum, right_sum) so callers don't
 // have to re-read the just-written child array.
+//
+// `ClearLSB`: if true, AND every written leaf with kCggmLsbClearMask
+// and accumulate the XOR-sums over the cleared values. Used at the
+// final level only — intermediate levels' children feed AES at the
+// next level, so clearing them would corrupt the cGGM correlation.
 //
 // Tile invariant: process tiles top-down so each tile reads
 // `parents[base..base+n)` and writes children at
 // `[2*base, 2*(base+n))`. The next iteration's parents at
 // `[0, base)` are strictly below the just-written `[2*base, ...)`
 // region — no clobber.
-template <int Tile = kTile>
+template <int Tile = kTile, bool ClearLSB = false>
 inline ExpandSums expand_level(CCRH& ccrh, block* leaves, int parents) {
     block lefts_buf[Tile];
     block left_sum = zero_block, right_sum = zero_block;
@@ -84,8 +98,12 @@ inline ExpandSums expand_level(CCRH& ccrh, block* leaves, int parents) {
         for (int t = n - 1; t >= 0; --t) {
             const int j = base + t;
             const block parent = leaves[j];
-            const block left   = lefts_buf[t];
-            const block right  = parent ^ left;
+            block left   = lefts_buf[t];
+            block right  = parent ^ left;
+            if constexpr (ClearLSB) {
+                left  = left  & kCggmLsbClearMask;
+                right = right & kCggmLsbClearMask;
+            }
             leaves[2 * j]     = left;
             leaves[2 * j + 1] = right;
             left_sum  ^= left;
@@ -104,8 +122,15 @@ inline ExpandSums expand_level(CCRH& ccrh, block* leaves, int parents) {
 // sum at each level is K^1_i = K^0_i XOR Δ (leveled correlation),
 // derivable by callers that need both sides.
 //
+// `ClearLeafLSB`: if true, the level-d leaves are written with
+// bit 0 cleared, and K0[d-1] is the XOR-sum over the cleared
+// values. Used by ferret's MPCOT to fold the COT LSB convention
+// into the tree-build write pass (saves a separate AND loop over
+// 2^d leaves). softspoken does not want this — its sub-VOLE PRG
+// reads the full leaf bytes — so the default is off.
+//
 // Tile defaults to the platform's kTile. Override only for benches.
-template <int Tile = kTile>
+template <int Tile = kTile, bool ClearLeafLSB = false>
 inline void build_sender(int d, block Delta, block k,
                          block* leaves, block* K0) {
     CCRH ccrh;
@@ -115,11 +140,17 @@ inline void build_sender(int d, block Delta, block k,
     leaves[1] = Delta ^ k;
     K0[0] = leaves[0];
 
-    // Levels 2..d. expand_level returns the per-level XOR-sums in
-    // register; K^0_i = sum of left children.
-    for (int i = 2; i <= d; ++i) {
+    // Levels 2..d-1: never clear (intermediate parents feed AES
+    // at the next level; clearing would corrupt the cGGM tree).
+    for (int i = 2; i < d; ++i) {
         const int parents = 1 << (i - 1);
-        K0[i - 1] = detail::expand_level<Tile>(ccrh, leaves, parents).left;
+        K0[i - 1] = detail::expand_level<Tile, false>(ccrh, leaves, parents).left;
+    }
+
+    // Level d: leaf level. Optionally clear LSBs in-place.
+    if (d >= 2) {
+        const int parents = 1 << (d - 1);
+        K0[d - 1] = detail::expand_level<Tile, ClearLeafLSB>(ccrh, leaves, parents).left;
     }
 }
 
@@ -127,7 +158,12 @@ inline void build_sender(int d, block Delta, block k,
 // path `alpha` (d bits, MSB-first) and d corrections K_recv[i] =
 // K^{ᾱ_{i+1}}_{i+1}. After return, leaves[x] holds the correct
 // cGGM leaf for every x != alpha; leaves[alpha] is zero_block.
-template <int Tile = kTile>
+//
+// `ClearLeafLSB`: same convention as build_sender. Both sides must
+// agree; if the sender used ClearLeafLSB the receiver must too,
+// so K0[d-1] / K_recv[d-1] match. Cleared leaves let the caller
+// drop the post-eval AND loop and do a pure XOR-fold.
+template <int Tile = kTile, bool ClearLeafLSB = false>
 inline void eval_receiver(int d, int alpha,
                           const block* K_recv, block* leaves) {
     const int Q = 1 << d;
@@ -152,33 +188,38 @@ inline void eval_receiver(int d, int alpha,
     // junk from H(0); we overwrite both right after expansion).
     // Then recover the sibling on the alpha_bar_i side via
     // K_recv[i-1] XOR (XOR of expanded alpha_bar_i-side nodes).
-    for (int i = 2; i <= d; ++i) {
+    //
+    // The `step` lambda is invoked once per level. The bool template
+    // parameter on expand_level / sibling-write must match across
+    // sender / receiver and is fixed at compile time; we use
+    // std::bool_constant to dispatch (false for i<d, ClearLeafLSB for i==d).
+    auto step = [&](int i, auto clear_lsb) {
+        constexpr bool C = decltype(clear_lsb)::value;
         const int parents = 1 << (i - 1);
-        const auto sums = detail::expand_level<Tile>(ccrh, leaves, parents);
+        const auto sums = detail::expand_level<Tile, C>(ccrh, leaves, parents);
 
         const int alpha_i     = (alpha >> (d - i)) & 1;
         const int alpha_bar_i = 1 - alpha_i;
         const int on_path_lvl = path * 2 + alpha_i;
         const int sibling_lvl = path * 2 + alpha_bar_i;
 
-        // expand_level computed sums.{left,right} OVER ALL children
-        // of this level, including the junk H(0) values that
-        // expansion wrote at the on-path slot (parent at index
-        // `path` was zero from the previous iteration's puncture, so
-        // its two children are both H(0)). Capture H(0) from
-        // leaves[2*path] (L1-hot) before zeroing, then subtract it
-        // out of whichever side-sum we want — gives the same result
-        // as the old "zero then re-sum" sequence, with no second
-        // pass over the level.
-        const block junk = leaves[2 * path];   // = H(0)
+        // expand_level wrote junk H(0) at the on-path slot (parent
+        // at index `path` was zero). Capture, zero both children,
+        // then subtract junk out of the side-sum we care about.
+        const block junk = leaves[2 * path];
         leaves[2 * path]     = zero_block;
         leaves[2 * path + 1] = zero_block;
         const block sum_pre = (alpha_bar_i == 0) ? sums.left : sums.right;
         const block sum     = sum_pre ^ junk;
-        leaves[sibling_lvl] = sum ^ K_recv[i - 1];
+        block sib = sum ^ K_recv[i - 1];
+        if constexpr (C) sib = sib & detail::kCggmLsbClearMask;
+        leaves[sibling_lvl] = sib;
 
         path = on_path_lvl;
-    }
+    };
+
+    for (int i = 2; i < d; ++i) step(i, std::false_type{});
+    if (d >= 2) step(d, std::integral_constant<bool, ClearLeafLSB>{});
 }
 
 }}  // namespace emp::cggm
