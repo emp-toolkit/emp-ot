@@ -196,12 +196,10 @@ void SoftSpokenOT<k>::ensure_chunk_scratch_() {
 }
 
 template <int k>
-void SoftSpokenOT<k>::rcot_send_begin() {
+void SoftSpokenOT<k>::do_rcot_send_begin() {
     assert(setup_done_ && "rcot_send_begin: setup_send not run");
-    assert(!send_session_active_ && "rcot_send_begin: previous session not ended");
     cur_send_session_ = session_++;
     cur_send_b0_ = 0;
-    send_session_active_ = true;
     if (malicious_) {
         transcript_.reset();
         check_q_ = zero_block;
@@ -209,16 +207,15 @@ void SoftSpokenOT<k>::rcot_send_begin() {
 }
 
 template <int k>
-void SoftSpokenOT<k>::rcot_send_end() {
-    assert(send_session_active_ && "rcot_send_end: no active session");
+void SoftSpokenOT<k>::do_rcot_send_end() {
     if (malicious_) {
         // Sacrificial 128-OT chunk: extends the chi-fold by one packed
         // F_{2^128} element so the revealed (check_x, check_t) doesn't
         // determine the user-visible R/T values in any single equation.
-        // Folded into check_q_ inside rcot_send_next via the same
-        // transcript snapshot the receiver uses on its mirror call.
+        // Run at bs=1 directly (not through do_rcot_send_next, which
+        // would compute a full kChunkOTs).
         block scratch[128];
-        rcot_send_next(scratch, 128);
+        send_chunk_pipeline(scratch, /*bs=*/1);
         // Receiver opens (check_x, check_t); accept iff
         // check_q_ ⊕ check_x · Δ == check_t.
         block x, t, tmp;
@@ -229,17 +226,15 @@ void SoftSpokenOT<k>::rcot_send_end() {
         if (!cmpBlock(&lhs, &t, 1))
             error("SoftSpoken subspace VOLE check failed");
     }
-    send_session_active_ = false;
 }
 
 template <int k>
-void SoftSpokenOT<k>::rcot_send_next(block* out, int64_t chunk_len) {
-    assert(send_session_active_ && "rcot_send_next: call rcot_send_begin first");
-    assert(chunk_len > 0 && (chunk_len % 128) == 0 &&
-           "rcot_send_next: chunk_len must be a positive multiple of 128");
-    assert(chunk_len <= kChunkOTs && "rcot_send_next: chunk_len > kChunkOTs");
+void SoftSpokenOT<k>::do_rcot_send_next(block* out) {
+    send_chunk_pipeline(out, /*bs=*/kChunkBlocks);
+}
 
-    const int64_t bs = chunk_len / 128;          // bpr-blocks in this chunk
+template <int k>
+void SoftSpokenOT<k>::send_chunk_pipeline(block* out, int64_t bs) {
     const int64_t b0 = cur_send_b0_;             // PRG counter offset
 
     ensure_chunk_scratch_();
@@ -292,12 +287,10 @@ void SoftSpokenOT<k>::rcot_send_next(block* out, int64_t chunk_len) {
 }
 
 template <int k>
-void SoftSpokenOT<k>::rcot_recv_begin() {
+void SoftSpokenOT<k>::do_rcot_recv_begin() {
     assert(setup_done_ && "rcot_recv_begin: setup_recv not run");
-    assert(!recv_session_active_ && "rcot_recv_begin: previous session not ended");
     cur_recv_session_ = session_++;
     cur_recv_b0_ = 0;
-    recv_session_active_ = true;
     if (malicious_) {
         transcript_.reset();
         check_t_ = check_x_ = zero_block;
@@ -305,31 +298,28 @@ void SoftSpokenOT<k>::rcot_recv_begin() {
 }
 
 template <int k>
-void SoftSpokenOT<k>::rcot_recv_end() {
-    assert(recv_session_active_ && "rcot_recv_end: no active session");
+void SoftSpokenOT<k>::do_rcot_recv_end() {
     if (malicious_) {
-        // Mirror the sender's sacrificial chunk, then open the chi-fold
-        // accumulators. Must run before the io->flush() below so the
-        // (check_x, check_t) bytes go out in the same flush.
+        // Mirror the sender's sacrificial chunk at bs=1, then open the
+        // chi-fold accumulators. Must run before the io->flush() below
+        // so the (check_x, check_t) bytes go out in the same flush.
         block scratch[128];
-        rcot_recv_next(scratch, 128);
+        recv_chunk_pipeline(scratch, /*bs=*/1);
         this->io->send_block(&check_x_, 1);
         this->io->send_block(&check_t_, 1);
     }
     // Flush any d_buf bytes still buffered in NetIO so the peer's
-    // matching rcot_send_next can complete.
+    // matching do_rcot_send_next can complete.
     this->io->flush();
-    recv_session_active_ = false;
 }
 
 template <int k>
-void SoftSpokenOT<k>::rcot_recv_next(block* out, int64_t chunk_len) {
-    assert(recv_session_active_ && "rcot_recv_next: call rcot_recv_begin first");
-    assert(chunk_len > 0 && (chunk_len % 128) == 0 &&
-           "rcot_recv_next: chunk_len must be a positive multiple of 128");
-    assert(chunk_len <= kChunkOTs && "rcot_recv_next: chunk_len > kChunkOTs");
+void SoftSpokenOT<k>::do_rcot_recv_next(block* out) {
+    recv_chunk_pipeline(out, /*bs=*/kChunkBlocks);
+}
 
-    const int64_t bs = chunk_len / 128;
+template <int k>
+void SoftSpokenOT<k>::recv_chunk_pipeline(block* out, int64_t bs) {
     const int64_t b0 = cur_recv_b0_;
 
     ensure_chunk_scratch_();
@@ -439,71 +429,6 @@ void SoftSpokenOT<k>::combine_recv_chunk(block* out, const block* u_canonical, i
         gfmul(chi, R_i, &tmp);
         check_x_ = check_x_ ^ tmp;
     }
-}
-
-// =====================================================================
-// One-shot wrappers
-// =====================================================================
-
-template <int k>
-void SoftSpokenOT<k>::rcot_send(block* data, int64_t length) {
-    if (!setup_done_) setup_send();
-    if (length <= 0) return;
-
-    rcot_send_begin();
-    int64_t pos = 0;
-    while (pos + kChunkOTs <= length) {
-        rcot_send_next(data + pos, kChunkOTs);
-        pos += kChunkOTs;
-    }
-
-    int64_t remaining = length - pos;
-    if (remaining > 0) {
-        // Final chunk: align up to multiple of 128 (rcot_*_next requires
-        // it). Tail OTs past `remaining` are pseudorandom but unused.
-        const int64_t aligned = ((remaining + 127) / 128) * 128;
-        if (aligned == remaining) {
-            rcot_send_next(data + pos, aligned);
-        } else {
-            // The caller's buffer has only `remaining` slots past pos,
-            // so route the rounded-up output through stack scratch and
-            // copy back the requested prefix.
-            // Heap to keep the wrapper's stack frame small at large
-            // kChunkBlocks. Tail path only — runs at most once per call.
-            BlockVec scratch(kChunkOTs);
-            rcot_send_next(scratch.data(), aligned);
-            std::memcpy(data + pos, scratch.data(), sizeof(block) * remaining);
-        }
-    }
-    rcot_send_end();
-}
-
-template <int k>
-void SoftSpokenOT<k>::rcot_recv(block* data, int64_t length) {
-    if (!setup_done_) setup_recv();
-    if (length <= 0) return;
-
-    rcot_recv_begin();
-    int64_t pos = 0;
-    while (pos + kChunkOTs <= length) {
-        rcot_recv_next(data + pos, kChunkOTs);
-        pos += kChunkOTs;
-    }
-
-    int64_t remaining = length - pos;
-    if (remaining > 0) {
-        const int64_t aligned = ((remaining + 127) / 128) * 128;
-        if (aligned == remaining) {
-            rcot_recv_next(data + pos, aligned);
-        } else {
-            // Heap to keep the wrapper's stack frame small at large
-            // kChunkBlocks. Tail path only — runs at most once per call.
-            BlockVec scratch(kChunkOTs);
-            rcot_recv_next(scratch.data(), aligned);
-            std::memcpy(data + pos, scratch.data(), sizeof(block) * remaining);
-        }
-    }
-    rcot_recv_end();
 }
 
 template class SoftSpokenOT<2>;

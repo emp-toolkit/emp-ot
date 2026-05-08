@@ -22,9 +22,35 @@ using namespace std;
          << "recv=" << double(dr) / length << " B/COT" << endl;               \
 } while (0)
 
+// Streaming-API row: `length` gets rounded down to a multiple of
+// chunk_ots() inside test_rcot_streaming, so MOTps must be computed
+// over the effective length the test actually produced.
+#define STR_ROW() do {                                                        \
+    uint64_t ds = 0, dr = 0;                                                  \
+    int64_t eff = 0;                                                          \
+    double us = test_rcot_streaming<T>(ot, io, party, length, &eff, &ds, &dr);\
+    cout << "STR " << "\t" << row_name << "\t"                                \
+         << double(eff) / us << " MOTps  "                                    \
+         << "send=" << double(ds) / eff << " B/COT  "                         \
+         << "recv=" << double(dr) / eff << " B/COT" << endl;                  \
+} while (0)
+
 template <typename T>
 void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) {
+    // Warm up: trigger any deferred base-OT setup (IKNP / SoftSpoken
+    // auto-run setup_send / setup_recv on the first rcot_send / rcot_recv
+    // call). Without this, whichever row runs first eats the base-OT
+    // bootstrap cost and looks 20-30% slower than the rest. Use length =
+    // chunk_ots() so the OTExtension wrapper's leftover_ stays empty.
+    {
+        const int64_t warmup_len = ot->chunk_ots();
+        BlockVec dummy(warmup_len);
+        if (party == ALICE) ot->rcot_send(dummy.data(), warmup_len);
+        else                ot->rcot_recv(dummy.data(), warmup_len);
+        io->flush();
+    }
     BW_ROW("RCOT", test_rcot<T>);
+    STR_ROW();
     BW_ROW("COT ", test_cot<T>);
     BW_ROW("ROT ", test_rot<T>);
     BW_ROW("OT  ", test_ot<T>);

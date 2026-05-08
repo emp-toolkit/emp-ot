@@ -1,7 +1,7 @@
 #ifndef EMP_SOFTSPOKEN_OT_H__
 #define EMP_SOFTSPOKEN_OT_H__
 #include <emp-tool/emp-tool.h>
-#include "emp-ot/ot.h"
+#include "emp-ot/ot_extension/ot_extension.h"
 #include "emp-ot/base_ot/pvw.h"
 #include "emp-ot/ot_extension/cggm.h"
 #include "emp-ot/ot_extension/softspoken/sfvole_butterfly.h"
@@ -468,7 +468,7 @@ namespace emp {
  *       — see emp-ot/iknp.{h,cpp}.
  */
 template <int k>
-class SoftSpokenOT : public RandomCOT {
+class SoftSpokenOT : public OTExtension {
     static_assert(k >= 1 && k <= 8, "SoftSpokenOT supports k in [1, 8]");
 public:
     static constexpr int n = softspoken::n_subvoles<k>();
@@ -480,31 +480,12 @@ public:
     explicit SoftSpokenOT(IOChannel* io_, std::unique_ptr<OT> base_ot = nullptr);
     ~SoftSpokenOT() override = default;
 
-    // RandomCOT virtual contract. send_cot / recv_cot inherit from
-    // RandomCOT and run the standard 1-bit-per-COT chosen-message
-    // correction wrapper on top.
-    //
-    // rcot_send / rcot_recv are thin wrappers around the streaming
-    // API below: each runs one _begin → loop _next → _end session,
-    // with internal chunk size kChunkBlocks * 128 OTs.
-    void rcot_send(block* data, int64_t length) override;
-    void rcot_recv(block* data, int64_t length) override;
-
-    // Streaming API — IKNP-shape. After _begin(), call _next() any
-    // number of times with chunk_len a multiple of 128 and ≤
-    // kChunkBlocks * 128, then _end() to flush. Setup must already be
-    // done (one-shot wrappers above auto-run setup; the streaming
-    // entry points assert it).
+    // OTExtension contract. The base class supplies rcot_send /
+    // rcot_recv as wrappers around do_rcot_*_begin/_next/_end with
+    // chunk_ots() = kChunkOTs.
     static constexpr int kChunkBlocks = softspoken::chunk_blocks_for<k>();
     static constexpr int kChunkOTs    = kChunkBlocks * 128;
-
-    void rcot_send_begin();
-    void rcot_send_next(block* out, int64_t chunk_len);
-    void rcot_send_end();
-
-    void rcot_recv_begin();
-    void rcot_recv_next(block* out, int64_t chunk_len);
-    void rcot_recv_end();
+    int64_t chunk_ots() const override { return kChunkOTs; }
 
     // Externally-provided Δ (must have LSB=1). The decomposition
     // unpack<k>(Δ, ...) into alphas_ works for any Δ ∈ F_{2^128};
@@ -530,6 +511,22 @@ public:
         malicious_ = on;
     }
 
+protected:
+    // OTExtension hooks. Each do_*_next writes exactly kChunkOTs blocks.
+    void do_rcot_send_begin() override;
+    void do_rcot_send_next(block* out) override;
+    void do_rcot_send_end() override;
+    void do_rcot_recv_begin() override;
+    void do_rcot_recv_next(block* out) override;
+    void do_rcot_recv_end() override;
+
+    void ensure_setup_for_send() override {
+        if (!setup_done_) setup_send();
+    }
+    void ensure_setup_for_recv() override {
+        if (!setup_done_) setup_recv();
+    }
+
 private:
     std::unique_ptr<OT> base_ot_;
     bool setup_done_ = false;
@@ -546,8 +543,6 @@ private:
     // SoftSpoken session with a fresh session_id; cur_*_b0 tracks the
     // PRG counter offset (in bpr-blocks) consumed by previous _next
     // calls in this session.
-    bool send_session_active_ = false;
-    bool recv_session_active_ = false;
     uint64_t cur_send_session_ = 0;
     uint64_t cur_recv_session_ = 0;
     int64_t cur_send_b0_ = 0;
@@ -595,6 +590,13 @@ private:
     // after this chunk's d_bufs were absorbed. Mirrors IKNP::combine_*.
     void combine_send_chunk(block* out, int64_t bs);
     void combine_recv_chunk(block* out, const block* u_canonical, int64_t bs);
+
+    // Per-chunk pipeline at arbitrary `bs` (1..kChunkBlocks). The
+    // public do_rcot_*_next overrides call this with bs=kChunkBlocks;
+    // the malicious-mode sacrificial chunk in do_rcot_*_end calls it
+    // with bs=1 to avoid computing a wasted full-chunk pipeline.
+    void send_chunk_pipeline(block* out, int64_t bs);
+    void recv_chunk_pipeline(block* out, int64_t bs);
 };
 
 extern template class SoftSpokenOT<2>;

@@ -35,6 +35,16 @@ int64_t FerretCOT::chunk_ots() const {
 	return int64_t{1} << param.log_bin_sz;  // = leave_n
 }
 
+// =====================================================================
+// Streaming API (do_rcot_* hooks for OTExtension)
+// =====================================================================
+//
+// Auto-rollover note: when do_rcot_*_next hits the round boundary it
+// calls do_rcot_*_end / _begin directly (not the public lifecycle
+// wrappers from OTExtension). The session-active flag stays true
+// throughout the rollover, which is correct — from the outside it's
+// still one _next call.
+
 void FerretCOT::setup(block Deltain) {
 	this->Delta = Deltain;
 	setup();
@@ -91,7 +101,7 @@ void FerretCOT::setup() {
 // Streaming send-side
 // =====================================================================
 
-void FerretCOT::rcot_send_begin() {
+void FerretCOT::do_rcot_send_begin() {
 	if (!extend_initialized) error("Run setup before extending");
 	// Swap in the fresh M produced by previous end's refill (or by
 	// SoftSpoken bootstrap on the first call). After this, curr_
@@ -103,7 +113,7 @@ void FerretCOT::rcot_send_begin() {
 	lpn_f2->begin_round();   // network seed exchange (one block)
 }
 
-void FerretCOT::rcot_send_next(block* out) {
+void FerretCOT::do_rcot_send_next(block* out) {
 	const int tree_n  = param.t;
 	const int n_lvl   = param.log_bin_sz;            // tree_height - 1
 	const int64_t leave_n = chunk_ots();
@@ -112,8 +122,8 @@ void FerretCOT::rcot_send_next(block* out) {
 	// user-visible budget, finish the round (refill + chi-fold)
 	// and start a new one before producing the user's tree.
 	if (tree_idx_ == tree_n - refill_trees) {
-		rcot_send_end();
-		rcot_send_begin();
+		do_rcot_send_end();
+		do_rcot_send_begin();
 	}
 
 	const block* base_i = ot_pre_data_curr_.data() + tree_idx_ * n_lvl;
@@ -124,7 +134,7 @@ void FerretCOT::rcot_send_next(block* out) {
 	tree_idx_++;
 }
 
-void FerretCOT::rcot_send_end() {
+void FerretCOT::do_rcot_send_end() {
 	const int n_lvl   = param.log_bin_sz;
 	const int64_t leave_n = chunk_ots();
 	// Run refill_trees trees, output → next_ buffer (= the next
@@ -150,7 +160,7 @@ void FerretCOT::rcot_send_end() {
 // Streaming recv-side (mirrors send)
 // =====================================================================
 
-void FerretCOT::rcot_recv_begin() {
+void FerretCOT::do_rcot_recv_begin() {
 	if (!extend_initialized) error("Run setup before extending");
 	std::swap(ot_pre_data_curr_, ot_pre_data_next_);
 	tree_idx_ = 0;
@@ -158,14 +168,14 @@ void FerretCOT::rcot_recv_begin() {
 	lpn_f2->begin_round();
 }
 
-void FerretCOT::rcot_recv_next(block* out) {
+void FerretCOT::do_rcot_recv_next(block* out) {
 	const int tree_n  = param.t;
 	const int n_lvl   = param.log_bin_sz;
 	const int64_t leave_n = chunk_ots();
 
 	if (tree_idx_ == tree_n - refill_trees) {
-		rcot_recv_end();
-		rcot_recv_begin();
+		do_rcot_recv_end();
+		do_rcot_recv_begin();
 	}
 
 	const block* base_i = ot_pre_data_curr_.data() + tree_idx_ * n_lvl;
@@ -176,7 +186,7 @@ void FerretCOT::rcot_recv_next(block* out) {
 	tree_idx_++;
 }
 
-void FerretCOT::rcot_recv_end() {
+void FerretCOT::do_rcot_recv_end() {
 	const int n_lvl   = param.log_bin_sz;
 	const int64_t leave_n = chunk_ots();
 	for (int64_t i = 0; i < refill_trees; ++i) {
@@ -189,69 +199,6 @@ void FerretCOT::rcot_recv_end() {
 		tree_idx_++;
 	}
 	mpcot_receiver->run_end(ot_pre_data_curr_.data());
-}
-
-// =====================================================================
-// One-shot wrappers (RandomCOT contract)
-// =====================================================================
-
-// Helper: drain up to `take_max` blocks of leftover into `out`.
-// Returns the number drained.
-static int64_t drain_leftover(block* out, int64_t take_max,
-                              BlockVec& leftover, int& pos, int& count) {
-	if (count == 0) return 0;
-	int64_t take = std::min<int64_t>(take_max, count);
-	memcpy(out, leftover.data() + pos, take * sizeof(block));
-	pos   += (int)take;
-	count -= (int)take;
-	return take;
-}
-
-void FerretCOT::rcot_send(block* data, int64_t num) {
-	const int64_t chunk = chunk_ots();
-	int64_t produced = drain_leftover(data, num, leftover_,
-	                                  leftover_pos_, leftover_count_);
-	if (produced == num) return;
-
-	rcot_send_begin();
-	while (produced + chunk <= num) {
-		rcot_send_next(data + produced);
-		produced += chunk;
-	}
-	if (produced < num) {
-		// Partial tail: produce one more tree into leftover_, copy
-		// the user-requested prefix to data, save the suffix for the
-		// next rcot_send call.
-		if (leftover_.empty()) leftover_.resize(chunk);
-		rcot_send_next(leftover_.data());
-		int64_t take = num - produced;
-		memcpy(data + produced, leftover_.data(), take * sizeof(block));
-		leftover_pos_   = (int)take;
-		leftover_count_ = (int)(chunk - take);
-	}
-	rcot_send_end();
-}
-
-void FerretCOT::rcot_recv(block* data, int64_t num) {
-	const int64_t chunk = chunk_ots();
-	int64_t produced = drain_leftover(data, num, leftover_,
-	                                  leftover_pos_, leftover_count_);
-	if (produced == num) return;
-
-	rcot_recv_begin();
-	while (produced + chunk <= num) {
-		rcot_recv_next(data + produced);
-		produced += chunk;
-	}
-	if (produced < num) {
-		if (leftover_.empty()) leftover_.resize(chunk);
-		rcot_recv_next(leftover_.data());
-		int64_t take = num - produced;
-		memcpy(data + produced, leftover_.data(), take * sizeof(block));
-		leftover_pos_   = (int)take;
-		leftover_count_ = (int)(chunk - take);
-	}
-	rcot_recv_end();
 }
 
 }  // namespace emp

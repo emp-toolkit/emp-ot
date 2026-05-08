@@ -1,6 +1,6 @@
 #ifndef EMP_FERRET_COT_H_
 #define EMP_FERRET_COT_H_
-#include "emp-ot/ot.h"
+#include "emp-ot/ot_extension/ot_extension.h"
 #include "emp-ot/ot_extension/ferret/constants.h"
 #include <memory>
 
@@ -23,7 +23,7 @@ namespace emp {
  * https://eprint.iacr.org/2020/924.pdf
  *
  */
-class FerretCOT: public RandomCOT {
+class FerretCOT: public OTExtension {
 public:
 	PrimalLPNParameter param;
 
@@ -39,9 +39,9 @@ public:
 	void setup(block Deltain);
 	void setup();
 
-	// Streaming RCOT API. Each rcot_*_next call produces exactly
-	// `chunk_ots()` = leave_n = 2^log_bin_sz RCOT outputs (one
-	// cGGM tree's leaves).
+	// OTExtension contract. Each do_rcot_*_next call produces exactly
+	// `chunk_ots()` = leave_n = 2^log_bin_sz RCOT outputs (one cGGM
+	// tree's leaves).
 	//
 	// Lifecycle:
 	//   begin()  — swaps in fresh M base COTs (from the previous
@@ -59,21 +59,19 @@ public:
 	//              accumulated VW (covering both user-visible and
 	//              refill trees). Always leaves next_round's M
 	//              fresh and ready for the next begin().
-	int64_t chunk_ots() const;          // = leave_n
-	void rcot_send_begin();
-	void rcot_send_next(block* out);    // writes chunk_ots() blocks
-	void rcot_send_end();
-	void rcot_recv_begin();
-	void rcot_recv_next(block* out);    // writes chunk_ots() blocks
-	void rcot_recv_end();
+	int64_t chunk_ots() const override;          // = leave_n
 
-	// Standard one-shot interface (RandomCOT contract). Wrappers
-	// around the streaming API: begin → loop _next → end, with a
-	// stack-local kChunkOTs buffer for the trailing partial tree
-	// when num isn't a multiple of leave_n. RandomCOT::send_cot /
-	// recv_cot build the chosen-message correction layer on top.
-	void rcot_send(block* data, int64_t num) override;
-	void rcot_recv(block* data, int64_t num) override;
+protected:
+	void do_rcot_send_begin() override;
+	void do_rcot_send_next(block* out) override;
+	void do_rcot_send_end() override;
+	void do_rcot_recv_begin() override;
+	void do_rcot_recv_next(block* out) override;
+	void do_rcot_recv_end() override;
+	// ensure_setup_for_send / _recv stay no-op (the OTExtension
+	// defaults): FerretCOT always runs setup in its constructor when
+	// run_setup=true, so by the time the one-shot wrappers fire setup
+	// is already done.
 
 private:
 	int party;
@@ -91,15 +89,6 @@ private:
 	// Swapped at every round boundary.
 	BlockVec ot_pre_data_curr_;
 	BlockVec ot_pre_data_next_;
-
-	// Leftover buffer for the standard one-shot rcot_send / rcot_recv
-	// wrappers. When num isn't a multiple of chunk_ots(), the tail
-	// _next call lands here; subsequent rcot_send/recv calls drain
-	// the unused suffix before producing more chunks. Keeps small-num
-	// repeated calls cheap (no fresh tree per call).
-	BlockVec leftover_;
-	int      leftover_pos_   = 0;
-	int      leftover_count_ = 0;
 
 	// Exactly one of these is populated, depending on `party`.
 	std::unique_ptr<MPCOT_Sender>   mpcot_sender;

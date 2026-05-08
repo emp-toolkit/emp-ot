@@ -2,7 +2,7 @@
 #define EMP_IKNP_H__
 #include <cassert>
 #include <memory>
-#include "emp-ot/ot.h"
+#include "emp-ot/ot_extension/ot_extension.h"
 #include "emp-ot/base_ot/pvw.h"
 
 namespace emp {
@@ -16,21 +16,18 @@ namespace emp {
  * [REF] Active security via "Actively Secure OT Extension with Optimal Overhead"
  *       https://eprint.iacr.org/2015/546.pdf  (send_check / recv_check)
  *
- * Streaming Fiat-Shamir: each pre_block call snapshots the transcript
+ * Streaming Fiat-Shamir: each rcot_*_next call snapshots the transcript
  * after putting its u-matrix bytes (Hash::digest with reset_after=false),
  * derives a per-chunk chi seed, and folds the chunk's packed F_{2^128}
  * elements into running accumulators (check_q on the sender, check_t /
  * check_x on the receiver) right after sse_trans, while `out` is still
  * cache-hot. rcot_send_end / rcot_recv_end run a final 128-OT chunk
  * (folded with chi from the same continuing transcript) before the
- * (x, t) io exchange and check_q ⊕ x·Δ == t compare. The streaming API
- * is stateless — *_begin() just resets transcript and accumulators; the
- * caller drives the chunk loop, picking length per call (must be a
- * multiple of 128 and ≤ block_size, since rcot_*_next writes
- * ((len+127)/128)*128 blocks directly into the caller buffer). The
- * single-call rcot_send / rcot_recv wrappers drive one full session
- * each and handle the non-aligned tail with stack scratch for callers
- * that don't need chunk-by-chunk streaming.
+ * (x, t) io exchange and check_q ⊕ x·Δ == t compare. Each _next writes
+ * exactly chunk_ots() = block_size = 2048 blocks; the OTExtension
+ * base class wraps the streaming API into a one-shot rcot_send /
+ * rcot_recv with a leftover buffer for callers whose `num` isn't a
+ * multiple of block_size.
  *
  * Bit-0 choice encoding: with the invariant bit_0(Δ) = 1, row 0 of the
  * IKNP matrix collapses. Sender forces q[0] = 0 (memset row 0 of t,
@@ -44,7 +41,7 @@ namespace emp {
  * bandwidth and keeping chi snapshots aligned without sending dead
  * bytes.
  */
-class IKNP : public RandomCOT { public:
+class IKNP : public OTExtension { public:
 	// ===== State =====
 	static constexpr int64_t block_size = 1024 * 2;
 	bool s[128];
@@ -52,9 +49,9 @@ class IKNP : public RandomCOT { public:
 	PRG choice_prg;
 	bool malicious = true;
 	bool is_sender = false;
-	// Tracks whether setup_send / setup_recv has been called. rcot_send /
-	// rcot_recv auto-run the matching setup on first call so callers
-	// without a specific Δ to pin can just construct + use.
+	// Tracks whether setup_send / setup_recv has been called. The
+	// OTExtension::rcot_send / rcot_recv wrappers auto-run the
+	// matching setup on first call via ensure_setup_for_*().
 	bool setup_done = false;
 	// Fiat-Shamir transcript over the OT-extension u-matrix bytes. Both
 	// sides absorb the same byte stream during rcot_*_next; snapshots
@@ -67,11 +64,6 @@ class IKNP : public RandomCOT { public:
 	// Running malicious-check accumulators, reset at each rcot_*_begin.
 	// Sender uses check_q; receiver uses check_t and check_x.
 	block check_q, check_t, check_x;
-	// Session flags: rcot_*_begin sets, rcot_*_end clears, rcot_*_next
-	// asserts. Catches forgotten begin/end and double-begin in debug
-	// builds.
-	bool in_send_session = false;
-	bool in_recv_session = false;
 
 	// User-supplied base OT, owned by IKNP. Defaults to OTPVW (DDH
 	// messy-mode PVW '08 — malicious-secure). Pass a different one
@@ -87,11 +79,6 @@ class IKNP : public RandomCOT { public:
 		                   : std::unique_ptr<OT>(new OTPVW(io_));
 	}
 
-	~IKNP() {
-		assert(!in_send_session && "~IKNP: send session active — missing rcot_send_end");
-		assert(!in_recv_session && "~IKNP: recv session active — missing rcot_recv_end");
-	}
-
 	// ===== Setup =====
 	// Sender role with explicit Δ (caller must ensure delta_bool_in[0] = true).
 	void setup_send(const bool *delta_bool_in);
@@ -100,27 +87,28 @@ class IKNP : public RandomCOT { public:
 	// Receiver role.
 	void setup_recv();
 
-	// ===== RandomCOT one-shot =====
-	// Run one full random COT session of `num` outputs. Auto-runs the
-	// matching setup on first call.
-	void rcot_send(block *data, int64_t num) override;
-	void rcot_recv(block *data, int64_t num) override;
+	// ===== OTExtension contract =====
+	int64_t chunk_ots() const override { return block_size; }
 
-	// ===== Streaming API =====
-	// External streaming consumers: *_begin → loop *_next (length must
-	// be a multiple of 128 and ≤ block_size) → *_end. Setup must already
-	// be done (no auto-setup at this layer).
-	void rcot_send_begin();
-	void rcot_send_next(block *out, int64_t len);
-	void rcot_send_end();
+protected:
+	void do_rcot_send_begin() override;
+	void do_rcot_send_next(block *out) override;
+	void do_rcot_send_end() override;
+	void do_rcot_recv_begin() override;
+	void do_rcot_recv_next(block *out) override;
+	void do_rcot_recv_end() override;
 
-	void rcot_recv_begin();
-	void rcot_recv_next(block *out, int64_t len);
-	void rcot_recv_end();
+	void ensure_setup_for_send() override {
+		if (!setup_done) setup_send();
+	}
+	void ensure_setup_for_recv() override {
+		if (!setup_done) setup_recv();
+	}
 
+public:
 	// ===== Internal helpers (chi-fold per chunk) =====
-	void combine_send(block *out, int64_t rounded_len);
-	void combine_recv(block *out, block *r, int64_t rounded_len);
+	void combine_send(block *out);
+	void combine_recv(block *out, block *r);
 };
 
 }  // namespace emp
