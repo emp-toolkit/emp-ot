@@ -17,6 +17,7 @@ FerretCOT::FerretCOT(int party, IOChannel *io,
 	this->base_ot_ = std::move(base_ot);
 
 	this->extend_initialized = false;
+	this->tree_idx_ = 0;
 
 	if(run_setup) {
 		if(party == ALICE) {
@@ -30,27 +31,8 @@ FerretCOT::FerretCOT(int party, IOChannel *io,
 
 FerretCOT::~FerretCOT() = default;
 
-void FerretCOT::extend(block *ot_output, block *ot_input) {
-	// ot_input slicing: cGGM level corrections consume
-	// ot_input[0 .. tree_n*(h-1)) (mpcot reads them directly via
-	// pre_cot_data). The first 128 entries are also re-read by the
-	// malicious consistency check (aliasing both reads is fine; both
-	// are non-destructive). LPN base reads from ot_input + 128 onward.
-	if (party == ALICE) mpcot_sender->run(ot_output, ot_input);
-	else                mpcot_receiver->run(ot_output, ot_input);
-	lpn_f2->compute(ot_output, ot_input + MPCOT_Sender::kConsistCheckCotNum);
-}
-
-// Run one extend round. ot_buffer = nullptr writes to the internal
-// ot_data buffer (rcot_send drains it via memcpy); a non-null buffer
-// writes directly into the caller's storage. Either way the trailing
-// M-block tail of the new output is copied back into ot_pre_data to
-// seed the next round.
-void FerretCOT::extend_f2k(block *ot_buffer) {
-	if (ot_buffer == nullptr) ot_buffer = ot_data.data();
-	extend(ot_buffer, ot_pre_data.data());
-	memcpy(ot_pre_data.data(), ot_buffer + ot_limit, M * sizeof(block));
-	ot_used = 0;
+int64_t FerretCOT::chunk_ots() const {
+	return int64_t{1} << param.log_bin_sz;  // = leave_n
 }
 
 void FerretCOT::setup(block Deltain) {
@@ -69,74 +51,207 @@ void FerretCOT::setup() {
 		if (is_malicious) mpcot_receiver->set_malicious();
 	}
 
-	const int tree_n = param.t;
-	const int tree_h = param.log_bin_sz + 1;
-	// M base COTs per extend round = LPN k + cGGM level corrections
+	const int tree_n  = param.t;
+	const int tree_h  = param.log_bin_sz + 1;
+	const int leave_n = 1 << param.log_bin_sz;
+
+	// M base COTs per round = LPN k + cGGM level corrections
 	// (tree_n × (h-1)) + 128 for the malicious consistency check.
-	M        = param.k + tree_n * (tree_h - 1)
-	           + MPCOT_Sender::kConsistCheckCotNum;
-	ot_limit = param.n - M;
-	ot_used  = ot_limit;
+	M           = param.k + tree_n * (tree_h - 1) + MPCOT_Sender::kConsistCheckCotNum;
+	refill_trees = (M + leave_n - 1) / leave_n;  // ceil(M / leave_n)
 	extend_initialized = true;
+	tree_idx_   = 0;
 
-	ot_pre_data.resize(M);
+	// Two ping-pong base buffers, each `refill_trees * leave_n` blocks.
+	// Slots [0, M) hold the round's M base COTs; the slack
+	// `(refill_trees * leave_n - M)` blocks are unused by mpcot/LPN
+	// reads but addressable.
+	const int64_t buf_blocks = (int64_t)refill_trees * leave_n;
+	ot_pre_data_curr_.resize(buf_blocks);
+	ot_pre_data_next_.resize(buf_blocks);
 
-	// Bootstrap: SoftSpokenOT<8> produces the M base COTs that seed
-	// the first extend. Δ and malicious mode flow through; if no
-	// base_ot was supplied, SoftSpoken builds its own OTPVW.
+	// Bootstrap: SoftSpokenOT<8> writes the first round's M base COTs
+	// into ot_pre_data_NEXT_ (not curr_). The first rcot_*_begin
+	// swaps next_ → curr_ before consuming. After that, every end
+	// populates next_ via the refill trees, every begin swaps —
+	// steady state with no special-case for "first call".
 	//
-	// Enable IOChannel's FS transcript before the bootstrap so every
-	// byte from setup onward is bound into the chi_seed that the
-	// per-round mpcot consistency check pulls via netio->get_digest().
-	// (No-op for semi-honest — get_digest() is only called when
-	// is_malicious.)
+	// IOChannel FS transcript is enabled before bootstrap so every
+	// byte from setup onward binds the per-tree chi seeds pulled by
+	// MPCOT via netio->get_digest() (no-op for semi-honest).
 	if (is_malicious) io->enable_fs(/*send_first=*/party == ALICE);
 
 	SoftSpokenOT<8> ssp(io, std::move(base_ot_));
 	if (is_malicious) ssp.set_malicious(true);
-	if (party == ALICE) { ssp.setup_send(Delta); ssp.rcot_send(ot_pre_data.data(), M); }
-	else                { ssp.setup_recv();      ssp.rcot_recv(ot_pre_data.data(), M); }
+	if (party == ALICE) { ssp.setup_send(Delta); ssp.rcot_send(ot_pre_data_next_.data(), M); }
+	else                { ssp.setup_recv();      ssp.rcot_recv(ot_pre_data_next_.data(), M); }
 }
 
-void FerretCOT::rcot_send(block *data, int64_t num) {
-	if (!extend_initialized)
-		error("Run setup before extending");
-	if (ot_data.empty()) {
-		ot_data.resize(param.n);
-		// Zero-fill on first allocation: matches the historical
-		// value-init behaviour. Some code paths read ot_data slots
-		// before any extend() has populated them (e.g. silent_ot_left
-		// underflow protection).
-		std::fill(ot_data.begin(), ot_data.end(), zero_block);
+// =====================================================================
+// Streaming send-side
+// =====================================================================
+
+void FerretCOT::rcot_send_begin() {
+	if (!extend_initialized) error("Run setup before extending");
+	// Swap in the fresh M produced by previous end's refill (or by
+	// SoftSpoken bootstrap on the first call). After this, curr_
+	// holds the round's M, next_ is stale and will be overwritten
+	// by THIS round's end.
+	std::swap(ot_pre_data_curr_, ot_pre_data_next_);
+	tree_idx_ = 0;
+	mpcot_sender->run_begin();
+	lpn_f2->begin_round();   // network seed exchange (one block)
+}
+
+void FerretCOT::rcot_send_next(block* out) {
+	const int tree_n  = param.t;
+	const int n_lvl   = param.log_bin_sz;            // tree_height - 1
+	const int64_t leave_n = chunk_ots();
+
+	// Auto rollover: if this call would overrun the round's
+	// user-visible budget, finish the round (refill + chi-fold)
+	// and start a new one before producing the user's tree.
+	if (tree_idx_ == tree_n - refill_trees) {
+		rcot_send_end();
+		rcot_send_begin();
 	}
 
-	int64_t produced = 0;
+	const block* base_i = ot_pre_data_curr_.data() + tree_idx_ * n_lvl;
+	mpcot_sender->run_next_tree(out, base_i, tree_idx_);
+	lpn_f2->compute_slice(out,
+	                      ot_pre_data_curr_.data() + MPCOT_Sender::kConsistCheckCotNum,
+	                      leave_n);
+	tree_idx_++;
+}
 
-	// 1) Drain whatever's already buffered from a previous call.
-	int64_t left = ot_limit - ot_used;
-	if (left > 0) {
-		int64_t take = std::min<int64_t>(num, left);
-		memcpy(data, ot_data.data() + ot_used, take * sizeof(block));
-		ot_used  += take;
-		produced += take;
+void FerretCOT::rcot_send_end() {
+	const int n_lvl   = param.log_bin_sz;
+	const int64_t leave_n = chunk_ots();
+	// Run refill_trees trees, output → next_ buffer (= the next
+	// round's M base COTs). These trees consume curr_'s remaining
+	// cGGM-correction slots and accumulate into consist_check_VW
+	// alongside any user-visible trees this session produced.
+	for (int64_t i = 0; i < refill_trees; ++i) {
+		block* refill_slot = ot_pre_data_next_.data() + i * leave_n;
+		const block* base_i = ot_pre_data_curr_.data() + tree_idx_ * n_lvl;
+		mpcot_sender->run_next_tree(refill_slot, base_i, tree_idx_);
+		lpn_f2->compute_slice(refill_slot,
+		                      ot_pre_data_curr_.data() + MPCOT_Sender::kConsistCheckCotNum,
+		                      leave_n);
+		tree_idx_++;
+	}
+	// Chi-fold check on this session's accumulated VW (user-visible
+	// + refill trees). VW slots not written this session remain zero
+	// on both sides, contributing nothing to the XOR-fold.
+	mpcot_sender->run_end(ot_pre_data_curr_.data());
+}
+
+// =====================================================================
+// Streaming recv-side (mirrors send)
+// =====================================================================
+
+void FerretCOT::rcot_recv_begin() {
+	if (!extend_initialized) error("Run setup before extending");
+	std::swap(ot_pre_data_curr_, ot_pre_data_next_);
+	tree_idx_ = 0;
+	mpcot_receiver->run_begin();
+	lpn_f2->begin_round();
+}
+
+void FerretCOT::rcot_recv_next(block* out) {
+	const int tree_n  = param.t;
+	const int n_lvl   = param.log_bin_sz;
+	const int64_t leave_n = chunk_ots();
+
+	if (tree_idx_ == tree_n - refill_trees) {
+		rcot_recv_end();
+		rcot_recv_begin();
 	}
 
-	// 2) While the caller's remaining buffer can hold a full extend
-	//    output (param.n = ot_limit useful + M tail), produce in place.
-	while (num - produced >= param.n) {
-		extend_f2k(data + produced);
-		produced += ot_limit;
-		ot_used   = ot_limit;  // internal buffer is "drained"
-	}
+	const block* base_i = ot_pre_data_curr_.data() + tree_idx_ * n_lvl;
+	mpcot_receiver->run_next_tree(out, base_i, tree_idx_);
+	lpn_f2->compute_slice(out,
+	                      ot_pre_data_curr_.data() + MPCOT_Receiver::kConsistCheckCotNum,
+	                      leave_n);
+	tree_idx_++;
+}
 
-	// 3) Final tail: extend into the internal buffer, copy out.
-	while (produced < num) {
-		extend_f2k();
-		int64_t take = std::min<int64_t>(num - produced, ot_limit);
-		memcpy(data + produced, ot_data.data(), take * sizeof(block));
-		ot_used   = take;
-		produced += take;
+void FerretCOT::rcot_recv_end() {
+	const int n_lvl   = param.log_bin_sz;
+	const int64_t leave_n = chunk_ots();
+	for (int64_t i = 0; i < refill_trees; ++i) {
+		block* refill_slot = ot_pre_data_next_.data() + i * leave_n;
+		const block* base_i = ot_pre_data_curr_.data() + tree_idx_ * n_lvl;
+		mpcot_receiver->run_next_tree(refill_slot, base_i, tree_idx_);
+		lpn_f2->compute_slice(refill_slot,
+		                      ot_pre_data_curr_.data() + MPCOT_Receiver::kConsistCheckCotNum,
+		                      leave_n);
+		tree_idx_++;
 	}
+	mpcot_receiver->run_end(ot_pre_data_curr_.data());
+}
+
+// =====================================================================
+// One-shot wrappers (RandomCOT contract)
+// =====================================================================
+
+// Helper: drain up to `take_max` blocks of leftover into `out`.
+// Returns the number drained.
+static int64_t drain_leftover(block* out, int64_t take_max,
+                              BlockVec& leftover, int& pos, int& count) {
+	if (count == 0) return 0;
+	int64_t take = std::min<int64_t>(take_max, count);
+	memcpy(out, leftover.data() + pos, take * sizeof(block));
+	pos   += (int)take;
+	count -= (int)take;
+	return take;
+}
+
+void FerretCOT::rcot_send(block* data, int64_t num) {
+	const int64_t chunk = chunk_ots();
+	int64_t produced = drain_leftover(data, num, leftover_,
+	                                  leftover_pos_, leftover_count_);
+	if (produced == num) return;
+
+	rcot_send_begin();
+	while (produced + chunk <= num) {
+		rcot_send_next(data + produced);
+		produced += chunk;
+	}
+	if (produced < num) {
+		// Partial tail: produce one more tree into leftover_, copy
+		// the user-requested prefix to data, save the suffix for the
+		// next rcot_send call.
+		if (leftover_.empty()) leftover_.resize(chunk);
+		rcot_send_next(leftover_.data());
+		int64_t take = num - produced;
+		memcpy(data + produced, leftover_.data(), take * sizeof(block));
+		leftover_pos_   = (int)take;
+		leftover_count_ = (int)(chunk - take);
+	}
+	rcot_send_end();
+}
+
+void FerretCOT::rcot_recv(block* data, int64_t num) {
+	const int64_t chunk = chunk_ots();
+	int64_t produced = drain_leftover(data, num, leftover_,
+	                                  leftover_pos_, leftover_count_);
+	if (produced == num) return;
+
+	rcot_recv_begin();
+	while (produced + chunk <= num) {
+		rcot_recv_next(data + produced);
+		produced += chunk;
+	}
+	if (produced < num) {
+		if (leftover_.empty()) leftover_.resize(chunk);
+		rcot_recv_next(leftover_.data());
+		int64_t take = num - produced;
+		memcpy(data + produced, leftover_.data(), take * sizeof(block));
+		leftover_pos_   = (int)take;
+		leftover_count_ = (int)(chunk - take);
+	}
+	rcot_recv_end();
 }
 
 }  // namespace emp

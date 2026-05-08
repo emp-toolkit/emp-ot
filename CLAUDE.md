@@ -53,11 +53,13 @@ an older baseline knows which deltas to expect.
   protocol transcript: FerretCOT::setup calls
   `io->enable_fs(party == ALICE)`, which has IOChannel maintain two
   per-direction SHA-256 transcripts that absorb every byte sent and
-  received. mpcot.run() pulls `chi_seed = io->get_digest() =
-  H(d_AB ‖ H(d_BA))`, then derives per-tree `chi_i = expand(Hash(
-  chi_seed ‖ i))`. Same wire bytes (no extra send), but chi binds to
-  the full transcript so far. Output COTs are byte-different in
-  malicious mode.
+  received. mpcot.run() snapshots the FS digest *per tree* via
+  `chi_seed_i = io->get_digest() = H(d_AB ‖ d_BA)` taken right
+  after sending/receiving c[i], then PRG-expands chi[0..leave_n)
+  from chi_seed_i (à la IKNP malicious). Each tree's chi binds the
+  transcript through that tree, strictly stronger than a single
+  round-final digest. Same on-wire byte counts, but the
+  consistency-check digest content differs in malicious mode.
 - Ferret mpcot drops `secret_sum_f2` from the wire — under cGGM the
   leveled correlation gives XOR(leaves) = Δ, and the per-tree
   punctured-correction value reduces to a constant
