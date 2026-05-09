@@ -179,10 +179,10 @@ void SoftSpokenOT<k>::pprf_check_recv() {
 //     convention is applied to the same chunk-local slice.
 //
 // Memory: the dominant inner-loop scratch is `planes_chunk` of size
-// n*k*kChunkBlocks blocks = 128 * 32 = 4096 blocks = 64 KB. Sized to
-// fit L1 on Apple M / Zen 5c / Sapphire Rapids (with B reducible if
-// needed). In contrast the bulk path held n*k*bpr = 16 MB of plane
-// data at length=2^20 — past L3 on small-cache parts.
+// n*k*kChunkBlocks blocks (= 64 KB at the current kChunkBlocks),
+// sized to fit L1 across modern x86 and Apple Silicon parts. In
+// contrast the bulk path held n*k*bpr of plane data at length=2^20 —
+// well past L3 on small-cache parts.
 
 template <int k>
 void SoftSpokenOT<k>::ensure_chunk_scratch_() {

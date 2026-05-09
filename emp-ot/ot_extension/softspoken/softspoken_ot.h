@@ -276,19 +276,17 @@ inline void pprf_eval_receiver(int alpha,
 
 // Maximum chunk size (in bpr-blocks) the chunked sfvole helpers will
 // be called with. Sets stack-resident scratch sizing in
-// softspoken_ot.cpp (u_canonical / u_temp). The fused kernel itself
-// no longer needs a per-leaf scratch buffer.
+// softspoken_ot.cpp (u_canonical / u_temp).
 constexpr int kMaxChunkBlocks = 1024;
 
 // Per-k chunk size (in bpr-blocks). Larger chunks amortize per-chunk
 // overhead better but eventually hit cache pressure; per-leaf compute
-// grows as 2^k, so larger k tolerates a larger chunk before the cliff.
-//   k=2 → 128:  little compute per leaf — small chunk avoids L1
-//               pressure on small-cache parts.
+// grows as 2^k, so larger k tolerates a larger chunk.
+//   k=2 → 128:  little compute per leaf — small chunk avoids cache
+//               pressure.
 //   k=4 → 1024: heavier compute per leaf supports a larger
 //               amortization window.
-//   k=8 → 1024: Q=256 leaves means lots of fold work per chunk;
-//               amortization wins up to the L2 cliff.
+//   k=8 → 1024: Q=256 leaves means lots of fold work per chunk.
 template <int k>
 constexpr int chunk_blocks_for() {
     if constexpr (k <= 2)      return 128;
@@ -399,8 +397,7 @@ inline void apply_derand_to_w_planes(int alpha_i,
     }
 }
 
-// Bulk Conv = sse_trans(out, planes, 128, bpr*128). Inlined at the
-// (few) call sites in softspoken_ot.cpp / bench_conv. The plane
+// Bulk Conv = sse_trans(out, planes, 128, bpr*128). The plane
 // buffer's plane-major layout (plane p at offset p*bpr blocks) is
 // already the row-major byte layout sse_trans expects; n_subvoles<k>'s
 // static_assert above guarantees n*k == 128.

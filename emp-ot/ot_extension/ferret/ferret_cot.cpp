@@ -82,9 +82,7 @@ void FerretCOT::setup() {
 	// mode it binds the per-tree chi seeds pulled by MPCOT via
 	// io->get_digest(); in both modes it gives FerretCOT a fresh
 	// per-round LPN seed (do_rcot_*_begin reseeds lpn_f2 from the
-	// digest at round entry). Cost is two SHA-256 transcripts that
-	// absorb every byte sent/received — at ferret's ~0.027 B/COT
-	// wire footprint, well under 0.1% of total runtime.
+	// digest at round entry).
 	io->enable_fs(/*send_first=*/party == ALICE);
 
 	SoftSpokenOT<8> ssp(io, std::move(base_ot_));

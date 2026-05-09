@@ -23,14 +23,11 @@
 // AES output never appears in any w_b output because bit_b(0) = 0 for
 // all b.
 //
-// Tile size T=8 (j-axis). T=8 fits the q×T scratch in L1 (32 KB at
-// k=8) and the 8-block v_acc within NEON's 32-reg budget;
-// butterfly_halve's v_acc[T] is the dominant register-pressure term,
-// so T much past 8 spills.
-//
-// On x86: T=8 fits comfortably under VAES-512 (2 zmm of plaintext + 11
-// zmm round-key broadcasts = 13 / 32 zmm) and VAES-256 (4 ymm + 11
-// ymm = 15 / 32 ymm in AVX-512 builds, 15 / 16 in plain AVX).
+// Tile size T=8 (j-axis). Sized so the q×T scratch fits in L1 and
+// butterfly_halve's v_acc[T] (the dominant register-pressure term)
+// stays within the SIMD register budget on every backend — NEON's
+// 32 q-regs as well as x86 VAES-512 / VAES-256 zmm/ymm pools. T much
+// past 8 spills.
 
 #include <emp-tool/emp-tool.h>
 #include <cstdint>

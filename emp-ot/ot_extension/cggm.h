@@ -23,30 +23,20 @@
 
 namespace emp { namespace cggm {
 
-// Per-platform default tile size for batched H. Bench-derived from
-// test/bench_cggm.cpp at d=13 (the production ferret depth), NOT
-// from raw CCRH::H<N> peaks — at d=13 the leaves array is 128 KB
-// (past L1), so per-tile working-set fit dominates over AES port
-// saturation. Smaller tiles win when the tree exceeds L1; larger
-// tiles only help when everything stays L1-resident. The Tile
-// template parameter on expand_level / build_sender / eval_receiver
-// defaults to kTile but can be overridden — the bench uses that to
-// sweep tiles without rebuilding cggm.h.
-//
-// Measured d=13 cGGM throughput per (tile, platform):
-//   Apple NEON  : tile=4   peak (658 MH/s); other tiles ≤ 60% of peak
-//   AMD VAES512 : tile=16  peak (448 MH/s); tile=64 only 295 (-34%)
-//   Intel VAES512: tile=16 peak (353 MH/s); tile=64 only 324 (-9%)
-// VAES256 / AES-NI not re-measured against d=13 yet — kept at the
-// raw-H peak; revisit if a workload there proves bottlenecked.
+// Per-platform default tile size for batched H. At production tree
+// depth the leaves array exceeds L1, so per-tile working-set fit
+// dominates over AES port saturation: smaller tiles when the tree
+// exceeds L1, larger tiles only when everything stays L1-resident.
+// The Tile template parameter on expand_level / build_sender /
+// eval_receiver defaults to kTile but can be overridden.
 #if defined(__aarch64__)
-constexpr int kTile = 4;        // NEON, d=13 peak ~660 MH/s
+constexpr int kTile = 4;
 #elif EMP_AES_HAS_VAES512
-constexpr int kTile = 16;       // x86 VAES512, d=13 peak ~350-450 MH/s
+constexpr int kTile = 16;
 #elif EMP_AES_HAS_VAES256
-constexpr int kTile = 32;       // VAES256 raw-H peak (untested at d=13)
+constexpr int kTile = 32;
 #else
-constexpr int kTile = 4;        // AES-NI only, raw-H peak (untested at d=13)
+constexpr int kTile = 4;
 #endif
 
 namespace detail {
@@ -129,7 +119,7 @@ inline ExpandSums expand_level(CCRH& ccrh, block* leaves, int parents) {
 // 2^d leaves). softspoken does not want this — its sub-VOLE PRG
 // reads the full leaf bytes — so the default is off.
 //
-// Tile defaults to the platform's kTile. Override only for benches.
+// Tile defaults to the platform's kTile.
 template <int Tile = kTile, bool ClearLeafLSB = false>
 inline void build_sender(int d, block Delta, block k,
                          block* leaves, block* K0) {

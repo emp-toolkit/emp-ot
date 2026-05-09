@@ -19,9 +19,6 @@ namespace emp {
 // responsible for sourcing a fresh per-round seed (e.g. ferret
 // passes io->get_digest() from its IOChannel FS transcript) and
 // reseeding before the first compute_slice of each round.
-//
-// Performance is highly dependent on CPU cache size: kk lives in L2
-// at production k (~7 MB at ferret_b13).
 template<int d = 10>
 class LpnF2 { public:
 	int k, mask;
@@ -37,12 +34,12 @@ class LpnF2 { public:
 	// PRG sequentially.
 	void reseed(block seed) { prg_.reseed(&seed); }
 
-	// Process M outputs per AES batch. Larger M = more in-flight kk
-	// loads, which matters at production k where kk (1.9-7.2 MB) lives
-	// in L2 and per-output throughput is gated by load-queue / MSHR
-	// depth, not arithmetic. __restrict + local k/mask let the
-	// compiler keep nn[i+m] in a register across the d-iter fold
-	// instead of round-tripping through L1 between every XOR.
+	// Process M outputs per AES batch. Larger M = more in-flight
+	// kk loads — kk lives in L2 at production sizes, so per-output
+	// throughput is gated by load-queue / MSHR depth, not arithmetic.
+	// __restrict + local k/mask let the compiler keep nn[i+m] in a
+	// register across the d-iter fold instead of round-tripping
+	// through L1 between every XOR.
 	template <int M>
 	void compute_block(block * __restrict nn, const block * __restrict kk,
 	                   int64_t i) {
