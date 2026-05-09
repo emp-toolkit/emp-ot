@@ -27,13 +27,9 @@ class LpnF2 { public:
 	int k, mask;
 	PRG prg_;
 
-	explicit LpnF2(int k) : k(k) {
-		mask = 1;
-		while(mask < k) {
-			mask <<=1;
-			mask = mask | 0x1;
-		}
-	}
+	// k must be a power of 2 (PrimalLPNParameter pins it via logk):
+	// `(*r) & (k-1)` is then uniform on [0, k) with no rejection step.
+	explicit LpnF2(int k) : k(k), mask(k - 1) {}
 
 	// Reseed the internal PRG. Caller picks the seed source — for
 	// ferret, that's io->get_digest() snapshotted once per round.
@@ -62,32 +58,10 @@ class LpnF2 { public:
 			for (int j = 0; j < d; ++j) {
 				int index = (*r) & lmask;
 				++r;
-				if (index >= lk) index -= lk;
 				acc = acc ^ kk[index];
 			}
 			nn[i+m] = acc;
 		}
-	}
-
-	void task(block * __restrict nn, const block * __restrict kk,
-	          int64_t start, int64_t end) {
-		int64_t j = start;
-		// M = outputs per batch. M=32 picked from a cross-platform
-		// sweep at ferret_b13 (k=452K, kk=7.2 MB lives in L2/L3):
-		//   Apple M2  : M=16 25.6ms ≈ M=32 25.4ms (flat past 16)
-		//   Intel SR+ : M=16 78.4ms → M=32 60.5ms → M=48 62.1ms (knee=32)
-		//   AMD Zen5  : M=16 25.1ms → M=32 22.9ms → M=48 23.4ms (knee=32)
-		// Larger M extends the in-flight kk-load window into the L2-/L3-
-		// bound regime; past 32 the live nn-accumulator set starts to
-		// spill out of the 32-zmm AVX-512 pool on x86. Override at
-		// compile time via -DLPN_BATCH_M=<n> for further sweeps.
-#ifndef LPN_BATCH_M
-#define LPN_BATCH_M 32
-#endif
-		for(; j + LPN_BATCH_M <= end; j += LPN_BATCH_M)
-			compute_block<LPN_BATCH_M>(nn, kk, j);
-		for(; j + 4 <= end; j += 4)   compute_block<4>(nn, kk, j);
-		for(; j < end; ++j)           compute_block<1>(nn, kk, j);
 	}
 
 	// Streaming API for ferret's per-tree LPN slicing.
@@ -101,7 +75,15 @@ class LpnF2 { public:
 	// etc. PRG state advances monotonically; consuming slices in the
 	// expected order preserves the round-fixed LPN matrix.
 	void compute_slice(block * out, const block * kk, int64_t length) {
-		task(out, kk, 0, length);
+#ifndef LPN_BATCH_M
+#define LPN_BATCH_M 32
+#endif
+		int j = 0;
+		for(; j + LPN_BATCH_M <= length; j += LPN_BATCH_M)
+			compute_block<LPN_BATCH_M>(out, kk, j);
+		for(; j + 4 <= length; j += 4)   compute_block<4>(out, kk, j);
+		for(; j < length; ++j)           compute_block<1>(out, kk, j);
+
 	}
 };
 

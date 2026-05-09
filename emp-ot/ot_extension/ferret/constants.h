@@ -12,22 +12,32 @@ inline const block lsb_clear_mask = makeBlock(0xFFFFFFFFFFFFFFFFLL,
                                               0xFFFFFFFFFFFFFFFELL);
 inline const block lsb_only_mask  = makeBlock(0LL, 1LL);
 
+// Number of base COTs consumed by the malicious chi-fold consistency
+// check. Fixed at 128 because the chi-fold packs into one F_{2^128}
+// block.
+inline constexpr int kConsistCheckCotNum = 128;
+
 class PrimalLPNParameter { public:
-	int64_t n, t, k, log_bin_sz;
-	PrimalLPNParameter() {}
-	PrimalLPNParameter(int64_t n, int64_t t, int64_t k, int64_t log_bin_sz)
-		: n(n), t(t), k(k), log_bin_sz(log_bin_sz) {
-		if (n != t * (1 << log_bin_sz))
-			error("LPN parameter not matched");
-	}
-	int64_t buf_sz() const {
-		return n - t * log_bin_sz - k - 128;
+	int64_t t, logk, tree_depth;
+	int64_t k;            // = 1 << logk (power of 2 by construction; the
+	                      // LpnF2 sampler does `(*r) & (k-1)` with no fold).
+	int64_t M;            // base COTs per round = k + t*tree_depth + 128
+	int64_t refill_trees; // = ceil(M / 2^tree_depth); the round's last
+	                      // refill_trees trees write next round's bases.
+	PrimalLPNParameter()
+		: t(0), logk(0), tree_depth(0), k(0), M(0), refill_trees(0) {}
+	PrimalLPNParameter(int64_t t, int64_t logk, int64_t tree_depth)
+		: t(t), logk(logk), tree_depth(tree_depth),
+		  k(int64_t{1} << logk),
+		  M(k + t * tree_depth + kConsistCheckCotNum) {
+		const int64_t leave_n = int64_t{1} << tree_depth;
+		refill_trees = (M + leave_n - 1) / leave_n;
 	}
 };
 
-const static PrimalLPNParameter ferret_b13 = PrimalLPNParameter(10485760, 1280, 452000, 13);
-const static PrimalLPNParameter ferret_b12 = PrimalLPNParameter(10268672, 2507, 238000, 12);
-const static PrimalLPNParameter ferret_b11 = PrimalLPNParameter(10180608, 4971, 124000, 11);
+const static PrimalLPNParameter ferret_b13 = PrimalLPNParameter(1280, 19, 13);
+const static PrimalLPNParameter ferret_b12 = PrimalLPNParameter(2507, 18, 12);
+const static PrimalLPNParameter ferret_b11 = PrimalLPNParameter(4971, 17, 11);
 
 }//namespace
 #endif //EMP_FERRET_CONSTANTS_H__

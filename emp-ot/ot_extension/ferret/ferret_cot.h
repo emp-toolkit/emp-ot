@@ -40,8 +40,8 @@ public:
 	void setup();
 
 	// OTExtension contract. Each do_rcot_*_next call produces exactly
-	// `chunk_ots()` = leave_n = 2^log_bin_sz RCOT outputs (one cGGM
-	// tree's leaves).
+	// `chunk_ots()` = 2^tree_depth RCOT outputs (one cGGM tree's
+	// leaves).
 	//
 	// Lifecycle:
 	//   begin()  — swaps in fresh M base COTs (from the previous
@@ -49,7 +49,7 @@ public:
 	//              bootstrap on the first call); resets per-round
 	//              chi-fold state and exchanges a fresh LPN seed.
 	//   next()   — produces one cGGM tree's leaves into `out`. If
-	//              the round is full (tree_n - refill_trees trees
+	//              the round is full (param.t - refill_trees trees
 	//              already produced this round), automatically
 	//              triggers end() then begin() before producing the
 	//              user's tree — i.e. transparent rollover.
@@ -59,7 +59,7 @@ public:
 	//              accumulated VW (covering both user-visible and
 	//              refill trees). Always leaves next_round's M
 	//              fresh and ready for the next begin().
-	int64_t chunk_ots() const override;          // = leave_n
+	int64_t chunk_ots() const override;          // = 2^tree_depth
 
 protected:
 	void do_rcot_send_begin() override;
@@ -75,10 +75,7 @@ protected:
 
 private:
 	int party;
-	int64_t M;            // base COTs per round = k + tree_n*(h-1) + 128
-	int64_t refill_trees; // = ceil(M / leave_n); last refill_trees of each
-	                      // round refill the next-round ot_pre_data buffer.
-	int tree_idx_;        // current tree index within the round, 0..tree_n-1
+	int tree_idx_;        // current tree index within the round, 0..param.t-1
 	bool is_malicious;
 	bool extend_initialized;
 
