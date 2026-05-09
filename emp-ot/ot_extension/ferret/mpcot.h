@@ -35,44 +35,6 @@
 
 namespace emp {
 
-// Stream-fold chi · leaves over GF(2^128) without ever materializing
-// the full chi[] vector for malicious-mode chi-fold. The PRG is
-// consumed in 4 KB chunks (L1-resident); each chunk's unreduced
-// inner product is XOR-accumulated into the running (lo, hi) pair;
-// one final reduce at the end. Compared to "PRG-fill leave_n blocks
-// then call vector_inn_prdt_sum_red", this avoids the L1/L2
-// round-trip on the chi[] buffer when leave_n exceeds L1 — the
-// dominant cost at b13 (chi[] = 128 KB > 32-48 KB L1).
-//
-// Receiver passes `choice_pos` ∈ [0, leave_n) so chi[choice_pos] is
-// snapshotted into *chi_alpha_out the moment its chunk is generated;
-// sender passes choice_pos = -1, in which case chi_alpha_out is not
-// written.
-//
-// kChunkBlocks = 256 (4 KB) is a multiple of every CLMUL lane width
-// in vector_inn_prdt_sum_no_red (1, 2, 4), so we never fall into the
-// scalar tail except possibly on the very last chunk.
-inline block chi_fold_streaming(PRG& chiPRG,
-                                const block* leaves, int leave_n,
-                                int choice_pos, block* chi_alpha_out) {
-    constexpr int kChunkBlocks = 256;
-    block chi_buf[kChunkBlocks];
-    block lo = zero_block, hi = zero_block;
-
-    for (int offset = 0; offset < leave_n; ) {
-        const int chunk = std::min(leave_n - offset, kChunkBlocks);
-        chiPRG.random_block(chi_buf, chunk);
-        if (choice_pos >= offset && choice_pos < offset + chunk)
-            *chi_alpha_out = chi_buf[choice_pos - offset];
-        block partial[2];
-        vector_inn_prdt_sum_no_red(partial, chi_buf, leaves + offset, chunk);
-        lo = lo ^ partial[0];
-        hi = hi ^ partial[1];
-        offset += chunk;
-    }
-    return reduce(lo, hi);
-}
-
 class MPCOT_Sender {
 public:
     PrimalLPNParameter param;
@@ -120,13 +82,15 @@ public:
 
         if (is_malicious) {
             // chi_seed snapshots the FS transcript right after this
-            // tree's c[] bytes were absorbed; stream-fold chi · leaves
-            // into VW[tree_idx] without materializing the full chi[].
+            // tree's c[] bytes were absorbed; PRG-expand into chi[]
+            // and fold against the leaves into VW[tree_idx].
+            const int leave_n = 1 << param.tree_depth;
             block chi_seed = netio->get_digest();
             PRG chiPRG(&chi_seed);
-            consist_check_VW[tree_idx] = chi_fold_streaming(
-                chiPRG, leaves_i, 1 << param.tree_depth,
-                /*choice_pos=*/-1, /*chi_alpha_out=*/nullptr);
+            BlockVec chi(leave_n);
+            chiPRG.random_block(chi.data(), leave_n);
+            vector_inn_prdt_sum_red(&consist_check_VW[tree_idx], chi.data(),
+                                    leaves_i, leave_n);
         }
     }
 
@@ -226,9 +190,11 @@ public:
         if (is_malicious) {
             block chi_seed = netio->get_digest();
             PRG chiPRG(&chi_seed);
-            consist_check_VW[tree_idx] = chi_fold_streaming(
-                chiPRG, leaves_i, leave_n,
-                choice_pos, &consist_check_chi_alpha[tree_idx]);
+            BlockVec chi(leave_n);
+            chiPRG.random_block(chi.data(), leave_n);
+            consist_check_chi_alpha[tree_idx] = chi[choice_pos];
+            vector_inn_prdt_sum_red(&consist_check_VW[tree_idx], chi.data(),
+                                    leaves_i, leave_n);
         }
     }
 
