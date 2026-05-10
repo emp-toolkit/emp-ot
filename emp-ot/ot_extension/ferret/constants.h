@@ -35,9 +35,9 @@ class PrimalLPNParameter { public:
 	}
 };
 
-const static PrimalLPNParameter ferret_b13 = PrimalLPNParameter(1280, 19, 13);
-const static PrimalLPNParameter ferret_b12 = PrimalLPNParameter(2507, 18, 12);
-const static PrimalLPNParameter ferret_b11 = PrimalLPNParameter(4971, 17, 11);
+const static PrimalLPNParameter ferret_b13 = PrimalLPNParameter(1280, 19, 13); // N = 15,564,800
+const static PrimalLPNParameter ferret_b12 = PrimalLPNParameter(1520, 18, 12); // N = 6,225,920
+const static PrimalLPNParameter ferret_b11 = PrimalLPNParameter(1170, 17, 11); // N = 2,396,160
 
 }//namespace
 #endif //EMP_FERRET_CONSTANTS_H__

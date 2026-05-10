@@ -16,18 +16,19 @@ namespace emp {
  * [REF] Active security via "Actively Secure OT Extension with Optimal Overhead"
  *       https://eprint.iacr.org/2015/546.pdf  (send_check / recv_check)
  *
- * Streaming Fiat-Shamir: each rcot_*_next call snapshots the transcript
- * after putting its u-matrix bytes (Hash::digest with reset_after=false),
- * derives a per-chunk chi seed, and folds the chunk's packed F_{2^128}
- * elements into running accumulators (check_q on the sender, check_t /
- * check_x on the receiver) right after sse_trans, while `out` is still
- * cache-hot. rcot_send_end / rcot_recv_end run a final 128-OT chunk
- * (folded with chi from the same continuing transcript) before the
- * (x, t) io exchange and check_q ⊕ x·Δ == t compare. Each _next writes
- * exactly chunk_ots() = block_size = 2048 blocks; the OTExtension
- * base class wraps the streaming API into a one-shot rcot_send /
- * rcot_recv with a leftover buffer for callers whose `num` isn't a
- * multiple of block_size.
+ * Streaming Fiat-Shamir: each rcot_*_next derives a per-chunk chi seed
+ * by snapshotting the IOChannel FS transcript (io->get_digest()) after
+ * the chunk's u-matrix bytes have crossed the wire — they are absorbed
+ * automatically by send_data/recv_data, no per-row puts needed. The
+ * chunk's packed F_{2^128} elements fold into running accumulators
+ * (check_q on the sender, check_t / check_x on the receiver) right
+ * after sse_trans, while `out` is still cache-hot. rcot_send_end /
+ * rcot_recv_end run a final 128-OT chunk (folded with chi from the
+ * same continuing transcript) before the (x, t) io exchange and
+ * check_q ⊕ x·Δ == t compare. Each _next writes exactly chunk_ots()
+ * = block_size = 2048 blocks; the OTExtension base class wraps the
+ * streaming API into a one-shot rcot_send / rcot_recv with a leftover
+ * buffer for callers whose `num` isn't a multiple of block_size.
  *
  * Bit-0 choice encoding: with the invariant bit_0(Δ) = 1, row 0 of the
  * IKNP matrix collapses. Sender forces q[0] = 0 (memset row 0 of t,
@@ -53,10 +54,6 @@ class IKNP : public OTExtension { public:
 	// OTExtension::rcot_send / rcot_recv wrappers auto-run the
 	// matching setup on first call via ensure_setup_for_*().
 	bool setup_done = false;
-	// Fiat-Shamir transcript over the OT-extension u-matrix bytes. Both
-	// sides absorb the same byte stream during rcot_*_next; snapshots
-	// (reset_after=false) yield matching per-chunk chi seeds.
-	Hash transcript;
 	// Packs 128 consecutive COT outputs into a single F_{2^128} element
 	// via the gadget (1, X, ..., X^{127}). Lets the malicious check
 	// chi-combine 128x fewer elements than the unpacked version.

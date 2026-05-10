@@ -62,6 +62,13 @@ void SoftSpokenOT<k>::setup_send(block delta_in) {
     if (malicious_) pprf_check_recv();
 
     setup_done_ = true;
+    is_sender_ = true;
+    // is_sender_ as send_first matches FerretCOT's `party == ALICE` and
+    // IKNP's same convention (the OT-sender side is send_first=true);
+    // all three protocols can share an io. When ferret nests SoftSpoken
+    // it has already enabled FS, so this is a no-op.
+    if (malicious_ && !this->io->fs_enabled())
+        this->io->enable_fs(/*send_first=*/is_sender_);
 }
 
 template <int k>
@@ -85,6 +92,9 @@ void SoftSpokenOT<k>::setup_recv() {
     if (malicious_) pprf_check_send();
 
     setup_done_ = true;
+    is_sender_ = false;
+    if (malicious_ && !this->io->fs_enabled())
+        this->io->enable_fs(/*send_first=*/is_sender_);
 }
 
 // =====================================================================
@@ -157,11 +167,11 @@ void SoftSpokenOT<k>::pprf_check_recv() {
 //
 //   * For every sub-VOLE i in [0, n), the chunk-aware sfvole_*_compute_chunk
 //     produces this chunk's u_target / v_planes (sender side, a.k.a.
-//     OT-receiver) or w_planes (receiver side, a.k.a. OT-sender),
-//     re-keying AES from per-leaf seeds rather than persisting Q PRG
-//     objects across chunks. PRG counter offset = cur_*_b0_ (advances
-//     by `bs` per chunk within the session) so the keystream slice
-//     across chunks of one session matches one bulk PRG invocation.
+//     OT-receiver) or w_planes (receiver side, a.k.a. OT-sender), via
+//     the butterfly kernel — one session-shared fixed AES key, leaves
+//     XORed in as plaintext tweaks. PRG counter offset = cur_*_b0_
+//     (advances by `bs` per chunk within the session) so the keystream
+//     slice across chunks of one session matches one bulk PRG invocation.
 //
 //   * The OT-receiver side (rcot_recv_next) batches all n-1 d_buf_i
 //     vectors of this chunk into one io->send_block call (saves
@@ -200,10 +210,7 @@ void SoftSpokenOT<k>::do_rcot_send_begin() {
     assert(setup_done_ && "rcot_send_begin: setup_send not run");
     cur_send_session_ = session_++;
     cur_send_b0_ = 0;
-    if (malicious_) {
-        transcript_.reset();
-        check_q_ = zero_block;
-    }
+    if (malicious_) check_q_ = zero_block;
 }
 
 template <int k>
@@ -253,11 +260,11 @@ void SoftSpokenOT<k>::send_chunk_pipeline(block* out, int64_t bs) {
     if (n > 1) {
         const int64_t total_d_blocks = static_cast<int64_t>(n - 1) * bs;
         this->io->recv_block(d_bufs, total_d_blocks);
-        // Absorb d_bufs into the FS transcript at the same point as
-        // the receiver does (right after its send) so the snapshot-
-        // derived chi sequence agrees byte-for-byte across both sides.
-        if (malicious_)
-            transcript_.put(d_bufs, total_d_blocks * sizeof(block));
+        // d_bufs are now absorbed into the IOChannel FS transcript via
+        // recv_block → recv_data; the matching send side absorbs the
+        // same bytes via send_data, so the chi seed taken via
+        // io->get_digest() in combine_send_chunk agrees with the
+        // receiver's combine_recv_chunk.
         for (int i = 1; i < n; ++i) {
             block* w_i = w_planes_chunk + static_cast<size_t>(i) * k * bs;
             const block* d_i = d_bufs + static_cast<size_t>(i - 1) * bs;
@@ -291,10 +298,7 @@ void SoftSpokenOT<k>::do_rcot_recv_begin() {
     assert(setup_done_ && "rcot_recv_begin: setup_recv not run");
     cur_recv_session_ = session_++;
     cur_recv_b0_ = 0;
-    if (malicious_) {
-        transcript_.reset();
-        check_t_ = check_x_ = zero_block;
-    }
+    if (malicious_) check_t_ = check_x_ = zero_block;
 }
 
 template <int k>
@@ -355,10 +359,10 @@ void SoftSpokenOT<k>::recv_chunk_pipeline(block* out, int64_t bs) {
     // One batched send: (n-1) * bs blocks.
     if (n > 1) {
         const int64_t total_d_blocks = static_cast<int64_t>(n - 1) * bs;
+        // send_block → send_data absorbs d_bufs into the IOChannel FS
+        // transcript; the matching OT-sender's recv_block does the same,
+        // so io->get_digest() in combine_*_chunk agrees on both sides.
         this->io->send_block(d_bufs, total_d_blocks);
-        // Same FS absorption point as the sender's matching recv.
-        if (malicious_)
-            transcript_.put(d_bufs, total_d_blocks * sizeof(block));
     }
 
     // LSB convention (IKNP-style construction): pin sub-VOLE 0's plane
@@ -393,10 +397,7 @@ void SoftSpokenOT<k>::recv_chunk_pipeline(block* out, int64_t bs) {
 template <int k>
 void SoftSpokenOT<k>::combine_send_chunk(block* out, int64_t bs) {
     PRG chiPRG;
-    block seed;
-    char dgst[Hash::DIGEST_SIZE];
-    transcript_.digest(dgst, /*reset_after=*/false);
-    std::memcpy(&seed, dgst, sizeof(block));
+    block seed = this->io->get_digest();
     chiPRG.reseed(&seed);
     block Q_i, chi, tmp;
     for (int64_t i = 0; i < bs; ++i) {
@@ -410,10 +411,7 @@ void SoftSpokenOT<k>::combine_send_chunk(block* out, int64_t bs) {
 template <int k>
 void SoftSpokenOT<k>::combine_recv_chunk(block* out, const block* u_canonical, int64_t bs) {
     PRG chiPRG;
-    block seed;
-    char dgst[Hash::DIGEST_SIZE];
-    transcript_.digest(dgst, /*reset_after=*/false);
-    std::memcpy(&seed, dgst, sizeof(block));
+    block seed = this->io->get_digest();
     chiPRG.reseed(&seed);
     block T_i, chi, tmp;
     for (int64_t i = 0; i < bs; ++i) {

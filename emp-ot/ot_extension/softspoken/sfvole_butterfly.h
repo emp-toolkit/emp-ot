@@ -2,10 +2,12 @@
 #define EMP_SOFTSPOKEN_SFVOLE_BUTTERFLY_H__
 
 // Recursive O(q) butterfly fold for the SoftSpoken small-field VOLE
-// inner loop. Replaces the leaf-major aes_ctr_fold<N_TARGETS> +
-// per-target memory-RMW pattern with a register-only XOR halving.
-// Cross-platform: NEON on Apple M, AES-NI / VAES-256 / VAES-512 on x86,
-// each picking the widest SIMD tier the build can emit.
+// inner loop. Q AES outputs materialize into a tile-local stack scratch
+// A[Q][T]; a k-round in-place XOR halving over the leaf axis then emits
+// the v_planes (sender) or w_planes (receiver) and u using only register
+// XOR work (no per-leaf plane memory RMW). Cross-platform: NEON on
+// Apple M, AES-NI / VAES-256 / VAES-512 on x86, each picking the widest
+// SIMD tier the build can emit.
 //
 // Algorithm (Roy '22 §VOLE, "Efficient Computation"):
 //   r_x = AES_K(b0+j ⊕ leaves[x] ⊕ session_xor)   for x ∈ [0, q), j ∈ [0, bs).

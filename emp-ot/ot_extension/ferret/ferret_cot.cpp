@@ -83,7 +83,13 @@ void FerretCOT::setup() {
 	// io->get_digest(); in both modes it gives FerretCOT a fresh
 	// per-round LPN seed (do_rcot_*_begin reseeds lpn_f2 from the
 	// digest at round entry).
-	io->enable_fs(/*send_first=*/party == ALICE);
+	// Guarded so multiple FerretCOT setups can share an io (the ot_extension
+	// and ferret bench harnesses build semi + mali back-to-back on one
+	// NetIO). send_first is deterministic in `party`, so a second setup on
+	// the same side is a no-op; both parties' transcripts continue binding
+	// the full byte stream.
+	if (!io->fs_enabled())
+		io->enable_fs(/*send_first=*/party == ALICE);
 
 	SoftSpokenOT<8> ssp(io, std::move(base_ot_));
 	if (is_malicious) ssp.set_malicious(true);

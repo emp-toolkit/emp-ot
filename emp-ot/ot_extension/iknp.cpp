@@ -30,6 +30,10 @@ void IKNP::setup_send(const bool *delta_bool_in) {
 		G0[i].reseed(&k0[i]);
 	Delta = bool_to_block(s);
 	setup_done = true;
+	// is_sender as send_first matches FerretCOT's `party == ALICE` since
+	// ALICE is sender by convention; both protocols can share an io.
+	if (malicious && !io->fs_enabled())
+		io->enable_fs(/*send_first=*/is_sender);
 }
 
 void IKNP::setup_send() {
@@ -52,15 +56,15 @@ void IKNP::setup_recv() {
 		G1[i].reseed(&k1[i]);
 	}
 	setup_done = true;
+	// See setup_send for the send_first convention.
+	if (malicious && !io->fs_enabled())
+		io->enable_fs(/*send_first=*/is_sender);
 }
 
 void IKNP::do_rcot_send_begin() {
 	assert(setup_done && "rcot_send_begin: setup not done");
 	assert(is_sender && "rcot_send_begin: not in sender role");
-	if (malicious) {
-		transcript.reset();
-		check_q = makeBlock(0, 0);
-	}
+	if (malicious) check_q = makeBlock(0, 0);
 }
 
 void IKNP::do_rcot_send_end() {
@@ -104,8 +108,6 @@ void IKNP::do_rcot_send_next(block *out) {
 	memset(t, 0, block_size / 8);
 	for (int64_t i = 1; i < 128; ++i) {
 		io->recv_data(tmp, block_size / 8);
-		if (malicious)
-			transcript.put(tmp, block_size / 8);
 		G0[i].random_data(t + (i * row_blocks), block_size / 8);
 		if (s[i])
 			xorBlocks_arr(t + (i * row_blocks), t + (i * row_blocks),
@@ -119,14 +121,12 @@ void IKNP::do_rcot_send_next(block *out) {
 
 // Sender-side fold: pack each 128-block chunk of `out` into Q_i and
 // accumulate chi_i · Q_i into check_q. `out` is cache-hot from
-// sse_trans. The chi seed is a snapshot of the transcript taken after
-// this chunk's u-matrix was put.
+// sse_trans. The chi seed is the IOChannel FS digest snapshot taken
+// after this chunk's u-matrix bytes have been recv'd (and absorbed by
+// FS).
 void IKNP::combine_send(block *out) {
 	PRG chiPRG;
-	block seed;
-	char dgst[Hash::DIGEST_SIZE];
-	transcript.digest(dgst, /*reset_after=*/false);
-	memcpy(&seed, dgst, sizeof(block));
+	block seed = io->get_digest();
 	chiPRG.reseed(&seed);
 	block Q_i, chi, tmp;
 	constexpr int64_t chunks = block_size / 128;
@@ -142,7 +142,6 @@ void IKNP::do_rcot_recv_begin() {
 	assert(setup_done && "rcot_recv_begin: setup not done");
 	assert(!is_sender && "rcot_recv_begin: not in receiver role");
 	if (malicious) {
-		transcript.reset();
 		check_t = makeBlock(0, 0);
 		check_x = makeBlock(0, 0);
 	}
@@ -178,8 +177,6 @@ void IKNP::do_rcot_recv_next(block *out) {
 		G1[i].random_data(tmp, block_size / 8);
 		xorBlocks_arr(tmp, t + (i * row_blocks), tmp, row_blocks);
 		xorBlocks_arr(tmp, r, tmp, row_blocks);
-		if (malicious)
-			transcript.put(tmp, block_size / 8);
 		io->send_data(tmp, block_size / 8);
 	}
 	// Pin t[0] = r so bit_0(out[k]) = bit_k(r) = choice_k after transpose.
@@ -193,14 +190,12 @@ void IKNP::do_rcot_recv_next(block *out) {
 // Receiver-side fold: pack each 128-block chunk of `out` into T_i,
 // take R_i = r[i] (the bit-packed choice block for chunk i), and
 // accumulate chi_i · T_i into check_t and chi_i · R_i into check_x.
-// Same snapshot-based chi seeding as the sender so per-chunk chi
-// values match.
+// Chi seed is the IOChannel FS digest, same snapshot point as the
+// sender (after this chunk's u-matrix bytes crossed the wire) so
+// per-chunk chi values match.
 void IKNP::combine_recv(block *out, block *r) {
 	PRG chiPRG;
-	block seed;
-	char dgst[Hash::DIGEST_SIZE];
-	transcript.digest(dgst, /*reset_after=*/false);
-	memcpy(&seed, dgst, sizeof(block));
+	block seed = io->get_digest();
 	chiPRG.reseed(&seed);
 	block T_i, R_i, chi, tmp;
 	constexpr int64_t chunks = block_size / 128;
