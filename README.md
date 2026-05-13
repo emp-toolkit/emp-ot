@@ -120,60 +120,126 @@ process benchmarks of internal kernels.
 #include <emp-tool/emp-tool.h>     // NetIO etc.
 #include <emp-ot/emp-ot.h>         // OTs
 using namespace emp;
+
+NetIO io(party == ALICE ? nullptr : "127.0.0.1", port);
 ```
 
-### Standard OT (1-out-of-2)
+### Interfaces
+
+All OTs in emp-ot derive from a four-layer hierarchy in
+[`emp-ot/ot.h`](emp-ot/ot.h) and
+[`emp-ot/ot_extension/ot_extension.h`](emp-ot/ot_extension/ot_extension.h).
+Each layer adds methods on top of the previous one; you can always
+call a lower-level method on a higher-level object.
+
+| Interface                 | New methods                                       | Semantics added                                                                 |
+|---------------------------|---------------------------------------------------|---------------------------------------------------------------------------------|
+| `OT`                      | `send(m0, m1, n)` / `recv(mc, c, n)`              | chosen-input 1-out-of-2: sender supplies both messages, receiver picks one      |
+| `COT : OT`                | `send_cot(m0, n)` / `recv_cot(mc, c, n)`; free `send_rot`/`recv_rot` | chosen-correlation: sender's two messages always differ by a public `Delta` |
+| `RandomCOT : COT`         | `rcot_send(m0, n)` / `rcot_recv(mc, n)`           | random correlation: no choice-bit input; receiver's choice ends up in `getLSB(mc[i])`, and `Delta`'s LSB is forced to 1 so the correlation survives that one bit |
+| `OTExtension : RandomCOT` | `chunk_ots()`, `rcot_send_begin/_next/_end`, `rcot_recv_begin/_next/_end` | streaming RCOT: one fixed-size chunk per `_next`, no internal buffering         |
+
+Concrete classes attach as follows:
+
+- **Base OTs** (`OT` only): `OTCO`, `OTPVW`, `OTCSW`, `OTPVWKyber`.
+- **OT extensions** (`OTExtension`, so all of the above): `IKNP`,
+  `SoftSpokenOT<k>`, `FerretCOT`.
+
+The chosen-input / chosen-correlation / random conversions are
+implemented once in the base classes (one MITCCRH pass per OT for the
+chosen-message wrapper, one bit per OT for the random → chosen
+correction), so picking a backend never forces you to also pick a
+flavor.
+
+### Base OTs
+
+The four base OTs (`OTCO`, `OTPVW`, `OTCSW`, `OTPVWKyber`) implement
+only the `OT` interface — chosen-input 1-out-of-2.
 
 ```cpp
-NetIO io(party == ALICE ? nullptr : "127.0.0.1", port);
+block m0[length], m1[length];   // sender's two messages
+block mc[length];               // receiver's chosen message
+bool  c [length];               // receiver's choice bits
 
-block b0[length], b1[length];
-bool  c[length];
-
-OTCO co(&io);
-if (party == ALICE) co.send(b0, b1, length);   // sender supplies both messages
-else                co.recv(b0, c, length);    // receiver gets b_{c[i]}
+OTPVW ot(&io);
+if (party == ALICE) ot.send(m0, m1, length);
+else                ot.recv(mc, c, length);    // mc[i] = m_{c[i]}
 ```
 
-`OTCO` can be replaced by `OTPVW`, `OTCSW`, `OTPVWKyber`, `IKNP`,
-`SoftSpokenOT`, or `FerretCOT` and the `send`/`recv` calls stay
-identical — they all implement the [`OT`](emp-ot/ot.h) interface.
-Their constructors differ; in particular `FerretCOT` takes
-`(party, io, malicious, run_setup, param)` rather than just `(io)`.
+Any of the four are drop-in interchangeable here. `OTCO` is the
+semi-honest fast path; the other three are malicious-secure (see the
+[Performance](#performance) section for the cost difference).
 
-### Correlated OT and Random OT (IKNP, FerretCOT)
+### OT extensions
+
+`IKNP`, `SoftSpokenOT<k>`, and `FerretCOT` all derive from
+`RandomCOT`, so the same object exposes all four flavors:
 
 ```cpp
 IKNP ote(&io, /*malicious=*/false);
+// FerretCOT ote(party, &io); SoftSpokenOT<2> ote(&io); ... all the same below.
 
-// COT: ote.Delta is the correlation
-if (party == ALICE) ote.send_cot(b0, length);
-else                ote.recv_cot(br, c, length);    // br[i] = b0[i] ^ c[i]*Delta
-
-// ROT: random outputs, no correlation visible to receiver
-if (party == ALICE) ote.send_rot(b0, b1, length);
-else                ote.recv_rot(br, c, length);    // br[i] = c[i] ? b1[i] : b0[i]
+if (party == ALICE) {
+    ote.rcot_send(m0, length);                    // RCOT: fills m0; m1[i] = m0[i]^Δ
+    ote.send_cot(m0, length);                     // COT:  fills m0; m1[i] = m0[i]^Δ
+    ote.send_rot(m0, m1, length);                 // ROT:  fills m0, m1 (random)
+    ote.send(m0, m1, length);                     // OT:   sends caller-chosen m0, m1
+} else {
+    ote.rcot_recv(mc, length);                    // RCOT: mc[i]=m_{c[i]}, c[i]=LSB(mc[i])
+    ote.recv_cot(mc, c, length);                  // COT:  mc[i] = m0[i] ^ c[i]*Δ
+    ote.recv_rot(mc, c, length);                  // ROT:  mc[i] = c[i] ? m1[i] : m0[i]
+    ote.recv(mc, c, length);                      // OT:   mc[i] = c[i] ? m1[i] : m0[i]
+}
 ```
 
-### Ferret OT (silent random correlated OT)
+`Δ` is the sender-side correlation (`ote.Delta`). It's set by the
+backend's setup phase — at construction for `FerretCOT` (when
+`run_setup=true`, the default), on the first `*_send` call for `IKNP`
+and `SoftSpokenOT`. The receiver has no `Δ`.
 
-Ferret produces correlated OT with random choice bits — i.e. RCOT.
-[`ferret_cot.h`](emp-ot/ferret/ferret_cot.h) exposes two interfaces:
-`rcot()` fills an external buffer of any length (one extra memcpy);
-`rcot_inplace()` writes directly into a caller-provided buffer of a
-specific size (no memcpy, but the size is fixed per call —
-`byte_memory_need_inplace(n)` returns the right size).
-
-The receiver's choice bit is embedded in the LSB of the returned `block`,
-and `Delta`'s LSB is set to 1 to keep the correlation valid across all
-bits — see the point-and-permute discussion in
-[`ferret_cot.cpp`](emp-ot/ferret/ferret_cot.cpp).
+Each extension can be parameterized to bootstrap from a non-default
+base OT (default is `OTPVW`); pair an extension's malicious mode with
+a malicious-secure base — `IKNP` / `SoftSpokenOT` / `FerretCOT` check
+this at runtime and abort otherwise.
 
 ```cpp
-FerretCOT ferretcot(party, &io);
-if (party == ALICE) ferretcot.rcot_send(b0, length);   // ferretcot.Delta
-else                ferretcot.rcot_recv(br, length);   // br[i] = b0[i] ^ LSB(br[i])*Delta
+IKNP        ote1(&io, /*malicious=*/true, std::make_unique<OTCSW>(&io));
+SoftSpokenOT<4> ote2(&io, std::make_unique<OTCSW>(&io));     // k=4
+FerretCOT   ote3(party, &io, /*malicious=*/true,
+                 /*run_setup=*/true, ferret_b13,
+                 std::make_unique<OTCSW>(&io));
 ```
+
+### Streaming RCOT
+
+The `OTExtension` base also exposes a streaming API for callers that
+want to overlap RCOT production with downstream work (one fixed
+`chunk_ots()`-sized batch per `_next` call, no internal buffering):
+
+```cpp
+const int64_t chunk = ote.chunk_ots();
+BlockVec buf(chunk);
+
+if (party == ALICE) {
+    ote.rcot_send_begin();
+    for (int i = 0; i < n_chunks; ++i) {
+        ote.rcot_send_next(buf.data());
+        consume_sender_chunk(buf.data(), chunk);
+    }
+    ote.rcot_send_end();
+} else {
+    ote.rcot_recv_begin();
+    for (int i = 0; i < n_chunks; ++i) {
+        ote.rcot_recv_next(buf.data());
+        consume_receiver_chunk(buf.data(), chunk);
+    }
+    ote.rcot_recv_end();
+}
+```
+
+The one-shot `rcot_send` / `rcot_recv` wrappers are implemented in
+terms of this streaming API plus a small leftover buffer for tails
+that aren't a multiple of `chunk_ots()`.
 
 ## Performance
 
