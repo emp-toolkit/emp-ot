@@ -177,10 +177,12 @@ else                ferretcot.rcot_recv(br, length);   // br[i] = b0[i] ^ LSB(br
 
 ## Performance
 
-Numbers from AWS `c8a.2xlarge` (AMD EPYC 9R45, Zen 5c), single-thread,
-both parties on localhost. Network is not a bottleneck — these are
-compute-bound numbers (`bench_base_ot` and `bench_ot_extension`). Run
-against `main` at commit `76226bb`, OpenSSL 3.3.2.
+Numbers from AWS `c8a.2xlarge` (AMD EPYC 9R45, Zen 5, 8 vCPU), single-
+thread, both parties on localhost. Network is not a bottleneck — these
+are compute-bound numbers (`bench_base_ot` and `bench_ot_extension`).
+Run against `main` at commit `dcbafff` (depends on `emp-tool` at
+`6d3e9f2`), Ubuntu 22.04, GCC 11.4, OpenSSL 3.3.2, `-march=native`
+(AVX-512 + VAES + VPCLMULQDQ + SHA-NI).
 
 ### Base OTs
 
@@ -189,10 +191,10 @@ wall-clock duration on Alice's side.
 
 | Protocol     | Time   |  Send B |  Recv B | Security                                     |
 |--------------|-------:|--------:|--------:|----------------------------------------------|
-| `OTCO`       | 5.6 ms |   4,165 |   8,832 | semi-honest                                  |
+| `OTCO`       |  18 ms |   4,165 |   8,832 | semi-honest                                  |
 | `OTCSW`      | 9.2 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `OTPVW`      |  39 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `OTPVWKyber` | 7.7 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
+| `OTPVWKyber` | 8.0 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
 
 The three OT extensions (`IKNP`, `SoftSpokenOT`, `FerretCOT`) accept
 any of these via the optional `std::unique_ptr<OT> base_ot` constructor
@@ -202,28 +204,30 @@ a malicious-secure base — a runtime check fires otherwise.
 ### OT extensions
 
 Length ≈ 2²⁴ OTs (~16M), single-thread. MOT/s = million OTs per
-second; rows show the average of two role-flipped runs (the throughput
-is approximately symmetric, ±5%). The `bits/OT` column is the total
-wire footprint per RCOT output (send + receive, divided by length).
+second; each cell is the mean of four measurements (Alice + Bob
+across two role-flipped runs). For `COT`/`ROT`/`OT` rows, sender and
+receiver MOT/s differ noticeably (the sender's `rcot_send` finishes
+before the receiver's `rcot_recv` returns) — the mean smooths that
+out. The `bits/RCOT` column is the total wire footprint per RCOT
+output (send + receive, divided by length).
 
-| Protocol         | Mode      | bits/OT | RCOT | COT | ROT | OT  |
-|------------------|-----------|--------:|-----:|----:|----:|----:|
-| `IKNP`           | semi      |     127 |   92 |  95 |  49 |  44 |
-| `IKNP`           | malicious |     127 |   38 |  38 |  28 |  26 |
-| `SoftSpoken<2>`  | semi      |      63 |  112 | 117 |  54 |  48 |
-| `SoftSpoken<2>`  | malicious |      63 |   76 |  77 |  44 |  39 |
-| `SoftSpoken<4>`  | semi      |      31 |   92 |  93 |  48 |  44 |
-| `SoftSpoken<4>`  | malicious |      31 |   75 |  76 |  43 |  40 |
-| `SoftSpoken<8>`  | semi      |      15 |   35 |  36 |  26 |  25 |
-| `SoftSpoken<8>`  | malicious |      15 |   33 |  34 |  25 |  24 |
-| `FerretCOT`      | semi      |    0.25 |   39 |  39 |  27 |  35 |
-| `FerretCOT`      | malicious |    0.25 |   35 |  35 |  25 |  33 |
+| Protocol         | Mode      | bits/RCOT | RCOT | COT | ROT | OT  |
+|------------------|-----------|----------:|-----:|----:|----:|----:|
+| `IKNP`           | semi      |       127 |  127 | 100 |  50 |  42 |
+| `IKNP`           | malicious |       127 |   42 |  38 |  28 |  17 |
+| `SoftSpoken<2>`  | semi      |        63 |  104 |  84 |  46 |  24 |
+| `SoftSpoken<2>`  | malicious |        63 |   97 |  80 |  45 |  22 |
+| `SoftSpoken<4>`  | semi      |        31 |  107 |  87 |  47 |  23 |
+| `SoftSpoken<4>`  | malicious |        31 |  100 |  82 |  46 |  23 |
+| `SoftSpoken<8>`  | semi      |        15 |   38 |  35 |  26 |  17 |
+| `SoftSpoken<8>`  | malicious |        15 |   37 |  35 |  26 |  16 |
+| `FerretCOT`      | semi      |      0.22 |   65 |  57 |  37 |  20 |
+| `FerretCOT`      | malicious |      0.22 |   59 |  52 |  35 |  20 |
 
 `RCOT` = random correlated OT (raw extension output); `COT` = chosen-
 correlation; `ROT` = random OT; `OT` = chosen-input. `SoftSpoken<k>`
-trades wire bytes for compute as `k` grows: at high bandwidth `k=2`
-wins; on bandwidth-constrained links larger `k` amortises more
-compute per byte.
+shrinks the per-RCOT wire as `k` grows (roughly `128/k - 1` bits) at
+the cost of more AES work per RCOT.
 
 ## Citation
 
