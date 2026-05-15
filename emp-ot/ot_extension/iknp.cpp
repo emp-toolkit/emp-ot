@@ -89,8 +89,7 @@ void IKNP::do_rcot_send_next(block *out) {
 		io->recv_data(tmp, block_size / 8);
 		G0[i].random_data(t + (i * row_blocks), block_size / 8);
 		if (s[i])
-			xorBlocks_arr(t + (i * row_blocks), t + (i * row_blocks),
-			              tmp, row_blocks);
+			xorBlocksTo_arr(t + (i * row_blocks), tmp, row_blocks);
 	}
 	sse_trans((uint8_t *)(out), (uint8_t *)t, 128, block_size);
 
@@ -169,8 +168,8 @@ void IKNP::do_rcot_recv_next(block *out) {
 	for (int64_t i = 1; i < 128; ++i) {
 		G0[i].random_data(t + (i * row_blocks), block_size / 8);
 		G1[i].random_data(tmp, block_size / 8);
-		xorBlocks_arr(tmp, t + (i * row_blocks), tmp, row_blocks);
-		xorBlocks_arr(tmp, r, tmp, row_blocks);
+		xorBlocksTo_arr(tmp, t + (i * row_blocks), row_blocks);
+		xorBlocksTo_arr(tmp, r, row_blocks);
 		io->send_data(tmp, block_size / 8);
 	}
 	// Pin t[0] = r so bit_0(out[k]) = bit_k(r) = choice_k after transpose.
