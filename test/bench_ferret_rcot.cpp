@@ -7,7 +7,7 @@ using namespace std;
 static void bench_one(NetIO* io, int party, int64_t length, bool malicious,
                       const char* tag, const PrimalLPNParameter& param) {
     const char* mode_name = malicious ? "mali" : "semi";
-    FerretCOT* ot = new FerretCOT(party, io, malicious, true, param);
+    FerretCOT* ot = new FerretCOT(party, io, malicious, param);
 
     uint64_t ds = 0, dr = 0;
     double us = test_rcot<FerretCOT>(ot, io, party, length, &ds, &dr);

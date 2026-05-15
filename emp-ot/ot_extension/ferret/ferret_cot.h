@@ -29,15 +29,17 @@ public:
 
 	// `base_ot` is forwarded to the internal SoftSpokenOT<8> bootstrap.
 	// Default (nullptr) → SoftSpoken constructs its own OTPVW base.
-	FerretCOT(int party, IOChannel *io, bool malicious = false, bool run_setup = true,
+	FerretCOT(int party, IOChannel *io, bool malicious = true,
 			PrimalLPNParameter param = ferret_b13,
 			std::unique_ptr<OT> base_ot = nullptr);
 
 	~FerretCOT();
 
-	// ALICE supplies Δ; BOB has no Δ.
-	void setup(block Deltain);
-	void setup();
+	// Replace the ctor-sampled Δ with one supplied by an outer protocol.
+	// Sender-only; must fire before the streaming bootstrap consumes Δ
+	// (i.e. before the first rcot_*_begin call).
+	// delta_bool[0] must be true (the COT LSB convention).
+	void set_delta(const bool *delta_bool);
 
 	// OTExtension contract. Each do_rcot_*_next call produces exactly
 	// `chunk_ots()` = 2^tree_depth RCOT outputs (one cGGM tree's
@@ -68,16 +70,17 @@ protected:
 	void do_rcot_recv_begin() override;
 	void do_rcot_recv_next(block* out) override;
 	void do_rcot_recv_end() override;
-	// ensure_setup_for_send / _recv stay no-op (the OTExtension
-	// defaults): FerretCOT always runs setup in its constructor when
-	// run_setup=true, so by the time the one-shot wrappers fire setup
-	// is already done.
 
 private:
+	// Wire-touching bootstrap: builds the first round's M base COTs via
+	// SoftSpokenOT<8>. Idempotent — early-out after first run. Called
+	// from both do_rcot_*_begin paths on first entry.
+	void bootstrap_base_cots_();
+
 	int party;
 	int tree_idx_;        // current tree index within the round, 0..param.t-1
 	bool is_malicious;
-	bool extend_initialized;
+	bool bootstrap_done_;
 
 	// Two ping-pong base buffers, each refill_trees * leave_n blocks.
 	// `curr_` holds the round's M base COTs (cGGM corrections, LPN

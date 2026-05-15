@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     constexpr int k = 8;
     constexpr int n = SoftSpokenOT<k>::n;
     constexpr int Q = 1 << k;
-    const int64_t bs = SoftSpokenOT<k>::kChunkBlocks;
+    const int64_t bs = SoftSpokenOT<k>::kChunkBlocks_value;
 
 #ifdef NDEBUG
     constexpr double default_secs = 10.0;

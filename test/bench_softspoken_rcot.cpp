@@ -15,13 +15,12 @@ void run_k(NetIO* io, int party, int64_t length) {
              << "recv=" << double(dr) / length << " B/COT" << endl;
     };
     {
-        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(io);
+        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(party, io, /*malicious=*/false);
         bench("semi", ot);
         delete ot;
     }
     {
-        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(io);
-        ot->set_malicious(true);
+        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(party, io, /*malicious=*/true);
         bench("mali", ot);
         delete ot;
     }

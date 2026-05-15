@@ -35,9 +35,13 @@ class PrimalLPNParameter { public:
 	}
 };
 
-const static PrimalLPNParameter ferret_b13 = PrimalLPNParameter(1280, 19, 13); // N = 15,564,800
+const static PrimalLPNParameter ferret_b13 = PrimalLPNParameter(1280, 19, 13); // N = 10,485,760
 const static PrimalLPNParameter ferret_b12 = PrimalLPNParameter(1520, 18, 12); // N = 6,225,920
 const static PrimalLPNParameter ferret_b11 = PrimalLPNParameter(1170, 17, 11); // N = 2,396,160
+// Tentative — pending full BJMM_ISD pass. The hybrid attack
+// (hardness_of_lpn / hybrid_2_quick) gives ~128.7 bits at t=850,
+// logk=16, tree_depth=10; all other (cheaper) attacks land ≥ 131 bits.
+const static PrimalLPNParameter ferret_b10 = PrimalLPNParameter(850,  16, 10); // N = 870,400
 
 }//namespace
 #endif //EMP_FERRET_CONSTANTS_H__

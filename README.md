@@ -137,7 +137,7 @@ call a lower-level method on a higher-level object.
 | `OT`                      | `send(m0, m1, n)` / `recv(mc, c, n)`              | chosen-input 1-out-of-2: sender supplies both messages, receiver picks one      |
 | `COT : OT`                | `send_cot(m0, n)` / `recv_cot(mc, c, n)`; free `send_rot`/`recv_rot` | chosen-correlation: sender's two messages always differ by a public `Delta` |
 | `RandomCOT : COT`         | `rcot_send(m0, n)` / `rcot_recv(mc, n)`           | random correlation: no choice-bit input; receiver's choice ends up in `getLSB(mc[i])`, and `Delta`'s LSB is forced to 1 so the correlation survives that one bit |
-| `OTExtension : RandomCOT` | `chunk_ots()`, `rcot_send_begin/_next/_end`, `rcot_recv_begin/_next/_end` | streaming RCOT: one fixed-size chunk per `_next`, no internal buffering         |
+| `OTExtension : RandomCOT` | `set_delta(const bool* delta_bool)` (sender-only Δ override), `chunk_ots()`, `rcot_send_begin/_next/_end`, `rcot_recv_begin/_next/_end` | streaming RCOT (one fixed-size chunk per `_next`); base-OT bootstrap fires lazily on the first `_begin` |
 
 Concrete classes attach as follows:
 
@@ -166,18 +166,18 @@ if (party == ALICE) ot.send(m0, m1, length);
 else                ot.recv(mc, c, length);    // mc[i] = m_{c[i]}
 ```
 
-Any of the four are drop-in interchangeable here. `OTCO` is the
-semi-honest fast path; the other three are malicious-secure (see the
-[Performance](#performance) section for the cost difference).
+All four implement the same `OT` interface. `OTCO` is semi-honest;
+`OTCSW`, `OTPVW`, `OTPVWKyber` are malicious-secure.
 
 ### OT extensions
 
 `IKNP`, `SoftSpokenOT<k>`, and `FerretCOT` all derive from
-`RandomCOT`, so the same object exposes all four flavors:
+`RandomCOT`, take the same constructor shape, and the same object
+exposes all four flavors:
 
 ```cpp
-IKNP ote(&io, /*malicious=*/false);
-// FerretCOT ote(party, &io); SoftSpokenOT<2> ote(&io); ... all the same below.
+IKNP ote(party, &io);
+// SoftSpokenOT<2> ote(party, &io); FerretCOT ote(party, &io); ... all the same below.
 
 if (party == ALICE) {
     ote.rcot_send(m0, length);                    // RCOT: fills m0; m1[i] = m0[i]^Δ
@@ -192,22 +192,43 @@ if (party == ALICE) {
 }
 ```
 
-`Δ` is the sender-side correlation (`ote.Delta`). It's set by the
-backend's setup phase — at construction for `FerretCOT` (when
-`run_setup=true`, the default), on the first `*_send` call for `IKNP`
-and `SoftSpokenOT`. The receiver has no `Δ`.
+The constructor allocates per-instance state and (on the sender side)
+samples a random `Δ` with `LSB(Δ) = 1` pinned. No network I/O runs in
+the ctor. The base-OT bootstrap runs on the first `rcot_*_begin` (or
+the first `rcot_send` / `rcot_recv` one-shot call, which delegates to
+`_begin` internally).
+
+`Δ` is readable as `ote.Delta` immediately after construction. The
+receiver has no `Δ`. To override the ctor-sampled `Δ` (e.g. when an
+outer protocol like
+[`emp-zk`](https://github.com/emp-toolkit/emp-zk) or
+[`emp-sh2pc`](https://github.com/emp-toolkit/emp-sh2pc) supplies its
+own correlation), call `set_delta` before the first `rcot_*` call:
+
+```cpp
+IKNP ote(party, &io);
+if (party == ALICE) {
+    bool delta_bool[128]; /* fill from outer protocol; delta_bool[0] = true */
+    ote.set_delta(delta_bool);
+}
+// ote.rcot_send(...); // bootstrap fires here, on first streaming begin
+```
+
+`set_delta` must fire before the first `rcot_*` call (asserts otherwise).
 
 Each extension can be parameterized to bootstrap from a non-default
 base OT (default is `OTPVW`); pair an extension's malicious mode with
 a malicious-secure base — `IKNP` / `SoftSpokenOT` / `FerretCOT` check
-this at runtime and abort otherwise.
+this at construction time and abort otherwise.
 
 ```cpp
-IKNP        ote1(&io, /*malicious=*/true, std::make_unique<OTCSW>(&io));
-SoftSpokenOT<4> ote2(&io, std::make_unique<OTCSW>(&io));     // k=4
-FerretCOT   ote3(party, &io, /*malicious=*/true,
-                 /*run_setup=*/true, ferret_b13,
-                 std::make_unique<OTCSW>(&io));
+IKNP            ote1(party, &io, /*malicious=*/true,
+                     std::make_unique<OTCSW>(&io));
+SoftSpokenOT<4> ote2(party, &io, /*malicious=*/true,
+                     std::make_unique<OTCSW>(&io));      // k=4
+FerretCOT       ote3(party, &io, /*malicious=*/true,
+                     ferret_b13,
+                     std::make_unique<OTCSW>(&io));
 ```
 
 ### Streaming RCOT
@@ -243,57 +264,47 @@ that aren't a multiple of `chunk_ots()`.
 
 ## Performance
 
-Numbers from AWS `c8a.2xlarge` (AMD EPYC 9R45, Zen 5, 8 vCPU), single-
-thread, both parties on localhost. Network is not a bottleneck — these
-are compute-bound numbers (`bench_base_ot` and `bench_ot_extension`).
-Run against `main` at commit `dcbafff` (depends on `emp-tool` at
-`6d3e9f2`), Ubuntu 22.04, GCC 11.4, OpenSSL 3.3.2, `-march=native`
-(AVX-512 + VAES + VPCLMULQDQ + SHA-NI).
+AWS `c8a.2xlarge` (AMD EPYC 9R45, Zen 5, 8 vCPU), Ubuntu 22.04, GCC
+11.4, OpenSSL 3.3.2, `-march=native`.
 
 ### Base OTs
 
-Time and total wire bytes for one batch of 128 base OTs. Time is the
-wall-clock duration on Alice's side.
+One batch of 128 base OTs.
 
 | Protocol     | Time   |  Send B |  Recv B | Security                                     |
 |--------------|-------:|--------:|--------:|----------------------------------------------|
-| `OTCO`       |  18 ms |   4,165 |   8,832 | semi-honest                                  |
-| `OTCSW`      | 9.2 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
-| `OTPVW`      |  39 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `OTPVWKyber` | 8.0 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
+| `OTCO`       | 6.2 ms |   4,165 |   8,832 | semi-honest                                  |
+| `OTCSW`      | 9.3 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
+| `OTPVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
+| `OTPVWKyber` | 7.3 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
 
-The three OT extensions (`IKNP`, `SoftSpokenOT`, `FerretCOT`) accept
-any of these via the optional `std::unique_ptr<OT> base_ot` constructor
-arg; they default to `OTPVW`. Pair an extension's malicious mode with
-a malicious-secure base — a runtime check fires otherwise.
+### OT extensions (RCOT throughput)
 
-### OT extensions
+Length 2²⁵ OTs (~33M). `MOT/s` = million RCOTs per second. `bits/RCOT`
+= total bytes on the wire (both directions), including the one-time
+base-OT bootstrap.
 
-Length ≈ 2²⁴ OTs (~16M), single-thread. MOT/s = million OTs per
-second; each cell is the mean of four measurements (Alice + Bob
-across two role-flipped runs). For `COT`/`ROT`/`OT` rows, sender and
-receiver MOT/s differ noticeably (the sender's `rcot_send` finishes
-before the receiver's `rcot_recv` returns) — the mean smooths that
-out. The `bits/RCOT` column is the total wire footprint per RCOT
-output (send + receive, divided by length).
+| Protocol         | Mode      | bits/RCOT | MOT/s |
+|------------------|-----------|----------:|------:|
+| `IKNP`           | semi      |       127 |   149 |
+| `IKNP`           | malicious |       127 |    42 |
+| `SoftSpoken<2>`  | semi      |        63 |   121 |
+| `SoftSpoken<2>`  | malicious |        63 |   110 |
+| `SoftSpoken<4>`  | semi      |        31 |   123 |
+| `SoftSpoken<4>`  | malicious |        31 |   113 |
+| `SoftSpoken<8>`  | semi      |        15 |    39 |
+| `SoftSpoken<8>`  | malicious |        15 |    39 |
+| `FerretCOT`      | semi      |      0.29 |    71 |
+| `FerretCOT`      | malicious |      0.29 |    62 |
 
-| Protocol         | Mode      | bits/RCOT | RCOT | COT | ROT | OT  |
-|------------------|-----------|----------:|-----:|----:|----:|----:|
-| `IKNP`           | semi      |       127 |  127 | 100 |  50 |  42 |
-| `IKNP`           | malicious |       127 |   42 |  38 |  28 |  17 |
-| `SoftSpoken<2>`  | semi      |        63 |  104 |  84 |  46 |  24 |
-| `SoftSpoken<2>`  | malicious |        63 |   97 |  80 |  45 |  22 |
-| `SoftSpoken<4>`  | semi      |        31 |  107 |  87 |  47 |  23 |
-| `SoftSpoken<4>`  | malicious |        31 |  100 |  82 |  46 |  23 |
-| `SoftSpoken<8>`  | semi      |        15 |   38 |  35 |  26 |  17 |
-| `SoftSpoken<8>`  | malicious |        15 |   37 |  35 |  26 |  16 |
-| `FerretCOT`      | semi      |      0.22 |   65 |  57 |  37 |  20 |
-| `FerretCOT`      | malicious |      0.22 |   59 |  52 |  35 |  20 |
+`IKNP` and `SoftSpoken<k>` traffic is one-direction: 127 bits/RCOT
+for `IKNP`, `128/k − 1` bits/RCOT for `SoftSpoken<k>`. `FerretCOT`'s
+0.29 bits/RCOT at 2²⁵ is ~0.22 bits/RCOT of steady-state per-round
+MPCOT/LPN traffic plus ~0.07 bits/RCOT of one-time bootstrap; the
+bootstrap fraction shrinks linearly with bench length.
 
-`RCOT` = random correlated OT (raw extension output); `COT` = chosen-
-correlation; `ROT` = random OT; `OT` = chosen-input. `SoftSpoken<k>`
-shrinks the per-RCOT wire as `k` grows (roughly `128/k - 1` bits) at
-the cost of more AES work per RCOT.
+`COT`, `ROT`, `OT` flavors layer one MITCCRH pass (and, for
+chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.
 
 ## Citation
 

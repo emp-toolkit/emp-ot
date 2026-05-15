@@ -4,6 +4,16 @@
 
 namespace emp {
 
+// Override the ctor-sampled Δ. Must fire before the first rcot_*
+// call (the bootstrap inside do_rcot_send_begin consumes `s`).
+void IKNP::set_delta(const bool *delta_bool) {
+	assert(party == ALICE && "IKNP::set_delta: receiver has no Δ");
+	assert(!setup_done && "IKNP::set_delta: bootstrap already fired");
+	assert(delta_bool[0] && "IKNP::set_delta: delta_bool[0] must be true (bit_0(Δ) = 1 invariant)");
+	memcpy(s, delta_bool, 128);
+	this->Delta = bool_to_block(s);
+}
+
 // Naming convention worth knowing: on the sender, `k0[i]` (and the
 // derived `G0[i]`) is the base-OT-chosen key — i.e. whichever of the
 // receiver's (k0_i, k1_i) matches s_i — NOT the literal "zero side".
@@ -15,54 +25,23 @@ namespace emp {
 //       = G1_R[i].rand ⊕ (G0_R[i].rand ⊕ G1_R[i].rand ⊕ r)
 //       = G0_R[i].rand ⊕ r
 // which gives the desired q_i ⊕ t_i = s_i · r per row.
-void IKNP::setup_send(const bool *delta_bool_in) {
-	is_sender = true;
-	// bit_0(Δ) = 1 is required by the row-0 collapse (see class header).
-	// Caller must pre-set delta_bool_in[0]; the random-Δ overload does
-	// this internally.
-	assert(delta_bool_in[0] && "IKNP::setup_send: delta_bool_in[0] must be true (bit_0(Δ) = 1 invariant)");
-	memcpy(s, delta_bool_in, 128);
-	block k0[128];
-	if (malicious && !base_ot->is_malicious_secure())
-		error("IKNP malicious mode requires a malicious-secure base OT");
-	base_ot->recv(k0+1, s+1, 127);
-	for (int64_t i = 1; i < 128; ++i)
-		G0[i].reseed(&k0[i]);
-	Delta = bool_to_block(s);
-	setup_done = true;
-	// is_sender as send_first matches FerretCOT's `party == ALICE` since
-	// ALICE is sender by convention; both protocols can share an io.
-	if (malicious && !io->fs_enabled())
-		io->enable_fs(/*send_first=*/is_sender);
-}
-
-void IKNP::setup_send() {
-	bool s_random[128];
-	prg.random_bool(s_random, 128);
-	s_random[0] = true;  // bit_0(Δ) = 1 invariant; see class comment.
-	setup_send(s_random);
-}
-
-void IKNP::setup_recv() {
-	is_sender = false;
-	block k0[128], k1[128];
-	if (malicious && !base_ot->is_malicious_secure())
-		error("IKNP malicious mode requires a malicious-secure base OT");
-	prg.random_block(k0, 128);
-	prg.random_block(k1, 128);
-	base_ot->send(k0+1, k1+1, 127);   // base_ot->send flushes internally
-	for (int64_t i = 1; i < 128; ++i) {
-		G0[i].reseed(&k0[i]);
-		G1[i].reseed(&k1[i]);
-	}
-	setup_done = true;
-	// See setup_send for the send_first convention.
-	if (malicious && !io->fs_enabled())
-		io->enable_fs(/*send_first=*/is_sender);
-}
-
 void IKNP::do_rcot_send_begin() {
-	assert(setup_done && "rcot_send_begin: setup not done");
+	if (!setup_done) {
+		// Sender bootstrap: consume `s` (Δ-bits, set in ctor or
+		// overridden by set_delta) via base_ot->recv, reseed G0[1..127]
+		// from the received keys. bit_0=1 invariant pinned by ctor /
+		// set_delta. is_sender as send_first matches FerretCOT's
+		// `party == ALICE` since ALICE is sender by convention; both
+		// protocols can share an io.
+		is_sender = true;
+		block k0[128];
+		base_ot->recv(k0 + 1, s + 1, 127);
+		for (int64_t i = 1; i < 128; ++i)
+			G0[i].reseed(&k0[i]);
+		if (malicious && !io->fs_enabled())
+			io->enable_fs(/*send_first=*/is_sender);
+		setup_done = true;
+	}
 	assert(is_sender && "rcot_send_begin: not in sender role");
 	if (malicious) check_q = makeBlock(0, 0);
 }
@@ -139,7 +118,22 @@ void IKNP::combine_send(block *out) {
 }
 
 void IKNP::do_rcot_recv_begin() {
-	assert(setup_done && "rcot_recv_begin: setup not done");
+	if (!setup_done) {
+		// Receiver bootstrap: sample (k0, k1) ← PRG, base_ot->send,
+		// reseed G0/G1.
+		is_sender = false;
+		block k0[128], k1[128];
+		prg.random_block(k0, 128);
+		prg.random_block(k1, 128);
+		base_ot->send(k0 + 1, k1 + 1, 127);   // base_ot->send flushes internally
+		for (int64_t i = 1; i < 128; ++i) {
+			G0[i].reseed(&k0[i]);
+			G1[i].reseed(&k1[i]);
+		}
+		if (malicious && !io->fs_enabled())
+			io->enable_fs(/*send_first=*/is_sender);
+		setup_done = true;
+	}
 	assert(!is_sender && "rcot_recv_begin: not in receiver role");
 	if (malicious) {
 		check_t = makeBlock(0, 0);

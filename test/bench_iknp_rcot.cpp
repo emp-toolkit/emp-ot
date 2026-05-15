@@ -29,12 +29,12 @@ int main(int argc, char** argv) {
     cout << "# bench_iknp_rcot: length=" << length << endl;
 
     {
-        IKNP* ot = new IKNP(io, false);
+        IKNP* ot = new IKNP(party, io, /*malicious=*/false);
         run("IKNP semi", ot);
         delete ot;
     }
     {
-        IKNP* ot = new IKNP(io, true);
+        IKNP* ot = new IKNP(party, io, /*malicious=*/true);
         run("IKNP mali", ot);
         delete ot;
     }

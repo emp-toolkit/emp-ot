@@ -65,12 +65,16 @@ public:
     // a multiple of chunk_ots(); subsequent calls drain it before
     // producing more chunks, so repeated tiny rcot_send calls don't
     // pay a fresh chunk per call.
+    //
+    // Setup is triggered through the streaming begin path: each
+    // subclass's do_rcot_*_begin runs setup() on first entry when
+    // its setup_done flag is still false. Callers may also invoke
+    // setup() explicitly (e.g. to inject an external Δ) before the
+    // first rcot_* call; the second setup() call is a no-op.
     void rcot_send(block* data, int64_t num) final override {
-        ensure_setup_for_send();
         rcot_run(data, num, /*sender=*/true);
     }
     void rcot_recv(block* data, int64_t num) final override {
-        ensure_setup_for_recv();
         rcot_run(data, num, /*sender=*/false);
     }
 
@@ -82,8 +86,8 @@ public:
 protected:
     // Subclass implementation hooks. Called from the public concrete
     // _begin/_next/_end above after the lifecycle asserts have
-    // passed. do_*_begin should additionally assert its own
-    // setup-done invariant (each subclass tracks setup state under a
+    // passed. do_*_begin must trigger setup() on its own first-call
+    // path (each subclass keeps its own setup-done flag under a
     // different name).
     virtual void do_rcot_send_begin() = 0;
     virtual void do_rcot_send_next(block* out) = 0;
@@ -91,14 +95,6 @@ protected:
     virtual void do_rcot_recv_begin() = 0;
     virtual void do_rcot_recv_next(block* out) = 0;
     virtual void do_rcot_recv_end() = 0;
-
-    // Setup hooks called only from the one-shot rcot_send / rcot_recv
-    // wrappers (NOT from the streaming begin), preserving the
-    // invariant that streaming users must call setup explicitly.
-    // Default no-ops; backends that auto-setup on first one-shot
-    // call (IKNP, SoftSpoken) override.
-    virtual void ensure_setup_for_send() {}
-    virtual void ensure_setup_for_recv() {}
 
 private:
     bool in_send_session_ = false;

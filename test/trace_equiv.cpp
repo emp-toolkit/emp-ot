@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
     // Protocol bytes go through TraceIO; verify_rcot's verification
     // round-trip uses the underlying NetIO directly so the trace files
     // capture only the protocol's wire bytes, not test scaffolding.
-    IKNP* iknp = new IKNP(io, /*malicious=*/false);
+    IKNP* iknp = new IKNP(party, io, /*malicious=*/false);
     block* b = new block[length];
     auto t0 = clock_start();
     if (party == ALICE) iknp->rcot_send(b, length);

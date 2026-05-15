@@ -48,11 +48,11 @@ class IKNP : public OTExtension { public:
 	bool s[128];
 	PRG prg, G0[128], G1[128];
 	PRG choice_prg;
+	int  party = 0;        // role; locked at construction
 	bool malicious = true;
 	bool is_sender = false;
-	// Tracks whether setup_send / setup_recv has been called. The
-	// OTExtension::rcot_send / rcot_recv wrappers auto-run the
-	// matching setup on first call via ensure_setup_for_*().
+	// Setup state: setup() flips this to true and is a no-op thereafter.
+	// do_rcot_*_begin auto-triggers setup() when false.
 	bool setup_done = false;
 	// Packs 128 consecutive COT outputs into a single F_{2^128} element
 	// via the gadget (1, X, ..., X^{127}). Lets the malicious check
@@ -64,25 +64,32 @@ class IKNP : public OTExtension { public:
 
 	// User-supplied base OT, owned by IKNP. Defaults to OTPVW (DDH
 	// messy-mode PVW '08 — malicious-secure). Pass a different one
-	// (e.g., OTCSW or OTPVWKyber) via the third ctor arg to swap the
+	// (e.g., OTCSW or OTPVWKyber) via the fourth ctor arg to swap the
 	// bootstrap base.
 	std::unique_ptr<OT> base_ot;
 
-	IKNP() = default;
-	explicit IKNP(IOChannel *io_, bool malicious_ = true,
-	              std::unique_ptr<OT> base_ot_ = nullptr) : malicious(malicious_) {
+	explicit IKNP(int party_, IOChannel *io_, bool malicious_ = true,
+	              std::unique_ptr<OT> base_ot_ = nullptr)
+	    : party(party_), malicious(malicious_) {
 		this->io = io_;
 		base_ot = base_ot_ ? std::move(base_ot_)
 		                   : std::unique_ptr<OT>(new OTPVW(io_));
+		if (malicious && !base_ot->is_malicious_secure())
+			error("IKNP malicious mode requires a malicious-secure base OT");
+		if (party_ == ALICE) {
+			// Random Δ with the bit-0=1 invariant (row-0 collapse, see
+			// class comment). The block form (this->Delta) and the
+			// bool[128] form (s) stay in sync via bool_to_block.
+			prg.random_bool(s, 128);
+			s[0] = true;
+			this->Delta = bool_to_block(s);
+		}
 	}
 
-	// ===== Setup =====
-	// Sender role with explicit Δ (caller must ensure delta_bool_in[0] = true).
-	void setup_send(const bool *delta_bool_in);
-	// Sender role with random Δ; forces bit_0 = 1 internally.
-	void setup_send();
-	// Receiver role.
-	void setup_recv();
+	// Replace the ctor-sampled Δ with one supplied by an outer protocol
+	// (e.g. emp-zk's halfgate-bound Δ). Sender-only; must fire before
+	// the streaming bootstrap. delta_bool[0] must be true.
+	void set_delta(const bool *delta_bool);
 
 	// ===== OTExtension contract =====
 	int64_t chunk_ots() const override { return block_size; }
@@ -94,13 +101,6 @@ protected:
 	void do_rcot_recv_begin() override;
 	void do_rcot_recv_next(block *out) override;
 	void do_rcot_recv_end() override;
-
-	void ensure_setup_for_send() override {
-		if (!setup_done) setup_send();
-	}
-	void ensure_setup_for_recv() override {
-		if (!setup_done) setup_recv();
-	}
 
 public:
 	// ===== Internal helpers (chi-fold per chunk) =====

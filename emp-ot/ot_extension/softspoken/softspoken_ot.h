@@ -240,7 +240,14 @@ namespace emp {
  *       deviation by the VOLE-sender (= COT-receiver) in the d_bufs
  *       syndrome. Same chi-fold shape as IKNP — see emp-ot/iknp.{h,cpp}.
  */
-template <int k>
+// `kChunkBlocks` is a tunable template parameter (default tracks the
+// per-k cache-sweet-spot from chunk_blocks_for<k>). FerretCOT's
+// bootstrap instantiates a smaller-chunk variant — e.g.
+// SoftSpokenOT<8, 580> — so its one-shot ~74k base-COT request fits
+// in a single chunk instead of overproducing the full 131,072-OT
+// default chunk and shipping ~107 KB of unused PPRF planes over the
+// wire. Standalone users keep the default.
+template <int k, int kChunkBlocks = softspoken::chunk_blocks_for<k>()>
 class SoftSpokenOT : public OTExtension {
     static_assert(k >= 1 && k <= 8, "SoftSpokenOT supports k in [1, 8]");
 public:
@@ -249,40 +256,26 @@ public:
 
     // User-supplied base OT, owned by SoftSpokenOT. Defaults to OTPVW
     // (DDH messy-mode PVW '08 — malicious-secure). Pass a different
-    // one (e.g., OTCSW or OTPVWKyber) via the second ctor arg.
-    explicit SoftSpokenOT(IOChannel* io_, std::unique_ptr<OT> base_ot = nullptr);
+    // one (e.g., OTCSW or OTPVWKyber) via the fourth ctor arg.
+    explicit SoftSpokenOT(int party, IOChannel* io_,
+                          bool malicious = true,
+                          std::unique_ptr<OT> base_ot = nullptr);
     ~SoftSpokenOT() override = default;
 
     // OTExtension contract. The base class supplies rcot_send /
     // rcot_recv as wrappers around do_rcot_*_begin/_next/_end with
-    // chunk_ots() = kChunkOTs.
-    static constexpr int kChunkBlocks = softspoken::chunk_blocks_for<k>();
-    static constexpr int kChunkOTs    = kChunkBlocks * 128;
+    // chunk_ots() = kChunkOTs. kChunkBlocks is re-exposed as a static
+    // member so callers outside the class body can read it as
+    // SoftSpokenOT<k>::kChunkBlocks (the bare template parameter is
+    // not member-accessible in that context).
+    static constexpr int kChunkBlocks_value = kChunkBlocks;
+    static constexpr int kChunkOTs          = kChunkBlocks * 128;
     int64_t chunk_ots() const override { return kChunkOTs; }
 
-    // Externally-provided Δ (must have LSB=1). The decomposition
-    // unpack<k>(Δ, ...) into alphas_ works for any Δ ∈ F_{2^128};
-    // setup proceeds identically. Used by ferret to share its global
-    // Δ with the bootstrap base-OT generator.
-    void setup_send(block delta_in);
-
-    // Receiver-role setup. Exposed so ferret can drive the bootstrap
-    // explicitly (rcot_send/rcot_recv auto-run the matching setup on
-    // first call, but ferret wants to synchronize role selection with
-    // its own party flag).
-    void setup_recv();
-
-    // Enable malicious-mode checks. Must be called BEFORE setup_send /
-    // setup_recv so the PPRF check runs at the tail of setup. Once
-    // setup is done, the flag also gates the per-session subspace
-    // VOLE check in rcot_*_begin/next/end. Asserts that the base OT
-    // is itself malicious-secure (a semi-honest base would invalidate
-    // the malicious-mode security claim).
-    void set_malicious(bool on = true) {
-        if (on && !base_ot_->is_malicious_secure())
-            error("SoftSpokenOT::set_malicious(true) requires a malicious-secure base OT");
-        malicious_ = on;
-    }
+    // Replace the ctor-sampled Δ with one supplied by an outer protocol.
+    // Sender-only; must fire before the streaming bootstrap.
+    // delta_bool[0] must be true.
+    void set_delta(const bool* delta_bool);
 
 protected:
     // OTExtension hooks. Each do_*_next writes exactly kChunkOTs blocks.
@@ -293,15 +286,9 @@ protected:
     void do_rcot_recv_next(block* out) override;
     void do_rcot_recv_end() override;
 
-    void ensure_setup_for_send() override {
-        if (!setup_done_) setup_send();
-    }
-    void ensure_setup_for_recv() override {
-        if (!setup_done_) setup_recv();
-    }
-
 private:
     std::unique_ptr<OT> base_ot_;
+    int  party_ = 0;
     bool setup_done_ = false;
     uint64_t session_ = 0;
 
@@ -345,7 +332,11 @@ private:
     block check_t_  = zero_block;
     block check_x_  = zero_block;
 
-    void setup_send();
+    // Wire-touching bootstrap halves, run lazily on first do_rcot_*_begin.
+    // Sender consumes the ctor-sampled (or set_delta-overridden) Δ;
+    // receiver runs the PPRF eval.
+    void bootstrap_send_();
+    void bootstrap_recv_();
     // Resize the per-chunk scratch buffers to their full kChunkBlocks
     // capacity on first call; cheap no-op afterwards. Called at the
     // top of rcot_send_next / rcot_recv_next.
@@ -376,6 +367,9 @@ private:
 extern template class SoftSpokenOT<2>;
 extern template class SoftSpokenOT<4>;
 extern template class SoftSpokenOT<8>;
+// Smaller-chunk variant used by FerretCOT::bootstrap_base_cots_ —
+// 580 × 128 = 74,240 OTs fits ferret_b10.M = 74,164 in a single chunk.
+extern template class SoftSpokenOT<8, 580>;
 
 } // namespace emp
 #endif

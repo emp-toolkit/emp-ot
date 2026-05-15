@@ -1,73 +1,61 @@
-// Cross-protocol OT-extension bench. Reports throughput + B/COT for
-// IKNP / SoftSpoken / FerretCOT in one table, across all four flavors
-// (RCOT → COT → ROT → OT). Two-party via the `run` script.
+// Cross-protocol OT-extension RCOT throughput bench. Reports MOT/s and
+// B/RCOT for IKNP / SoftSpoken<k> / FerretCOT. Two-party via `run`.
 //
-// Re-uses test_{rcot,cot,rot,ot} from test/test.h, so each row also
-// asserts correctness — the bench's output is preceded by the helpers'
-// "Tests passed.\t" markers (one per flavor call).
-//
-// Length default: (1 << 24) + 101 (~16M OTs). Smaller lengths
-// (e.g. 2^20) leave constant base-OT setup bytes visible in the
-// per-OT bandwidth column — at 16M OTs the protocol's asymptotic
-// per-OT wire cost is what the table reports.
+// Streaming-only: each row drives rcot_*_begin → rcot_*_next loop into a
+// reusable chunk_ots()-sized scratch buffer and discards the generated
+// blocks. This keeps memory flat regardless of how many OTs the row
+// runs, so the length default sits at 2^25 (~33M OTs) without paying
+// length × 16 B of heap. The first row of each protocol absorbs the
+// base-OT bootstrap (set_delta hasn't fired and the streaming begin
+// triggers it lazily) inside the timed window; this is intentional —
+// the reported B/RCOT for a protocol includes its one-time bootstrap
+// amortised over the bench length.
 #include "test/test.h"
 using namespace std;
 
-#define BW_ROW(FLAVOR, FN) do {                                               \
-    uint64_t ds = 0, dr = 0;                                                  \
-    double us = FN(ot, io, party, length, &ds, &dr);                          \
-    cout << FLAVOR << "\t" << row_name << "\t"                                \
-         << double(length) / us << " MOTps  "                                 \
-         << "send=" << double(ds) / length << " B/COT  "                      \
-         << "recv=" << double(dr) / length << " B/COT" << endl;               \
-} while (0)
-
-// Streaming-API row: `length` gets rounded down to a multiple of
-// chunk_ots() inside test_rcot_streaming, so MOTps must be computed
-// over the effective length the test actually produced.
-#define STR_ROW() do {                                                        \
-    uint64_t ds = 0, dr = 0;                                                  \
-    int64_t eff = 0;                                                          \
-    double us = test_rcot_streaming<T>(ot, io, party, length, &eff, &ds, &dr);\
-    cout << "STR " << "\t" << row_name << "\t"                                \
-         << double(eff) / us << " MOTps  "                                    \
-         << "send=" << double(ds) / eff << " B/COT  "                         \
-         << "recv=" << double(dr) / eff << " B/COT" << endl;                  \
-} while (0)
-
 template <typename T>
 void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) {
-    // Warm up: trigger any deferred base-OT setup (IKNP / SoftSpoken
-    // auto-run setup_send / setup_recv on the first rcot_send / rcot_recv
-    // call). Without this, whichever row runs first eats the base-OT
-    // bootstrap cost and looks 20-30% slower than the rest. Use length =
-    // chunk_ots() so the OTExtension wrapper's leftover_ stays empty.
-    {
-        const int64_t warmup_len = ot->chunk_ots();
-        BlockVec dummy(warmup_len);
-        if (party == ALICE) ot->rcot_send(dummy.data(), warmup_len);
-        else                ot->rcot_recv(dummy.data(), warmup_len);
-        io->flush();
+    const int64_t chunk = ot->chunk_ots();
+    const int64_t n_chunks = length / chunk;
+    const int64_t eff_len = n_chunks * chunk;
+
+    BlockVec buf(chunk);
+    io->sync();
+    uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
+    auto start = clock_start();
+    if (party == ALICE) {
+        ot->rcot_send_begin();
+        for (int64_t i = 0; i < n_chunks; ++i)
+            ot->rcot_send_next(buf.data());
+        ot->rcot_send_end();
+    } else {
+        ot->rcot_recv_begin();
+        for (int64_t i = 0; i < n_chunks; ++i)
+            ot->rcot_recv_next(buf.data());
+        ot->rcot_recv_end();
     }
-    BW_ROW("RCOT", test_rcot<T>);
-    STR_ROW();
-    BW_ROW("COT ", test_cot<T>);
-    BW_ROW("ROT ", test_rot<T>);
-    BW_ROW("OT  ", test_ot<T>);
+    io->flush();
+    long long us = time_from(start);
+    uint64_t ds = io->bytes_sent - s0;
+    uint64_t dr = io->bytes_recv - r0;
+
+    cout << row_name << "\t"
+         << double(eff_len) / us << " MOTps  "
+         << "send=" << double(ds) / eff_len << " B/RCOT  "
+         << "recv=" << double(dr) / eff_len << " B/RCOT" << endl;
 }
 
 template <int k>
 void run_softspoken_k(NetIO* io, int party, int64_t length) {
     char name[32];
     {
-        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(io);
+        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(party, io, /*malicious=*/false);
         snprintf(name, sizeof(name), "SoftSpoken<%d> semi", k);
         run_row(ot, io, party, length, name);
         delete ot;
     }
     {
-        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(io);
-        ot->set_malicious(true);
+        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(party, io, /*malicious=*/true);
         snprintf(name, sizeof(name), "SoftSpoken<%d> mali", k);
         run_row(ot, io, party, length, name);
         delete ot;
@@ -75,28 +63,29 @@ void run_softspoken_k(NetIO* io, int party, int64_t length) {
 }
 
 int main(int argc, char** argv) {
-    int length, port, party;
+    int port, party;
+    int64_t length;
 #ifdef NDEBUG
-    constexpr int default_length_log = 24;
+    constexpr int default_length_log = 25;
 #else
     constexpr int default_length_log = 12;
 #endif
-    if (argc <= 3) length = (1 << default_length_log) + 101;
-    else           length = (1 << atoi(argv[3])) + 101;
+    if (argc <= 3) length = int64_t{1} << default_length_log;
+    else           length = int64_t{1} << atoi(argv[3]);
 
     parse_party_and_port(argv, &party, &port);
     NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
 
-    cout << "# bench_ot_extension: length=" << length << "  (3 protocols × 4 flavors)" << endl;
+    cout << "# bench_ot_extension: length=" << length << "  (RCOT throughput, streaming API)" << endl;
 
     // IKNP
     {
-        IKNP* iknp = new IKNP(io, false);
+        IKNP* iknp = new IKNP(party, io, /*malicious=*/false);
         run_row(iknp, io, party, length, "IKNP semi");
         delete iknp;
     }
     {
-        IKNP* iknp = new IKNP(io, true);
+        IKNP* iknp = new IKNP(party, io, /*malicious=*/true);
         run_row(iknp, io, party, length, "IKNP mali");
         delete iknp;
     }
@@ -106,17 +95,14 @@ int main(int argc, char** argv) {
     run_softspoken_k<4>(io, party, length);
     run_softspoken_k<8>(io, party, length);
 
-    // FerretCOT (semi + mali). FerretCOT's inherited send/recv,
-    // send_cot/recv_cot, send_rot/recv_rot all dispatch through its
-    // rcot_send/rcot_recv override, so the four-flavor matrix exercises
-    // the same ferret extend pipeline at the bottom.
+    // FerretCOT (semi + mali).
     {
-        FerretCOT* ot = new FerretCOT(party, io, false);
+        FerretCOT* ot = new FerretCOT(party, io, /*malicious=*/false);
         run_row(ot, io, party, length, "FerretCOT semi");
         delete ot;
     }
     {
-        FerretCOT* ot = new FerretCOT(party, io, true);
+        FerretCOT* ot = new FerretCOT(party, io, /*malicious=*/true);
         run_row(ot, io, party, length, "FerretCOT mali");
         delete ot;
     }

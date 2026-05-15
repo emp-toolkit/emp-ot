@@ -8,7 +8,7 @@
 namespace emp {
 
 FerretCOT::FerretCOT(int party, IOChannel *io,
-		bool malicious, bool run_setup, PrimalLPNParameter param,
+		bool malicious, PrimalLPNParameter param,
 		std::unique_ptr<OT> base_ot) {
 	this->party = party;
 	this->io = io;
@@ -16,17 +16,36 @@ FerretCOT::FerretCOT(int party, IOChannel *io,
 	this->param = param;
 	this->base_ot_ = std::move(base_ot);
 
-	this->extend_initialized = false;
+	this->bootstrap_done_ = false;
 	this->tree_idx_ = 0;
 
-	if(run_setup) {
-		if(party == ALICE) {
-			PRG prg;
-			prg.random_block(&Delta);
-			Delta = (Delta & lsb_clear_mask) ^ lsb_only_mask;
-			setup(Delta);
-		} else setup();
+	// Compute-only allocations and per-party state. Zero network I/O —
+	// the SoftSpoken bootstrap that produces the first round's M base
+	// COTs runs lazily on the first do_rcot_*_begin call.
+	lpn_f2 = std::make_unique<LpnF2<10>>(param.k);
+	if (party == ALICE) {
+		mpcot_sender = std::make_unique<MPCOT_Sender>(param, io);
+		if (is_malicious) mpcot_sender->set_malicious();
+		// Random Δ with LSB pinned to 1 (the LSB-encoded choice
+		// convention shared with the other extensions). Outer protocols
+		// that want a specific Δ call set_delta after construction and
+		// before the first rcot_*.
+		PRG prg;
+		prg.random_block(&Delta);
+		Delta = (Delta & lsb_clear_mask) ^ lsb_only_mask;
+		mpcot_sender->set_delta(Delta);
+	} else {
+		mpcot_receiver = std::make_unique<MPCOT_Receiver>(param, io);
+		if (is_malicious) mpcot_receiver->set_malicious();
 	}
+
+	// Two ping-pong base buffers, each `param.refill_trees * leave_n` blocks.
+	// Slots [0, param.M) hold the round's M base COTs; the slack
+	// `(param.refill_trees * leave_n - M)` blocks are unused by mpcot/LPN
+	// reads but addressable.
+	const int64_t buf_blocks = param.refill_trees * (int64_t{1} << param.tree_depth);
+	ot_pre_data_curr_.resize(buf_blocks);
+	ot_pre_data_next_.resize(buf_blocks);
 }
 
 FerretCOT::~FerretCOT() = default;
@@ -45,56 +64,72 @@ int64_t FerretCOT::chunk_ots() const {
 // throughout the rollover, which is correct — from the outside it's
 // still one _next call.
 
-void FerretCOT::setup(block Deltain) {
-	this->Delta = Deltain;
-	setup();
+// Replace the ctor-sampled Δ with one supplied by an outer protocol.
+// Must fire before the SoftSpoken bootstrap consumes Δ (i.e. before
+// the first rcot_*_begin call).
+void FerretCOT::set_delta(const bool *delta_bool) {
+	assert(party == ALICE && "FerretCOT::set_delta: receiver has no Δ");
+	assert(!bootstrap_done_ && "FerretCOT::set_delta: bootstrap already fired");
+	assert(delta_bool[0] && "FerretCOT::set_delta: delta_bool[0] must be true");
+	Delta = bool_to_block(delta_bool);
+	mpcot_sender->set_delta(Delta);
 }
 
-void FerretCOT::setup() {
-	lpn_f2 = std::make_unique<LpnF2<10>>(param.k);
-	if (party == ALICE) {
-		mpcot_sender = std::make_unique<MPCOT_Sender>(param, io);
-		if (is_malicious) mpcot_sender->set_malicious();
-		mpcot_sender->set_delta(Delta);
-	} else {
-		mpcot_receiver = std::make_unique<MPCOT_Receiver>(param, io);
-		if (is_malicious) mpcot_receiver->set_malicious();
-	}
-
-	extend_initialized = true;
-	tree_idx_   = 0;
-
-	// Two ping-pong base buffers, each `param.refill_trees * leave_n` blocks.
-	// Slots [0, param.M) hold the round's M base COTs; the slack
-	// `(param.refill_trees * leave_n - M)` blocks are unused by mpcot/LPN
-	// reads but addressable.
-	const int64_t buf_blocks = param.refill_trees * (int64_t{1} << param.tree_depth);
-	ot_pre_data_curr_.resize(buf_blocks);
-	ot_pre_data_next_.resize(buf_blocks);
-
-	// Bootstrap: SoftSpokenOT<8> writes the first round's M base COTs
-	// into ot_pre_data_NEXT_ (not curr_). The first rcot_*_begin
-	// swaps next_ → curr_ before consuming. After that, every end
-	// populates next_ via the refill trees, every begin swaps —
-	// steady state with no special-case for "first call".
-	//
-	// IOChannel FS transcript is enabled before bootstrap. In mali
-	// mode it binds the per-tree chi seeds pulled by MPCOT via
-	// io->get_digest(); in both modes it gives FerretCOT a fresh
-	// per-round LPN seed (do_rcot_*_begin reseeds lpn_f2 from the
-	// digest at round entry).
-	// Guarded so multiple FerretCOT setups can share an io (the ot_extension
-	// and ferret bench harnesses build semi + mali back-to-back on one
-	// NetIO). send_first is deterministic in `party`, so a second setup on
-	// the same side is a no-op; both parties' transcripts continue binding
-	// the full byte stream.
+// Bootstrap: writes the first round's M base COTs into
+// ot_pre_data_NEXT_ (not curr_). The first rcot_*_begin swaps next_
+// → curr_ before consuming; after that every _end populates next_
+// via the refill trees and every _begin swaps — steady state with
+// no special-case for "first call".
+//
+// Tiered source: when param.M is large (i.e. b11 / b12 / b13), we
+// nest a ferret_b10 instance under SoftSpoken<8> so the expensive
+// SoftSpoken extend only runs against b10's small M (~74k base COTs
+// instead of b13's 541k), cutting bootstrap bytes roughly 6×. One
+// round of b10 produces t·2^d = 870k RCOTs which exceeds every
+// other param's M, so a single b10 invocation suffices. The b10
+// instance itself sees M=74k, below the threshold, so it drops
+// straight to SoftSpoken — at most one level of nesting.
+//
+// IOChannel FS transcript is enabled here before either path. In
+// mali mode it binds the per-tree chi seeds pulled by MPCOT via
+// io->get_digest(); in both modes it gives FerretCOT a fresh
+// per-round LPN seed (do_rcot_*_begin reseeds lpn_f2 from the
+// digest at round entry). The fs_enabled() guard handles multiple
+// FerretCOT setups sharing one io (the ot_extension and ferret
+// bench harnesses build semi + mali back-to-back on one NetIO).
+//
+// Both source backends would auto-sample a fresh Δ on the sender;
+// we override it with FerretCOT's Δ via set_delta so the produced
+// base COTs match this FerretCOT instance's correlation.
+void FerretCOT::bootstrap_base_cots_() {
+	if (bootstrap_done_) return;
 	if (!io->fs_enabled())
 		io->enable_fs(/*send_first=*/party == ALICE);
-
-	SoftSpokenOT<8> ssp(io, std::move(base_ot_));
-	if (is_malicious) ssp.set_malicious(true);
-	if (party == ALICE) { ssp.setup_send(Delta); ssp.rcot_send(ot_pre_data_next_.data(), param.M); }
-	else                { ssp.setup_recv();      ssp.rcot_recv(ot_pre_data_next_.data(), param.M); }
+	auto pump = [&](auto* src) {
+		if (party == ALICE) {
+			bool delta_bool[128];
+			bits_to_bools(delta_bool, &Delta, 128);
+			delta_bool[0] = true;
+			src->set_delta(delta_bool);
+			src->rcot_send(ot_pre_data_next_.data(), param.M);
+		} else {
+			src->rcot_recv(ot_pre_data_next_.data(), param.M);
+		}
+	};
+	if (param.M > 2 * ferret_b10.M) {
+		FerretCOT b10(party, io, /*malicious=*/is_malicious,
+		              ferret_b10, std::move(base_ot_));
+		pump(&b10);
+	} else {
+		// kChunkBlocks=580 → 74,240 OTs/chunk, sized so the tier's
+		// b10.M = 74,164 base-COT request fits in a single SoftSpoken
+		// chunk (default 1024-block chunk would overproduce 131k OTs
+		// and ship the unused ~57k overhead on the wire).
+		SoftSpokenOT<8, 580> ssp(party, io, /*malicious=*/is_malicious,
+		                         std::move(base_ot_));
+		pump(&ssp);
+	}
+	bootstrap_done_ = true;
 }
 
 // =====================================================================
@@ -102,7 +137,7 @@ void FerretCOT::setup() {
 // =====================================================================
 
 void FerretCOT::do_rcot_send_begin() {
-	if (!extend_initialized) error("Run setup before extending");
+	bootstrap_base_cots_();
 	// Swap in the fresh M produced by previous end's refill (or by
 	// SoftSpoken bootstrap on the first call). After this, curr_
 	// holds the round's M, next_ is stale and will be overwritten
@@ -170,7 +205,7 @@ void FerretCOT::do_rcot_send_end() {
 // =====================================================================
 
 void FerretCOT::do_rcot_recv_begin() {
-	if (!extend_initialized) error("Run setup before extending");
+	bootstrap_base_cots_();
 	std::swap(ot_pre_data_curr_, ot_pre_data_next_);
 	tree_idx_ = 0;
 	mpcot_receiver->run_begin();

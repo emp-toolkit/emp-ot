@@ -6,29 +6,41 @@
 
 namespace emp {
 
-template <int k>
-SoftSpokenOT<k>::SoftSpokenOT(IOChannel* io_, std::unique_ptr<OT> base_ot)
+template <int k, int kChunkBlocks>
+SoftSpokenOT<k, kChunkBlocks>::SoftSpokenOT(int party, IOChannel* io_, bool malicious,
+                              std::unique_ptr<OT> base_ot)
     : base_ot_(base_ot ? std::move(base_ot)
-                       : std::unique_ptr<OT>(new OTPVW(io_))) {
+                       : std::unique_ptr<OT>(new OTPVW(io_))),
+      party_(party),
+      malicious_(malicious) {
     this->io = io_;
-    this->Delta = zero_block;
+    if (malicious && !base_ot_->is_malicious_secure())
+        error("SoftSpokenOT malicious mode requires a malicious-secure base OT");
+    if (party == ALICE) {
+        // Random Δ with LSB=1 (required by the LSB-encoded choice
+        // convention rcot_send/rcot_recv use; RandomCOT-inherited
+        // send_cot/recv_cot also depend on it via getLSB(data)).
+        block delta;
+        this->prg.random_block(&delta, 1);
+        this->Delta = (delta & lsb_clear_mask) ^ lsb_only_mask;
+    } else {
+        this->Delta = zero_block;
+    }
 }
 
-template <int k>
-void SoftSpokenOT<k>::setup_send() {
-    // Sample Δ with LSB=1 (required by the LSB-encoded choice
-    // convention rcot_send/rcot_recv use; RandomCOT-inherited
-    // send_cot/recv_cot also depend on it via getLSB(data)).
-    block delta;
-    this->prg.random_block(&delta, 1);
-    delta = (delta & lsb_clear_mask) ^ lsb_only_mask;
-    setup_send(delta);
+// Replace the ctor-sampled Δ with a caller-supplied one (e.g. ferret
+// passes its global Δ via this hook). Sender-only; must fire before
+// the streaming bootstrap consumes Δ.
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::set_delta(const bool* delta_bool) {
+    assert(party_ == ALICE && "SoftSpokenOT::set_delta: receiver has no Δ");
+    assert(!setup_done_ && "SoftSpokenOT::set_delta: bootstrap already fired");
+    assert(delta_bool[0] && "SoftSpokenOT::set_delta: delta_bool[0] must be true");
+    this->Delta = bool_to_block(delta_bool);
 }
 
-template <int k>
-void SoftSpokenOT<k>::setup_send(block delta_in) {
-    this->Delta = delta_in;
-
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
     // Decompose Delta into n F_{2^k} elements alphas_[i].
     uint8_t alpha_bytes[256];
     softspoken::unpack<k>(this->Delta, alpha_bytes);
@@ -71,8 +83,8 @@ void SoftSpokenOT<k>::setup_send(block delta_in) {
         this->io->enable_fs(/*send_first=*/is_sender_);
 }
 
-template <int k>
-void SoftSpokenOT<k>::setup_recv() {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::bootstrap_recv_() {
     // Build n GGM trees and ship the per-level XOR sums via base OT.
     leaves_send_.resize(static_cast<size_t>(n) * Q);
     const int total = n * k;
@@ -111,8 +123,8 @@ void SoftSpokenOT<k>::setup_recv() {
 // SHA-256 over them gives the same collision-resistance binding (full
 // λ-bit input absorbed into 256-bit output).
 
-template <int k>
-void SoftSpokenOT<k>::pprf_check_send() {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::pprf_check_send() {
     constexpr int kHashSize = Hash::DIGEST_SIZE;  // 32 B
     BlockVec t_buf(n);
     default_init_vector<unsigned char> s_buf((size_t)n * kHashSize);
@@ -131,8 +143,8 @@ void SoftSpokenOT<k>::pprf_check_send() {
     this->io->flush();
 }
 
-template <int k>
-void SoftSpokenOT<k>::pprf_check_recv() {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::pprf_check_recv() {
     constexpr int kHashSize = Hash::DIGEST_SIZE;
     BlockVec t_buf(n);
     default_init_vector<unsigned char> s_buf((size_t)n * kHashSize);
@@ -194,8 +206,8 @@ void SoftSpokenOT<k>::pprf_check_recv() {
 // contrast the bulk path held n*k*bpr of plane data at length=2^20 —
 // well past L3 on small-cache parts.
 
-template <int k>
-void SoftSpokenOT<k>::ensure_chunk_scratch_() {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::ensure_chunk_scratch_() {
     // n*k = 128 always (static_assert in n_subvoles<k>).
     if (planes_chunk_.size() < static_cast<size_t>(128) * kChunkBlocks)
         planes_chunk_.resize(static_cast<size_t>(128) * kChunkBlocks);
@@ -205,16 +217,16 @@ void SoftSpokenOT<k>::ensure_chunk_scratch_() {
     }
 }
 
-template <int k>
-void SoftSpokenOT<k>::do_rcot_send_begin() {
-    assert(setup_done_ && "rcot_send_begin: setup_send not run");
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::do_rcot_send_begin() {
+    if (!setup_done_) bootstrap_send_();
     cur_send_session_ = session_++;
     cur_send_b0_ = 0;
     if (malicious_) check_q_ = zero_block;
 }
 
-template <int k>
-void SoftSpokenOT<k>::do_rcot_send_end() {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::do_rcot_send_end() {
     if (malicious_) {
         // Sacrificial 128-OT chunk: extends the chi-fold by one packed
         // F_{2^128} element so the revealed (check_x, check_t) doesn't
@@ -235,13 +247,13 @@ void SoftSpokenOT<k>::do_rcot_send_end() {
     }
 }
 
-template <int k>
-void SoftSpokenOT<k>::do_rcot_send_next(block* out) {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::do_rcot_send_next(block* out) {
     send_chunk_pipeline(out, /*bs=*/kChunkBlocks);
 }
 
-template <int k>
-void SoftSpokenOT<k>::send_chunk_pipeline(block* out, int64_t bs) {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
     const int64_t b0 = cur_send_b0_;             // PRG counter offset
 
     ensure_chunk_scratch_();
@@ -293,16 +305,16 @@ void SoftSpokenOT<k>::send_chunk_pipeline(block* out, int64_t bs) {
     cur_send_b0_ += bs;
 }
 
-template <int k>
-void SoftSpokenOT<k>::do_rcot_recv_begin() {
-    assert(setup_done_ && "rcot_recv_begin: setup_recv not run");
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::do_rcot_recv_begin() {
+    if (!setup_done_) bootstrap_recv_();
     cur_recv_session_ = session_++;
     cur_recv_b0_ = 0;
     if (malicious_) check_t_ = check_x_ = zero_block;
 }
 
-template <int k>
-void SoftSpokenOT<k>::do_rcot_recv_end() {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::do_rcot_recv_end() {
     if (malicious_) {
         // Mirror the sender's sacrificial chunk at bs=1, then open the
         // chi-fold accumulators. Must run before the io->flush() below
@@ -317,13 +329,13 @@ void SoftSpokenOT<k>::do_rcot_recv_end() {
     this->io->flush();
 }
 
-template <int k>
-void SoftSpokenOT<k>::do_rcot_recv_next(block* out) {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::do_rcot_recv_next(block* out) {
     recv_chunk_pipeline(out, /*bs=*/kChunkBlocks);
 }
 
-template <int k>
-void SoftSpokenOT<k>::recv_chunk_pipeline(block* out, int64_t bs) {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
     const int64_t b0 = cur_recv_b0_;
 
     ensure_chunk_scratch_();
@@ -394,8 +406,8 @@ void SoftSpokenOT<k>::recv_chunk_pipeline(block* out, int64_t bs) {
 // relation under one fresh chi (statistical soundness ≈ 2^{-128}).
 // Same shape as IKNP::combine_send / combine_recv — see iknp.cpp.
 
-template <int k>
-void SoftSpokenOT<k>::combine_send_chunk(block* out, int64_t bs) {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::combine_send_chunk(block* out, int64_t bs) {
     PRG chiPRG;
     block seed = this->io->get_digest();
     chiPRG.reseed(&seed);
@@ -408,8 +420,8 @@ void SoftSpokenOT<k>::combine_send_chunk(block* out, int64_t bs) {
     }
 }
 
-template <int k>
-void SoftSpokenOT<k>::combine_recv_chunk(block* out, const block* u_canonical, int64_t bs) {
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::combine_recv_chunk(block* out, const block* u_canonical, int64_t bs) {
     PRG chiPRG;
     block seed = this->io->get_digest();
     chiPRG.reseed(&seed);
@@ -432,5 +444,7 @@ void SoftSpokenOT<k>::combine_recv_chunk(block* out, const block* u_canonical, i
 template class SoftSpokenOT<2>;
 template class SoftSpokenOT<4>;
 template class SoftSpokenOT<8>;
+// Smaller-chunk variant for FerretCOT::bootstrap_base_cots_.
+template class SoftSpokenOT<8, 580>;
 
 } // namespace emp
