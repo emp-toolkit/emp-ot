@@ -110,9 +110,9 @@ ctest --test-dir build --output-on-failure
 
 The two-party benches (`bench_iknp_rcot`, `bench_softspoken_rcot`,
 `bench_ferret_rcot`, `bench_ot_extension`, `bench_base_ot`,
-`trace_equiv`) launch ALICE/BOB on localhost via the `run` script. `bench_lpn`,
-`bench_cggm`, `bench_sfvole_v2`, and `prof_sfvole_local` are single-
-process benchmarks of internal kernels.
+`trace_equiv`) launch ALICE/BOB on localhost via the `run` script.
+`bench_lpn`, `bench_cggm`, and `bench_sfvole_v2` are single-process
+benchmarks of internal kernels.
 
 ## Usage
 

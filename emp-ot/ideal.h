@@ -8,7 +8,9 @@ class OTIdeal: public COT { public:
 	PRG prg;
 	OTIdeal(IOChannel * io, bool * delta = nullptr) {
 		this->io = io;
-		prg.reseed((const block *)fix_key);
+		// Public, deterministic seed so both parties' OTIdeal PRGs agree
+		// without exchanging anything. Test-only mock — not for production.
+		prg.reseed(&zero_block);
 		if (delta!= nullptr)
 			Delta = bool_to_block(delta);
 	}

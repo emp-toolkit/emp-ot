@@ -89,13 +89,13 @@ inline void pprf_eval_receiver(int alpha,
 // bit-identical to a single PRG.random_block over the same range —
 // chunking + setting the counter to b0 reproduces the slice.
 //
-// PRG semantics: PRG_x(j) = AES_K(j ⊕ leaves[x] ⊕ session_xor) where
-// K is a session-shared fixed AES key (built from emp-tool's `fix_key`
-// constant). Treats AES_K as a random permutation, mirroring the
-// PRP / CCRH / MITCCRH model already in emp-tool. The leaf is folded
-// into the AES plaintext as a tweak rather than the AES key, so round
-// keys persist across all Q × bs encryptions in a chunk and the key
-// schedule is one-shot per kernel call instead of per-leaf.
+// PRG semantics: PRG_x(j) = AES_K(j ⊕ leaves[x]) ⊕ j ⊕ leaves[x],
+// where K is derived from the session id (one AES key per begin/next.../
+// end cycle). This is the Davies–Meyer / CCRH construction — AES_K
+// modelled as a random permutation, with the XOR-back making the
+// output a correlation-robust hash. Session domain-separation lives in
+// the AES key, so round keys persist across all Q × bs encryptions in a
+// chunk and the key schedule is one-shot per kernel call.
 //
 // Inner loop uses the recursive butterfly kernel (sfvole_butterfly.h):
 // Q AES outputs materialize into a tile-local stack scratch A[Q][T],
@@ -125,9 +125,9 @@ constexpr int chunk_blocks_for() {
 }
 
 // Sender-side chunked sfvole. Thin wrapper over the butterfly kernel
-// (sfvole_butterfly.h); the wrapper exists so callers (softspoken_ot.cpp,
-// prof_sfvole_local.cpp) can call a stable sfvole_*_compute_chunk
-// interface without depending on the butterfly's specific signature.
+// (sfvole_butterfly.h); the wrapper exists so callers can call a stable
+// sfvole_*_compute_chunk interface without depending on the butterfly's
+// specific signature.
 template <int k>
 EMP_AES_TARGET_ATTR
 inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
@@ -205,8 +205,8 @@ namespace emp {
  * Streaming. rcot_send / rcot_recv chunk the OT-output axis: each
  * begin → loop _next → end runs one session, with a small per-chunk
  * plane scratch (member-resident BlockVec, sized n*k*kChunkBlocks).
- * The inner loop uses a session-shared fixed AES key with each leaf
- * as a plaintext tweak; see softspoken::sfvole_*_compute_chunk above.
+ * The inner loop keys AES with the session id and uses Davies–Meyer
+ * (AES_K(z) ⊕ z) with z = counter ⊕ leaf; see softspoken::sfvole_*_compute_chunk above.
  *
  * Δ has LSB=1 (forced by setup_send no-arg, required of callers
  * passing setup_send(delta_in)). Required for the LSB-encoded choice

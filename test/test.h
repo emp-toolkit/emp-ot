@@ -13,7 +13,18 @@ double test_ot(T * ot, NetIO *io, int party, int64_t length,
                uint64_t* bytes_recv_out = nullptr) {
 	block *b0 = new block[length], *b1 = new block[length],
 	*r = new block[length];
-	PRG prg(fix_key);
+	// Agree on a fresh PRG seed so both parties draw the same (b0, b1)
+	// pairs. Exchanged before the bytes_sent/recv snapshot below so it
+	// doesn't contaminate the reported B/OT figures.
+	block test_seed;
+	if (party == ALICE) {
+		PRG().random_block(&test_seed, 1);
+		io->send_data(&test_seed, sizeof(block));
+	} else {
+		io->recv_data(&test_seed, sizeof(block));
+	}
+	io->flush();
+	PRG prg(&test_seed);
 	prg.random_block(b0, length);
 	prg.random_block(b1, length);
 	bool *b = new bool[length];
