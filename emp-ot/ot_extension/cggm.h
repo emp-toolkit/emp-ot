@@ -29,9 +29,9 @@ namespace emp { namespace cggm {
 // exceeds L1, larger tiles only when everything stays L1-resident.
 // The Tile template parameter on expand_level / build_sender /
 // eval_receiver defaults to kTile but can be overridden.
-#if EMP_AES_HAS_VAES512
+#if EMP_HAS_VAES512
 constexpr int kTile = 16;
-#elif EMP_AES_HAS_VAES256
+#elif EMP_HAS_VAES256
 constexpr int kTile = 32;
 #else
 constexpr int kTile = 4;

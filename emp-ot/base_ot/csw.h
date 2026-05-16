@@ -39,14 +39,14 @@ class OTCSW : public OT { public:
 	bool is_malicious_secure() const override { return true; }
 
 	IOChannel * io;
-	Group * G = nullptr;
+	ECGroup * G = nullptr;
 	bool delete_G = true;
 	block sid;
 
-	OTCSW(IOChannel * io_, block sid_, Group * G_ = nullptr) : sid(sid_) {
+	OTCSW(IOChannel * io_, block sid_, ECGroup * G_ = nullptr) : sid(sid_) {
 		this->io = io_;
 		if (G_ == nullptr)
-			G = new Group();
+			G = new ECGroup();
 		else {
 			G = G_;
 			delete_G = false;
@@ -67,7 +67,9 @@ class OTCSW : public OT { public:
 		buf[0] = '1';
 		memcpy(buf + 1, &sid, sizeof(block));
 		memcpy(buf + 1 + sizeof(block), &seed, sizeof(block));
-		G->hash_to_point((const char *)buf, sizeof(buf), T_out);
+		static constexpr const char kDST[] = "emp-ot:csw-base-ot:v1";
+		G->hash_to_point((const char *)buf, sizeof(buf),
+		                 kDST, sizeof(kDST) - 1, T_out);
 	}
 
 	// H_2(sid, i, P) → block. P is a curve point (the DH share ρ).
@@ -123,7 +125,7 @@ class OTCSW : public OT { public:
 		// = ρ_{i,0} + (-T_r). One mul/OT instead of two.
 		Point T;
 		H_to_curve(seed, T);
-		BigInt r;
+		Scalar r;
 		G->get_rand_bn(r);
 		Point z = G->mul_gen(r);
 		Point T_r_neg = T.mul(r).inv();                // -(T^r), reused per OT
@@ -183,7 +185,7 @@ class OTCSW : public OT { public:
 		H_to_curve(seed, T);
 
 		// Per-OT receiver msg: α_i ← Z_q; B_i = g^{α_i} · T^{b_i}.
-		std::vector<BigInt> alpha(length);
+		std::vector<Scalar> alpha(length);
 		std::vector<Point> B(length);
 		for (int64_t i = 0; i < length; ++i) {
 			G->get_rand_bn(alpha[i]);

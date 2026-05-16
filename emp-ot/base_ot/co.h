@@ -19,12 +19,12 @@ namespace emp {
 class OTCO: public OT { public:
 	bool is_malicious_secure() const override { return false; }
 	IOChannel* io;
-	Group *G = nullptr;
+	ECGroup *G = nullptr;
 	bool delete_G = true;
-	OTCO(IOChannel* io, Group * _G = nullptr) {
+	OTCO(IOChannel* io, ECGroup * _G = nullptr) {
 		this->io = io;
 		if (_G == nullptr)
-			G = new Group();
+			G = new ECGroup();
 		else {
 			G = _G;
 			delete_G = false;
@@ -36,7 +36,7 @@ class OTCO: public OT { public:
 	}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
-		BigInt a;
+		Scalar a;
 		Point A, AaInv;
 		block res[2];
 		std::vector<Point> B(length);
@@ -63,7 +63,7 @@ class OTCO: public OT { public:
 	}
 
 	void recv(block* data, const bool* b, int64_t length) override {
-		std::vector<BigInt> bb(length);
+		std::vector<Scalar> bb(length);
 		std::vector<Point> B(length);
 		std::vector<Point> As(length);
 		Point A;

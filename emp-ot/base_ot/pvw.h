@@ -45,15 +45,15 @@ class OTPVW: public OT { public:
 	bool is_malicious_secure() const override { return true; }
 
 	IOChannel* io;
-	Group *G = nullptr;
+	ECGroup *G = nullptr;
 	bool delete_G = true;
 
 	Point g0, g1, h0, h1;
 
-	OTPVW(IOChannel* io, Group* _G = nullptr) {
+	OTPVW(IOChannel* io, ECGroup* _G = nullptr) {
 		this->io = io;
 		if (_G == nullptr) {
-			G = new Group();
+			G = new ECGroup();
 		} else {
 			G = _G;
 			delete_G = false;
@@ -65,9 +65,11 @@ class OTPVW: public OT { public:
 			"CRS h0 for C:PeiVaiWat08",
 			"CRS h1 for C:PeiVaiWat08",
 		};
+		static constexpr const char kDST[] = "emp-ot:pvw-base-ot:v1";
 		Point *crs[4] = {&g0, &g1, &h0, &h1};
 		for (int i = 0; i < 4; ++i)
-			G->hash_to_point(labels[i], strlen(labels[i]), *crs[i]);
+			G->hash_to_point(labels[i], strlen(labels[i]),
+			                 kDST, sizeof(kDST) - 1, *crs[i]);
 	}
 
 	~OTPVW() {
@@ -83,7 +85,7 @@ class OTPVW: public OT { public:
 			io->recv_pt(G, &gs_i);
 			io->recv_pt(G, &hs_i);
 
-			BigInt s, t, k;
+			Scalar s, t, k;
 			Point xb[2];
 			for (int b = 0; b < 2; ++b) {
 				G->get_rand_bn(s);
@@ -113,7 +115,7 @@ class OTPVW: public OT { public:
 		// Round 1: send (g, h) = (g_sigma^r, h_sigma^r) per OT instance.
 		// r_i is needed across rounds (used to recover x_sigma in round
 		// 2), so keep all r_i live in an array.
-		std::vector<BigInt> rs(length);
+		std::vector<Scalar> rs(length);
 		for (int64_t i = 0; i < length; ++i) {
 			G->get_rand_bn(rs[i]);
 			int sigma = b[i] ? 1 : 0;

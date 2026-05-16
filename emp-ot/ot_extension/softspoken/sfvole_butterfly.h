@@ -94,12 +94,12 @@ inline void aes_T_blocks_to(block* dst, int64_t b0,
     // plaintext source. The source lambda spills each tile's plaintext
     // into pt[] so we can XOR it back into the AES output afterwards
     // (Davies–Meyer). pt[] is alignas(16) for L::store / load-after.
-  #if EMP_AES_HAS_VAES512
-    using L = emp::detail::Lane512;
-  #elif EMP_AES_HAS_VAES256
-    using L = emp::detail::Lane256;
+  #if EMP_HAS_VAES512
+    using L = emp::detail::AesLane<4>;
+  #elif EMP_HAS_VAES256
+    using L = emp::detail::AesLane<2>;
   #else
-    using L = emp::detail::Lane128;
+    using L = emp::detail::AesLane<1>;
   #endif
     static_assert(T % L::N == 0,
                   "aes_T_blocks_to: T must be a multiple of L::N");
