@@ -97,13 +97,15 @@ inline void pprf_eval_receiver(int alpha,
 // the AES key, so round keys persist across all Q × bs encryptions in a
 // chunk and the key schedule is one-shot per kernel call.
 //
-// Inner loop uses the recursive butterfly kernel (sfvole_butterfly.h):
-// Q AES outputs materialize into a tile-local stack scratch A[Q][T],
-// then a k-round in-place XOR halving over the leaf axis emits the k
-// v_planes (sender) or w_planes (receiver) and u. Same algorithm
-// across all k ∈ {2, 4, 8}; AES generation delegates to emp-tool's
-// emp::aes_ctr_fill_dm<T>, which picks the widest AesLane<N> the build
-// can emit (zmm/ymm/xmm on x86, NEON on aarch64).
+// Inner loop uses the round-0-fused butterfly (sfvole_butterfly.h):
+// sfvole_fuse_round0_pair processes two leaves' Davies–Meyer outputs
+// under one AES key in interleaved rounds, folds them pairwise into
+// A_round0[Q/2][T], and accumulates v_0 in tile-local scratch — Q leaf
+// outputs never spill to memory. butterfly_halve<k-1, T> then runs k-1
+// halving rounds in place on A_round0, emitting planes 1..k-1 and u.
+// Same algorithm across all k ∈ {2, 4, 8}; the fused kernel picks the
+// widest emp::AesLane<N> the build can emit (zmm/ymm/xmm on x86, NEON
+// on aarch64).
 
 // Maximum chunk size (in bpr-blocks) the chunked sfvole helpers will
 // be called with. Sets stack-resident scratch sizing in
