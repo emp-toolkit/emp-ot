@@ -103,16 +103,16 @@ private:
     // One leftover buffer per instance; role is fixed at construction
     // so send and recv never share a single instance.
     BlockVec leftover_;
-    int      leftover_pos_   = 0;
-    int      leftover_count_ = 0;
+    int64_t  leftover_pos_   = 0;
+    int64_t  leftover_count_ = 0;
 
     // Drain up to `take_max` blocks of leftover into `out`.
     int64_t drain_leftover(block* out, int64_t take_max) {
         if (leftover_count_ == 0) return 0;
         int64_t take = std::min<int64_t>(take_max, leftover_count_);
         memcpy(out, leftover_.data() + leftover_pos_, take * sizeof(block));
-        leftover_pos_   += (int)take;
-        leftover_count_ -= (int)take;
+        leftover_pos_   += take;
+        leftover_count_ -= take;
         return take;
     }
 
@@ -139,8 +139,8 @@ private:
             else        rcot_recv_next(leftover_.data());
             int64_t take = num - produced;
             memcpy(data + produced, leftover_.data(), take * sizeof(block));
-            leftover_pos_   = (int)take;
-            leftover_count_ = (int)(chunk - take);
+            leftover_pos_   = take;
+            leftover_count_ = chunk - take;
         }
         if (sender) rcot_send_end(); else rcot_recv_end();
     }

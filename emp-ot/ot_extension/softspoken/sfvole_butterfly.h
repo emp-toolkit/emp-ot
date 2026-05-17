@@ -87,7 +87,7 @@ inline void butterfly_halve(block A[][T],
                 A[y][jj]  = L ^ R;
             }
         }
-        block* dst = v_dst + (size_t)b * v_stride;
+        block* dst = v_dst + b * v_stride;
         for (int jj = 0; jj < n_valid; ++jj)
             dst[jj] = v_acc[jj];
         n = half;
@@ -179,9 +179,9 @@ inline void sfvole_fuse_round012_oct(block* A_round2_y,
 
         // Round-0 v_0 update: v_0 ^= r_{1,3,5,7} (second of each pair).
         {
-            auto v0 = L::load(v0_acc + (size_t)t * L::N);
+            auto v0 = L::load(v0_acc + t * L::N);
             auto sum_odd = L::xorv(L::xorv(r1, r3), L::xorv(r5, r7));
-            L::store(v0_acc + (size_t)t * L::N, L::xorv(v0, sum_odd));
+            L::store(v0_acc + t * L::N, L::xorv(v0, sum_odd));
         }
         // Round-0 fold:
         //   p0 = r0 ⊕ r1    p1 = r2 ⊕ r3
@@ -193,8 +193,8 @@ inline void sfvole_fuse_round012_oct(block* A_round2_y,
 
         // Round-1 v_1 update: v_1 ^= p1 ⊕ p3 (second of each pair).
         {
-            auto v1 = L::load(v1_acc + (size_t)t * L::N);
-            L::store(v1_acc + (size_t)t * L::N,
+            auto v1 = L::load(v1_acc + t * L::N);
+            L::store(v1_acc + t * L::N,
                      L::xorv(v1, L::xorv(p1, p3)));
         }
         // Round-1 fold:
@@ -204,11 +204,11 @@ inline void sfvole_fuse_round012_oct(block* A_round2_y,
 
         // Round-2 v_2 update: v_2 ^= q1.
         {
-            auto v2 = L::load(v2_acc + (size_t)t * L::N);
-            L::store(v2_acc + (size_t)t * L::N, L::xorv(v2, q1));
+            auto v2 = L::load(v2_acc + t * L::N);
+            L::store(v2_acc + t * L::N, L::xorv(v2, q1));
         }
         // Round-2 fold: A_round2[y][t-slot] = q0 ⊕ q1.
-        L::store(A_round2_y + (size_t)t * L::N, L::xorv(q0, q1));
+        L::store(A_round2_y + t * L::N, L::xorv(q0, q1));
     }
 }
 
@@ -269,15 +269,15 @@ inline void sfvole_fuse_round01_quad(block* A_round1_y,
         auto pair0 = L::xorv(r0, r1);
         auto pair1 = L::xorv(r2, r3);
         {
-            auto v0 = L::load(v0_acc + (size_t)t * L::N);
-            L::store(v0_acc + (size_t)t * L::N,
+            auto v0 = L::load(v0_acc + t * L::N);
+            L::store(v0_acc + t * L::N,
                      L::xorv(v0, L::xorv(r1, r3)));
         }
         {
-            auto v1 = L::load(v1_acc + (size_t)t * L::N);
-            L::store(v1_acc + (size_t)t * L::N, L::xorv(v1, pair1));
+            auto v1 = L::load(v1_acc + t * L::N);
+            L::store(v1_acc + t * L::N, L::xorv(v1, pair1));
         }
-        L::store(A_round1_y + (size_t)t * L::N, L::xorv(pair0, pair1));
+        L::store(A_round1_y + t * L::N, L::xorv(pair0, pair1));
     }
 }
 
@@ -324,7 +324,7 @@ inline void sfvole_sender_butterfly(const block leaves[1 << k],
                                              leaves[4*y + 2], leaves[4*y + 3]);
 
             block* v_dst_0 = v_planes_chunk + t0;
-            block* v_dst_1 = v_planes_chunk + (size_t)bs + t0;
+            block* v_dst_1 = v_planes_chunk + bs + t0;
             for (int jj = 0; jj < n_valid; ++jj) {
                 v_dst_0[jj] = v0_acc[jj];
                 v_dst_1[jj] = v1_acc[jj];
@@ -332,7 +332,7 @@ inline void sfvole_sender_butterfly(const block leaves[1 << k],
 
             if constexpr (k > 2) {
                 butterfly_halve<k - 2, T>(A_round1,
-                                           v_planes_chunk + 2*(size_t)bs + t0,
+                                           v_planes_chunk + 2*bs + t0,
                                            /*v_stride=*/bs, n_valid);
             }
             for (int jj = 0; jj < n_valid; ++jj)
@@ -368,8 +368,8 @@ inline void sfvole_sender_butterfly(const block leaves[1 << k],
 
             // Planes 0, 1, 2 from the oct's in-register accumulators.
             block* v_dst_0 = v_planes_chunk + t0;
-            block* v_dst_1 = v_planes_chunk + (size_t)bs + t0;
-            block* v_dst_2 = v_planes_chunk + 2*(size_t)bs + t0;
+            block* v_dst_1 = v_planes_chunk + bs + t0;
+            block* v_dst_2 = v_planes_chunk + 2*bs + t0;
             for (int jj = 0; jj < n_valid; ++jj) {
                 v_dst_0[jj] = v0_acc[jj];
                 v_dst_1[jj] = v1_acc[jj];
@@ -377,7 +377,7 @@ inline void sfvole_sender_butterfly(const block leaves[1 << k],
             }
 
             butterfly_halve<k - 3, T>(A_round2,
-                                       v_planes_chunk + 3*(size_t)bs + t0,
+                                       v_planes_chunk + 3*bs + t0,
                                        /*v_stride=*/bs, n_valid);
             for (int jj = 0; jj < n_valid; ++jj)
                 u_chunk[t0 + jj] = A_round2[0][jj];
@@ -428,7 +428,7 @@ inline void sfvole_receiver_butterfly(int alpha,
                                              tweaks[4*y + 2], tweaks[4*y + 3]);
 
             block* w_dst_0 = w_planes_chunk + t0;
-            block* w_dst_1 = w_planes_chunk + (size_t)bs + t0;
+            block* w_dst_1 = w_planes_chunk + bs + t0;
             for (int jj = 0; jj < n_valid; ++jj) {
                 w_dst_0[jj] = w0_acc[jj];
                 w_dst_1[jj] = w1_acc[jj];
@@ -436,7 +436,7 @@ inline void sfvole_receiver_butterfly(int alpha,
 
             if constexpr (k > 2) {
                 butterfly_halve<k - 2, T>(A_round1,
-                                           w_planes_chunk + 2*(size_t)bs + t0,
+                                           w_planes_chunk + 2*bs + t0,
                                            /*v_stride=*/bs, n_valid);
             }
             // u (= A_round1[0]) discarded.
@@ -469,8 +469,8 @@ inline void sfvole_receiver_butterfly(int alpha,
                                              tweaks[8*y + 6], tweaks[8*y + 7]);
 
             block* w_dst_0 = w_planes_chunk + t0;
-            block* w_dst_1 = w_planes_chunk + (size_t)bs + t0;
-            block* w_dst_2 = w_planes_chunk + 2*(size_t)bs + t0;
+            block* w_dst_1 = w_planes_chunk + bs + t0;
+            block* w_dst_2 = w_planes_chunk + 2*bs + t0;
             for (int jj = 0; jj < n_valid; ++jj) {
                 w_dst_0[jj] = w0_acc[jj];
                 w_dst_1[jj] = w1_acc[jj];
@@ -478,7 +478,7 @@ inline void sfvole_receiver_butterfly(int alpha,
             }
 
             butterfly_halve<k - 3, T>(A_round2,
-                                       w_planes_chunk + 3*(size_t)bs + t0,
+                                       w_planes_chunk + 3*bs + t0,
                                        /*v_stride=*/bs, n_valid);
             // u (= A_round2[0]) discarded.
         };

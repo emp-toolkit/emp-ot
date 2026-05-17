@@ -260,7 +260,7 @@ void SoftSpokenOT<k, kChunkBlocks>::pprf_check_send() {
     unsigned char digest[kHashSize];
     hash.digest(digest);
 
-    this->io->send_block(t_buf.data(), static_cast<int>(n) * 2);
+    this->io->send_block(t_buf.data(), n * 2);
     this->io->send_data(digest, kHashSize);
     this->io->flush();
 }
@@ -274,7 +274,7 @@ void SoftSpokenOT<k, kChunkBlocks>::pprf_check_recv() {
 
     BlockVec t_buf(static_cast<size_t>(n) * 2);
     unsigned char their_digest[kHashSize];
-    this->io->recv_block(t_buf.data(), static_cast<int>(n) * 2);
+    this->io->recv_block(t_buf.data(), n * 2);
     this->io->recv_data(their_digest, kHashSize);
 
     Hash hash;
@@ -303,7 +303,7 @@ void SoftSpokenOT<k, kChunkBlocks>::pprf_check_recv() {
         s_buf[(size_t)alphas_[i] * 2]     = t_buf[(size_t)i * 2]     ^ tx;
         s_buf[(size_t)alphas_[i] * 2 + 1] = t_buf[(size_t)i * 2 + 1] ^ ty;
 
-        hash.put(s_buf.data(), Q * 2 * (int)sizeof(block));
+        hash.put(s_buf.data(), Q * 2 * sizeof(block));
     }
 
     unsigned char our_digest[kHashSize];
@@ -404,7 +404,7 @@ void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) 
 
     // Compute every sub-VOLE's contribution to this chunk's w_planes.
     for (int i = 0; i < n; ++i) {
-        block* w_i = w_planes_chunk + static_cast<size_t>(i) * k * bs;
+        block* w_i = w_planes_chunk + i * k * bs;
         softspoken::sfvole_receiver_butterfly<k>(
             alphas_[i], &leaves_recv_[i * Q],
             cur_send_session_, b0, bs, w_i);
@@ -412,7 +412,7 @@ void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) 
 
     // Pull this chunk's batched d_bufs (n-1 vectors of bs blocks).
     if (n > 1) {
-        const int64_t total_d_blocks = static_cast<int64_t>(n - 1) * bs;
+        const int64_t total_d_blocks = (int64_t)(n - 1) * bs;
         this->io->recv_block(d_bufs, total_d_blocks);
         // d_bufs are now absorbed into the IOChannel FS transcript via
         // recv_block → recv_data; the matching send side absorbs the
@@ -420,14 +420,14 @@ void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) 
         // io->get_digest() in combine_send_chunk agrees with the
         // receiver's combine_recv_chunk.
         for (int i = 1; i < n; ++i) {
-            block* w_i = w_planes_chunk + static_cast<size_t>(i) * k * bs;
-            const block* d_i = d_bufs + static_cast<size_t>(i - 1) * bs;
+            block* w_i = w_planes_chunk + i * k * bs;
+            const block* d_i = d_bufs + (i - 1) * bs;
             // Sub-space VOLE derandomization: for each set bit b of
             // alpha_i, XOR d_i into plane b. Mirrors the sender's
             // d_i = u_canonical ^ u_temp_i contribution.
             for (int b = 0; b < k; ++b) {
                 if ((alphas_[i] >> b) & 1)
-                    xorBlocksTo_arr(w_i + b * bs, d_i, (int)bs);
+                    xorBlocksTo_arr(w_i + b * bs, d_i, bs);
             }
         }
     }
@@ -505,17 +505,17 @@ void SoftSpokenOT<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) 
 
     // For i ≥ 1: produce u_temp and v_i, then d_buf_i = u_canonical ⊕ u_temp.
     for (int i = 1; i < n; ++i) {
-        block* v_i = v_planes_chunk + static_cast<size_t>(i) * k * bs;
+        block* v_i = v_planes_chunk + i * k * bs;
         softspoken::sfvole_sender_butterfly<k>(
             &leaves_send_[i * Q], cur_recv_session_, b0, bs,
             u_temp, v_i);
-        block* d_i = d_bufs + static_cast<size_t>(i - 1) * bs;
-        xorBlocks_arr(d_i, u_canonical, u_temp, (int)bs);
+        block* d_i = d_bufs + (i - 1) * bs;
+        xorBlocks_arr(d_i, u_canonical, u_temp, bs);
     }
 
     // One batched send: (n-1) * bs blocks.
     if (n > 1) {
-        const int64_t total_d_blocks = static_cast<int64_t>(n - 1) * bs;
+        const int64_t total_d_blocks = (int64_t)(n - 1) * bs;
         // send_block → send_data absorbs d_bufs into the IOChannel FS
         // transcript; the matching OT-sender's recv_block does the same,
         // so io->get_digest() in combine_*_chunk agrees on both sides.

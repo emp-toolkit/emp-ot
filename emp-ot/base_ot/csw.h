@@ -84,7 +84,7 @@ class OTCSW : public OT { public:
 		memcpy(buf + 1 + sizeof(block), &i, sizeof(int64_t));
 		P.to_bin(buf + 1 + sizeof(block) + sizeof(int64_t), plen);
 		return Hash::hash_for_block(buf,
-			(int)(1 + sizeof(block) + sizeof(int64_t) + plen));
+			1 + sizeof(block) + sizeof(int64_t) + plen);
 	}
 
 	// H_3(sid, x) → block. x is a single block (used both for hashing
@@ -106,7 +106,7 @@ class OTCSW : public OT { public:
 		buf[0] = '4';
 		memcpy(buf.data() + 1, &sid, sizeof(block));
 		memcpy(buf.data() + 1 + sizeof(block), hs, (size_t)ell * sizeof(block));
-		return Hash::hash_for_block(buf.data(), (int)hlen);
+		return Hash::hash_for_block(buf.data(), hlen);
 	}
 
 	// ----- Sender side. Plays the OT sender role (S in the paper). -----
