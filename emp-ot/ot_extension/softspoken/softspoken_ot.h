@@ -101,8 +101,9 @@ inline void pprf_eval_receiver(int alpha,
 // Q AES outputs materialize into a tile-local stack scratch A[Q][T],
 // then a k-round in-place XOR halving over the leaf axis emits the k
 // v_planes (sender) or w_planes (receiver) and u. Same algorithm
-// across all k ∈ {2, 4, 8}; all per-architecture code lives in
-// sfvole_butterfly.h's aes_T_blocks_to.
+// across all k ∈ {2, 4, 8}; AES generation delegates to emp-tool's
+// emp::aes_ctr_fill_dm<T>, which picks the widest AesLane<N> the build
+// can emit (zmm/ymm/xmm on x86, NEON on aarch64).
 
 // Maximum chunk size (in bpr-blocks) the chunked sfvole helpers will
 // be called with. Sets stack-resident scratch sizing in
