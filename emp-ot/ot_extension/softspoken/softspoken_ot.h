@@ -11,17 +11,10 @@
 
 namespace emp { namespace softspoken {
 
-// =====================================================================
-// Conv: F_2-linear bit packing between F_{2^k}^n and F_{2^128}.
-// Bit (i*k + b) of the 128-bit output = bit b of the i-th F_{2^k} input.
-// Constrained to k ∈ {1, 2, 4, 8} so n*k = 128 exactly; the bulk
-// direction (Conv across many OTs at once) is then exactly a
-// 128 × (bpr*128) sse_trans of the contiguous plane buffer — call
-// sse_trans directly at the use site (see softspoken_ot.cpp).
-//
-// `unpack<k>` is the inverse direction, used by setup_send to split
-// Δ into n alpha_i bytes — a single-block scalar op, no transpose
-// involved.
+// Conv: F_2-linear bit packing between F_{2^k}^n and F_{2^128}. Bulk
+// direction is one sse_trans_n128 of the plane buffer (see
+// softspoken_ot.cpp); the scalar inverse (Δ → n α_i bytes) is inlined
+// at bootstrap_send_'s single use site.
 
 template <int k>
 constexpr int n_subvoles() {
@@ -30,97 +23,10 @@ constexpr int n_subvoles() {
     return 128 / k;
 }
 
-// Decompose a 128-bit block into n F_{2^k} elements (low k bits of
-// each output byte hold the value). Used once per session in
-// setup_send to split Δ into per-sub-VOLE alpha_i.
-template <int k>
-inline void unpack(block in, uint8_t* out_n) {
-    constexpr int n = n_subvoles<k>();
-    uint8_t bytes[16];
-    std::memcpy(bytes, &in, 16);
-    for (int i = 0; i < n; ++i) {
-        uint8_t v = 0;
-        for (int b = 0; b < k; ++b) {
-            const int bitpos = i * k + b;
-            v |= ((bytes[bitpos >> 3] >> (bitpos & 7)) & 1u) << b;
-        }
-        out_n[i] = v;
-    }
-}
-
-// =====================================================================
-// PPRF: thin wrappers around the shared cGGM tree (emp-ot/ot_extension/cggm.h),
-// reused as a punctured PRF here because softspoken never reveals Δ to
-// the receiver (no per-COT correction byte, no global-Δ base-COT
-// layer). With per-tree fresh Δ, the receiver's view of leaves[α]
-// stays pseudorandom even though XOR(leaves) = Δ holds.
-
-// Sender: sample fresh Δ and root from `rng`, build the depth-k cGGM
-// tree. K0[h] is the level-(h+1) left-side XOR-sum; K1[h] = K0[h] ⊕ Δ
-// via leveled correlation. The (K0, K1) pair is shipped via base
-// 1-of-2 OTs by the caller.
-template <int k>
-inline void pprf_build_sender(PRG& rng,
-                              block leaves[1 << k],
-                              block K0[k],
-                              block K1[k]) {
-    block Delta, root;
-    rng.random_block(&Delta, 1);
-    rng.random_block(&root, 1);
-    cggm::build_sender(k, Delta, root, leaves, K0);
-    for (int h = 0; h < k; ++h) K1[h] = K0[h] ^ Delta;
-}
-
-// Receiver: alpha in [0, 2^k) is the punctured leaf index, MSB-first.
-// On return, leaves[x] is correct for every x != alpha; leaves[alpha]
-// = zero_block.
-template <int k>
-inline void pprf_eval_receiver(int alpha,
-                               const block K_recv[k],
-                               block leaves[1 << k]) {
-    cggm::eval_receiver(k, alpha, K_recv, leaves);
-}
-
-// =====================================================================
-// Sub-space VOLE inner loop (chunked).
-//
-// Chunked variants take a counter offset b0 and chunk length bs (in
-// bpr-blocks). Chunk c reads PRG output blocks [b0, b0+bs). Output is
-// bit-identical to a single PRG.random_block over the same range —
-// chunking + setting the counter to b0 reproduces the slice.
-//
-// PRG semantics: PRG_x(j) = AES_K(j ⊕ leaves[x]) ⊕ j ⊕ leaves[x],
-// where K is derived from the session id (one AES key per begin/next.../
-// end cycle). This is the Davies–Meyer / CCRH construction — AES_K
-// modelled as a random permutation, with the XOR-back making the
-// output a correlation-robust hash. Session domain-separation lives in
-// the AES key, so round keys persist across all Q × bs encryptions in a
-// chunk and the key schedule is one-shot per kernel call.
-//
-// Inner loop uses the rounds-0+1-fused butterfly (sfvole_butterfly.h):
-// sfvole_fuse_round01_quad processes four leaves' Davies–Meyer outputs
-// under one AES key in interleaved rounds, folds them through two
-// halving levels into A_round1[Q/4][T], and accumulates v_0 / v_1 in
-// tile-local scratch — Q leaf outputs never spill to memory. For k=2
-// (Q=4) the quad fully consumes the q-axis; for k > 2 a
-// butterfly_halve<k-2, T> emits planes 2..k-1 and u. Same algorithm
-// across all k ∈ {2, 4, 8}; the fused kernel picks the widest
-// emp::AesLane<N> the build can emit (zmm/ymm/xmm on x86, NEON on
-// aarch64).
-
-// Maximum chunk size (in bpr-blocks) the chunked sfvole helpers will
-// be called with. Sets stack-resident scratch sizing in
-// softspoken_ot.cpp (u_canonical / u_temp).
+// Maximum chunk size (in bpr-blocks) the streaming pipeline emits.
 constexpr int kMaxChunkBlocks = 1024;
 
-// Per-k chunk size (in bpr-blocks). Larger chunks amortize per-chunk
-// overhead better but eventually hit cache pressure; per-leaf compute
-// grows as 2^k, so larger k tolerates a larger chunk.
-//   k=2 → 128:  little compute per leaf — small chunk avoids cache
-//               pressure.
-//   k=4 → 1024: heavier compute per leaf supports a larger
-//               amortization window.
-//   k=8 → 1024: Q=256 leaves means lots of fold work per chunk.
+// Per-k chunk size (in bpr-blocks). Rationale in softspoken_ot.cpp.
 template <int k>
 constexpr int chunk_blocks_for() {
     if constexpr (k <= 2)      return 128;
@@ -128,129 +34,18 @@ constexpr int chunk_blocks_for() {
     else                       return 1024;
 }
 
-// Sender-side chunked sfvole. Thin wrapper over the butterfly kernel
-// (sfvole_butterfly.h); the wrapper exists so callers can call a stable
-// sfvole_*_compute_chunk interface without depending on the butterfly's
-// specific signature.
-template <int k>
-EMP_AES_TARGET_ATTR
-inline void sfvole_sender_compute_chunk(const block leaves[1 << k],
-                                        uint64_t session,
-                                        int64_t b0,
-                                        int64_t bs,
-                                        block* u_bits_chunk,
-                                        block* v_planes_chunk) {
-    sfvole_sender_butterfly<k>(leaves, session, b0, bs,
-                                u_bits_chunk, v_planes_chunk);
-}
-
-// Receiver-side chunked sfvole. Wrapper-shaped like the sender; the
-// receiver butterfly skips x=alpha implicitly via leaves[alpha] =
-// zero_block (pinned by pprf_eval_receiver).
-template <int k>
-EMP_AES_TARGET_ATTR
-inline void sfvole_receiver_compute_chunk(int alpha,
-                                          const block leaves[1 << k],
-                                          uint64_t session,
-                                          int64_t b0,
-                                          int64_t bs,
-                                          block* w_planes_chunk) {
-    sfvole_receiver_butterfly<k>(alpha, leaves, session, b0, bs,
-                                  w_planes_chunk);
-}
-
-// Apply d_i (bs blocks) to receiver's w_planes_i: for each set bit b
-// of alpha_i, XOR d_i into plane b. Sub-space VOLE derandomization
-// step on the OT-sender side.
-template <int k>
-inline void apply_derand_to_w_planes(int alpha_i,
-                                     const block* d_i,
-                                     int64_t bs,
-                                     block* w_planes) {
-    for (int b = 0; b < k; ++b) {
-        if ((alpha_i >> b) & 1) {
-            block* dst = w_planes + b * bs;
-            for (int64_t j = 0; j < bs; ++j)
-                dst[j] = dst[j] ^ d_i[j];
-        }
-    }
-}
-
-// Bulk Conv = sse_trans(out, planes, 128, bpr*128). The plane
-// buffer's plane-major layout (plane p at offset p*bpr blocks) is
-// already the row-major byte layout sse_trans expects; n_subvoles<k>'s
-// static_assert above guarantees n*k == 128.
-
 }}  // namespace emp::softspoken
 
 namespace emp {
 
-/*
- * SoftSpoken OT Extension — RandomCOT subclass, semi-honest by
- * default; call `set_malicious(true)` before setup to enable the two
- * malicious-security checks.
- * [REF] L. Roy, "SoftSpokenOT: Quieter OT Extension from Small-Field
- *       Silent VOLE in the Minicrypt Model" — Crypto '22.
- *       https://eprint.iacr.org/2022/192
- *
- * The protocol is natively a RandomCOT: after sfvole_*_compute,
- * u_canonical[j] is the receiver's intrinsic random choice bit and
- * Conv(V[j]) ⊕ Conv(W[j]) = u_canonical[j] · Δ at the full-block
- * level. rcot_send / rcot_recv expose this directly with the
- * LSB-of-output choice convention (LSB(K)=0, LSB(M)=u_canonical[j]).
- * send_cot / recv_cot are inherited from RandomCOT, which adds the
- * standard 1-bit-per-COT chosen-message correction wrapper.
- *
- * Templated on k, the F_{2^k} sub-field size used inside the small-
- * field VOLE. Larger k = less bandwidth (~kappa/k bytes per COT) but
- * more compute (~2^k / k AES blocks per COT). Pre-instantiated for
- * k in {2, 4, 8} in softspoken_ot.cpp.
- *
- * Streaming. rcot_send / rcot_recv chunk the OT-output axis: each
- * begin → loop _next → end runs one session, with a small per-chunk
- * plane scratch (member-resident BlockVec, sized n*k*kChunkBlocks).
- * The inner loop keys AES with the session id and uses Davies–Meyer
- * (AES_K(z) ⊕ z) with z = counter ⊕ leaf; see softspoken::sfvole_*_compute_chunk above.
- *
- * Δ has LSB=1 (forced by setup_send no-arg, required of callers
- * passing setup_send(delta_in)). Required for the LSB-encoded choice
- * convention to round-trip the COT relation correctly.
- *
- * Malicious mode (off by default). Two checks compose to upgrade from
- * the semi-honest baseline to malicious-secure (Roy '22 Fig.
- * `protpprfconsistency` and Fig. `protvoleconsistency`):
- *
- *   (1) PPRF check, run once at end of setup_send / setup_recv. The
- *       PPRF-sender (= COT-receiver / setup_recv side) ships per-level
- *       K^0/K^1 blocks via base OT and could lie there to corrupt the
- *       PPRF-receiver's (= COT-sender / setup_send side) leaves at
- *       indices y ≠ alpha_i. To bind, the PPRF-sender sends per-sub-
- *       VOLE (s' := SHA256(leaves), t' := XOR-of-leaves); the
- *       PPRF-receiver reconstructs leaves[alpha_i] = t' XOR
- *       XOR_{y≠alpha_i} leaves[y], hashes the full vector, and aborts
- *       on mismatch. Bounds the per-sub-VOLE selective-abort leakage
- *       to affinesub(F_2^k) (Roy Prop. `pprfcheckattack`).
- *
- *   (2) Subspace VOLE check, run once per begin/next…/end session.
- *       Each chunk derives chi by snapshotting the IOChannel FS
- *       transcript (io->get_digest()) — d_bufs bytes are absorbed
- *       automatically by send_data/recv_data, no per-chunk puts
- *       needed. Both sides chi-fold packed F_{2^128} elements over the
- *       post-Conv outputs (sender accumulates check_q := Σ chi_i ·
- *       Q_i, receiver check_t := Σ chi_i · T_i, check_x := Σ chi_i ·
- *       R_i where R_i = u_canonical[i]). One 128-OT sacrificial chunk
- *       runs in *_end before the (check_x, check_t) exchange and the
- *       check_q ?= check_t ⊕ check_x · Δ compare. Catches any
- *       deviation by the VOLE-sender (= COT-receiver) in the d_bufs
- *       syndrome. Same chi-fold shape as IKNP — see emp-ot/iknp.{h,cpp}.
- */
-// `kChunkBlocks` is a tunable template parameter (default tracks the
-// per-k cache-sweet-spot from chunk_blocks_for<k>). FerretCOT's
-// bootstrap instantiates a smaller-chunk variant — e.g.
-// SoftSpokenOT<8, 580> — so its one-shot ~74k base-COT request fits
-// in a single chunk instead of overproducing the full 131,072-OT
-// default chunk and shipping ~107 KB of unused PPRF planes over the
-// wire. Standalone users keep the default.
+// SoftSpoken OT Extension — RandomCOT subclass.
+// [REF] L. Roy, "SoftSpokenOT" (Crypto '22, eprint 2022/192).
+//
+// Templated on k = F_{2^k} sub-field exponent (k ∈ {2, 4, 8}). Larger k
+// = less bandwidth (~κ/k B/COT) but more compute (~2^k/k AES blocks
+// /COT). Pre-instantiated for k in {2, 4, 8} in softspoken_ot.cpp.
+//
+// Pipeline + malicious-mode design lives in softspoken_ot.cpp.
 template <int k, int kChunkBlocks = softspoken::chunk_blocks_for<k>()>
 class SoftSpokenOT : public OTExtension {
     static_assert(k >= 1 && k <= 8, "SoftSpokenOT supports k in [1, 8]");
@@ -258,31 +53,22 @@ public:
     static constexpr int n = softspoken::n_subvoles<k>();
     static constexpr int Q = 1 << k;
 
-    // User-supplied base OT, owned by SoftSpokenOT. Defaults to OTPVW
-    // (DDH messy-mode PVW '08 — malicious-secure). Pass a different
-    // one (e.g., OTCSW or OTPVWKyber) via the fourth ctor arg.
+    // Default base OT is OTPVW (DDH messy-mode PVW '08, malicious-secure).
+    // Pass another (OTCSW / OTPVWKyber) via the fourth ctor arg.
     explicit SoftSpokenOT(int party, IOChannel* io_,
                           bool malicious = true,
                           std::unique_ptr<OT> base_ot = nullptr);
     ~SoftSpokenOT() override = default;
 
-    // OTExtension contract. The base class supplies rcot_send /
-    // rcot_recv as wrappers around do_rcot_*_begin/_next/_end with
-    // chunk_ots() = kChunkOTs. kChunkBlocks is re-exposed as a static
-    // member so callers outside the class body can read it as
-    // SoftSpokenOT<k>::kChunkBlocks (the bare template parameter is
-    // not member-accessible in that context).
     static constexpr int kChunkBlocks_value = kChunkBlocks;
     static constexpr int kChunkOTs          = kChunkBlocks * 128;
     int64_t chunk_ots() const override { return kChunkOTs; }
 
-    // Replace the ctor-sampled Δ with one supplied by an outer protocol.
-    // Sender-only; must fire before the streaming bootstrap.
-    // delta_bool[0] must be true.
+    // Sender-only Δ override; must fire before the streaming bootstrap.
+    // delta_bool[0] must be true (LSB-encoded choice convention).
     void set_delta(const bool* delta_bool);
 
 protected:
-    // OTExtension hooks. Each do_*_next writes exactly kChunkOTs blocks.
     void do_rcot_send_begin() override;
     void do_rcot_send_next(block* out) override;
     void do_rcot_send_end() override;
@@ -298,72 +84,43 @@ private:
 
     // COT-Sender (= VOLE-Receiver / PPRF-Receiver) state.
     int alphas_[n] = {0};
-    BlockVec leaves_recv_;  // n * Q blocks; punctured at alphas_[i]
+    BlockVec leaves_recv_;          // n * Q blocks; punctured at alphas_[i]
 
     // COT-Receiver (= VOLE-Sender / PPRF-Sender) state.
-    BlockVec leaves_send_;  // n * Q blocks; full GGM tree
+    BlockVec leaves_send_;          // n * Q blocks; full GGM tree
 
-    // Streaming session state. Each begin/next.../end runs one
-    // SoftSpoken session with a fresh session_id; cur_*_b0 tracks the
-    // PRG counter offset (in bpr-blocks) consumed by previous _next
-    // calls in this session.
+    // Streaming session state.
     uint64_t cur_send_session_ = 0;
     uint64_t cur_recv_session_ = 0;
     int64_t cur_send_b0_ = 0;
     int64_t cur_recv_b0_ = 0;
 
-    // Per-chunk scratch (allocated at the first _next call; reused
-    // across chunks within and across sessions). Heap-resident so we
-    // can grow B past the comfortable stack limit without changing
-    // call sites.
-    BlockVec planes_chunk_;   // n * k * kChunkBlocks blocks
-    BlockVec d_bufs_chunk_;   // (n - 1) * kChunkBlocks blocks
+    // Per-chunk scratch (lazily resized on first _next; reused across
+    // chunks within and across sessions).
+    BlockVec planes_chunk_;         // n * k * kChunkBlocks blocks
+    BlockVec d_bufs_chunk_;         // (n - 1) * kChunkBlocks blocks
 
-    // ===== Malicious-mode state =====
+    // Malicious-mode state.
     bool malicious_ = false;
-    // Set in setup_send / setup_recv. Used as send_first when this
-    // SoftSpokenOT instance enables IOChannel FS itself (i.e. when
-    // not nested under an outer protocol that already enabled FS).
     bool is_sender_ = false;
-    // Packs 128 consecutive post-Conv outputs into one F_{2^128}
-    // element via (1, X, …, X^127); see iknp.cpp::combine_*.
-    GaloisFieldPacking packer_;
-    // Running chi-fold accumulators, reset at *_begin. Sender uses
-    // check_q_; receiver uses check_t_ (folds T_i) and check_x_
-    // (folds R_i = u_canonical[i]). The end-of-session compare is
-    // check_q_ ?= check_t_ ⊕ check_x_ · Δ.
-    block check_q_  = zero_block;
-    block check_t_  = zero_block;
-    block check_x_  = zero_block;
+    GaloisFieldPacking packer_;     // pack128 for F_{2^128} chi-fold
+    block check_q_  = zero_block;   // sender's running fold
+    block check_t_  = zero_block;   // receiver's running fold (T_i)
+    block check_x_  = zero_block;   // receiver's running fold (R_i)
 
-    // Wire-touching bootstrap halves, run lazily on first do_rcot_*_begin.
-    // Sender consumes the ctor-sampled (or set_delta-overridden) Δ;
-    // receiver runs the PPRF eval.
+    // Setup halves, lazy on first do_rcot_*_begin.
     void bootstrap_send_();
     void bootstrap_recv_();
-    // Resize the per-chunk scratch buffers to their full kChunkBlocks
-    // capacity on first call; cheap no-op afterwards. Called at the
-    // top of rcot_send_next / rcot_recv_next.
     void ensure_chunk_scratch_();
-    // PPRF consistency check. _send runs on the PPRF-sender (=
-    // setup_recv side); _recv on the PPRF-receiver (= setup_send
-    // side). Implements Fig. `protpprfconsistency` directly on the
-    // cGGM leaves (no separate PRG'_0 — leaves are already PRF
-    // outputs and SHA-256 absorbs the full λ-bit input).
+    // Malicious-mode PPRF check (Roy '22 Fig. protpprfconsistency).
     void pprf_check_send();
     void pprf_check_recv();
-    // Per-chunk subspace VOLE chi-fold. Both take the chunk's post-
-    // Conv `out` (bs * 128 OTs) and accumulate into the matching
-    // running check. Chi seed is io->get_digest(): the IOChannel FS
-    // transcript snapshot taken after this chunk's d_bufs crossed the
-    // wire. Mirrors IKNP::combine_*.
+    // Per-chunk subspace-VOLE chi-fold (Roy '22 Fig. protvoleconsistency).
     void combine_send_chunk(block* out, int64_t bs);
     void combine_recv_chunk(block* out, const block* u_canonical, int64_t bs);
-
-    // Per-chunk pipeline at arbitrary `bs` (1..kChunkBlocks). The
-    // public do_rcot_*_next overrides call this with bs=kChunkBlocks;
-    // the malicious-mode sacrificial chunk in do_rcot_*_end calls it
-    // with bs=1 to avoid computing a wasted full-chunk pipeline.
+    // Per-chunk pipeline at arbitrary bs (1..kChunkBlocks). Called with
+    // bs=kChunkBlocks from do_rcot_*_next, bs=1 from the sacrificial
+    // chunk in do_rcot_*_end.
     void send_chunk_pipeline(block* out, int64_t bs);
     void recv_chunk_pipeline(block* out, int64_t bs);
 };
@@ -371,8 +128,7 @@ private:
 extern template class SoftSpokenOT<2>;
 extern template class SoftSpokenOT<4>;
 extern template class SoftSpokenOT<8>;
-// Smaller-chunk variant used by FerretCOT::bootstrap_base_cots_ —
-// 580 × 128 = 74,240 OTs fits ferret_b10.M = 74,164 in a single chunk.
+// Smaller-chunk variant for FerretCOT::bootstrap_base_cots_.
 extern template class SoftSpokenOT<8, 580>;
 
 } // namespace emp

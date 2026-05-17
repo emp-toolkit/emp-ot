@@ -1,3 +1,82 @@
+// SoftSpoken OT Extension implementation. See header for the public
+// interface; the rest of this file documents the design.
+//
+// ===== Protocol shape =====
+//
+// RandomCOT: after sfvole_sender_butterfly / sfvole_receiver_butterfly
+// emit (u, V) and (W) respectively, the COT relation Conv(V[j]) ⊕
+// Conv(W[j]) = u_canonical[j] · Δ holds at the full-block level.
+// rcot_send / rcot_recv expose this with the LSB-encoded choice
+// convention (LSB(K) = 0, LSB(M) = u_canonical[j]). send_cot / recv_cot
+// are inherited from RandomCOT, which adds the standard 1-bit-per-COT
+// chosen-message correction wrapper.
+//
+// Δ has LSB=1 (forced by setup_send no-arg; required of callers
+// passing setup_send(delta_in)). The LSB-encoded choice convention
+// needs that bit to round-trip the COT relation correctly.
+//
+// ===== Per-k chunk-size rationale =====
+//
+// kChunkBlocks (chunk_blocks_for<k>() in the header):
+//   k=2 → 128: little compute per leaf — small chunk avoids cache
+//              pressure.
+//   k=4 → 1024: heavier compute per leaf supports a larger
+//               amortization window.
+//   k=8 → 1024: Q=256 leaves means lots of fold work per chunk;
+//               the larger window amortizes setup overhead.
+//
+// FerretCOT's bootstrap instantiates SoftSpokenOT<8, 580> so its
+// one-shot ~74k base-COT request fits in a single chunk instead of
+// overproducing the default 131,072-OT chunk and shipping ~107 KB of
+// unused PPRF planes over the wire.
+//
+// ===== Streaming pipeline =====
+//
+// rcot_send / rcot_recv chunk the OT-output axis: begin → loop _next
+// → end runs one session with a fresh session_id; cur_*_b0_ tracks the
+// per-session PRG counter offset (in bpr-blocks) consumed by previous
+// _next calls so the keystream across chunks of one session matches
+// one bulk PRG invocation.
+//
+// Per chunk:
+//   1. For every sub-VOLE i ∈ [0, n), sfvole_*_butterfly<k> writes
+//      this chunk's u_canonical / v_planes (OT-receiver side) or
+//      w_planes (OT-sender side).
+//   2. OT-receiver side batches the n-1 d_buf_i = u_canonical ⊕ u_i
+//      vectors into one io->send_block; OT-sender side reads them
+//      with io->recv_block and applies the per-bit XOR to w_planes_i.
+//   3. LSB pinning: sub-VOLE 0's plane 0 is forced to 0 / u_canonical
+//      on the two sides so bit_0 of every output block carries the
+//      receiver's choice.
+//   4. One sse_trans_n128 over the chunk-local plane buffer writes
+//      bs*128 OT blocks.
+//
+// ===== Malicious mode =====
+//
+// Two checks compose to upgrade from semi-honest to malicious-secure
+// (Roy '22 Fig. protpprfconsistency + protvoleconsistency):
+//
+//   (1) PPRF check, once at end of setup_*. The PPRF-sender (=
+//       COT-receiver) commits to its leaves via an expanded SHA-256
+//       digest + XOR t̂ over PRG'-expanded check material. The
+//       PPRF-receiver reconstructs s'_{α_i} (the 2λ check material,
+//       not the real leaf) from t̂ and the digest, verifying the
+//       commitment without learning leaves[α_i]. Bounds the per-sub-
+//       VOLE selective-abort leakage to affinesub(F_2^k) (Roy Prop.
+//       pprfcheckattack). Details inline below at pprf_check_send /
+//       pprf_check_recv.
+//
+//   (2) Subspace VOLE check, once per begin/next…/end session. Each
+//       chunk's d_bufs are absorbed into the IOChannel FS transcript
+//       via send_data / recv_data; chi seed comes from
+//       io->get_digest(). Both sides chi-fold packed F_{2^128} elements
+//       over post-Conv outputs (sender accumulates check_q := Σ chi_i
+//       · Q_i, receiver check_t := Σ chi_i · T_i and check_x := Σ chi_i
+//       · R_i where R_i = u_canonical[i]). One 128-OT sacrificial chunk
+//       runs in *_end before the (check_x, check_t) exchange and the
+//       check_q ?= check_t ⊕ check_x · Δ compare. Same shape as IKNP
+//       — see emp-ot/iknp.{h,cpp}.
+
 #include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
 #include "emp-ot/ot_extension/ferret/constants.h"   // lsb_clear_mask, lsb_only_mask
 #include <algorithm>
@@ -41,34 +120,39 @@ void SoftSpokenOT<k, kChunkBlocks>::set_delta(const bool* delta_bool) {
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
-    // Decompose Delta into n F_{2^k} elements alphas_[i].
-    uint8_t alpha_bytes[256];
-    softspoken::unpack<k>(this->Delta, alpha_bytes);
-    for (int i = 0; i < n; ++i) alphas_[i] = alpha_bytes[i];
+    // Δ = α_0 + α_1·X + … + α_{n-1}·X^{n-1} over F_{2^k}: α_i is the
+    // i-th k-bit slice of Δ (LSB-first within α_i). Base OT choice
+    // bits ᾱ_{i,j} = 1 − α_{i,j} are sent MSB-first per α_i.
+    bool delta_bits[128];
+    bits_to_bools(delta_bits, &this->Delta, 128);
 
-    // Base OT choice bits: ᾱ_{i,j} = 1 - alpha_{i,j}, with alpha_{i,1} = MSB.
-    const int total = n * k;
+    const int total = n * k;     // == 128
     // unsigned char (not bool) so .data() is contiguous one-byte-each
     // storage; the OT::recv signature still expects bool* so we
     // reinterpret_cast at the call boundary.
     default_init_vector<unsigned char> choices(total);
     for (int i = 0; i < n; ++i) {
+        int alpha = 0;
         for (int j = 1; j <= k; ++j) {
-            const int alpha_j = (alphas_[i] >> (k - j)) & 1;
-            choices[i * k + (j - 1)] = (alpha_j == 0);
+            // α_{i,j} (j-th MSB of α_i) = bit (k-j) of α_i = delta_bits[i*k + (k-j)].
+            const bool b = delta_bits[i*k + (k - j)];
+            if (b) alpha |= 1 << (k - j);
+            choices[i*k + (j-1)] = !b;
         }
+        alphas_[i] = alpha;
     }
 
     BlockVec received(total);
     base_ot_->recv(received.data(),
                    reinterpret_cast<bool*>(choices.data()), total);
 
-    // Reconstruct each sub-VOLE's punctured GGM tree.
+    // Reconstruct each sub-VOLE's punctured GGM tree. cggm::eval_receiver
+    // fills leaves[x] for x != alpha_i and pins leaves[alpha_i] to zero.
     leaves_recv_.resize(static_cast<size_t>(n) * Q);
     block K_recv[k];
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < k; ++j) K_recv[j] = received[i * k + j];
-        softspoken::pprf_eval_receiver<k>(alphas_[i], K_recv, &leaves_recv_[i * Q]);
+        cggm::eval_receiver(k, alphas_[i], K_recv, &leaves_recv_[i * Q]);
     }
 
     if (malicious_) pprf_check_recv();
@@ -86,14 +170,18 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::bootstrap_recv_() {
     // Build n GGM trees and ship the per-level XOR sums via base OT.
+    // Each tree gets a fresh Δ and root; K0[h] = level-(h+1) left-side
+    // XOR-sum, K1[h] = K0[h] ⊕ Δ (leveled correlation, paper §2.2).
     leaves_send_.resize(static_cast<size_t>(n) * Q);
     const int total = n * k;
     BlockVec K0(total), K1(total);
     block K0_buf[k], K1_buf[k];
     for (int i = 0; i < n; ++i) {
-        softspoken::pprf_build_sender<k>(this->prg,
-                                          &leaves_send_[i * Q],
-                                          K0_buf, K1_buf);
+        block Delta, root;
+        this->prg.random_block(&Delta, 1);
+        this->prg.random_block(&root, 1);
+        cggm::build_sender(k, Delta, root, &leaves_send_[i * Q], K0_buf);
+        for (int h = 0; h < k; ++h) K1_buf[h] = K0_buf[h] ^ Delta;
         for (int j = 0; j < k; ++j) {
             K0[i * k + j] = K0_buf[j];
             K1[i * k + j] = K1_buf[j];
@@ -317,7 +405,7 @@ void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) 
     // Compute every sub-VOLE's contribution to this chunk's w_planes.
     for (int i = 0; i < n; ++i) {
         block* w_i = w_planes_chunk + static_cast<size_t>(i) * k * bs;
-        softspoken::sfvole_receiver_compute_chunk<k>(
+        softspoken::sfvole_receiver_butterfly<k>(
             alphas_[i], &leaves_recv_[i * Q],
             cur_send_session_, b0, bs, w_i);
     }
@@ -334,7 +422,13 @@ void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) 
         for (int i = 1; i < n; ++i) {
             block* w_i = w_planes_chunk + static_cast<size_t>(i) * k * bs;
             const block* d_i = d_bufs + static_cast<size_t>(i - 1) * bs;
-            softspoken::apply_derand_to_w_planes<k>(alphas_[i], d_i, bs, w_i);
+            // Sub-space VOLE derandomization: for each set bit b of
+            // alpha_i, XOR d_i into plane b. Mirrors the sender's
+            // d_i = u_canonical ^ u_temp_i contribution.
+            for (int b = 0; b < k; ++b) {
+                if ((alphas_[i] >> b) & 1)
+                    xorBlocksTo_arr(w_i + b * bs, d_i, (int)bs);
+            }
         }
     }
 
@@ -350,9 +444,7 @@ void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) 
     // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
     // w_planes_chunk's plane-major layout is exactly the row-major
     // byte layout sse_trans_n128 consumes.
-    sse_trans_n128(reinterpret_cast<uint8_t*>(out),
-                   reinterpret_cast<const uint8_t*>(w_planes_chunk),
-                   /*ncols=*/bs * 128);
+    sse_trans_n128(out, w_planes_chunk, /*ncols=*/bs * 128);
 
     if (malicious_) combine_send_chunk(out, bs);
 
@@ -400,13 +492,13 @@ void SoftSpokenOT<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) 
     // (16 KB at kChunkBlocks=1024). Default 8 MB main-thread stack and
     // typical thread stacks (256 KB+) handle the 32 KB pair comfortably;
     // the inner loop benefits from the buffers being reliably hot.
-    alignas(16) block u_canonical[kChunkBlocks];   // sub-VOLE 0's u
-    alignas(16) block u_temp[kChunkBlocks];        // sub-VOLE i ≥ 1
+    block u_canonical[kChunkBlocks];   // sub-VOLE 0's u
+    block u_temp[kChunkBlocks];        // sub-VOLE i ≥ 1
 
     // Sub-VOLE 0 produces u_canonical (no d_buf for i=0).
     {
         block* v_0 = v_planes_chunk + 0 * k * bs;
-        softspoken::sfvole_sender_compute_chunk<k>(
+        softspoken::sfvole_sender_butterfly<k>(
             &leaves_send_[0 * Q], cur_recv_session_, b0, bs,
             u_canonical, v_0);
     }
@@ -414,12 +506,11 @@ void SoftSpokenOT<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) 
     // For i ≥ 1: produce u_temp and v_i, then d_buf_i = u_canonical ⊕ u_temp.
     for (int i = 1; i < n; ++i) {
         block* v_i = v_planes_chunk + static_cast<size_t>(i) * k * bs;
-        softspoken::sfvole_sender_compute_chunk<k>(
+        softspoken::sfvole_sender_butterfly<k>(
             &leaves_send_[i * Q], cur_recv_session_, b0, bs,
             u_temp, v_i);
         block* d_i = d_bufs + static_cast<size_t>(i - 1) * bs;
-        for (int64_t bb = 0; bb < bs; ++bb)
-            d_i[bb] = u_canonical[bb] ^ u_temp[bb];
+        xorBlocks_arr(d_i, u_canonical, u_temp, (int)bs);
     }
 
     // One batched send: (n-1) * bs blocks.
@@ -439,9 +530,7 @@ void SoftSpokenOT<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) 
     std::memcpy(v_planes_chunk, u_canonical, sizeof(block) * bs);
 
     // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
-    sse_trans_n128(reinterpret_cast<uint8_t*>(out),
-                   reinterpret_cast<const uint8_t*>(v_planes_chunk),
-                   /*ncols=*/bs * 128);
+    sse_trans_n128(out, v_planes_chunk, /*ncols=*/bs * 128);
 
     if (malicious_) combine_recv_chunk(out, u_canonical, bs);
 

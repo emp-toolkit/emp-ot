@@ -13,8 +13,11 @@
 >   Bug fixes and security patches will be backported to `v0.3.x`.
 > - **New projects, or willing to migrate: track the development branch**
 >   (this branch). It will become `1.0.0-alpha` after a polish pass and
->   then `1.0.0`. New SoftSpokenOT recursive-butterfly kernel (cross-
->   platform, NEON + VAES-256/512), post-quantum `OTPVWKyber` base OT,
+>   then `1.0.0`. New SoftSpokenOT butterfly kernel with rounds 0-2
+>   fused into AES generation at k=8 (eight leaves' Davies-Meyer
+>   outputs folded through three halving levels in-register;
+>   cross-platform via emp-tool's AesLane abstraction over VAES-512 /
+>   VAES-256 / AES-NI / NEON), post-quantum `OTPVWKyber` base OT,
 >   reorganized base OTs and extensions, the wire-equivalence framework
 >   from emp-tool 1.0 — but the API is not yet frozen and headers may
 >   move between alphas. Requires emp-tool ≥ 1.0.0-alpha.
@@ -288,12 +291,12 @@ base-OT bootstrap.
 |------------------|-----------|----------:|------:|
 | `IKNP`           | semi      |       127 |   149 |
 | `IKNP`           | malicious |       127 |    42 |
-| `SoftSpoken<2>`  | semi      |        63 |   121 |
-| `SoftSpoken<2>`  | malicious |        63 |   110 |
-| `SoftSpoken<4>`  | semi      |        31 |   123 |
-| `SoftSpoken<4>`  | malicious |        31 |   113 |
-| `SoftSpoken<8>`  | semi      |        15 |    39 |
-| `SoftSpoken<8>`  | malicious |        15 |    39 |
+| `SoftSpoken<2>`  | semi      |        63 |   140 |
+| `SoftSpoken<2>`  | malicious |        63 |    87 |
+| `SoftSpoken<4>`  | semi      |        31 |   103 |
+| `SoftSpoken<4>`  | malicious |        31 |    97 |
+| `SoftSpoken<8>`  | semi      |        15 |    53 |
+| `SoftSpoken<8>`  | malicious |        15 |    51 |
 | `FerretCOT`      | semi      |      0.29 |    71 |
 | `FerretCOT`      | malicious |      0.29 |    62 |
 

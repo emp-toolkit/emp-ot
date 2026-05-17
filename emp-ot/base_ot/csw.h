@@ -76,7 +76,7 @@ class OTCSW : public OT { public:
 	// Stack buffer (no heap alloc per call). P-256 uncompressed = 65 B;
 	// total max ≈ 90 B; 128 B is comfortably above that and aligns nicely.
 	block H_pad(int64_t i, Point & P) {
-		alignas(16) unsigned char buf[128];
+		unsigned char buf[128];
 		size_t plen = P.size();
 		assert(1 + sizeof(block) + sizeof(int64_t) + plen <= sizeof(buf));
 		buf[0] = '2';

@@ -91,7 +91,7 @@ void IKNP::do_rcot_send_next(block *out) {
 		if (s[i])
 			xorBlocksTo_arr(t + (i * row_blocks), tmp, row_blocks);
 	}
-	sse_trans((uint8_t *)(out), (uint8_t *)t, 128, block_size);
+	sse_trans_n128(out, t, block_size);
 
 	if (malicious)
 		combine_send(out);
@@ -174,7 +174,7 @@ void IKNP::do_rcot_recv_next(block *out) {
 	}
 	// Pin t[0] = r so bit_0(out[k]) = bit_k(r) = choice_k after transpose.
 	memcpy(t, r, block_size / 8);
-	sse_trans((uint8_t *)(out), (uint8_t *)t, 128, block_size);
+	sse_trans_n128(out, t, block_size);
 
 	if (malicious)
 		combine_recv(out, r);
