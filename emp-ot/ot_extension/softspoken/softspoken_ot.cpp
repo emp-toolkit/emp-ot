@@ -113,61 +113,115 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_recv_() {
 // Malicious-mode: PPRF consistency check (Roy '22 Fig. protpprfconsistency)
 // =====================================================================
 //
-// For each sub-VOLE i, the PPRF-sender (this side) commits to its full
-// 2^k-leaf vector by sending (s'_i, t'_i):
-//   s'_i = SHA256(leaves[i*Q] || ... || leaves[i*Q + Q-1])
-//   t'_i = XOR_y leaves[i*Q + y]
-// One batched send for all n sub-VOLEs. The PPRF-receiver matches via
-// pprf_check_recv. Skip the explicit length-doubling PRG'_0 from the
-// paper: leaves are already cGGM-derived pseudo-random blocks, so
-// SHA-256 over them gives the same collision-resistance binding (full
-// λ-bit input absorbed into 256-bit output).
+// Each cGGM leaf is expanded by PRG' into three blocks under a fixed
+// AES key shared by both parties:
+//   exp = aes_ctr_fill_dm<3>(0, &check_K, cGGM_leaf)   // CRH, 3λ output
+//     exp[0]  -> the "real" leaf that downstream sfvole uses
+//                (PRG'_1 in the paper); overwrites leaves_*_[y] in place.
+//     exp[1:] -> s'_y, the 2λ check material (PRG'_0).
+// The separation is the security-critical part: the receiver's t̂-based
+// reconstruction below recovers only s'_{α_i}, not the real leaf, so
+// the PPRF-Receiver still doesn't know leaves_*_[α_i] after the check.
+//
+// Per sub-VOLE i, the PPRF-Sender accumulates t̂_i = (⊕_y exp[1],
+// ⊕_y exp[2]) and feeds every (exp[1], exp[2]) pair into a single
+// global SHA-256 over (i, y) in fixed order. One rolling digest binds
+// the sender across every tree at once (catches cross-tree swap
+// attempts that per-tree digests would miss).
+//
+// The PPRF-Receiver expands every y ≠ α_i identically, accumulates
+// the same XOR, reconstructs s'_{α_i} = t̂_i ⊕ ⊕_{y≠α_i} (exp[1],
+// exp[2]), feeds the resulting Q × 2-block vector through its own
+// rolling SHA-256, and compares.
+//
+// kPPRFCheckSession sits in the high 64 bits to keep the check_K
+// disjoint from per-chunk sfvole session keys (which use the low 64
+// bits with the high 64 bits zeroed).
+
+namespace {
+constexpr int64_t kPPRFCheckSessionHigh = 0x70505246434B5F00LL; // "pPRFCK_\0"
+}
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::pprf_check_send() {
     constexpr int kHashSize = Hash::DIGEST_SIZE;  // 32 B
-    BlockVec t_buf(n);
-    default_init_vector<unsigned char> s_buf((size_t)n * kHashSize);
+
+    AES_KEY check_K;
+    AES_set_encrypt_key(makeBlock(kPPRFCheckSessionHigh, 0LL), &check_K);
+
+    // t̂_i ∈ {0,1}^{2λ}: 2-block XOR per sub-VOLE of the s'_y values.
+    BlockVec t_buf(static_cast<size_t>(n) * 2);
+
+    Hash hash;
 
     for (int i = 0; i < n; ++i) {
-        const block* leaves_i = &leaves_send_[(size_t)i * Q];
-        block t = zero_block;
-        for (int y = 0; y < Q; ++y) t = t ^ leaves_i[y];
-        t_buf[i] = t;
-        Hash::hash_once(s_buf.data() + (size_t)i * kHashSize,
-                        leaves_i, Q * (int)sizeof(block));
+        block* leaves_i = &leaves_send_[(size_t)i * Q];
+        block tx = zero_block, ty = zero_block;
+        for (int y = 0; y < Q; ++y) {
+            block exp[3];
+            emp::aes_ctr_fill_dm<3>(exp, /*counter=*/0, &check_K, leaves_i[y]);
+            leaves_i[y] = exp[0];          // real leaf for sfvole downstream
+            tx = tx ^ exp[1];
+            ty = ty ^ exp[2];
+            hash.put(&exp[1], 2 * sizeof(block));
+        }
+        t_buf[(size_t)i * 2]     = tx;
+        t_buf[(size_t)i * 2 + 1] = ty;
     }
 
-    this->io->send_block(t_buf.data(), n);
-    this->io->send_data(s_buf.data(), (size_t)n * kHashSize);
+    unsigned char digest[kHashSize];
+    hash.digest(digest);
+
+    this->io->send_block(t_buf.data(), static_cast<int>(n) * 2);
+    this->io->send_data(digest, kHashSize);
     this->io->flush();
 }
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::pprf_check_recv() {
     constexpr int kHashSize = Hash::DIGEST_SIZE;
-    BlockVec t_buf(n);
-    default_init_vector<unsigned char> s_buf((size_t)n * kHashSize);
-    this->io->recv_block(t_buf.data(), n);
-    this->io->recv_data(s_buf.data(), (size_t)n * kHashSize);
 
-    unsigned char dgst[kHashSize];
+    AES_KEY check_K;
+    AES_set_encrypt_key(makeBlock(kPPRFCheckSessionHigh, 0LL), &check_K);
+
+    BlockVec t_buf(static_cast<size_t>(n) * 2);
+    unsigned char their_digest[kHashSize];
+    this->io->recv_block(t_buf.data(), static_cast<int>(n) * 2);
+    this->io->recv_data(their_digest, kHashSize);
+
+    Hash hash;
+
+    // Per-tree scratch for s'_y values; we need a second pass per tree
+    // to feed the global hash in (i, y) order, since s'_{α_i} only
+    // becomes known after XOR-accumulating the rest.
+    BlockVec s_buf(static_cast<size_t>(Q) * 2);
+
     for (int i = 0; i < n; ++i) {
         block* leaves_i = &leaves_recv_[(size_t)i * Q];
-        // Recover the punctured leaf: leaves_recv_[alpha_i] is currently
-        // zero_block (eval_receiver pinned it). t_buf[i] is the sender's
-        // claimed XOR of all 2^k leaves; XORing in our (Q-1) known
-        // leaves yields what the missing leaf must be for the claim to
-        // hold. If the sender lied in any base OT, our reconstruction
-        // of some leaves[y≠alpha_i] differs from the sender's, and the
-        // Hash compare below catches it (collision-resistance of SHA-256).
-        block missing = t_buf[i];
-        for (int y = 0; y < Q; ++y) missing = missing ^ leaves_i[y];
-        leaves_i[alphas_[i]] = missing;
-        Hash::hash_once(dgst, leaves_i, Q * (int)sizeof(block));
-        if (std::memcmp(dgst, s_buf.data() + (size_t)i * kHashSize, kHashSize) != 0)
-            error("SoftSpoken PPRF check failed");
+        block tx = zero_block, ty = zero_block;
+        for (int y = 0; y < Q; ++y) {
+            if (y == alphas_[i]) continue;     // leaves_recv_[α] = zero_block, pinned
+            block exp[3];
+            emp::aes_ctr_fill_dm<3>(exp, /*counter=*/0, &check_K, leaves_i[y]);
+            leaves_i[y] = exp[0];              // real leaf for sfvole downstream
+            s_buf[(size_t)y * 2]     = exp[1];
+            s_buf[(size_t)y * 2 + 1] = exp[2];
+            tx = tx ^ exp[1];
+            ty = ty ^ exp[2];
+        }
+        // Reconstructed s'_{α_i}. Receiver learns this 2λ value, but
+        // PRG' security keeps the real leaf PRG'_1(cGGM_leaf_{α_i})
+        // hidden — leaves_recv_[α_i] stays zero_block.
+        s_buf[(size_t)alphas_[i] * 2]     = t_buf[(size_t)i * 2]     ^ tx;
+        s_buf[(size_t)alphas_[i] * 2 + 1] = t_buf[(size_t)i * 2 + 1] ^ ty;
+
+        hash.put(s_buf.data(), Q * 2 * (int)sizeof(block));
     }
+
+    unsigned char our_digest[kHashSize];
+    hash.digest(our_digest);
+    if (std::memcmp(our_digest, their_digest, kHashSize) != 0)
+        error("SoftSpoken PPRF check failed");
 }
 
 // =====================================================================
