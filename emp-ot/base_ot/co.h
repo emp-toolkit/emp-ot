@@ -36,13 +36,12 @@ class OTCO: public OT { public:
 	}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
-		Scalar a;
 		Point A, AaInv;
 		block res[2];
 		std::vector<Point> B(length);
 		std::vector<Point> BA(length);
 
-		G->get_rand_bn(a);
+		Scalar a = G->rand_scalar();
 		A = G->mul_gen(a);
 		io->send_pt(&A);
 		AaInv = A.mul(a);
@@ -69,7 +68,7 @@ class OTCO: public OT { public:
 		Point A;
 
 		for(int64_t i = 0; i < length; ++i)
-			G->get_rand_bn(bb[i]);
+			bb[i] = G->rand_scalar();
 
 		io->recv_pt(G, &A);
 

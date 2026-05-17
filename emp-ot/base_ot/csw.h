@@ -62,14 +62,14 @@ class OTCSW : public OT { public:
 	// prefixed by sid; all four ROs are independent and session-bound). =====
 
 	// H_1(sid, seed) → curve point T. Programmable in the CDH reduction.
-	void H_to_curve(const block & seed, Point & T_out) {
+	Point H_to_curve(const block & seed) {
 		unsigned char buf[1 + sizeof(block) + sizeof(block)];
 		buf[0] = '1';
 		memcpy(buf + 1, &sid, sizeof(block));
 		memcpy(buf + 1 + sizeof(block), &seed, sizeof(block));
 		static constexpr const char kDST[] = "emp-ot:csw-base-ot:v1";
-		G->hash_to_point((const char *)buf, sizeof(buf),
-		                 kDST, sizeof(kDST) - 1, T_out);
+		return G->hash_to_point((const char *)buf, sizeof(buf),
+		                        kDST, sizeof(kDST) - 1);
 	}
 
 	// H_2(sid, i, P) → block. P is a curve point (the DH share ρ).
@@ -123,10 +123,8 @@ class OTCSW : public OT { public:
 		// Sender params: T = H_1(sid, seed); r ← Z_q; z = g^r.
 		// Amortize T^r over the batch: ρ_{i,1} = (B_i/T)^r = B_i^r · (T^r)^{-1}
 		// = ρ_{i,0} + (-T_r). One mul/OT instead of two.
-		Point T;
-		H_to_curve(seed, T);
-		Scalar r;
-		G->get_rand_bn(r);
+		Point T = H_to_curve(seed);
+		Scalar r = G->rand_scalar();
 		Point z = G->mul_gen(r);
 		Point T_r_neg = T.mul(r).inv();                // -(T^r), reused per OT
 
@@ -181,14 +179,13 @@ class OTCSW : public OT { public:
 		block seed;
 		PRG prg;
 		prg.random_block(&seed, 1);
-		Point T;
-		H_to_curve(seed, T);
+		Point T = H_to_curve(seed);
 
 		// Per-OT receiver msg: α_i ← Z_q; B_i = g^{α_i} · T^{b_i}.
 		std::vector<Scalar> alpha(length);
 		std::vector<Point> B(length);
 		for (int64_t i = 0; i < length; ++i) {
-			G->get_rand_bn(alpha[i]);
+			alpha[i] = G->rand_scalar();
 			B[i] = G->mul_gen(alpha[i]);
 			if (b[i])
 				B[i] = B[i].add(T);

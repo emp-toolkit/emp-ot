@@ -16,7 +16,7 @@
 //
 // Used to verify that an optimization / refactor doesn't change the
 // observable wire bytes. The test mode flips both PRG default-
-// construction and Group::get_rand_bn (the only OpenSSL-randomness
+// construction and ECGroup::rand_scalar (the only OpenSSL-randomness
 // site) to deterministic streams, so two runs of the same code at
 // the same EMP_TEST_MODE setting produce byte-identical wires.
 #include "emp-ot/emp-ot.h"

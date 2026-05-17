@@ -86,9 +86,9 @@ class IKNP : public OTExtension { public:
 		}
 	}
 
-	// Replace the ctor-sampled Δ with one supplied by an outer protocol
-	// (e.g. emp-zk's halfgate-bound Δ). Sender-only; must fire before
-	// the streaming bootstrap. delta_bool[0] must be true.
+	// Replace the ctor-sampled Δ with one supplied by an outer protocol.
+	// Sender-only; must fire before the streaming bootstrap.
+	// delta_bool[0] must be true.
 	void set_delta(const bool *delta_bool);
 
 	// ===== OTExtension contract =====

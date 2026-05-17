@@ -68,8 +68,8 @@ class OTPVW: public OT { public:
 		static constexpr const char kDST[] = "emp-ot:pvw-base-ot:v1";
 		Point *crs[4] = {&g0, &g1, &h0, &h1};
 		for (int i = 0; i < 4; ++i)
-			G->hash_to_point(labels[i], strlen(labels[i]),
-			                 kDST, sizeof(kDST) - 1, *crs[i]);
+			*crs[i] = G->hash_to_point(labels[i], strlen(labels[i]),
+			                           kDST, sizeof(kDST) - 1);
 	}
 
 	~OTPVW() {
@@ -85,15 +85,14 @@ class OTPVW: public OT { public:
 			io->recv_pt(G, &gs_i);
 			io->recv_pt(G, &hs_i);
 
-			Scalar s, t, k;
 			Point xb[2];
 			for (int b = 0; b < 2; ++b) {
-				G->get_rand_bn(s);
-				G->get_rand_bn(t);
+				Scalar s = G->rand_scalar();
+				Scalar t = G->rand_scalar();
 				// x_b is a fresh random group element used only as KDF
 				// input; cheapest way to sample uniformly is g^k for a
 				// random scalar k.
-				G->get_rand_bn(k);
+				Scalar k = G->rand_scalar();
 				xb[b] = G->mul_gen(k);
 
 				const Point &gb = (b == 0 ? g0 : g1);
@@ -117,7 +116,7 @@ class OTPVW: public OT { public:
 		// 2), so keep all r_i live in an array.
 		std::vector<Scalar> rs(length);
 		for (int64_t i = 0; i < length; ++i) {
-			G->get_rand_bn(rs[i]);
+			rs[i] = G->rand_scalar();
 			int sigma = b[i] ? 1 : 0;
 			const Point &g_base = (sigma == 0 ? g0 : g1);
 			const Point &h_base = (sigma == 0 ? h0 : h1);
