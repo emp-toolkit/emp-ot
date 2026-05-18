@@ -43,7 +43,9 @@ class OTCSW : public OT { public:
 	bool delete_G = true;
 	block sid;
 
-	OTCSW(IOChannel * io_, block sid_, ECGroup * G_ = nullptr) : sid(sid_) {
+	// sid defaults to kDefaultBaseOtSid (see emp-ot/ot.h). Callers
+	// wanting per-session domain separation override via set_sid().
+	OTCSW(IOChannel * io_, ECGroup * G_ = nullptr) : sid(kDefaultBaseOtSid) {
 		this->io = io_;
 		if (G_ == nullptr)
 			G = new ECGroup();
@@ -57,6 +59,8 @@ class OTCSW : public OT { public:
 		if (delete_G)
 			delete G;
 	}
+
+	void set_sid(block sid_) override { sid = sid_; }
 
 	// ===== Random oracles (each tagged with a 1-byte domain separator,
 	// prefixed by sid; all four ROs are independent and session-bound). =====

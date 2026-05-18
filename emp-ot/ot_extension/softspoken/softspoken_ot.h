@@ -2,13 +2,21 @@
 #define EMP_SOFTSPOKEN_OT_H__
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/ot_extension/ot_extension.h"
-#include "emp-ot/base_ot/pvw.h"
+#include "emp-ot/base_ot/csw.h"
 #include "emp-ot/ot_extension/cggm.h"
 #include "emp-ot/ot_extension/softspoken/sfvole_butterfly.h"
 #include "emp-ot/tuning.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
+
+namespace emp {
+
+// Default base OT for SoftSpokenOT. Change here to swap; OTExtension's
+// contract just needs any malicious-secure (when malicious_=true) OT.
+using SoftSpokenBaseOT = OTCSW;
+
+} // namespace emp
 
 namespace emp { namespace softspoken {
 
@@ -52,8 +60,8 @@ public:
     static constexpr int n = softspoken::n_subvoles<k>();
     static constexpr int Q = 1 << k;
 
-    // Default base OT is OTPVW (DDH messy-mode PVW '08, malicious-secure).
-    // Pass another (OTCSW / OTPVWKyber) via the fourth ctor arg.
+    // Default base OT is OTCSW (CDH-based "Blazing Fast" OT, malicious-secure).
+    // Pass another (OTPVW / OTPVWKyber) via the fourth ctor arg.
     explicit SoftSpokenOT(int party, IOChannel* io_,
                           bool malicious = true,
                           std::unique_ptr<OT> base_ot = nullptr);

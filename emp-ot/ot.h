@@ -5,6 +5,13 @@
 
 namespace emp {
 
+// Default sid used by base OTs that bind a per-session identifier into
+// their hash transcript (OTCSW, OTPVWKyber). Callers needing a session-
+// unique sid call OT::set_sid() post-construction; protocols that
+// don't bind a sid (OTCO, OTPVW) inherit the no-op default and ignore it.
+inline constexpr block kDefaultBaseOtSid =
+    makeBlock(0x656D702D6F742D62ULL, 0x6173652D7369642DULL);  // "emp-ot-base-sid-"
+
 // Abstract 1-out-of-2 OT.
 class OT { public:
 	virtual void send(const block* data0, const block* data1, int64_t length) = 0;
@@ -19,6 +26,13 @@ class OT { public:
 	// is paired with a malicious-secure base OT. Default returns false
 	// — safest for any unannotated subclass.
 	virtual bool is_malicious_secure() const { return false; }
+
+	// Optional per-session domain separator. Override in subclasses that
+	// bind a sid into their protocol transcript (OTCSW, OTPVWKyber);
+	// no-op default for subclasses that don't (OTCO, OTPVW). Callers
+	// may call this between construction and the first send/recv to
+	// replace the default sid.
+	virtual void set_sid(block /*sid*/) {}
 };
 
 // Correlated OT (sender's two messages differ by a fixed Δ). Subclasses

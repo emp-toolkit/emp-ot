@@ -10,7 +10,9 @@ namespace emp {
 Ferret::Ferret(int party, IOChannel *io,
 		bool malicious, PrimalLPNParameter param,
 		std::unique_ptr<OT> base_ot)
-	: OTExtension(party, io, malicious, std::move(base_ot)) {
+	: OTExtension(party, io, malicious,
+	              base_ot ? std::move(base_ot)
+	                      : std::unique_ptr<OT>(new FerretBaseOT(io))) {
 	this->param = param;
 	this->tree_idx_ = 0;
 

@@ -64,7 +64,7 @@ inline void sample_polyvec_eta1(polyvec* p, const uint8_t seed[kSymBytes],
 
 }  // anonymous namespace
 
-OTPVWKyber::OTPVWKyber(IOChannel* io_, block sid) : io(io_), sid_(sid) {}
+OTPVWKyber::OTPVWKyber(IOChannel* io_) : io(io_), sid_(kDefaultBaseOtSid) {}
 
 void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
     if (length <= 0) return;

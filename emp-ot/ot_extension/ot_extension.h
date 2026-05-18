@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <memory>
 #include "emp-ot/ot.h"
-#include "emp-ot/base_ot/pvw.h"
 
 namespace emp {
 
@@ -35,9 +34,10 @@ public:
     // Subclass do_rcot_*_begin trips this on first call; set_delta and
     // any pre-bootstrap configuration assert !setup_done.
     bool setup_done = false;
-    // Owned base OT for the subclass's bootstrap. Default is OTPVW
-    // (DDH messy-mode PVW '08, malicious-secure); override by passing
-    // a different concrete OT into the subclass ctor.
+    // Owned base OT for the subclass's bootstrap. Allocated by the
+    // subclass ctor (see IKNPBaseOT / SoftSpokenBaseOT / FerretBaseOT
+    // typedefs); each subclass picks its own default and can be
+    // overridden by passing a concrete OT into the subclass ctor.
     std::unique_ptr<OT> base_ot;
     // Sender-side bool[128] mirror of this->Delta. Maintained in sync
     // by the base ctor and set_delta — subclasses that need per-bit
@@ -147,16 +147,15 @@ public:
     }
 
 protected:
-    // Shared ctor used by every concrete extension. Owns the base_ot
-    // default (OTPVW), the malicious-secure cross-check, and the
-    // sender-side random Δ with LSB pinned to 1. Subclasses pass in
-    // their `(party, io, malicious)` and a base_ot if they want a
-    // non-default one; everything else is handled here.
+    // Shared ctor used by every concrete extension. Stores the base_ot
+    // (subclasses always pass non-null — their per-extension typedef
+    // picks the default), runs the malicious-secure cross-check, and
+    // samples the sender-side random Δ with LSB pinned to 1.
     OTExtension(int party_, IOChannel* io_, bool malicious_,
-                std::unique_ptr<OT> base_ot_ = nullptr)
+                std::unique_ptr<OT> base_ot_)
         : party(party_), malicious(malicious_),
-          base_ot(base_ot_ ? std::move(base_ot_)
-                           : std::unique_ptr<OT>(new OTPVW(io_))) {
+          base_ot(std::move(base_ot_)) {
+        assert(base_ot && "OTExtension: subclass must provide a non-null base_ot");
         this->io = io_;
         if (malicious && !base_ot->is_malicious_secure())
             error("OT extension malicious mode requires a malicious-secure base OT");

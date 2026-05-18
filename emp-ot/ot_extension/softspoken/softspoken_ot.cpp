@@ -87,7 +87,9 @@ namespace emp {
 template <int k, int kChunkBlocks>
 SoftSpokenOT<k, kChunkBlocks>::SoftSpokenOT(int party, IOChannel* io_, bool malicious,
                               std::unique_ptr<OT> base_ot)
-    : OTExtension(party, io_, malicious, std::move(base_ot)) {}
+    : OTExtension(party, io_, malicious,
+                  base_ot ? std::move(base_ot)
+                          : std::unique_ptr<OT>(new SoftSpokenBaseOT(io_))) {}
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {

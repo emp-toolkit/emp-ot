@@ -3,9 +3,14 @@
 #include <cassert>
 #include <memory>
 #include "emp-ot/ot_extension/ot_extension.h"
+#include "emp-ot/base_ot/csw.h"
 #include "emp-ot/tuning.h"
 
 namespace emp {
+
+// Default base OT for IKNP. Change here to swap; OTExtension's contract
+// just needs any malicious-secure (when malicious_=true) OT subclass.
+using IKNPBaseOT = OTCSW;
 
 /*
  * IKNP OT Extension — RandomCOT backend.
@@ -60,7 +65,9 @@ class IKNP : public OTExtension { public:
 
 	explicit IKNP(int party_, IOChannel *io_, bool malicious_ = true,
 	              std::unique_ptr<OT> base_ot_ = nullptr)
-	    : OTExtension(party_, io_, malicious_, std::move(base_ot_)) {}
+	    : OTExtension(party_, io_, malicious_,
+	                  base_ot_ ? std::move(base_ot_)
+	                           : std::unique_ptr<OT>(new IKNPBaseOT(io_))) {}
 
 	// ===== OTExtension contract =====
 	int64_t chunk_ots() const override { return block_size; }

@@ -1,6 +1,7 @@
 #ifndef EMP_FERRET_H_
 #define EMP_FERRET_H_
 #include "emp-ot/ot_extension/ot_extension.h"
+#include "emp-ot/base_ot/csw.h"
 #include "emp-ot/tuning.h"
 #include <memory>
 
@@ -10,6 +11,13 @@
 // forward-declared T as long as the dtor is out-of-line (it is).
 
 namespace emp {
+
+// Default base OT for Ferret. Forwarded into the inner SoftSpokenOT<8>
+// bootstrap (or the inner ferret_b10 in the tiered-bootstrap path).
+// Change here to swap; OTExtension's contract just needs any
+// malicious-secure (when malicious=true) OT.
+using FerretBaseOT = OTCSW;
+
 class MPCOT_Sender;
 class MPCOT_Receiver;
 template <int d> class LpnF2;
@@ -25,7 +33,7 @@ public:
 	PrimalLPNParameter param;
 
 	// `base_ot` is forwarded to the internal SoftSpokenOT<8> bootstrap.
-	// Default (nullptr) → the base allocates an OTPVW.
+	// Default (nullptr) → the base allocates an OTCSW.
 	Ferret(int party, IOChannel *io, bool malicious = true,
 			PrimalLPNParameter param = tuning::ferret_b13,
 			std::unique_ptr<OT> base_ot = nullptr);
