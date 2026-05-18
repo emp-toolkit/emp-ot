@@ -11,9 +11,9 @@
 // are inherited from RandomCOT, which adds the standard 1-bit-per-COT
 // chosen-message correction wrapper.
 //
-// Δ has LSB=1 (forced by setup_send no-arg; required of callers
-// passing setup_send(delta_in)). The LSB-encoded choice convention
-// needs that bit to round-trip the COT relation correctly.
+// Δ has LSB=1 (forced by the base OTExtension ctor / set_delta).
+// The LSB-encoded choice convention needs that bit to round-trip
+// the COT relation correctly.
 //
 // ===== Per-k chunk-size rationale =====
 //
@@ -88,44 +88,14 @@ namespace emp {
 template <int k, int kChunkBlocks>
 SoftSpokenOT<k, kChunkBlocks>::SoftSpokenOT(int party, IOChannel* io_, bool malicious,
                               std::unique_ptr<OT> base_ot)
-    : base_ot_(base_ot ? std::move(base_ot)
-                       : std::unique_ptr<OT>(new OTPVW(io_))),
-      party_(party),
-      malicious_(malicious) {
-    this->io = io_;
-    if (malicious && !base_ot_->is_malicious_secure())
-        error("SoftSpokenOT malicious mode requires a malicious-secure base OT");
-    if (party == ALICE) {
-        // Random Δ with LSB=1 (required by the LSB-encoded choice
-        // convention rcot_send/rcot_recv use; RandomCOT-inherited
-        // send_cot/recv_cot also depend on it via getLSB(data)).
-        block delta;
-        this->prg.random_block(&delta, 1);
-        this->Delta = (delta & lsb_clear_mask) ^ lsb_only_mask;
-    } else {
-        this->Delta = zero_block;
-    }
-}
-
-// Replace the ctor-sampled Δ with a caller-supplied one (e.g. ferret
-// passes its global Δ via this hook). Sender-only; must fire before
-// the streaming bootstrap consumes Δ.
-template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::set_delta(const bool* delta_bool) {
-    assert(party_ == ALICE && "SoftSpokenOT::set_delta: receiver has no Δ");
-    assert(!setup_done_ && "SoftSpokenOT::set_delta: bootstrap already fired");
-    assert(delta_bool[0] && "SoftSpokenOT::set_delta: delta_bool[0] must be true");
-    this->Delta = bool_to_block(delta_bool);
-}
+    : OTExtension(party, io_, malicious, std::move(base_ot)) {}
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
     // Δ = α_0 + α_1·X + … + α_{n-1}·X^{n-1} over F_{2^k}: α_i is the
     // i-th k-bit slice of Δ (LSB-first within α_i). Base OT choice
-    // bits ᾱ_{i,j} = 1 − α_{i,j} are sent MSB-first per α_i.
-    bool delta_bits[128];
-    bits_to_bools(delta_bits, &this->Delta, 128);
-
+    // bits ᾱ_{i,j} = 1 − α_{i,j} are sent MSB-first per α_i. The
+    // base-class delta_bool[] is the Δ bool mirror.
     const int total = n * k;     // == 128
     // unsigned char (not bool) so .data() is contiguous one-byte-each
     // storage; the OT::recv signature still expects bool* so we
@@ -134,8 +104,8 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
     for (int i = 0; i < n; ++i) {
         int alpha = 0;
         for (int j = 1; j <= k; ++j) {
-            // α_{i,j} (j-th MSB of α_i) = bit (k-j) of α_i = delta_bits[i*k + (k-j)].
-            const bool b = delta_bits[i*k + (k - j)];
+            // α_{i,j} (j-th MSB of α_i) = bit (k-j) of α_i = delta_bool[i*k + (k-j)].
+            const bool b = delta_bool[i*k + (k - j)];
             if (b) alpha |= 1 << (k - j);
             choices[i*k + (j-1)] = !b;
         }
@@ -143,8 +113,8 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
     }
 
     BlockVec received(total);
-    base_ot_->recv(received.data(),
-                   reinterpret_cast<bool*>(choices.data()), total);
+    base_ot->recv(received.data(),
+                  reinterpret_cast<bool*>(choices.data()), total);
 
     // Reconstruct each sub-VOLE's punctured GGM tree. cggm::eval_receiver
     // fills leaves[x] for x != alpha_i and pins leaves[alpha_i] to zero.
@@ -155,16 +125,14 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
         cggm::eval_receiver(k, alphas_[i], K_recv, &leaves_recv_[i * Q]);
     }
 
-    if (malicious_) pprf_check_recv();
+    if (malicious) pprf_check_recv();
 
-    setup_done_ = true;
-    is_sender_ = true;
-    // is_sender_ as send_first matches FerretCOT's `party == ALICE` and
-    // IKNP's same convention (the OT-sender side is send_first=true);
-    // all three protocols can share an io. When ferret nests SoftSpoken
-    // it has already enabled FS, so this is a no-op.
-    if (malicious_ && !this->io->fs_enabled())
-        this->io->enable_fs(/*send_first=*/is_sender_);
+    setup_done = true;
+    // OT-sender is the FS send_first side (convention shared across
+    // IKNP / SoftSpoken / FerretCOT). When ferret nests SoftSpoken it
+    // has already enabled FS, so this is a no-op.
+    if (malicious && !this->io->fs_enabled())
+        this->io->enable_fs(/*send_first=*/is_ot_sender());
 }
 
 template <int k, int kChunkBlocks>
@@ -187,14 +155,13 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_recv_() {
             K1[i * k + j] = K1_buf[j];
         }
     }
-    base_ot_->send(K0.data(), K1.data(), total);
+    base_ot->send(K0.data(), K1.data(), total);
 
-    if (malicious_) pprf_check_send();
+    if (malicious) pprf_check_send();
 
-    setup_done_ = true;
-    is_sender_ = false;
-    if (malicious_ && !this->io->fs_enabled())
-        this->io->enable_fs(/*send_first=*/is_sender_);
+    setup_done = true;
+    if (malicious && !this->io->fs_enabled())
+        this->io->enable_fs(/*send_first=*/is_ot_sender());
 }
 
 // =====================================================================
@@ -361,15 +328,15 @@ void SoftSpokenOT<k, kChunkBlocks>::ensure_chunk_scratch_() {
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::do_rcot_send_begin() {
-    if (!setup_done_) bootstrap_send_();
+    if (!setup_done) bootstrap_send_();
     cur_send_session_ = session_++;
     cur_send_b0_ = 0;
-    if (malicious_) check_q_ = zero_block;
+    if (malicious) check_q_ = zero_block;
 }
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::do_rcot_send_end() {
-    if (malicious_) {
+    if (malicious) {
         // Sacrificial 128-OT chunk: extends the chi-fold by one packed
         // F_{2^128} element so the revealed (check_x, check_t) doesn't
         // determine the user-visible R/T values in any single equation.
@@ -446,22 +413,22 @@ void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) 
     // byte layout sse_trans_n128 consumes.
     sse_trans_n128(out, w_planes_chunk, /*ncols=*/bs * 128);
 
-    if (malicious_) combine_send_chunk(out, bs);
+    if (malicious) combine_send_chunk(out, bs);
 
     cur_send_b0_ += bs;
 }
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::do_rcot_recv_begin() {
-    if (!setup_done_) bootstrap_recv_();
+    if (!setup_done) bootstrap_recv_();
     cur_recv_session_ = session_++;
     cur_recv_b0_ = 0;
-    if (malicious_) check_t_ = check_x_ = zero_block;
+    if (malicious) check_t_ = check_x_ = zero_block;
 }
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::do_rcot_recv_end() {
-    if (malicious_) {
+    if (malicious) {
         // Mirror the sender's sacrificial chunk at bs=1, then open the
         // chi-fold accumulators. Must run before the io->flush() below
         // so the (check_x, check_t) bytes go out in the same flush.
@@ -532,7 +499,7 @@ void SoftSpokenOT<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) 
     // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
     sse_trans_n128(out, v_planes_chunk, /*ncols=*/bs * 128);
 
-    if (malicious_) combine_recv_chunk(out, u_canonical, bs);
+    if (malicious) combine_recv_chunk(out, u_canonical, bs);
 
     cur_recv_b0_ += bs;
 }

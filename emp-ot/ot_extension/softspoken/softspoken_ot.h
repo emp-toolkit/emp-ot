@@ -64,10 +64,6 @@ public:
     static constexpr int kChunkOTs          = kChunkBlocks * 128;
     int64_t chunk_ots() const override { return kChunkOTs; }
 
-    // Sender-only Δ override; must fire before the streaming bootstrap.
-    // delta_bool[0] must be true (LSB-encoded choice convention).
-    void set_delta(const bool* delta_bool);
-
 protected:
     void do_rcot_send_begin() override;
     void do_rcot_send_next(block* out) override;
@@ -77,9 +73,6 @@ protected:
     void do_rcot_recv_end() override;
 
 private:
-    std::unique_ptr<OT> base_ot_;
-    int  party_ = 0;
-    bool setup_done_ = false;
     uint64_t session_ = 0;
 
     // COT-Sender (= VOLE-Receiver / PPRF-Receiver) state.
@@ -100,9 +93,7 @@ private:
     BlockVec planes_chunk_;         // n * k * kChunkBlocks blocks
     BlockVec d_bufs_chunk_;         // (n - 1) * kChunkBlocks blocks
 
-    // Malicious-mode state.
-    bool malicious_ = false;
-    bool is_sender_ = false;
+    // Malicious-mode chi-fold state.
     GaloisFieldPacking packer_;     // pack128 for F_{2^128} chi-fold
     block check_q_  = zero_block;   // sender's running fold
     block check_t_  = zero_block;   // receiver's running fold (T_i)

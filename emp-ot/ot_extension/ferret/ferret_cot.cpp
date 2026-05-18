@@ -9,34 +9,25 @@ namespace emp {
 
 FerretCOT::FerretCOT(int party, IOChannel *io,
 		bool malicious, PrimalLPNParameter param,
-		std::unique_ptr<OT> base_ot) {
-	this->party = party;
-	this->io = io;
-	this->is_malicious = malicious;
+		std::unique_ptr<OT> base_ot)
+	: OTExtension(party, io, malicious, std::move(base_ot)) {
 	this->param = param;
-	this->base_ot_ = std::move(base_ot);
-
-	this->bootstrap_done_ = false;
 	this->tree_idx_ = 0;
 
 	// Compute-only allocations and per-party state. Zero network I/O —
 	// the SoftSpoken bootstrap that produces the first round's M base
 	// COTs runs lazily on the first do_rcot_*_begin call.
 	lpn_f2 = std::make_unique<LpnF2<10>>(param.k);
-	if (party == ALICE) {
+	if (is_ot_sender()) {
 		mpcot_sender = std::make_unique<MPCOT_Sender>(param, io);
-		if (is_malicious) mpcot_sender->set_malicious();
-		// Random Δ with LSB pinned to 1 (the LSB-encoded choice
-		// convention shared with the other extensions). Outer protocols
-		// that want a specific Δ call set_delta after construction and
-		// before the first rcot_*.
-		PRG prg;
-		prg.random_block(&Delta);
-		Delta = (Delta & lsb_clear_mask) ^ lsb_only_mask;
-		mpcot_sender->set_delta(Delta);
+		if (malicious) mpcot_sender->set_malicious();
+		// Δ was sampled by the base ctor (LSB pinned to 1). Propagate
+		// it into mpcot; outer protocols that want a specific Δ call
+		// set_delta post-construction (which also re-propagates).
+		mpcot_sender->set_delta(this->Delta);
 	} else {
 		mpcot_receiver = std::make_unique<MPCOT_Receiver>(param, io);
-		if (is_malicious) mpcot_receiver->set_malicious();
+		if (malicious) mpcot_receiver->set_malicious();
 	}
 
 	// Two ping-pong base buffers, each `param.refill_trees * leave_n` blocks.
@@ -64,15 +55,13 @@ int64_t FerretCOT::chunk_ots() const {
 // throughout the rollover, which is correct — from the outside it's
 // still one _next call.
 
-// Replace the ctor-sampled Δ with one supplied by an outer protocol.
-// Must fire before the SoftSpoken bootstrap consumes Δ (i.e. before
-// the first rcot_*_begin call).
-void FerretCOT::set_delta(const bool *delta_bool) {
-	assert(party == ALICE && "FerretCOT::set_delta: receiver has no Δ");
-	assert(!bootstrap_done_ && "FerretCOT::set_delta: bootstrap already fired");
-	assert(delta_bool[0] && "FerretCOT::set_delta: delta_bool[0] must be true");
-	Delta = bool_to_block(delta_bool);
-	mpcot_sender->set_delta(Delta);
+// Override the base set_delta to propagate Δ into the sender-side
+// mpcot state too. Base set_delta updates Delta + delta_bool[] and
+// runs the standard preconditions (sender role, !setup_done,
+// bits[0]).
+void FerretCOT::set_delta(const bool *bits) {
+	OTExtension::set_delta(bits);
+	mpcot_sender->set_delta(this->Delta);
 }
 
 // Bootstrap: writes the first round's M base COTs into
@@ -81,14 +70,14 @@ void FerretCOT::set_delta(const bool *delta_bool) {
 // via the refill trees and every _begin swaps — steady state with
 // no special-case for "first call".
 //
-// Tiered source: when param.M is large (i.e. b11 / b12 / b13), we
-// nest a ferret_b10 instance under SoftSpoken<8> so the expensive
-// SoftSpoken extend only runs against b10's small M (~74k base COTs
-// instead of b13's 541k), cutting bootstrap bytes roughly 6×. One
-// round of b10 produces t·2^d = 870k RCOTs which exceeds every
-// other param's M, so a single b10 invocation suffices. The b10
-// instance itself sees M=74k, below the threshold, so it drops
-// straight to SoftSpoken — at most one level of nesting.
+// Tiered source: when param.M is large (b11 / b12 / b13), we nest a
+// ferret_b10 instance under SoftSpoken<8> so the expensive SoftSpoken
+// extend only runs against b10's small M (~74k base COTs) instead of
+// the full param.M, cutting bootstrap bytes by ~7×. One round of b10
+// produces t·2^d = 870k RCOTs which exceeds every other param's M
+// (b13 at t=1900 needs 549k), so a single b10 invocation suffices.
+// The b10 instance itself sees M=74k, below the threshold, so it
+// drops straight to SoftSpoken — at most one level of nesting.
 //
 // IOChannel FS transcript is enabled here before either path. In
 // mali mode it binds the per-tree chi seeds pulled by MPCOT via
@@ -102,34 +91,32 @@ void FerretCOT::set_delta(const bool *delta_bool) {
 // we override it with FerretCOT's Δ via set_delta so the produced
 // base COTs match this FerretCOT instance's correlation.
 void FerretCOT::bootstrap_base_cots_() {
-	if (bootstrap_done_) return;
+	if (setup_done) return;
 	if (!io->fs_enabled())
-		io->enable_fs(/*send_first=*/party == ALICE);
+		io->enable_fs(/*send_first=*/is_ot_sender());
 	auto pump = [&](auto* src) {
-		if (party == ALICE) {
-			bool delta_bool[128];
-			bits_to_bools(delta_bool, &Delta, 128);
-			delta_bool[0] = true;
-			src->set_delta(delta_bool);
+		if (is_ot_sender()) {
+			// Forward this instance's Δ to the inner source's sender.
+			src->set_delta(this->delta_bool);
 			src->rcot_send(ot_pre_data_next_.data(), param.M);
 		} else {
 			src->rcot_recv(ot_pre_data_next_.data(), param.M);
 		}
 	};
 	if (param.M > 2 * ferret_b10.M) {
-		FerretCOT b10(party, io, /*malicious=*/is_malicious,
-		              ferret_b10, std::move(base_ot_));
+		FerretCOT b10(party, io, /*malicious=*/malicious,
+		              ferret_b10, std::move(base_ot));
 		pump(&b10);
 	} else {
 		// kChunkBlocks=580 → 74,240 OTs/chunk, sized so the tier's
 		// b10.M = 74,164 base-COT request fits in a single SoftSpoken
 		// chunk (default 1024-block chunk would overproduce 131k OTs
 		// and ship the unused ~57k overhead on the wire).
-		SoftSpokenOT<8, 580> ssp(party, io, /*malicious=*/is_malicious,
-		                         std::move(base_ot_));
+		SoftSpokenOT<8, 580> ssp(party, io, /*malicious=*/malicious,
+		                         std::move(base_ot));
 		pump(&ssp);
 	}
-	bootstrap_done_ = true;
+	setup_done = true;
 }
 
 // =====================================================================

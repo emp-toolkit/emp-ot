@@ -3,7 +3,6 @@
 #include <cassert>
 #include <memory>
 #include "emp-ot/ot_extension/ot_extension.h"
-#include "emp-ot/base_ot/pvw.h"
 
 namespace emp {
 
@@ -45,15 +44,11 @@ namespace emp {
 class IKNP : public OTExtension { public:
 	// ===== State =====
 	static constexpr int64_t block_size = 1024 * 2;
-	bool s[128];
-	PRG prg, G0[128], G1[128];
+	// Per-row PRG streams. choice_prg samples the bit-packed choice
+	// vector r on the receiver. The sender-side Δ bool form lives
+	// on the base as `delta_bool[]` and is read in do_rcot_send_next.
+	PRG G0[128], G1[128];
 	PRG choice_prg;
-	int  party = 0;        // role; locked at construction
-	bool malicious = true;
-	bool is_sender = false;
-	// Setup state: setup() flips this to true and is a no-op thereafter.
-	// do_rcot_*_begin auto-triggers setup() when false.
-	bool setup_done = false;
 	// Packs 128 consecutive COT outputs into a single F_{2^128} element
 	// via the gadget (1, X, ..., X^{127}). Lets the malicious check
 	// chi-combine 128x fewer elements than the unpacked version.
@@ -62,34 +57,9 @@ class IKNP : public OTExtension { public:
 	// Sender uses check_q; receiver uses check_t and check_x.
 	block check_q, check_t, check_x;
 
-	// User-supplied base OT, owned by IKNP. Defaults to OTPVW (DDH
-	// messy-mode PVW '08 — malicious-secure). Pass a different one
-	// (e.g., OTCSW or OTPVWKyber) via the fourth ctor arg to swap the
-	// bootstrap base.
-	std::unique_ptr<OT> base_ot;
-
 	explicit IKNP(int party_, IOChannel *io_, bool malicious_ = true,
 	              std::unique_ptr<OT> base_ot_ = nullptr)
-	    : party(party_), malicious(malicious_) {
-		this->io = io_;
-		base_ot = base_ot_ ? std::move(base_ot_)
-		                   : std::unique_ptr<OT>(new OTPVW(io_));
-		if (malicious && !base_ot->is_malicious_secure())
-			error("IKNP malicious mode requires a malicious-secure base OT");
-		if (party_ == ALICE) {
-			// Random Δ with the bit-0=1 invariant (row-0 collapse, see
-			// class comment). The block form (this->Delta) and the
-			// bool[128] form (s) stay in sync via bool_to_block.
-			prg.random_bool(s, 128);
-			s[0] = true;
-			this->Delta = bool_to_block(s);
-		}
-	}
-
-	// Replace the ctor-sampled Δ with one supplied by an outer protocol.
-	// Sender-only; must fire before the streaming bootstrap.
-	// delta_bool[0] must be true.
-	void set_delta(const bool *delta_bool);
+	    : OTExtension(party_, io_, malicious_, std::move(base_ot_)) {}
 
 	// ===== OTExtension contract =====
 	int64_t chunk_ots() const override { return block_size; }

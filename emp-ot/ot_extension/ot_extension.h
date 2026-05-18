@@ -4,7 +4,9 @@
 #include <cassert>
 #include <cstring>
 #include <algorithm>
+#include <memory>
 #include "emp-ot/ot.h"
+#include "emp-ot/base_ot/pvw.h"
 
 namespace emp {
 
@@ -19,8 +21,48 @@ namespace emp {
 // _begin/_next/_end are concrete and enforce the session lifecycle
 // (assert + flag flip) before delegating, so each backend gets the
 // same in_*_session_ tripwire for free.
+//
+// Role / config plumbing — `party`, `malicious`, `setup_done`, the
+// owned `base_ot`, and the sender-side random Δ with LSB pinned to
+// 1 — also live here so subclasses don't redeclare them.
 class OTExtension : public RandomCOT {
 public:
+    // Role; locked at construction. is_ot_sender() (ALICE) iff this
+    // instance produces sender-side RCOT outputs. The OT-sender role
+    // also serves as the IOChannel FS send_first side and owns Δ.
+    int  party = 0;
+    bool malicious = false;
+    // Subclass do_rcot_*_begin trips this on first call; set_delta and
+    // any pre-bootstrap configuration assert !setup_done.
+    bool setup_done = false;
+    // Owned base OT for the subclass's bootstrap. Default is OTPVW
+    // (DDH messy-mode PVW '08, malicious-secure); override by passing
+    // a different concrete OT into the subclass ctor.
+    std::unique_ptr<OT> base_ot;
+    // Sender-side bool[128] mirror of this->Delta. Maintained in sync
+    // by the base ctor and set_delta — subclasses that need per-bit
+    // access during bootstrap (IKNP per-row XOR, SoftSpoken α-slice
+    // extraction) read this directly instead of redoing bits_to_bools.
+    // Zero-valued on the receiver (Δ is sender-only).
+    bool delta_bool[128] = {};
+
+    bool is_ot_sender() const { return party == ALICE; }
+
+    // Replace the ctor-sampled Δ with one supplied by an outer protocol.
+    // Sender-only; must fire before the streaming bootstrap consumes Δ
+    // (i.e. before the first rcot_*_begin call). bits[0] must be true
+    // (the COT LSB convention shared by all three extensions).
+    //
+    // Subclasses that need to propagate Δ into auxiliary state (e.g.
+    // FerretCOT's mpcot_sender) override and call this base first.
+    virtual void set_delta(const bool* bits) {
+        assert(is_ot_sender() && "set_delta: receiver has no \xCE\x94");
+        assert(!setup_done && "set_delta: bootstrap already fired");
+        assert(bits[0] && "set_delta: bits[0] must be true (LSB invariant)");
+        memcpy(this->delta_bool, bits, sizeof(this->delta_bool));
+        this->Delta = bool_to_block(this->delta_bool);
+    }
+
     // Per-_next chunk size in OTs. Subclasses pick a value that's
     // natural for their pipeline (one cGGM tree's leaves for ferret;
     // the max-batch unit for IKNP / SoftSpoken). Constant per
@@ -66,11 +108,10 @@ public:
     // producing more chunks, so repeated tiny rcot_send calls don't
     // pay a fresh chunk per call.
     //
-    // Setup is triggered through the streaming begin path: each
-    // subclass's do_rcot_*_begin runs setup() on first entry when
-    // its setup_done flag is still false. Callers may also invoke
-    // setup() explicitly (e.g. to inject an external Δ) before the
-    // first rcot_* call; the second setup() call is a no-op.
+    // Setup runs lazily on the first do_rcot_*_begin (gated by
+    // setup_done). Callers that need to inject Δ before bootstrap
+    // call set_delta on the sender side; do_rcot_send_begin will
+    // observe the injected Delta on its first run.
     void rcot_send(block* data, int64_t num) final override {
         rcot_run(data, num, /*sender=*/true);
     }
@@ -84,11 +125,37 @@ public:
     }
 
 protected:
+    // Shared ctor used by every concrete extension. Owns the base_ot
+    // default (OTPVW), the malicious-secure cross-check, and the
+    // sender-side random Δ with LSB pinned to 1. Subclasses pass in
+    // their `(party, io, malicious)` and a base_ot if they want a
+    // non-default one; everything else is handled here.
+    OTExtension(int party_, IOChannel* io_, bool malicious_,
+                std::unique_ptr<OT> base_ot_ = nullptr)
+        : party(party_), malicious(malicious_),
+          base_ot(base_ot_ ? std::move(base_ot_)
+                           : std::unique_ptr<OT>(new OTPVW(io_))) {
+        this->io = io_;
+        if (malicious && !base_ot->is_malicious_secure())
+            error("OT extension malicious mode requires a malicious-secure base OT");
+        if (is_ot_sender()) {
+            // Random Δ with bit 0 = 1 (LSB-encoded choice convention
+            // shared across IKNP / SoftSpoken / FerretCOT). Reusing
+            // set_delta keeps the (Delta, delta_bool) mirror logic in
+            // one place.
+            bool bits[128];
+            this->prg.random_bool(bits, 128);
+            bits[0] = true;
+            set_delta(bits);
+        } else {
+            this->Delta = zero_block;
+        }
+    }
+
     // Subclass implementation hooks. Called from the public concrete
     // _begin/_next/_end above after the lifecycle asserts have
-    // passed. do_*_begin must trigger setup() on its own first-call
-    // path (each subclass keeps its own setup-done flag under a
-    // different name).
+    // passed. do_*_begin must trigger first-call setup itself (gated
+    // by the inherited `setup_done` flag).
     virtual void do_rcot_send_begin() = 0;
     virtual void do_rcot_send_next(block* out) = 0;
     virtual void do_rcot_send_end() = 0;

@@ -4,16 +4,6 @@
 
 namespace emp {
 
-// Override the ctor-sampled Δ. Must fire before the first rcot_*
-// call (the bootstrap inside do_rcot_send_begin consumes `s`).
-void IKNP::set_delta(const bool *delta_bool) {
-	assert(party == ALICE && "IKNP::set_delta: receiver has no Δ");
-	assert(!setup_done && "IKNP::set_delta: bootstrap already fired");
-	assert(delta_bool[0] && "IKNP::set_delta: delta_bool[0] must be true (bit_0(Δ) = 1 invariant)");
-	memcpy(s, delta_bool, 128);
-	this->Delta = bool_to_block(s);
-}
-
 // Naming convention worth knowing: on the sender, `k0[i]` (and the
 // derived `G0[i]`) is the base-OT-chosen key — i.e. whichever of the
 // receiver's (k0_i, k1_i) matches s_i — NOT the literal "zero side".
@@ -27,22 +17,21 @@ void IKNP::set_delta(const bool *delta_bool) {
 // which gives the desired q_i ⊕ t_i = s_i · r per row.
 void IKNP::do_rcot_send_begin() {
 	if (!setup_done) {
-		// Sender bootstrap: consume `s` (Δ-bits, set in ctor or
-		// overridden by set_delta) via base_ot->recv, reseed G0[1..127]
-		// from the received keys. bit_0=1 invariant pinned by ctor /
-		// set_delta. is_sender as send_first matches FerretCOT's
-		// `party == ALICE` since ALICE is sender by convention; both
-		// protocols can share an io.
-		is_sender = true;
+		// Sender bootstrap: feed delta_bool[1..127] into base_ot->recv,
+		// reseed G0[1..127] from the received keys. delta_bool[] is the
+		// Δ bool mirror maintained by the base (bit_0 = 1 invariant
+		// enforced by the base ctor / set_delta). send_first matches
+		// the OT-sender convention shared across IKNP / SoftSpoken /
+		// FerretCOT.
 		block k0[128];
-		base_ot->recv(k0 + 1, s + 1, 127);
+		base_ot->recv(k0 + 1, delta_bool + 1, 127);
 		for (int64_t i = 1; i < 128; ++i)
 			G0[i].reseed(&k0[i]);
 		if (malicious && !io->fs_enabled())
-			io->enable_fs(/*send_first=*/is_sender);
+			io->enable_fs(/*send_first=*/is_ot_sender());
 		setup_done = true;
 	}
-	assert(is_sender && "rcot_send_begin: not in sender role");
+	assert(is_ot_sender() && "rcot_send_begin: not in sender role");
 	if (malicious) check_q = makeBlock(0, 0);
 }
 
@@ -75,11 +64,11 @@ void IKNP::do_rcot_send_end() {
 // the next read — keeping `tmp` to a single row and pipelining the
 // network with the per-row XOR work.
 //
-// Row 0 forced to 0: with bit_0(Delta) = s[0] = 1 the IKNP relation at
-// bit 0 becomes 0 ^ bit_0(M_k) = r[k] · 1, so bit_0(M_k) = choice
-// directly. Both sides skip row 0 on the wire and in the transcript
-// (both know it's zeros), so only rows 1..127 are exchanged and hashed
-// — same chi seed on both sides.
+// Row 0 forced to 0: with bit_0(Delta) = delta_bool[0] = 1 the IKNP
+// relation at bit 0 becomes 0 ^ bit_0(M_k) = r[k] · 1, so bit_0(M_k)
+// = choice directly. Both sides skip row 0 on the wire and in the
+// transcript (both know it's zeros), so only rows 1..127 are
+// exchanged and hashed — same chi seed on both sides.
 void IKNP::do_rcot_send_next(block *out) {
 	block t[block_size];
 	block tmp[block_size / 128];
@@ -88,7 +77,7 @@ void IKNP::do_rcot_send_next(block *out) {
 	for (int64_t i = 1; i < 128; ++i) {
 		io->recv_data(tmp, block_size / 8);
 		G0[i].random_data(t + (i * row_blocks), block_size / 8);
-		if (s[i])
+		if (delta_bool[i])
 			xorBlocksTo_arr(t + (i * row_blocks), tmp, row_blocks);
 	}
 	sse_trans_n128(out, t, block_size);
@@ -120,20 +109,19 @@ void IKNP::do_rcot_recv_begin() {
 	if (!setup_done) {
 		// Receiver bootstrap: sample (k0, k1) ← PRG, base_ot->send,
 		// reseed G0/G1.
-		is_sender = false;
 		block k0[128], k1[128];
-		prg.random_block(k0, 128);
-		prg.random_block(k1, 128);
+		this->prg.random_block(k0, 128);
+		this->prg.random_block(k1, 128);
 		base_ot->send(k0 + 1, k1 + 1, 127);   // base_ot->send flushes internally
 		for (int64_t i = 1; i < 128; ++i) {
 			G0[i].reseed(&k0[i]);
 			G1[i].reseed(&k1[i]);
 		}
 		if (malicious && !io->fs_enabled())
-			io->enable_fs(/*send_first=*/is_sender);
+			io->enable_fs(/*send_first=*/is_ot_sender());
 		setup_done = true;
 	}
-	assert(!is_sender && "rcot_recv_begin: not in receiver role");
+	assert(!is_ot_sender() && "rcot_recv_begin: not in receiver role");
 	if (malicious) {
 		check_t = makeBlock(0, 0);
 		check_x = makeBlock(0, 0);
