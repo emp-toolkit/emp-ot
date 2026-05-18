@@ -1,7 +1,7 @@
-#ifndef EMP_FERRET_COT_H_
-#define EMP_FERRET_COT_H_
+#ifndef EMP_FERRET_H_
+#define EMP_FERRET_H_
 #include "emp-ot/ot_extension/ot_extension.h"
-#include "emp-ot/ot_extension/ferret/constants.h"
+#include "emp-ot/tuning.h"
 #include <memory>
 
 // Forward-declare ferret internals so the public header doesn't pull
@@ -13,9 +13,6 @@ namespace emp {
 class MPCOT_Sender;
 class MPCOT_Receiver;
 template <int d> class LpnF2;
-}  // namespace emp
-
-namespace emp {
 
 /*
  * Ferret COT binary version
@@ -23,17 +20,17 @@ namespace emp {
  * https://eprint.iacr.org/2020/924.pdf
  *
  */
-class FerretCOT: public OTExtension {
+class Ferret: public OTExtension {
 public:
 	PrimalLPNParameter param;
 
 	// `base_ot` is forwarded to the internal SoftSpokenOT<8> bootstrap.
 	// Default (nullptr) → the base allocates an OTPVW.
-	FerretCOT(int party, IOChannel *io, bool malicious = true,
-			PrimalLPNParameter param = ferret_b13,
+	Ferret(int party, IOChannel *io, bool malicious = true,
+			PrimalLPNParameter param = tuning::ferret_b13,
 			std::unique_ptr<OT> base_ot = nullptr);
 
-	~FerretCOT();
+	~Ferret();
 
 	// Override the base set_delta to also propagate Δ into the
 	// sender-side mpcot state. Pre-bootstrap only.
@@ -76,7 +73,8 @@ private:
 	// on first entry.
 	void bootstrap_base_cots_();
 
-	int tree_idx_;        // current tree index within the round, 0..param.t-1
+	int tree_idx_;          // current tree index within the round, 0..param.t-1
+	bool lpn_seed_set_ = false;   // lpn_f2 has been seeded for this Ferret's lifetime
 
 	// Two ping-pong base buffers, each refill_trees * leave_n blocks.
 	// `curr_` holds the round's M base COTs (cGGM corrections, LPN

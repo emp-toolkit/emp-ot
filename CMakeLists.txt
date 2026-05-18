@@ -33,7 +33,7 @@ find_package(emp-tool 1.0 REQUIRED)
 # ---------------------------------------------------------------------
 # Library target
 # ---------------------------------------------------------------------
-# IKNP and FerretCOT bodies live in .cpp now (no longer header-only) —
+# IKNP and Ferret bodies live in .cpp now (no longer header-only) —
 # the rest of the headers are still consumed inline.
 #
 # Verbatim pq-crystals/kyber sources sit in emp-ot/base_ot/pvw_kyber/kyber/;
@@ -53,7 +53,7 @@ set(KYBER_C_SOURCES
 
 add_library(emp-ot STATIC
     emp-ot/ot_extension/iknp.cpp
-    emp-ot/ot_extension/ferret/ferret_cot.cpp
+    emp-ot/ot_extension/ferret/ferret.cpp
     emp-ot/ot_extension/softspoken/softspoken_ot.cpp
     emp-ot/base_ot/pvw_kyber/pvw_kyber.cpp
     ${KYBER_C_SOURCES})

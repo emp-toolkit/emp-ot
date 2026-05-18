@@ -1,13 +1,13 @@
-// Out-of-line definitions for FerretCOT. See ferret_cot.h for the API.
+// Out-of-line definitions for Ferret. See ferret.h for the API.
 
-#include "emp-ot/ot_extension/ferret/ferret_cot.h"
+#include "emp-ot/ot_extension/ferret/ferret.h"
 #include "emp-ot/ot_extension/ferret/mpcot.h"
 #include "emp-ot/ot_extension/ferret/lpn_f2.h"
 #include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
 
 namespace emp {
 
-FerretCOT::FerretCOT(int party, IOChannel *io,
+Ferret::Ferret(int party, IOChannel *io,
 		bool malicious, PrimalLPNParameter param,
 		std::unique_ptr<OT> base_ot)
 	: OTExtension(party, io, malicious, std::move(base_ot)) {
@@ -39,9 +39,9 @@ FerretCOT::FerretCOT(int party, IOChannel *io,
 	ot_pre_data_next_.resize(buf_blocks);
 }
 
-FerretCOT::~FerretCOT() = default;
+Ferret::~Ferret() = default;
 
-int64_t FerretCOT::chunk_ots() const {
+int64_t Ferret::chunk_ots() const {
 	return int64_t{1} << param.tree_depth;  // = leave_n
 }
 
@@ -59,7 +59,7 @@ int64_t FerretCOT::chunk_ots() const {
 // mpcot state too. Base set_delta updates Delta + delta_bool[] and
 // runs the standard preconditions (sender role, !setup_done,
 // bits[0]).
-void FerretCOT::set_delta(const bool *bits) {
+void Ferret::set_delta(const bool *bits) {
 	OTExtension::set_delta(bits);
 	mpcot_sender->set_delta(this->Delta);
 }
@@ -81,16 +81,16 @@ void FerretCOT::set_delta(const bool *bits) {
 //
 // IOChannel FS transcript is enabled here before either path. In
 // mali mode it binds the per-tree chi seeds pulled by MPCOT via
-// io->get_digest(); in both modes it gives FerretCOT a fresh
+// io->get_digest(); in both modes it gives Ferret a fresh
 // per-round LPN seed (do_rcot_*_begin reseeds lpn_f2 from the
 // digest at round entry). The fs_enabled() guard handles multiple
-// FerretCOT setups sharing one io (the ot_extension and ferret
+// Ferret setups sharing one io (the ot_extension and ferret
 // bench harnesses build semi + mali back-to-back on one NetIO).
 //
 // Both source backends would auto-sample a fresh Δ on the sender;
-// we override it with FerretCOT's Δ via set_delta so the produced
-// base COTs match this FerretCOT instance's correlation.
-void FerretCOT::bootstrap_base_cots_() {
+// we override it with Ferret's Δ via set_delta so the produced
+// base COTs match this Ferret instance's correlation.
+void Ferret::bootstrap_base_cots_() {
 	if (setup_done) return;
 	if (!io->fs_enabled())
 		io->enable_fs(/*send_first=*/is_ot_sender());
@@ -100,30 +100,56 @@ void FerretCOT::bootstrap_base_cots_() {
 			src->set_delta(this->delta_bool);
 			src->rcot_send(ot_pre_data_next_.data(), param.M);
 		} else {
+			// Forward a sub-seed pulled from this instance's choice_prg
+			// to the inner source's receiver. The inner's base-COT LSBs
+			// become our MPCOT alpha positions, so its choice randomness
+			// fully determines ours — threading a seed pulled from our
+			// own PRG gives end-to-end choice control from the top API.
+			block inner_seed;
+			this->choice_prg.random_block(&inner_seed, 1);
+			src->set_choice_seed(inner_seed);
 			src->rcot_recv(ot_pre_data_next_.data(), param.M);
 		}
 	};
-	if (param.M > 2 * ferret_b10.M) {
-		FerretCOT b10(party, io, /*malicious=*/malicious,
-		              ferret_b10, std::move(base_ot));
+	if (param.M > tuning::ferret_bootstrap_nest_factor * tuning::ferret_b10.M) {
+		Ferret b10(party, io, /*malicious=*/malicious,
+		              tuning::ferret_b10, std::move(base_ot));
 		pump(&b10);
 	} else {
-		// kChunkBlocks=580 → 74,240 OTs/chunk, sized so the tier's
-		// b10.M = 74,164 base-COT request fits in a single SoftSpoken
-		// chunk (default 1024-block chunk would overproduce 131k OTs
-		// and ship the unused ~57k overhead on the wire).
-		SoftSpokenOT<8, 580> ssp(party, io, /*malicious=*/malicious,
-		                         std::move(base_ot));
+		// kChunkBlocks sized so b10.M (~74k) fits in a single SoftSpoken
+		// chunk (default 1024-block chunk would overproduce ~131k OTs
+		// and ship the unused ~57k overhead on the wire). Tunable
+		// via tuning::softspoken_ferret_bootstrap_chunk_blocks.
+		SoftSpokenOT<8, tuning::softspoken_ferret_bootstrap_chunk_blocks>
+			ssp(party, io, /*malicious=*/malicious, std::move(base_ot));
 		pump(&ssp);
 	}
 	setup_done = true;
+}
+
+// Derive the per-round LPN seed: H("LPN seed" || receiver-supplied
+// block from choice_prg). Domain-separated so the resulting seed is
+// unrelated to other uses of choice_prg (alpha derivation, nested
+// sub-seeds). Hashing also breaks any algebraic relation to
+// choice_prg state — only the receiver knows that state, but the
+// LPN seed is sent in the clear.
+static block derive_lpn_seed(const block& r) {
+	Hash h;
+	static const char label[] = "LPN seed";
+	h.put(label, sizeof(label) - 1);
+	h.put(&r, sizeof(r));
+	unsigned char digest[Hash::DIGEST_SIZE];
+	h.digest(digest);
+	block out;
+	memcpy(&out, digest, sizeof(block));
+	return out;
 }
 
 // =====================================================================
 // Streaming send-side
 // =====================================================================
 
-void FerretCOT::do_rcot_send_begin() {
+void Ferret::do_rcot_send_begin() {
 	bootstrap_base_cots_();
 	// Swap in the fresh M produced by previous end's refill (or by
 	// SoftSpoken bootstrap on the first call). After this, curr_
@@ -132,14 +158,21 @@ void FerretCOT::do_rcot_send_begin() {
 	std::swap(ot_pre_data_curr_, ot_pre_data_next_);
 	tree_idx_ = 0;
 	mpcot_sender->run_begin();
-	// Per-round LPN seed snapshotted from the FS transcript: binds
-	// every byte exchanged from setup through the previous round's
-	// chi-fold check. Both parties absorb the same byte stream so
-	// they derive the same seed.
-	lpn_f2->reseed(io->get_digest());
+	// LPN seed is picked once per Ferret lifetime: receiver derives it
+	// from its choice_prg and sends to the sender; both reseed lpn_f2.
+	// Subsequent rounds let lpn_f2's PRG state advance naturally
+	// through compute_slice — no reseed needed, and the receiver's
+	// choice_prg fully determines every choice bit emitted by this
+	// instance.
+	if (!lpn_seed_set_) {
+		block lpn_seed;
+		io->recv_block(&lpn_seed, 1);
+		lpn_f2->reseed(lpn_seed);
+		lpn_seed_set_ = true;
+	}
 }
 
-void FerretCOT::do_rcot_send_next(block* out) {
+void Ferret::do_rcot_send_next(block* out) {
 	// Disjoint layout in [0, M):
 	//   chi-check : [0, 128)
 	//   LPN       : [128, 128 + param.k)
@@ -165,7 +198,7 @@ void FerretCOT::do_rcot_send_next(block* out) {
 	tree_idx_++;
 }
 
-void FerretCOT::do_rcot_send_end() {
+void Ferret::do_rcot_send_end() {
 	const int64_t leave_n = chunk_ots();
 	const int64_t cggm_off = kConsistCheckCotNum + param.k;
 	// Run param.refill_trees trees, output → next_ buffer (= the next
@@ -191,15 +224,26 @@ void FerretCOT::do_rcot_send_end() {
 // Streaming recv-side (mirrors send)
 // =====================================================================
 
-void FerretCOT::do_rcot_recv_begin() {
+void Ferret::do_rcot_recv_begin() {
 	bootstrap_base_cots_();
 	std::swap(ot_pre_data_curr_, ot_pre_data_next_);
 	tree_idx_ = 0;
 	mpcot_receiver->run_begin();
-	lpn_f2->reseed(io->get_digest());
+	// One-shot LPN seed exchange at the first round; see send side
+	// for rationale. PRG state of lpn_f2 then evolves continuously
+	// across all subsequent rounds for this Ferret instance.
+	if (!lpn_seed_set_) {
+		block r;
+		this->choice_prg.random_block(&r, 1);
+		block lpn_seed = derive_lpn_seed(r);
+		io->send_block(&lpn_seed, 1);
+		io->flush();
+		lpn_f2->reseed(lpn_seed);
+		lpn_seed_set_ = true;
+	}
 }
 
-void FerretCOT::do_rcot_recv_next(block* out) {
+void Ferret::do_rcot_recv_next(block* out) {
 	const int64_t cggm_off = kConsistCheckCotNum + param.k;
 
 	if (tree_idx_ == param.t - param.refill_trees) {
@@ -215,7 +259,7 @@ void FerretCOT::do_rcot_recv_next(block* out) {
 	tree_idx_++;
 }
 
-void FerretCOT::do_rcot_recv_end() {
+void Ferret::do_rcot_recv_end() {
 	const int64_t leave_n = chunk_ots();
 	const int64_t cggm_off = kConsistCheckCotNum + param.k;
 	for (int64_t i = 0; i < param.refill_trees; ++i) {

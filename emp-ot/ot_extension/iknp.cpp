@@ -22,7 +22,7 @@ void IKNP::do_rcot_send_begin() {
 		// Δ bool mirror maintained by the base (bit_0 = 1 invariant
 		// enforced by the base ctor / set_delta). send_first matches
 		// the OT-sender convention shared across IKNP / SoftSpoken /
-		// FerretCOT.
+		// Ferret.
 		block k0[128];
 		base_ot->recv(k0 + 1, delta_bool + 1, 127);
 		for (int64_t i = 1; i < 128; ++i)
@@ -92,9 +92,8 @@ void IKNP::do_rcot_send_next(block *out) {
 // after this chunk's u-matrix bytes have been recv'd (and absorbed by
 // FS).
 void IKNP::combine_send(block *out) {
-	PRG chiPRG;
 	block seed = io->get_digest();
-	chiPRG.reseed(&seed);
+	PRG chiPRG(&seed);
 	block Q_i, chi, tmp;
 	constexpr int64_t chunks = block_size / 128;
 	for (int64_t i = 0; i < chunks; ++i) {
@@ -108,7 +107,9 @@ void IKNP::combine_send(block *out) {
 void IKNP::do_rcot_recv_begin() {
 	if (!setup_done) {
 		// Receiver bootstrap: sample (k0, k1) ← PRG, base_ot->send,
-		// reseed G0/G1.
+		// reseed G0/G1. The base-class choice_prg supplies the per-
+		// chunk r vector at do_rcot_recv_next; outer protocols can
+		// override its seed pre-bootstrap via set_choice_seed.
 		block k0[128], k1[128];
 		this->prg.random_block(k0, 128);
 		this->prg.random_block(k1, 128);
@@ -175,9 +176,8 @@ void IKNP::do_rcot_recv_next(block *out) {
 // sender (after this chunk's u-matrix bytes crossed the wire) so
 // per-chunk chi values match.
 void IKNP::combine_recv(block *out, block *r) {
-	PRG chiPRG;
 	block seed = io->get_digest();
-	chiPRG.reseed(&seed);
+	PRG chiPRG(&seed);
 	block T_i, R_i, chi, tmp;
 	constexpr int64_t chunks = block_size / 128;
 	for (int64_t i = 0; i < chunks; ++i) {

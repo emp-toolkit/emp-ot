@@ -1,6 +1,7 @@
 #ifndef EMP_OT_H__
 #define EMP_OT_H__
 #include <emp-tool/emp-tool.h>
+#include "emp-ot/tuning.h"
 
 namespace emp {
 
@@ -14,7 +15,7 @@ class OT { public:
 	// Static security level of the protocol. Base OTs override to true
 	// when malicious-secure (OTPVW / OTCSW / OTPVWKyber) and false
 	// otherwise (OTCO). Used by extensions (IKNP / SoftSpokenOT /
-	// FerretCOT) to verify at runtime that their own malicious mode
+	// Ferret) to verify at runtime that their own malicious mode
 	// is paired with a malicious-secure base OT. Default returns false
 	// — safest for any unannotated subclass.
 	virtual bool is_malicious_secure() const { return false; }
@@ -28,9 +29,8 @@ class COT : public OT {
 private:
 	// Tile size for the chosen-input MITCCRH wrapper: each tile hashes
 	// `ot_bsize` COT outputs in one ParaEnc<1, ot_bsize> AES-NI call.
-	// 8 sits at emp-tool's K*N ≤ 16 sweet spot (round keys + plaintexts
-	// stay register-resident on x86 AVX-512 / NEON).
-	static constexpr int64_t ot_bsize = 8;
+	// Value lives in tuning.h; see cot_chosen_input_tile for rationale.
+	static constexpr int64_t ot_bsize = tuning::cot_chosen_input_tile;
 
 public:
 	block Delta;     // sender's correlation; exposed for test / check code

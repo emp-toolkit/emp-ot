@@ -5,6 +5,7 @@
 #include "emp-ot/base_ot/pvw.h"
 #include "emp-ot/ot_extension/cggm.h"
 #include "emp-ot/ot_extension/softspoken/sfvole_butterfly.h"
+#include "emp-ot/tuning.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -24,14 +25,12 @@ constexpr int n_subvoles() {
 }
 
 // Maximum chunk size (in bpr-blocks) the streaming pipeline emits.
-constexpr int kMaxChunkBlocks = 1024;
+constexpr int kMaxChunkBlocks = emp::tuning::softspoken_chunk_blocks_max;
 
-// Per-k chunk size (in bpr-blocks). Rationale in softspoken_ot.cpp.
+// Per-k chunk size (in bpr-blocks). Values live in tuning.h.
 template <int k>
 constexpr int chunk_blocks_for() {
-    if constexpr (k <= 2)      return 128;
-    else if constexpr (k <= 4) return 1024;
-    else                       return 1024;
+    return emp::tuning::softspoken_chunk_blocks<k>();
 }
 
 }}  // namespace emp::softspoken
@@ -119,8 +118,8 @@ private:
 extern template class SoftSpokenOT<2>;
 extern template class SoftSpokenOT<4>;
 extern template class SoftSpokenOT<8>;
-// Smaller-chunk variant for FerretCOT::bootstrap_base_cots_.
-extern template class SoftSpokenOT<8, 580>;
+// Smaller-chunk variant for Ferret::bootstrap_base_cots_.
+extern template class SoftSpokenOT<8, emp::tuning::softspoken_ferret_bootstrap_chunk_blocks>;
 
 } // namespace emp
 #endif

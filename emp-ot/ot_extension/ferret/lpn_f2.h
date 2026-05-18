@@ -2,6 +2,7 @@
 #define EMP_OT_LPN_F2_H__
 
 #include "emp-tool/emp-tool.h"
+#include "emp-ot/tuning.h"
 
 namespace emp {
 
@@ -19,7 +20,7 @@ namespace emp {
 // responsible for sourcing a fresh per-round seed (e.g. ferret
 // passes io->get_digest() from its IOChannel FS transcript) and
 // reseeding before the first compute_slice of each round.
-template<int d = 10>
+template<int d = tuning::lpn_d>
 class LpnF2 { public:
 	int k, mask;
 	PRG prg_;
@@ -72,15 +73,12 @@ class LpnF2 { public:
 	// etc. PRG state advances monotonically; consuming slices in the
 	// expected order preserves the round-fixed LPN matrix.
 	void compute_slice(block * out, const block * kk, int64_t length) {
-#ifndef LPN_BATCH_M
-#define LPN_BATCH_M 32
-#endif
+		constexpr int M = tuning::lpn_batch_m;
 		int j = 0;
-		for(; j + LPN_BATCH_M <= length; j += LPN_BATCH_M)
-			compute_block<LPN_BATCH_M>(out, kk, j);
-		for(; j + 4 <= length; j += 4)   compute_block<4>(out, kk, j);
-		for(; j < length; ++j)           compute_block<1>(out, kk, j);
-
+		for(; j + M <= length; j += M)
+			compute_block<M>(out, kk, j);
+		for(; j + 4 <= length; j += 4) compute_block<4>(out, kk, j);
+		for(; j < length; ++j)         compute_block<1>(out, kk, j);
 	}
 };
 

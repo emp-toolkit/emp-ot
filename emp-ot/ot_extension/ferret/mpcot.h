@@ -4,7 +4,14 @@
 #include <emp-tool/emp-tool.h>
 #include <vector>
 #include "emp-ot/ot_extension/cggm.h"
-#include "emp-ot/ot_extension/ferret/constants.h"
+#include "emp-ot/tuning.h"   // PrimalLPNParameter, kConsistCheckCotNum
+
+namespace emp {
+// Bit-0-set mask. Punctured-leaf reconstruction XORs this in so the
+// reconstructed leaf carries the choice bit at bit 0 (LSB-encoded
+// choice convention).
+inline constexpr block lsb_only_mask = makeBlock(0LL, 1LL);
+}  // namespace emp
 
 // Multi-point COT over a regular sparse vector. Drives `tree_n`
 // cGGM trees of height `tree_height` (= log2(leave_n) + 1) under
@@ -18,7 +25,7 @@
 //   The pointer `pre_cot_data` passed to run_end() is the start of
 //   the chi-fold consistency-check region — first 128 base COTs.
 //   The cGGM correction COTs are addressed separately by the caller
-//   (FerretCOT lays them out at [128 + param.k, M), past the LPN
+//   (Ferret lays them out at [128 + param.k, M), past the LPN
 //   slot, so the three roles — chi-check, LPN seed, cGGM correction
 //   — never share a base COT). Aliasing roles would leak: cGGM
 //   ships c[j] = base[j] ^ K0[j] on the wire, which would compromise
@@ -107,7 +114,7 @@ private:
     // The Δ-XOR is applied to a stack copy of the first 128 base
     // COTs (the caller-supplied pre_cot_data pointer is the start of
     // the chi-check region — disjoint from the cGGM and LPN regions
-    // by construction at the ferret_cot.cpp layer). The stack copy
+    // by construction at the ferret.cpp layer). The stack copy
     // also avoids mutating the caller's buffer.
     void consistency_check_f2k(block *pre_cot_data) {
         block r1, r2;

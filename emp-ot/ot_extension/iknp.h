@@ -3,6 +3,7 @@
 #include <cassert>
 #include <memory>
 #include "emp-ot/ot_extension/ot_extension.h"
+#include "emp-ot/tuning.h"
 
 namespace emp {
 
@@ -43,12 +44,12 @@ namespace emp {
  */
 class IKNP : public OTExtension { public:
 	// ===== State =====
-	static constexpr int64_t block_size = 1024 * 2;
-	// Per-row PRG streams. choice_prg samples the bit-packed choice
-	// vector r on the receiver. The sender-side Δ bool form lives
-	// on the base as `delta_bool[]` and is read in do_rcot_send_next.
+	static constexpr int64_t block_size = tuning::iknp_chunk_ots;
+	// Per-row PRG streams. The base-class choice_prg samples the
+	// bit-packed choice vector r on the receiver. The sender-side Δ
+	// bool form lives on the base as `delta_bool[]` and is read in
+	// do_rcot_send_next.
 	PRG G0[128], G1[128];
-	PRG choice_prg;
 	// Packs 128 consecutive COT outputs into a single F_{2^128} element
 	// via the gadget (1, X, ..., X^{127}). Lets the malicious check
 	// chi-combine 128x fewer elements than the unpacked version.

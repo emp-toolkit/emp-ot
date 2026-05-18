@@ -25,7 +25,7 @@
 //   k=8 → 1024: Q=256 leaves means lots of fold work per chunk;
 //               the larger window amortizes setup overhead.
 //
-// FerretCOT's bootstrap instantiates SoftSpokenOT<8, 580> so its
+// Ferret's bootstrap instantiates SoftSpokenOT<8, 580> so its
 // one-shot ~74k base-COT request fits in a single chunk instead of
 // overproducing the default 131,072-OT chunk and shipping ~107 KB of
 // unused PPRF planes over the wire.
@@ -78,7 +78,6 @@
 //       — see emp-ot/iknp.{h,cpp}.
 
 #include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
-#include "emp-ot/ot_extension/ferret/constants.h"   // lsb_clear_mask, lsb_only_mask
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -129,7 +128,7 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
 
     setup_done = true;
     // OT-sender is the FS send_first side (convention shared across
-    // IKNP / SoftSpoken / FerretCOT). When ferret nests SoftSpoken it
+    // IKNP / SoftSpoken / Ferret). When ferret nests SoftSpoken it
     // has already enabled FS, so this is a no-op.
     if (malicious && !this->io->fs_enabled())
         this->io->enable_fs(/*send_first=*/is_ot_sender());
@@ -140,14 +139,25 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_recv_() {
     // Build n GGM trees and ship the per-level XOR sums via base OT.
     // Each tree gets a fresh Δ and root; K0[h] = level-(h+1) left-side
     // XOR-sum, K1[h] = K0[h] ⊕ Δ (leveled correlation, paper §2.2).
+    //
+    // Half-Tree's level-1 right child is `Δ ^ k` (cggm::build_sender),
+    // so every leaf — and hence every u_canonical bit on the wire —
+    // depends on BOTH the per-tree Δ and the root. To make the
+    // receiver's choice-bit stream a pure function of choice_prg,
+    // we draw both from it. The "other randomness" caller intent
+    // (set_choice_seed determines choices, nothing else) is still
+    // satisfied: only the per-tree (Δ, root) pair lives on this
+    // stream; everything not affecting choice bits — Δ_global on
+    // the sender, base-OT keys, FS-driven malicious challenges —
+    // stays on its own source.
     leaves_send_.resize(static_cast<size_t>(n) * Q);
     const int total = n * k;
     BlockVec K0(total), K1(total);
     block K0_buf[k], K1_buf[k];
     for (int i = 0; i < n; ++i) {
         block Delta, root;
-        this->prg.random_block(&Delta, 1);
-        this->prg.random_block(&root, 1);
+        this->choice_prg.random_block(&Delta, 1);
+        this->choice_prg.random_block(&root, 1);
         cggm::build_sender(k, Delta, root, &leaves_send_[i * Q], K0_buf);
         for (int h = 0; h < k; ++h) K1_buf[h] = K0_buf[h] ^ Delta;
         for (int j = 0; j < k; ++j) {
@@ -518,9 +528,8 @@ void SoftSpokenOT<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) 
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::combine_send_chunk(block* out, int64_t bs) {
-    PRG chiPRG;
     block seed = this->io->get_digest();
-    chiPRG.reseed(&seed);
+    PRG chiPRG(&seed);
     block Q_i, chi, tmp;
     for (int64_t i = 0; i < bs; ++i) {
         packer_.packing(&Q_i, out + 128 * i);
@@ -532,9 +541,8 @@ void SoftSpokenOT<k, kChunkBlocks>::combine_send_chunk(block* out, int64_t bs) {
 
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::combine_recv_chunk(block* out, const block* u_canonical, int64_t bs) {
-    PRG chiPRG;
     block seed = this->io->get_digest();
-    chiPRG.reseed(&seed);
+    PRG chiPRG(&seed);
     block T_i, chi, tmp;
     for (int64_t i = 0; i < bs; ++i) {
         packer_.packing(&T_i, out + 128 * i);
@@ -554,7 +562,7 @@ void SoftSpokenOT<k, kChunkBlocks>::combine_recv_chunk(block* out, const block* 
 template class SoftSpokenOT<2>;
 template class SoftSpokenOT<4>;
 template class SoftSpokenOT<8>;
-// Smaller-chunk variant for FerretCOT::bootstrap_base_cots_.
-template class SoftSpokenOT<8, 580>;
+// Smaller-chunk variant for Ferret::bootstrap_base_cots_.
+template class SoftSpokenOT<8, emp::tuning::softspoken_ferret_bootstrap_chunk_blocks>;
 
 } // namespace emp

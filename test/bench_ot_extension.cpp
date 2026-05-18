@@ -1,5 +1,5 @@
 // Cross-protocol OT-extension RCOT throughput bench. Reports MOT/s and
-// B/RCOT for IKNP / SoftSpoken<k> / FerretCOT. Two-party via `run`.
+// B/RCOT for IKNP / SoftSpoken<k> / Ferret. Two-party via `run`.
 //
 // Streaming-only: each row drives rcot_*_begin → rcot_*_next loop into a
 // reusable chunk_ots()-sized scratch buffer and discards the generated
@@ -95,15 +95,15 @@ int main(int argc, char** argv) {
     run_softspoken_k<4>(io, party, length);
     run_softspoken_k<8>(io, party, length);
 
-    // FerretCOT (semi + mali).
+    // Ferret (semi + mali).
     {
-        FerretCOT* ot = new FerretCOT(party, io, /*malicious=*/false);
-        run_row(ot, io, party, length, "FerretCOT semi");
+        Ferret* ot = new Ferret(party, io, /*malicious=*/false);
+        run_row(ot, io, party, length, "Ferret semi");
         delete ot;
     }
     {
-        FerretCOT* ot = new FerretCOT(party, io, /*malicious=*/true);
-        run_row(ot, io, party, length, "FerretCOT mali");
+        Ferret* ot = new Ferret(party, io, /*malicious=*/true);
+        run_row(ot, io, party, length, "Ferret mali");
         delete ot;
     }
 
