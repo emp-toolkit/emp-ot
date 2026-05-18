@@ -52,8 +52,8 @@ struct ExpandSums { block left, right; };
 // rather than its raw cGGM bit (currently ferret's MPCOT). The mask
 // is applied both to the written leaf and the XOR-sum so K0 stays
 // consistent on both sides.
-inline const block kCggmLsbClearMask = makeBlock(0xFFFFFFFFFFFFFFFFLL,
-                                                 0xFFFFFFFFFFFFFFFELL);
+inline constexpr block kCggmLsbClearMask = makeBlock(0xFFFFFFFFFFFFFFFFLL,
+                                                     0xFFFFFFFFFFFFFFFELL);
 
 // Expand `parents` parents at leaves[0..parents) into children at
 // leaves[0..2*parents) using batched CCRH::H<Tile> over the whole

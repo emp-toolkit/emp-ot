@@ -8,9 +8,9 @@ namespace emp {
 // `delta` always has bit 0 = 1, so each per-leaf SPCOT output is
 // masked to clear bit 0 before the punctured leaf gets `delta` XORed
 // in (so its bit 0 carries the choice signal).
-inline const block lsb_clear_mask = makeBlock(0xFFFFFFFFFFFFFFFFLL,
-                                              0xFFFFFFFFFFFFFFFELL);
-inline const block lsb_only_mask  = makeBlock(0LL, 1LL);
+inline constexpr block lsb_clear_mask = makeBlock(0xFFFFFFFFFFFFFFFFLL,
+                                                  0xFFFFFFFFFFFFFFFELL);
+inline constexpr block lsb_only_mask  = makeBlock(0LL, 1LL);
 
 // Number of base COTs consumed by the malicious chi-fold consistency
 // check. Fixed at 128 because the chi-fold packs into one F_{2^128}
