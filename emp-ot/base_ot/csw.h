@@ -62,8 +62,10 @@ class OTCSW : public OT { public:
 
 	void set_sid(block sid_) override { sid = sid_; }
 
+private:
 	// ===== Random oracles (each tagged with a 1-byte domain separator,
-	// prefixed by sid; all four ROs are independent and session-bound). =====
+	// prefixed by sid; all four ROs are independent and session-bound).
+	// Private — internal protocol primitives, no external contract. =====
 
 	// H_1(sid, seed) → curve point T. Programmable in the CDH reduction.
 	Point H_to_curve(const block & seed) {
@@ -113,6 +115,7 @@ class OTCSW : public OT { public:
 		return Hash::hash_for_block(buf.data(), hlen);
 	}
 
+public:
 	// ----- Sender side. Plays the OT sender role (S in the paper). -----
 	void send(const block * data0, const block * data1, int64_t length) override {
 		assert(length >= 80 &&

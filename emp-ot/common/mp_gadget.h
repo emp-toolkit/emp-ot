@@ -162,7 +162,7 @@ public:
     block r1, r2;
     vector_self_xor(&r1, consist_check_VW.data(), tree_n);
     bool x_prime[kConsistCheckCotNum];
-    io->recv_bool(x_prime, kConsistCheckCotNum * sizeof(bool));
+    io->recv_bool(x_prime, kConsistCheckCotNum);
     for (int i = 0; i < kConsistCheckCotNum; ++i)
       if (x_prime[i])
         pre_cot_data[i] = pre_cot_data[i] ^ cggm_delta;
@@ -320,7 +320,7 @@ public:
         pos[i] >>= 1;
       }
     }
-    io->send_bool(pre_cot_bool, kConsistCheckCotNum * sizeof(bool));
+    io->send_bool(pre_cot_bool, kConsistCheckCotNum);
     io->flush();
 
     block r3;
@@ -332,8 +332,7 @@ public:
     block recv[2];
     io->recv_data(recv, 2 * sizeof(block));
     if (!cmpBlock(dig, recv, 2))
-      std::cout << "MultiPointGadget consistency check fails"
-                << std::endl;
+      error("MultiPointGadget consistency check fails");
   }
 
   // FTyped round-final check (receiver). Both val- and mac-side

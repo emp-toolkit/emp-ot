@@ -79,7 +79,11 @@ public:
     }
 
     virtual ~StreamingExtension() {
-        assert(!in_session_ && "~StreamingExtension: missing end()");
+        // Always-on (not just debug): a missed end() leaves the wire
+        // transcript / FS state desynchronized — silently OK in NDEBUG
+        // would hide the bug at runtime in production.
+        if (in_session_)
+            error("~StreamingExtension: destructed without calling end()");
     }
 
 protected:

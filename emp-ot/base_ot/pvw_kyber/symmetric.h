@@ -44,10 +44,19 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <openssl/evp.h>  /* transitively pulls in OPENSSL_VERSION_NUMBER */
+
+/* C-callable die-with-diagnostic. emp-tool's error() is C++ only, but
+ * this header is included by Kyber's poly.c (compiled as C), so we
+ * stay on stderr + abort. */
+#define EMP_PVW_DIE(msg) do { \
+    fprintf(stderr, "emp-ot/pvw_kyber: " msg "\n"); \
+    abort(); \
+} while (0)
 
 /* EVP_DigestSqueeze + multi-call EVP_DigestFinalXOF land in OpenSSL 3.3. */
 #define EMP_PVW_HAVE_DIGEST_SQUEEZE (OPENSSL_VERSION_NUMBER >= 0x30300000L)
@@ -77,7 +86,7 @@ static inline EVP_MD_CTX *_emp_kst_ensure(keccak_state *s, const EVP_MD *md) {
     EVP_MD_CTX *c = (EVP_MD_CTX *)s->opaque;
     if (c == NULL) {
         c = EVP_MD_CTX_new();
-        if (c == NULL) abort();
+        if (c == NULL) EMP_PVW_DIE("EVP_MD_CTX_new in _emp_kst_ensure");
         s->opaque = (void *)c;
     }
     EVP_DigestInit_ex(c, md, NULL);
@@ -126,11 +135,11 @@ static inline void shake128_squeezeblocks(uint8_t *out, size_t nblocks,
     EVP_MD_CTX *c = (EVP_MD_CTX *)s->opaque;
     if (c == NULL) {
         c = EVP_MD_CTX_new();
-        if (c == NULL) abort();
+        if (c == NULL) EMP_PVW_DIE("EVP_MD_CTX_new in shake128_squeezeblocks");
         s->opaque = (void *)c;
     }
     uint8_t *tmp = (uint8_t *)malloc(total);
-    if (tmp == NULL) abort();
+    if (tmp == NULL) EMP_PVW_DIE("malloc in shake128_squeezeblocks");
     EVP_DigestInit_ex(c, EVP_shake128(), NULL);
     EVP_DigestUpdate(c, s->absorbed, s->absorbed_len);
     EVP_DigestFinalXOF(c, tmp, total);
@@ -162,7 +171,7 @@ static inline void kyber_shake256_prf(uint8_t *out, size_t outlen,
     static EMP_PVW_TLS EVP_MD_CTX *ctx = NULL;
     if (ctx == NULL) {
         ctx = EVP_MD_CTX_new();
-        if (ctx == NULL) abort();
+        if (ctx == NULL) EMP_PVW_DIE("EVP_MD_CTX_new in kyber_shake256_prf");
     }
     uint8_t extkey[KYBER_SYMBYTES + 1];
     memcpy(extkey, key, KYBER_SYMBYTES);
@@ -181,7 +190,7 @@ static inline void shake256(uint8_t *out, size_t outlen,
     static EMP_PVW_TLS EVP_MD_CTX *ctx = NULL;
     if (ctx == NULL) {
         ctx = EVP_MD_CTX_new();
-        if (ctx == NULL) abort();
+        if (ctx == NULL) EMP_PVW_DIE("EVP_MD_CTX_new in shake256");
     }
     EVP_DigestInit_ex(ctx, EVP_shake256(), NULL);
     EVP_DigestUpdate(ctx, in, inlen);
