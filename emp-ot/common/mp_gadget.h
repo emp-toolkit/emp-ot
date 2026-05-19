@@ -43,6 +43,12 @@
 
 namespace emp {
 
+// The F2kPacked consistency check packs the chi-fold transcript hash
+// into a 2-block buffer. Catch a future digest-size change instead of
+// silently writing past the end of `block dig[2]`.
+static_assert(Hash::DIGEST_SIZE == 2 * (int)sizeof(block),
+              "MultiPointGadget assumes a 2-block (32-byte) digest");
+
 enum class ChiFoldFlavor {
   F2kPacked,   // sender ships bool[128] x_prime + 2-block digest;
                // receiver derives x_prime from XOR(chi_alpha) and the
@@ -310,8 +316,8 @@ public:
     vector_self_xor(&r2, consist_check_chi_alpha.data(), tree_n);
 
     uint64_t pos[2];
-    pos[0] = _mm_extract_epi64(r2, 0);
-    pos[1] = _mm_extract_epi64(r2, 1);
+    static_assert(sizeof(pos) == sizeof(block), "pos must alias a block exactly");
+    std::memcpy(pos, &r2, sizeof(block));
     bool pre_cot_bool[kConsistCheckCotNum];
     for (int i = 0; i < 2; ++i) {
       for (int j = 0; j < 64; ++j) {

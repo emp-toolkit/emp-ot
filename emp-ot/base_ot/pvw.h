@@ -45,19 +45,11 @@ class OTPVW: public OT { public:
 	bool is_malicious_secure() const override { return true; }
 
 	IOChannel* io;
-	ECGroup *G = nullptr;
-	bool delete_G = true;
+	ECGroup G;
 
 	Point g0, g1, h0, h1;
 
-	OTPVW(IOChannel* io, ECGroup* _G = nullptr) {
-		this->io = io;
-		if (_G == nullptr) {
-			G = new ECGroup();
-		} else {
-			G = _G;
-			delete_G = false;
-		}
+	OTPVW(IOChannel* io) : io(io) {
 		// CRS labels — both parties derive identical points.
 		static const char *labels[4] = {
 			"CRS g0 for C:PeiVaiWat08",
@@ -68,12 +60,8 @@ class OTPVW: public OT { public:
 		static constexpr const char kDST[] = "emp-ot:pvw-base-ot:v1";
 		Point *crs[4] = {&g0, &g1, &h0, &h1};
 		for (int i = 0; i < 4; ++i)
-			*crs[i] = G->hash_to_point(labels[i], strlen(labels[i]),
+			*crs[i] = G.hash_to_point(labels[i], strlen(labels[i]),
 			                           kDST, sizeof(kDST) - 1);
-	}
-
-	~OTPVW() {
-		if (delete_G) delete G;
 	}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
@@ -82,18 +70,18 @@ class OTPVW: public OT { public:
 		// the iteration so no length-sized staging array is needed.
 		for (int64_t i = 0; i < length; ++i) {
 			Point gs_i, hs_i;
-			io->recv_pt(G, &gs_i);
-			io->recv_pt(G, &hs_i);
+			io->recv_pt(&G, &gs_i);
+			io->recv_pt(&G, &hs_i);
 
 			Point xb[2];
 			for (int b = 0; b < 2; ++b) {
-				Scalar s = G->rand_scalar();
-				Scalar t = G->rand_scalar();
+				Scalar s = G.rand_scalar();
+				Scalar t = G.rand_scalar();
 				// x_b is a fresh random group element used only as KDF
 				// input; cheapest way to sample uniformly is g^k for a
 				// random scalar k.
-				Scalar k = G->rand_scalar();
-				xb[b] = G->mul_gen(k);
+				Scalar k = G.rand_scalar();
+				xb[b] = G.mul_gen(k);
 
 				const Point &gb = (b == 0 ? g0 : g1);
 				const Point &hb = (b == 0 ? h0 : h1);
@@ -116,7 +104,7 @@ class OTPVW: public OT { public:
 		// 2), so keep all r_i live in an array.
 		std::vector<Scalar> rs(length);
 		for (int64_t i = 0; i < length; ++i) {
-			rs[i] = G->rand_scalar();
+			rs[i] = G.rand_scalar();
 			int sigma = b[i] ? 1 : 0;
 			const Point &g_base = (sigma == 0 ? g0 : g1);
 			const Point &h_base = (sigma == 0 ? h0 : h1);
@@ -133,8 +121,8 @@ class OTPVW: public OT { public:
 			int sigma = b[i] ? 1 : 0;
 			Point u[2], c_pt[2];
 			for (int bb = 0; bb < 2; ++bb) {
-				io->recv_pt(G, &u[bb]);
-				io->recv_pt(G, &c_pt[bb]);
+				io->recv_pt(&G, &u[bb]);
+				io->recv_pt(&G, &c_pt[bb]);
 			}
 			block ct[2];
 			io->recv_data(ct, 2 * sizeof(block));

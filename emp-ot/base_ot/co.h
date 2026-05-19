@@ -19,21 +19,8 @@ namespace emp {
 class OTCO: public OT { public:
 	bool is_malicious_secure() const override { return false; }
 	IOChannel* io;
-	ECGroup *G = nullptr;
-	bool delete_G = true;
-	OTCO(IOChannel* io, ECGroup * _G = nullptr) {
-		this->io = io;
-		if (_G == nullptr)
-			G = new ECGroup();
-		else {
-			G = _G;
-			delete_G = false;
-		}
-	}
-	~OTCO() {
-		if (delete_G)
-			delete G;
-	}
+	ECGroup G;
+	OTCO(IOChannel* io) : io(io) {}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
 		Point A, AaInv;
@@ -41,14 +28,14 @@ class OTCO: public OT { public:
 		std::vector<Point> B(length);
 		std::vector<Point> BA(length);
 
-		Scalar a = G->rand_scalar();
-		A = G->mul_gen(a);
+		Scalar a = G.rand_scalar();
+		A = G.mul_gen(a);
 		io->send_pt(&A);
 		AaInv = A.mul(a);
 		AaInv = AaInv.inv();
 
 		for(int64_t i = 0; i < length; ++i) {
-			io->recv_pt(G, &B[i]);
+			io->recv_pt(&G, &B[i]);
 			B[i] = B[i].mul(a);
 			BA[i] = B[i].add(AaInv);
 		}
@@ -68,12 +55,12 @@ class OTCO: public OT { public:
 		Point A;
 
 		for(int64_t i = 0; i < length; ++i)
-			bb[i] = G->rand_scalar();
+			bb[i] = G.rand_scalar();
 
-		io->recv_pt(G, &A);
+		io->recv_pt(&G, &A);
 
 		for(int64_t i = 0; i < length; ++i) {
-			B[i] = G->mul_gen(bb[i]);
+			B[i] = G.mul_gen(bb[i]);
 			if (b[i])
 				B[i] = B[i].add(A);
 			io->send_pt(&B[i]);

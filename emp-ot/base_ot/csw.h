@@ -39,26 +39,12 @@ class OTCSW : public OT { public:
 	bool is_malicious_secure() const override { return true; }
 
 	IOChannel * io;
-	ECGroup * G = nullptr;
-	bool delete_G = true;
+	ECGroup G;
 	block sid;
 
 	// sid defaults to kDefaultBaseOtSid (see emp-ot/ot.h). Callers
 	// wanting per-session domain separation override via set_sid().
-	OTCSW(IOChannel * io_, ECGroup * G_ = nullptr) : sid(kDefaultBaseOtSid) {
-		this->io = io_;
-		if (G_ == nullptr)
-			G = new ECGroup();
-		else {
-			G = G_;
-			delete_G = false;
-		}
-	}
-
-	~OTCSW() override {
-		if (delete_G)
-			delete G;
-	}
+	OTCSW(IOChannel * io_) : io(io_), sid(kDefaultBaseOtSid) {}
 
 	void set_sid(block sid_) override { sid = sid_; }
 
@@ -74,7 +60,7 @@ private:
 		memcpy(buf + 1, &sid, sizeof(block));
 		memcpy(buf + 1 + sizeof(block), &seed, sizeof(block));
 		static constexpr const char kDST[] = "emp-ot:csw-base-ot:v1";
-		return G->hash_to_point((const char *)buf, sizeof(buf),
+		return G.hash_to_point((const char *)buf, sizeof(buf),
 		                        kDST, sizeof(kDST) - 1);
 	}
 
@@ -125,14 +111,14 @@ public:
 		block seed;
 		io->recv_data(&seed, sizeof(block));
 		std::vector<Point> B(length);
-		io->recv_pt(G, B.data(), length);
+		io->recv_pt(&G, B.data(), length);
 
 		// Sender params: T = H_1(sid, seed); r ← Z_q; z = g^r.
 		// Amortize T^r over the batch: ρ_{i,1} = (B_i/T)^r = B_i^r · (T^r)^{-1}
 		// = ρ_{i,0} + (-T_r). One mul/OT instead of two.
 		Point T = H_to_curve(seed);
-		Scalar r = G->rand_scalar();
-		Point z = G->mul_gen(r);
+		Scalar r = G.rand_scalar();
+		Point z = G.mul_gen(r);
 		Point T_r_neg = T.mul(r).inv();                // -(T^r), reused per OT
 
 		// Per-OT pads p_{i,0}, p_{i,1} and h0_i = H_3(sid, p_{i,0}).
@@ -192,8 +178,8 @@ public:
 		std::vector<Scalar> alpha(length);
 		std::vector<Point> B(length);
 		for (int64_t i = 0; i < length; ++i) {
-			alpha[i] = G->rand_scalar();
-			B[i] = G->mul_gen(alpha[i]);
+			alpha[i] = G.rand_scalar();
+			B[i] = G.mul_gen(alpha[i]);
 			if (b[i])
 				B[i] = B[i].add(T);
 		}
@@ -209,7 +195,7 @@ public:
 		// chi/proof/c0/c1 payload is still in flight. The XOR with chi[i]
 		// that produces otresp[i] runs after chi is in hand.
 		Point z;
-		io->recv_pt(G, &z);
+		io->recv_pt(&G, &z);
 
 		std::vector<block> p_bi(length);   // saved for decryption after Π verification
 		std::vector<block> h_bi(length);   // H_short(p_bi[i]); xored with chi[i] later
