@@ -2,7 +2,7 @@
 
 #include "emp-ot/ot_extension/ferret/ferret.h"
 #include "emp-ot/ot_extension/ferret/mpcot.h"
-#include "emp-ot/ot_extension/ferret/lpn_f2.h"
+#include "emp-ot/lpn.h"
 #include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
 
 namespace emp {
@@ -19,7 +19,7 @@ Ferret::Ferret(int party, IOChannel *io,
 	// Compute-only allocations and per-party state. Zero network I/O —
 	// the SoftSpoken bootstrap that produces the first round's M base
 	// COTs runs lazily on the first do_rcot_*_begin call.
-	lpn_f2 = std::make_unique<LpnF2<10>>(param.k);
+	lpn_f2 = std::make_unique<Lpn<FerretF2LpnOps, 10>>(param.k);
 	if (is_ot_sender()) {
 		mpcot_sender = std::make_unique<MPCOT_Sender>(param, io);
 		if (malicious) mpcot_sender->set_malicious();

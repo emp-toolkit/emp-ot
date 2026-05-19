@@ -1,7 +1,8 @@
 #include <iostream>
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/emp-ot.h"
-#include "emp-ot/ot_extension/ferret/lpn_f2.h"
+#include "emp-ot/lpn.h"
+#include "emp-ot/ot_extension/ferret/ferret.h"
 #include <stdlib.h>
 using namespace std;
 using namespace emp;
@@ -34,7 +35,7 @@ int main(int argc, char** argv) {
 	prg.random_block(nn, 1<<n);
 
 	for (int kkk = 10; kkk < k; ++kkk) {
-		LpnF2<10> lpn(1<<kkk);
+		Lpn<FerretF2LpnOps, 10> lpn(1<<kkk);
 		auto t1 = clock_start();
 		for (int ttt = 0; ttt < 20; ttt++) {
 			lpn.reseed(makeBlock(0, 1));

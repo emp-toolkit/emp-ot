@@ -3,6 +3,7 @@
 #include "emp-ot/ot_extension/ot_extension.h"
 #include "emp-ot/base_ot/csw.h"
 #include "emp-ot/tuning.h"
+#include <climits>
 #include <memory>
 
 // Forward-declare ferret internals so the public header doesn't pull
@@ -20,7 +21,23 @@ using FerretBaseOT = OTCSW;
 
 class MPCOT_Sender;
 class MPCOT_Receiver;
-template <int d> class LpnF2;
+template <typename Ops, int d> class Lpn;
+
+// Ops adapter for the unified Lpn template, in Ferret's degenerate
+// F_2 case: the "AuthValue" is a single block (raw RCOT carrier;
+// no val/mac structure). Folding is plain XOR with no carry concern,
+// so partial/final reduce are no-ops and kLpnSafeAddsPerReduce can
+// be infinite (one batch).
+struct FerretF2LpnOps {
+  using AuthValue = block;
+  static constexpr int kLpnSafeAddsPerReduce =
+      std::numeric_limits<int>::max();
+  static inline void auth_add_into(block &acc, const block &x) {
+    acc = acc ^ x;
+  }
+  static inline void auth_partial_reduce(block &) {}
+  static inline void auth_final_reduce  (block &) {}
+};
 
 /*
  * Ferret COT binary version
@@ -95,7 +112,7 @@ private:
 	// Exactly one of these is populated, depending on `party`.
 	std::unique_ptr<MPCOT_Sender>   mpcot_sender;
 	std::unique_ptr<MPCOT_Receiver> mpcot_receiver;
-	std::unique_ptr<LpnF2<10>> lpn_f2;
+	std::unique_ptr<Lpn<FerretF2LpnOps, 10>> lpn_f2;
 };
 
 }  // namespace emp

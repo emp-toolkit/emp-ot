@@ -13,4 +13,7 @@
 
 #include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
 
+#include "emp-ot/svole/f2k_vole.h"
+#include "emp-ot/svole/fp_vole.h"
+
 #endif
