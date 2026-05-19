@@ -117,6 +117,44 @@ The two-party benches (`bench_iknp_rcot`, `bench_softspoken_rcot`,
 `bench_lpn`, `bench_cggm`, and `bench_sfvole_v2` are single-process
 benchmarks of internal kernels.
 
+### Wire-trace hashes
+
+`test/trace_hash.cpp` runs every protocol in the repo under a fresh
+`NetIO` with Fiat-Shamir enabled and prints one SHA-256 digest per
+direction per protocol. Refactors that leave the wire bytes
+untouched leave the hashes untouched; refactors that *do* change the
+wire are visible as a single-line diff. See
+[`docs/wire-trace-hashes.md`](docs/wire-trace-hashes.md) for the
+full workflow.
+
+```
+$ EMP_TEST_MODE=1 ./run ./build/trace_hash | grep '^[A-Za-z(]'
+```
+
+**Current baseline** (ALICE's view; first 16 hex of each direction's
+SHA-256). A change to any of these hashes means the corresponding
+protocol's wire format changed — fine if intentional, but flag it
+clearly in the commit message and update this table.
+
+```
+OTCO                   send=b0ac916e9e5aefdc recv=1527f501eb006b21
+OTCSW                  send=25bbf1f26a330566 recv=8cba51dc9b3e2aa1
+OTPVW                  send=132aa714d2190ed1 recv=14b52351f71c746c
+OTPVWKyber             send=30b4c67c8dd8e3ad recv=9c2189fdcd744b64
+IKNP semi              send=8e166550690e050d recv=cb066d35f7e00eef
+SoftSpoken<2> semi     send=6259617147d3c92d recv=4bf85355dce130cb
+SoftSpoken<8> semi     send=6b20910650f0d85b recv=6bec324652e97ded
+Ferret(b11) semi       send=07ab346fe6233fd9 recv=3bd3a45118d4ce70
+F2kVOLE semi           send=2c0252596e6fd186 recv=a96081e25a9f168c
+FpVOLE semi            send=94fdcb7e3a9a78cf recv=81a9357ce2e08712
+IKNP mali              send=190d10a5e6815e4e recv=ae2c4a2673320c0b
+SoftSpoken<2> mali     send=9aa8755f443c469b recv=d4a5285de2ba604d
+SoftSpoken<8> mali     send=4a6dd995073f71db recv=802f41fddb2c8227
+Ferret(b11) mali       send=6faf885dc5cd65d2 recv=e0982be4c531c796
+F2kVOLE mali           send=1ca3b628bbb85e32 recv=ca3b5e2580152fe0
+FpVOLE mali            send=9611063595fb9ee5 recv=b3e21b77ec404dc0
+```
+
 ## Usage
 
 ```cpp
