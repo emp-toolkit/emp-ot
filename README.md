@@ -177,7 +177,7 @@ call a lower-level method on a higher-level object.
 |---------------------------|---------------------------------------------------|---------------------------------------------------------------------------------|
 | `OT`                      | `send(m0, m1, n)` / `recv(mc, c, n)`              | chosen-input 1-out-of-2: sender supplies both messages, receiver picks one      |
 | `COT : OT`                | `send_cot(m0, n)` / `recv_cot(mc, c, n)`; free `send_rot`/`recv_rot` | chosen-correlation: sender's two messages always differ by a public `Delta` |
-| `RandomCOT : COT`         | `send_rcot(m0, n)` / `recv_rcot(mc, n)`           | random correlation: no choice-bit input; receiver's choice ends up in `getLSB(mc[i])`, and `Delta`'s LSB is forced to 1 so the correlation survives that one bit |
+| `RandomCOT : COT`         | `rcot(data, n)` (role implicit in instance party) | random correlation: no choice-bit input; receiver's choice ends up in `getLSB(data[i])`, and `Delta`'s LSB is forced to 1 so the correlation survives that one bit |
 | `OTExtension : RandomCOT` | `set_delta(const bool* delta_bool)` (sender-only Δ override), `chunk_size()`, `begin/next/end`, `run(data, num)` | streaming RCOT (one fixed-size chunk per `next`); base-OT bootstrap fires lazily on the first `begin` |
 
 Concrete classes attach as follows:
@@ -219,14 +219,19 @@ exposes all four flavors:
 ```cpp
 IKNP ote(party, &io);
 // SoftSpokenOT<2> ote(party, &io); Ferret ote(party, &io); ... all the same below.
+block buf[length];
 
+// rcot() is single-method and role-implicit — the instance's party
+// determines whether it acts as sender or receiver internally.
+// Each side fills its own `buf`; sender's buf[i] ^ receiver's buf[i] = c[i] · Δ.
+ote.rcot(buf, length);
+
+// COT / ROT / OT flavors are role-explicit (different signatures by side):
 if (party == ALICE) {
-    ote.send_rcot(m0, length);                    // RCOT: fills m0; m1[i] = m0[i]^Δ
     ote.send_cot(m0, length);                     // COT:  fills m0; m1[i] = m0[i]^Δ
     ote.send_rot(m0, m1, length);                 // ROT:  fills m0, m1 (random)
     ote.send(m0, m1, length);                     // OT:   sends caller-chosen m0, m1
 } else {
-    ote.recv_rcot(mc, length);                    // RCOT: mc[i]=m_{c[i]}, c[i]=LSB(mc[i])
     ote.recv_cot(mc, c, length);                  // COT:  mc[i] = m0[i] ^ c[i]*Δ
     ote.recv_rot(mc, c, length);                  // ROT:  mc[i] = c[i] ? m1[i] : m0[i]
     ote.recv(mc, c, length);                      // OT:   mc[i] = c[i] ? m1[i] : m0[i]
@@ -236,15 +241,15 @@ if (party == ALICE) {
 The constructor allocates per-instance state and (on the sender side)
 samples a random `Δ` with `LSB(Δ) = 1` pinned. No network I/O runs in
 the ctor. The base-OT bootstrap runs on the first `begin()` (or the
-first `send_rcot` / `recv_rcot` one-shot call, which delegates to
-`run()` → `begin()` internally).
+first `rcot()` one-shot call, which delegates to `run()` → `begin()`
+internally).
 
 `Δ` is readable as `ote.Delta` immediately after construction. The
 receiver has no `Δ`. To override the ctor-sampled `Δ` (e.g. when an
 outer protocol like
 [`emp-zk`](https://github.com/emp-toolkit/emp-zk) or
 [`emp-sh2pc`](https://github.com/emp-toolkit/emp-sh2pc) supplies its
-own correlation), call `set_delta` before the first `rcot_*` call:
+own correlation), call `set_delta` before the first `rcot()` call:
 
 ```cpp
 IKNP ote(party, &io);
@@ -252,11 +257,11 @@ if (party == ALICE) {
     bool delta_bool[128]; /* fill from outer protocol; delta_bool[0] = true */
     ote.set_delta(delta_bool);
 }
-// ote.rcot_send(...); // bootstrap fires here, on first streaming begin
+// ote.rcot(buf, length); // bootstrap fires here, on first streaming begin
 ```
 
-`set_delta` must fire before the first `send_rcot/recv_rcot/begin/run`
-call (asserts otherwise).
+`set_delta` must fire before the first `rcot/begin/run` call (asserts
+otherwise).
 
 Each extension can be parameterized to bootstrap from a non-default
 base OT (default is `OTPVW`); pair an extension's malicious mode with
@@ -291,14 +296,14 @@ for (int i = 0; i < n_chunks; ++i) {
 ote.end();
 ```
 
-The one-shot `send_rcot` / `recv_rcot` wrappers are implemented in
-terms of this streaming API plus a small leftover buffer for tails
-that aren't a multiple of `chunk_size()`.
+The one-shot `rcot(data, num)` is implemented in terms of this
+streaming API plus a small leftover buffer for tails that aren't a
+multiple of `chunk_size()`.
 
 ## Performance
 
 AWS `c8a.2xlarge` (AMD EPYC 9R45, Zen 5, 8 vCPU), Ubuntu 22.04, GCC
-11.4, OpenSSL 3.3.2, `-march=native`.
+11.4, OpenSSL 3.0.2, `-march=native`.
 
 ### Base OTs
 
@@ -313,26 +318,27 @@ One batch of 128 base OTs.
 
 ### OT extensions (RCOT throughput)
 
-Length 2²⁵ OTs (~33M). `MOT/s` = million RCOTs per second. `bits/RCOT`
-= total bytes on the wire (both directions), including the one-time
-base-OT bootstrap.
+Length 2²⁵ OTs (~33M). Both `MOT/s` (million RCOTs per second; median
+of 5 runs, slower of the two parties per run) and `bits/RCOT` (total
+wire bytes, both directions) include the one-time base-OT bootstrap
+amortised over the bench length.
 
 | Protocol         | Mode      | bits/RCOT | MOT/s |
 |------------------|-----------|----------:|------:|
-| `IKNP`           | semi      |       127 |   149 |
-| `IKNP`           | malicious |       127 |    42 |
-| `SoftSpoken<2>`  | semi      |        63 |   140 |
-| `SoftSpoken<2>`  | malicious |        63 |    87 |
-| `SoftSpoken<4>`  | semi      |        31 |   103 |
-| `SoftSpoken<4>`  | malicious |        31 |    97 |
-| `SoftSpoken<8>`  | semi      |        15 |    53 |
-| `SoftSpoken<8>`  | malicious |        15 |    51 |
-| `FerretCOT`      | semi      |      0.29 |    71 |
-| `FerretCOT`      | malicious |      0.29 |    62 |
+| `IKNP`           | semi      |       127 |   227 |
+| `IKNP`           | malicious |       127 |    85 |
+| `SoftSpoken<2>`  | semi      |        63 |   136 |
+| `SoftSpoken<2>`  | malicious |        63 |   125 |
+| `SoftSpoken<4>`  | semi      |        31 |   146 |
+| `SoftSpoken<4>`  | malicious |        31 |   135 |
+| `SoftSpoken<8>`  | semi      |        15 |    57 |
+| `SoftSpoken<8>`  | malicious |        15 |    55 |
+| `Ferret`         | semi      |      0.27 |    83 |
+| `Ferret`         | malicious |      0.27 |    78 |
 
 `IKNP` and `SoftSpoken<k>` traffic is one-direction: 127 bits/RCOT
-for `IKNP`, `128/k − 1` bits/RCOT for `SoftSpoken<k>`. `FerretCOT`'s
-0.29 bits/RCOT at 2²⁵ is ~0.22 bits/RCOT of steady-state per-round
+for `IKNP`, `128/k − 1` bits/RCOT for `SoftSpoken<k>`. `Ferret`'s
+0.27 bits/RCOT at 2²⁵ is ~0.20 bits/RCOT of steady-state per-round
 MPCOT/LPN traffic plus ~0.07 bits/RCOT of one-time bootstrap; the
 bootstrap fraction shrinks linearly with bench length.
 

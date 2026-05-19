@@ -203,18 +203,26 @@ produce many RCOTs — the recipe is to subclass `OTExtension`.
 
 ### 2a. Decide your dispatch shape
 
-`OTExtension` accepts two subclass shapes (see
-[`streaming-api.md`](streaming-api.md) § "The dual-role wrapper"):
+Subclasses override `begin / next / end` directly — no NVI hook
+layer. The choice is how the override is structured:
 
-- **Per-role split.** Override six per-role virtuals
-  `do_send_rcot_begin/_next/_end` and `do_recv_rcot_begin/_next/_end`.
-  The base's default `do_begin/do_next/do_end` party-dispatch to
-  yours. Choose this when sender and receiver bodies are genuinely
-  different protocols (e.g. IKNP, SoftSpoken).
+- **Inline party-dispatch.** Have `begin/next/end` start with
+  `if (is_ot_sender())` and delegate to private non-virtual helpers
+  (`send_begin_/send_next_/send_end_` and the receiver pair). Choose
+  this when sender and receiver bodies are genuinely different
+  protocols (e.g. IKNP, SoftSpoken).
 
-- **Unified body.** Override `do_begin/do_next/do_end` directly and
-  party-dispatch inside private helpers. Choose this when send/recv
-  share the same shape up to a party test (e.g. Ferret).
+- **Unified body.** Have `begin/next/end` contain one body each and
+  party-dispatch inside private per-stage helpers. Choose this when
+  send/recv share the same shape up to a party test (e.g. Ferret).
+
+In both shapes the override must:
+1. Call `enter_session_()` at the top of `begin()`.
+2. Call `assert_in_session_()` at the top of `next()`.
+3. Call `exit_session_()` at the bottom of `end()`.
+
+These protected helpers (inherited from `StreamingExtension`) keep
+the session tripwire honest without an NVI dispatcher layer.
 
 ### 2b. Boilerplate
 
@@ -235,16 +243,31 @@ public:
                       base_ot ? std::move(base_ot)
                               : std::unique_ptr<OT>(new MyIKNPBaseOT(io))) {}
 
-    int64_t chunk_size() const override { return /* per-_next batch */; }
+    int64_t chunk_size() const override { return /* per-next() batch */; }
 
-protected:
-    // Per-role split (IKNP-style).
-    void do_send_rcot_begin() override;
-    void do_send_rcot_next(block* out) override;
-    void do_send_rcot_end() override;
-    void do_recv_rcot_begin() override;
-    void do_recv_rcot_next(block* out) override;
-    void do_recv_rcot_end() override;
+    void begin() override {
+        enter_session_();
+        if (is_ot_sender()) send_begin_();
+        else                recv_begin_();
+    }
+    void next(block* out) override {
+        assert_in_session_();
+        if (is_ot_sender()) send_next_(out);
+        else                recv_next_(out);
+    }
+    void end() override {
+        if (is_ot_sender()) send_end_();
+        else                recv_end_();
+        exit_session_();
+    }
+
+private:
+    void send_begin_();
+    void send_next_(block* out);
+    void send_end_();
+    void recv_begin_();
+    void recv_next_(block* out);
+    void recv_end_();
 };
 
 } // namespace emp
@@ -252,12 +275,12 @@ protected:
 
 ### 2c. Lazy bootstrap
 
-`do_send_rcot_begin` (or `do_begin` on the unified path) is the
-first place the protocol runs — flip `setup_done` true inside the
-first call:
+`send_begin_` (or the unified `begin` body for Ferret-shape protocols)
+is the first place the protocol runs — flip `setup_done` true inside
+the first call:
 
 ```cpp
-void MyIKNP::do_send_rcot_begin() {
+void MyIKNP::send_begin_() {
     if (!setup_done) {
         // run the bootstrap: base_ot->send/recv, seed PRGs, etc.
         // (use `delta_bool[]` for Δ-side, `choice_prg` for choice-bit
@@ -315,7 +338,8 @@ public:
 That's the whole API. `OT::send_cot` / `recv_cot` and the `send_rot`
 / `recv_rot` helpers come from the base. If your protocol is RCOT-native
 (produces correlated outputs without a chosen-input phase), inherit
-from `RandomCOT` instead and override `send_rcot` / `recv_rcot`.
+from `RandomCOT` instead and override `rcot(block*, int64_t)` — the
+single role-implicit RCOT entry on `RandomCOT`.
 
 If you want OT extensions to default to your base OT, add a typedef
 alongside the extension:

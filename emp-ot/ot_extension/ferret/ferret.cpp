@@ -2,15 +2,15 @@
 //
 // Structure parallel to Svole<AuthValue, IO>: a single class
 // inheriting StreamingExtension<block> (via OTExtension), implementing
-// the same 4-step round loop directly in do_begin / do_next / do_end:
+// the same 4-step round loop directly in begin / next / end:
 //
-//   do_begin : lazy bootstrap → swap curr/next → tree_idx_ = 0
-//              → inner_run_begin_ (gadget round-begin + one-shot LPN
-//                                  seed exchange)
-//   do_next  : if this round's user-visible budget is full, do_end +
-//              do_begin (transparent rollover); then process_one_tree_
-//   do_end   : run_refill_ (refill trees write directly into next_) +
-//              inner_run_end_ (chi-fold check)
+//   begin : lazy bootstrap → swap curr/next → tree_idx_ = 0
+//           → inner_run_begin_ (gadget round-begin + one-shot LPN
+//                               seed exchange)
+//   next  : if this round's user-visible budget is full, end + begin
+//           (transparent rollover); then process_one_tree_
+//   end   : run_refill_ (refill trees write directly into next_) +
+//           inner_run_end_ (chi-fold check)
 //
 // AuthValueFerret is layout-equivalent to `block`, so the
 // StreamingExtension<block> output buffer is reinterpreted to
@@ -90,27 +90,32 @@ void Ferret::set_delta(const bool *bits) {
 // Lifecycle
 // =====================================================================
 
-void Ferret::do_begin() {
+void Ferret::begin() {
+	enter_session_();
 	bootstrap_();
 	std::swap(carry_curr_, carry_next_);
 	tree_idx_ = 0;
 	inner_run_begin_();
 }
 
-void Ferret::do_next(block *out) {
+void Ferret::next(block *out) {
+	assert_in_session_();
 	// Auto-rollover: if this round's user-visible budget is full,
 	// run end+begin transparently before producing the user's tree.
+	// Uses the public end()/begin() — exit_session_ then enter_session_
+	// flip the tripwire cleanly across the boundary.
 	const int64_t user_budget_trees = param.t - param.refill_trees;
 	if (tree_idx_ == user_budget_trees) {
-		do_end();
-		do_begin();
+		end();
+		begin();
 	}
 	process_one_tree_(reinterpret_cast<AuthValueFerret*>(out));
 }
 
-void Ferret::do_end() {
+void Ferret::end() {
 	run_refill_();
 	inner_run_end_();
+	exit_session_();
 }
 
 // =====================================================================
@@ -140,7 +145,6 @@ void Ferret::bootstrap_() {
 	auto pump = [&](auto* src) {
 		if (is_ot_sender()) {
 			src->set_delta(delta_bool);
-			src->send_rcot(carry_next_.data(), param.M);
 		} else {
 			// Forward a sub-seed pulled from this Ferret's choice_prg
 			// to the inner source's receiver: the inner's base-COT
@@ -150,8 +154,8 @@ void Ferret::bootstrap_() {
 			block inner_seed;
 			choice_prg.random_block(&inner_seed, 1);
 			src->set_choice_seed(inner_seed);
-			src->recv_rcot(carry_next_.data(), param.M);
 		}
+		src->rcot(carry_next_.data(), param.M);
 	};
 
 	if (param.M > tuning::ferret_bootstrap_nest_factor * tuning::ferret_b10.M) {

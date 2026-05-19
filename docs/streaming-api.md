@@ -13,22 +13,19 @@ as `StreamingExtension<Element>`.
 
 ## The contract
 
-Three pure virtuals each subclass implements:
+Four pure virtuals each subclass implements:
 
 ```cpp
 virtual int64_t chunk_size() const = 0;
-virtual void    do_begin() = 0;
-virtual void    do_next(Element* out) = 0;
-virtual void    do_end() = 0;
+virtual void    begin() = 0;
+virtual void    next(Element* out) = 0;
+virtual void    end() = 0;
 ```
 
-Plus four public entry points the base provides:
+Plus one public non-virtual entry point the base provides:
 
 ```cpp
-void begin();
-void next(Element* out);   // writes exactly chunk_size() Elements
-void end();
-void run(Element* data, int64_t num);   // one-shot
+void run(Element* data, int64_t num);   // one-shot (leftover-buffer drain)
 ```
 
 The lifecycle is
@@ -43,19 +40,32 @@ The lifecycle is
                                                     again)
 ```
 
-Calling `next()` outside a begin/end pair asserts. Calling `begin()`
-inside one also asserts (the session tripwire is a single bool).
-
 `chunk_size()` is the unit each `next()` emits — one cGGM tree's
 leaves for Ferret, one batch for IKNP/SoftSpoken, one tree's
 LPN-folded outputs for Svole. Constant per instance after setup.
+
+**Session tripwire**: a single bool on the base. Subclass overrides
+call protected helpers from inside `begin/next/end`:
+
+- `enter_session_()` at the top of `begin()` — asserts no prior session
+  was left open, then flips the flag.
+- `assert_in_session_()` inside `next()` — catches `next()` called
+  outside a begin/end pair.
+- `exit_session_()` at the bottom of `end()` — clears the flag.
+
+Each helper is one line and the subclass is free to do its real work
+around them. The pattern replaces the NVI wrapper that used to live
+on the base (`begin/next/end` non-virtual public + `do_begin/do_next/
+do_end` protected virtuals) — a single set of virtuals is now both
+the public API and the override point, and the tripwire is opt-in via
+the helpers rather than enforced by the base.
 
 ## Lazy setup
 
 `StreamingExtension` doesn't run any setup in its constructor — the
 ctor just stores `party / malicious / setup_done = false`. The first
-`do_begin()` call is responsible for performing the protocol's
-bootstrap and flipping `setup_done = true`. Every later begin sees
+`begin()` call is responsible for performing the protocol's bootstrap
+and flipping `setup_done = true`. Every later begin sees
 `setup_done == true` and skips the bootstrap.
 
 This lets outer protocols configure the instance (e.g.
@@ -100,49 +110,41 @@ and then either returns or continues with `begin`/`next` loop.
 In other words, repeated `run(...)` calls on the same instance with
 `num != k·chunk_size()` don't pay a fresh chunk per call.
 
-## The dual-role wrapper on OTExtension
+## The polymorphic entry on OTExtension
 
 `StreamingExtension` is single-role: each instance, given its
-`party`, runs one side of the protocol. `OTExtension` inherits this
-single-role lifecycle verbatim (`begin/next/end/run/chunk_size`) and
-additionally implements `RandomCOT`'s dual-role API
-(`send_rcot` / `recv_rcot`):
+`party`, runs one side of the protocol. `OTExtension` inherits the
+streaming lifecycle (`begin/next/end/run/chunk_size`) verbatim and
+additionally implements `RandomCOT::rcot` — the polymorphic one-shot
+entry that callers holding a `RandomCOT*` (chosen-correlation
+auto-wrapper inside `COT::send_cot/recv_cot`, generic-OT consumers in
+emp-zk / emp-sh2pc) use without knowing the instance's party:
 
 ```cpp
 //   begin/next/end / run / chunk_size  (StreamingExtension contract — inherited)
-//   send_rcot(data, num) / recv_rcot(data, num)
-//       (RandomCOT one-shot pair; asserts party then delegates to run())
+//   rcot(data, num)                    (RandomCOT abstract; final on OTExtension)
 ```
 
-`send_rcot` / `recv_rcot` are party-asserting wrappers around
-`run()`. They exist so a caller that holds a polymorphic `RandomCOT*`
-can call the right method without knowing the instance's party.
-Internal call sites that already know the role (Ferret nesting,
-Svole pull_cots_) use them too.
-
-Streaming-savvy callers use `begin/next/end` directly — the role is
-implicit in `party`, and no party-assertion is needed.
+`OTExtension::rcot` is a one-line wrapper over the inherited `run()`
+— same leftover-buffer service, just exposed under the
+polymorphic-RandomCOT name. Streaming-savvy callers use
+`begin/next/end` (or `run` for one-shot) directly; the role is
+implicit in `party` and no party-assertion is needed.
 
 The dispatch tree inside `OTExtension`:
 
 ```
-  send_rcot ─► assert(is_ot_sender()) ─► run(data, num)
-  recv_rcot ─► assert(!is_ot_sender()) ─► run(data, num)
+  rcot ─► run(data, num)  ─► begin / loop next / end (leftover-buffer drain)
 
   begin ─┐
-  next   ├─► do_begin / do_next / do_end
-  end    │       │
-         │       │ (OTExtension's default
-         │       │  implementation)
-         │       ▼
-         │   if (is_ot_sender())
-         │       do_send_rcot_{begin,next,end}();
-         │   else
-         │       do_recv_rcot_{begin,next,end}();
-         │
-         │ Subclasses override either:
-         │   - the per-role hooks (IKNP, SoftSpoken), or
-         │   - do_begin/do_next/do_end directly (Ferret).
+  next   ├─► subclass override (no NVI hook layer)
+  end    │
+         │ Concrete subclasses (IKNP, SoftSpoken, Ferret) override
+         │ begin / next / end directly:
+         │   - IKNP / SoftSpoken: inline party-test → private
+         │     send_{begin,next,end}_ / recv_{begin,next,end}_ helpers.
+         │   - Ferret: one unified body per stage (party-dispatch
+         │     happens inside the per-tree private helpers).
 ```
 
 ## Auto-rollover inside do_next
@@ -150,37 +152,37 @@ The dispatch tree inside `OTExtension`:
 `StreamingExtension::next` does no rollover — it just asserts the
 session is active and calls `do_next(out)`. The protocol-specific
 auto-rollover (calling end+begin transparently when the round's
-user-visible budget is full) lives inside the subclass's `do_next`:
+user-visible budget is full) lives inside the subclass's `next`:
 
 ```cpp
-// Ferret::do_next (simplified)
-void Ferret::do_next(block* out) {
+// Ferret::next (simplified)
+void Ferret::next(block* out) {
+    assert_in_session_();
     const int64_t user_budget_trees = param.t - param.refill_trees;
     if (tree_idx_ == user_budget_trees) {
-        do_end();
-        do_begin();
+        end();   // exit_session_ flips the tripwire
+        begin(); // enter_session_ flips it back
     }
     process_one_tree_(reinterpret_cast<AuthValueFerret*>(out));
 }
 ```
 
 ```cpp
-// Svole::do_next (simplified)
-void Svole::do_next(AuthValue* out) {
+// Svole::next (simplified)
+void Svole::next(AuthValue* out) {
+    assert_in_session_();
     const int64_t user_budget_trees = param.t - param.refill_trees;
-    if (tree_idx_ == user_budget_trees) {
-        do_end();
-        do_begin();
-    }
+    if (tree_idx_ == user_budget_trees) { end(); begin(); }
     process_one_tree_(out);
 }
 ```
 
-The wrapper `next()` sees a single contiguous session even though,
-under the hood, several end+begin pairs may have fired. Callers
-don't observe the round boundary.
+Because `end → exit_session_` flips the tripwire false and the
+following `begin → enter_session_` flips it back true, the rollover
+sequence passes the protected helpers cleanly while still landing in
+a valid session for the caller's next() that follows.
 
-IKNP and SoftSpoken don't need this — they have no notion of
+IKNP and SoftSpoken don't need rollover — they have no notion of
 "refill the next round's seed material from this round's tail",
 so each `next()` is just one chunk and `end()` is explicit.
 
@@ -210,17 +212,17 @@ Ferret's `bootstrap_()` does `if (!io->fs_enabled()) io->enable_fs(is_ot_sender(
 A protocol may also have FS pre-enabled by an outer harness; the
 `if (!fs_enabled())` guard makes that a no-op.
 
-## Session tripwire and destruction
+## Destruction in-session
 
 ```cpp
 ~StreamingExtension() {
-    assert(!in_session_ && "missing end()");
+    if (in_session_) error("...");
 }
 ```
 
 A protocol object destructed in the middle of a session is a bug —
 the leftover buffer may hold un-consumed bytes; the peer is waiting
-for more. The assert catches this in debug builds.
+for more. The base catches this at all build flavors (not just debug).
 
 ## What about `setup_done`?
 

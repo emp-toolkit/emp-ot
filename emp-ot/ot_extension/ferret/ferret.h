@@ -97,12 +97,12 @@ using MPCOT_Receiver = MultiPointGadgetReceiver<AuthValueFerret>;
  * https://eprint.iacr.org/2020/924.pdf
  *
  * Single class for both roles; party-dispatched internally inside
- * do_begin / do_next / do_end and the per-tree helpers. Structurally
- * parallel to Svole<AuthValue, IO> — both inherit StreamingExtension<>
- * (Ferret indirectly via OTExtension) and implement the same 4-step
- * round loop (bootstrap + ping-pong swap + tree counter + per-tree
- * inner gadget call → LPN slice → tree_idx_++ ; round-end refill +
- * chi-fold check).
+ * begin / next / end and the per-tree helpers. Structurally parallel
+ * to Svole<AuthValue, IO> — both inherit StreamingExtension<> (Ferret
+ * indirectly via OTExtension) and implement the same 4-step round
+ * loop (bootstrap + ping-pong swap + tree counter + per-tree inner
+ * gadget call → LPN slice → tree_idx_++ ; round-end refill + chi-fold
+ * check).
  */
 class Ferret : public OTExtension {
 public:
@@ -120,22 +120,18 @@ public:
 	// sender-side mpcot state. Pre-bootstrap only.
 	void set_delta(const bool *bits) override;
 
-	// StreamingExtension contract. Each do_*_next produces exactly
+	// StreamingExtension contract. Each next() produces exactly
 	// `chunk_size()` = 2^tree_depth RCOT outputs (one cGGM tree's
-	// leaves).
+	// leaves). next() includes the auto-rollover check (transparent
+	// end→begin when this round's user-visible budget is full).
 	int64_t chunk_size() const override;         // = 2^tree_depth
-
-protected:
-	// StreamingExtension lifecycle. do_next includes the auto-rollover
-	// check (transparent end→begin when this round's user-visible
-	// budget is full).
-	void do_begin() override;
-	void do_next(block *out) override;
-	void do_end() override;
+	void begin() override;
+	void next(block *out) override;
+	void end() override;
 
 private:
-	// Per-stage helpers, called from do_begin / do_next / do_end.
-	// Each party-dispatches internally where the sender and receiver
+	// Per-stage helpers, called from begin / next / end. Each
+	// party-dispatches internally where the sender and receiver
 	// bodies diverge.
 	void bootstrap_();
 	void inner_run_begin_();

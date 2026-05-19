@@ -21,19 +21,19 @@ using IKNPBaseOT = OTCSW;
  * [REF] Active security via "Actively Secure OT Extension with Optimal Overhead"
  *       https://eprint.iacr.org/2015/546.pdf  (send_check / recv_check)
  *
- * Streaming Fiat-Shamir: each rcot_next derives a per-chunk chi seed
- * by snapshotting the IOChannel FS transcript (io->get_digest()) after
+ * Streaming Fiat-Shamir: each next() derives a per-chunk chi seed by
+ * snapshotting the IOChannel FS transcript (io->get_digest()) after
  * the chunk's u-matrix bytes have crossed the wire — they are absorbed
  * automatically by send_data/recv_data, no per-row puts needed. The
  * chunk's packed F_{2^128} elements fold into running accumulators
  * (check_q on the sender, check_t / check_x on the receiver) right
- * after sse_trans, while `out` is still cache-hot. rcot_end runs
- * a final 128-OT chunk (folded with chi from the same continuing
- * transcript) before the (x, t) io exchange and the
- * check_q ⊕ x·Δ == t compare. Each _next writes exactly chunk_ots()
- * = block_size = 2048 blocks; the OTExtension base class wraps the
- * streaming API into a one-shot send_rcot / recv_rcot with a leftover
- * buffer for callers whose `num` isn't a multiple of block_size.
+ * after sse_trans, while `out` is still cache-hot. end() runs a final
+ * 128-OT chunk (folded with chi from the same continuing transcript)
+ * before the (x, t) io exchange and the check_q ⊕ x·Δ == t compare.
+ * Each next() writes exactly chunk_size() = block_size = 2048 blocks;
+ * the StreamingExtension base wraps it into a one-shot rcot() with a
+ * leftover buffer for callers whose `num` isn't a multiple of
+ * block_size.
  *
  * Bit-0 choice encoding: with the invariant bit_0(Δ) = 1, row 0 of the
  * IKNP matrix collapses. Sender forces q[0] = 0 (memset row 0 of t,
@@ -53,13 +53,13 @@ class IKNP : public OTExtension { public:
 	// Per-row PRG streams. The base-class choice_prg samples the
 	// bit-packed choice vector r on the receiver. The sender-side Δ
 	// bool form lives on the base as `delta_bool[]` and is read in
-	// do_send_rcot_next.
+	// send_next_.
 	PRG G0[128], G1[128];
 	// Packs 128 consecutive COT outputs into a single F_{2^128} element
 	// via the gadget (1, X, ..., X^{127}). Lets the malicious check
 	// chi-combine 128x fewer elements than the unpacked version.
 	GaloisFieldPacking packer;
-	// Running malicious-check accumulators, reset at each rcot_begin.
+	// Running malicious-check accumulators, reset at each begin().
 	// Sender uses check_q; receiver uses check_t and check_x.
 	block check_q, check_t, check_x;
 
@@ -71,21 +71,23 @@ class IKNP : public OTExtension { public:
 
 	// ===== StreamingExtension contract =====
 	int64_t chunk_size() const override { return block_size; }
+	void begin() override;
+	void next(block *out) override;
+	void end() override;
 
-protected:
-	// Per-role hooks; the OTExtension base's default do_begin / do_next /
-	// do_end dispatch to these based on is_ot_sender().
-	void do_send_rcot_begin() override;
-	void do_send_rcot_next(block *out) override;
-	void do_send_rcot_end() override;
-	void do_recv_rcot_begin() override;
-	void do_recv_rcot_next(block *out) override;
-	void do_recv_rcot_end() override;
-
-public:
 	// ===== Internal helpers (chi-fold per chunk) =====
 	void combine_send(block *out);
 	void combine_recv(block *out, block *r);
+
+private:
+	// Per-role bodies invoked from begin/next/end with inline
+	// party-dispatch — IKNP's sender and receiver paths share no work.
+	void send_begin_();
+	void send_next_(block *out);
+	void send_end_();
+	void recv_begin_();
+	void recv_next_(block *out);
+	void recv_end_();
 };
 
 }  // namespace emp

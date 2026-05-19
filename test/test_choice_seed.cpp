@@ -35,16 +35,14 @@ static void check_one(NetIO* io, int party, const char* tag,
     {
         auto ot = make_ot();
         if (party == BOB) ot->set_choice_seed(seed);
-        if (party == ALICE) ot->send_rcot(buf1.data(), kN);
-        else                ot->recv_rcot(buf1.data(), kN);
+        ot->rcot(buf1.data(), kN);
     }
     io->flush();
 
     {
         auto ot = make_ot();
         if (party == BOB) ot->set_choice_seed(seed);
-        if (party == ALICE) ot->send_rcot(buf2.data(), kN);
-        else                ot->recv_rcot(buf2.data(), kN);
+        ot->rcot(buf2.data(), kN);
     }
     io->flush();
 

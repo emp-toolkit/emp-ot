@@ -191,8 +191,7 @@ double test_rcot(T* ot, NetIO *io, int party, int64_t length,
 	io->sync();
 	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
 	auto start = clock_start();
-	if (party == ALICE) ot->send_rcot(b, length);
-	else                ot->recv_rcot(b, length);
+	ot->rcot(b, length);
 	long long t = time_from(start);
 	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
 	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;

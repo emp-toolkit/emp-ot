@@ -16,18 +16,18 @@
 //
 // Structurally parallel to Ferret (emp-ot/ot_extension/ferret/ferret.h):
 // both inherit StreamingExtension<Element> (Ferret indirectly via
-// OTExtension), implement the same 4-step round loop in do_begin /
-// do_next / do_end (bootstrap → swap → reset tree_idx_ → inner_begin;
-// rollover-check → process_one_tree; refill → inner_end), and use
-// MultiPointGadget as the per-tree inner gadget. Both ping-pong a
-// `carry_curr_/_next_` buffer of `refill_trees * 2^tree_depth` elements
-// where refill trees write directly into next_.
+// OTExtension), implement the same 4-step round loop in begin / next /
+// end (bootstrap → swap → reset tree_idx_ → inner_begin; rollover-check
+// → process_one_tree; refill → inner_end), and use MultiPointGadget as
+// the per-tree inner gadget. Both ping-pong a `carry_curr_/_next_`
+// buffer of `refill_trees * 2^tree_depth` elements where refill trees
+// write directly into next_.
 //
 // Party convention is carrier-determined via
 // `AuthValue::delta_holder_party()` (returns ALICE or BOB). The
 // invariant in both cases is:
 //
-//   Δ-holder party ↔ inner-Ferret-ALICE ↔ MPFSS sender ↔ send_rcot.
+//   Δ-holder party ↔ inner-Ferret-ALICE ↔ MPFSS sender ↔ rcot caller.
 //
 // Storage: carry_curr_/_next_ are AuthValue[] (val-first {val, mac}).
 // Δ-holder: val = 0 throughout (no val on the sender side).
@@ -146,37 +146,39 @@ public:
     return (param.t - param.refill_trees) * chunk_size();
   }
 
-  // One-shot rcot pull. Δ-holder = inner-Ferret-ALICE = send_rcot;
-  // non-Δ-holder = inner-Ferret-BOB = recv_rcot.
+  // One-shot rcot pull. The inner Ferret's party (ALICE for Δ-holder,
+  // BOB otherwise) determines the role implicitly inside rcot().
   void pull_cots_(block *buf, int64_t num) {
-    if (is_delta_holder()) base_ferret_->send_rcot(buf, num);
-    else                   base_ferret_->recv_rcot(buf, num);
+    base_ferret_->rcot(buf, num);
   }
 
-protected:
-  // -------- Lifecycle --------
+  // -------- Streaming lifecycle --------
 
-  void do_begin() override {
+  void begin() override {
+    this->enter_session_();
     bootstrap_();
     std::swap(carry_curr_, carry_next_);
     tree_idx_ = 0;
     inner_run_begin_();
   }
 
-  void do_next(AuthValue *out) override {
+  void next(AuthValue *out) override {
+    this->assert_in_session_();
     // Auto-rollover: if this round's user-visible budget is full,
     // run end+begin transparently before producing the user's tree.
+    // Uses public end()/begin() so the session tripwire flips cleanly.
     const int64_t user_budget_trees = param.t - param.refill_trees;
     if (tree_idx_ == user_budget_trees) {
-      do_end();
-      do_begin();
+      end();
+      begin();
     }
     process_one_tree_(out);
   }
 
-  void do_end() override {
+  void end() override {
     run_refill_();
     inner_run_end_();
+    this->exit_session_();
   }
 
 private:

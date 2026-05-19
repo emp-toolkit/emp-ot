@@ -44,17 +44,19 @@ emp-ot/
 ```
                   StreamingExtension<Element>
                 ┌───────────────────────────────┐
-                │  single-role lifecycle:       │
-                │    begin / next / end         │
-                │  one-shot:                    │
+                │  pure virtuals (subclass):    │
+                │    begin / next / end /       │
+                │    chunk_size                 │
+                │  non-virtual one-shot:        │
                 │    run(data, num)             │
                 │  state:                       │
                 │    party, malicious,          │
                 │    setup_done,                │
                 │    leftover buffer            │
-                │  pure virtuals (subclass):    │
-                │    do_begin, do_next, do_end, │
-                │    chunk_size                 │
+                │  tripwire helpers (protected):│
+                │    enter_session_ /           │
+                │    exit_session_  /           │
+                │    assert_in_session_         │
                 └───────────────────────────────┘
                               ▲
                               │
@@ -86,32 +88,31 @@ OTExtension : public RandomCOT, public StreamingExtension<block>
 │   ├── choice_prg              (receiver-side PRG)
 │   ├── set_delta(bool*)        (override Δ pre-bootstrap)
 │   ├── set_choice_seed(block)  (override choice PRG seed)
-│   ├── chunk_size()            (inherited from StreamingExtension)
-│   ├── begin/next/end          (role-agnostic; party-fixed lifecycle, inherited)
-│   └── send_rcot / recv_rcot   (dual-role one-shot from RandomCOT,
-│                                party-asserts then delegates to run())
+│   ├── chunk_size()            (inherited; subclass overrides)
+│   ├── begin/next/end          (inherited; subclass overrides)
+│   └── rcot(data, num)         (RandomCOT abstract; final override —
+│                                forwards to inherited run())
 │
-├── default do_begin/do_next/do_end implementations
-│   that dispatch on is_ot_sender() to:
-│     do_send_rcot_*  or  do_recv_rcot_*       (per-role hooks)
-│
-└── three subclasses
-    ├── IKNP                                   (overrides 6 per-role hooks)
-    ├── SoftSpokenOT<k, kChunkBlocks>          (overrides 6 per-role hooks)
-    └── Ferret                                 (overrides do_begin/next/end
-                                                directly; party-dispatches
-                                                inside the per-tree helpers)
+└── three subclasses (each overrides begin / next / end directly —
+    no NVI hooks; tripwire enforced via the inherited
+    enter_session_ / exit_session_ / assert_in_session_ helpers)
+    ├── IKNP                    (inline party-dispatch to
+    │                            send/recv_{begin,next,end}_)
+    ├── SoftSpokenOT<k, kChunkBlocks>  (same shape as IKNP)
+    └── Ferret                  (unified body per stage; party-dispatch
+                                 inside the per-tree helpers)
 ```
 
-**Subclass choice — six hooks vs three.** IKNP and SoftSpoken have
-genuinely different code paths for sender vs receiver (different base
-OT directions, different per-row work), so they override the six
-per-role virtuals and let `OTExtension`'s default dispatcher pick.
-Ferret's send/recv bodies are the same shape up to a party-test
-(both run a multi-point gadget + LPN slice loop), so it overrides
-`do_begin/do_next/do_end` directly and party-dispatches inside the
-private `bootstrap_/inner_run_begin_/process_one_tree_/inner_run_end_/run_refill_`
-helpers.
+**Subclass choice — inline party-dispatch vs unified body.** IKNP and
+SoftSpoken have genuinely different code paths for sender vs receiver
+(different base OT directions, different per-row work), so their
+`begin/next/end` each start with `if (is_ot_sender())` and delegate
+to private non-virtual `send_*_` / `recv_*_` helpers. Ferret's
+send/recv bodies are the same shape up to a party-test (both run a
+multi-point gadget + LPN slice loop), so its `begin/next/end` have
+one unified body each, and the per-tree helpers
+(`bootstrap_/inner_run_begin_/process_one_tree_/inner_run_end_/run_refill_`)
+party-dispatch internally.
 
 ## Svole — one template, two carriers, two policies
 

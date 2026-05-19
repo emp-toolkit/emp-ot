@@ -59,8 +59,7 @@ int main(int argc, char** argv) {
     IKNP* iknp = new IKNP(party, io, /*malicious=*/false);
     block* b = new block[length];
     auto t0 = clock_start();
-    if (party == ALICE) iknp->send_rcot(b, length);
-    else                iknp->recv_rcot(b, length);
+    iknp->rcot(b, length);
     io->flush();
     long long us = time_from(t0);
     verify_rcot(iknp, under, party, b, length);

@@ -61,8 +61,7 @@ static void run_rcot(NetIO* io, int party, int64_t length, Make make,
                      bool malicious) {
     auto ot = make(io, malicious);
     block* b = new block[length];
-    if (party == ALICE) ot->send_rcot(b, length);
-    else                ot->recv_rcot(b, length);
+    ot->rcot(b, length);
     delete[] b;
 }
 

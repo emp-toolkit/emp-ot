@@ -71,15 +71,12 @@ public:
     static constexpr int kChunkOTs          = kChunkBlocks * 128;
     int64_t chunk_size() const override { return kChunkOTs; }
 
-protected:
-    // Per-role hooks; the OTExtension base's default do_begin / do_next /
-    // do_end dispatch to these based on is_ot_sender().
-    void do_send_rcot_begin() override;
-    void do_send_rcot_next(block* out) override;
-    void do_send_rcot_end() override;
-    void do_recv_rcot_begin() override;
-    void do_recv_rcot_next(block* out) override;
-    void do_recv_rcot_end() override;
+    // StreamingExtension lifecycle. Party-dispatches inline to the
+    // private per-role helpers below — SoftSpoken's sender and receiver
+    // paths share no per-stage work.
+    void begin() override;
+    void next(block* out) override;
+    void end() override;
 
 private:
     uint64_t session_ = 0;
@@ -108,7 +105,7 @@ private:
     block check_t_  = zero_block;   // receiver's running fold (T_i)
     block check_x_  = zero_block;   // receiver's running fold (R_i)
 
-    // Setup halves, lazy on first do_{send,recv}_rcot_begin.
+    // Setup halves, lazy on first begin() per role.
     void bootstrap_send_();
     void bootstrap_recv_();
     void ensure_chunk_scratch_();
@@ -119,10 +116,19 @@ private:
     void combine_send_chunk(block* out, int64_t bs);
     void combine_recv_chunk(block* out, const block* u_canonical, int64_t bs);
     // Per-chunk pipeline at arbitrary bs (1..kChunkBlocks). Called with
-    // bs=kChunkBlocks from do_{send,recv}_rcot_next, bs=1 from the sacrificial
-    // chunk in do_{send,recv}_rcot_end.
+    // bs=kChunkBlocks from {send,recv}_next_, bs=1 from the sacrificial
+    // chunk in {send,recv}_end_.
     void send_chunk_pipeline(block* out, int64_t bs);
     void recv_chunk_pipeline(block* out, int64_t bs);
+
+    // Per-role bodies invoked from begin/next/end with inline
+    // party-dispatch.
+    void send_begin_();
+    void send_next_(block* out);
+    void send_end_();
+    void recv_begin_();
+    void recv_next_(block* out);
+    void recv_end_();
 };
 
 extern template class SoftSpokenOT<2>;

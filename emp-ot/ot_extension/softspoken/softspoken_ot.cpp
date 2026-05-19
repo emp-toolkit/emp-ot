@@ -5,11 +5,11 @@
 //
 // RandomCOT: after sfvole_sender_butterfly / sfvole_receiver_butterfly
 // emit (u, V) and (W) respectively, the COT relation Conv(V[j]) ⊕
-// Conv(W[j]) = u_canonical[j] · Δ holds at the full-block level.
-// send_rcot / recv_rcot expose this with the LSB-encoded choice
-// convention (LSB(K) = 0, LSB(M) = u_canonical[j]). send_cot / recv_cot
-// are inherited from RandomCOT, which adds the standard 1-bit-per-COT
-// chosen-message correction wrapper.
+// Conv(W[j]) = u_canonical[j] · Δ holds at the full-block level. rcot()
+// exposes this with the LSB-encoded choice convention (LSB(K) = 0,
+// LSB(M) = u_canonical[j]). send_cot / recv_cot are inherited from
+// RandomCOT, which adds the standard 1-bit-per-COT chosen-message
+// correction wrapper.
 //
 // Δ has LSB=1 (forced by the base OTExtension ctor / set_delta).
 // The LSB-encoded choice convention needs that bit to round-trip
@@ -32,11 +32,12 @@
 //
 // ===== Streaming pipeline =====
 //
-// send_rcot / recv_rcot chunk the OT-output axis: begin → loop _next
-// → end runs one session with a fresh session_id; cur_*_b0_ tracks the
-// per-session PRG counter offset (in bpr-blocks) consumed by previous
-// _next calls so the keystream across chunks of one session matches
-// one bulk PRG invocation.
+// begin / next / end (and the one-shot rcot wrapper from
+// StreamingExtension::run) chunk the OT-output axis: each session
+// gets a fresh session_id; cur_*_b0_ tracks the per-session PRG
+// counter offset (in bpr-blocks) consumed by previous next() calls
+// so the keystream across chunks of one session matches one bulk
+// PRG invocation.
 //
 // Per chunk:
 //   1. For every sub-VOLE i ∈ [0, n), sfvole_*_butterfly<k> writes
@@ -338,8 +339,31 @@ void SoftSpokenOT<k, kChunkBlocks>::ensure_chunk_scratch_() {
     }
 }
 
+// StreamingExtension lifecycle: party-dispatch inline to the per-role
+// helpers below. Sender and receiver paths share no per-stage work.
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::do_send_rcot_begin() {
+void SoftSpokenOT<k, kChunkBlocks>::begin() {
+    this->enter_session_();
+    if (this->is_ot_sender()) send_begin_();
+    else                      recv_begin_();
+}
+
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::next(block* out) {
+    this->assert_in_session_();
+    if (this->is_ot_sender()) send_next_(out);
+    else                      recv_next_(out);
+}
+
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::end() {
+    if (this->is_ot_sender()) send_end_();
+    else                      recv_end_();
+    this->exit_session_();
+}
+
+template <int k, int kChunkBlocks>
+void SoftSpokenOT<k, kChunkBlocks>::send_begin_() {
     if (!setup_done) bootstrap_send_();
     cur_send_session_ = session_++;
     cur_send_b0_ = 0;
@@ -347,12 +371,12 @@ void SoftSpokenOT<k, kChunkBlocks>::do_send_rcot_begin() {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::do_send_rcot_end() {
+void SoftSpokenOT<k, kChunkBlocks>::send_end_() {
     if (malicious) {
         // Sacrificial 128-OT chunk: extends the chi-fold by one packed
         // F_{2^128} element so the revealed (check_x, check_t) doesn't
         // determine the user-visible R/T values in any single equation.
-        // Run at bs=1 directly (not through do_send_rcot_next, which
+        // Run at bs=1 directly (not through send_next_, which
         // would compute a full kChunkOTs).
         block scratch[128];
         send_chunk_pipeline(scratch, /*bs=*/1);
@@ -369,7 +393,7 @@ void SoftSpokenOT<k, kChunkBlocks>::do_send_rcot_end() {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::do_send_rcot_next(block* out) {
+void SoftSpokenOT<k, kChunkBlocks>::send_next_(block* out) {
     send_chunk_pipeline(out, /*bs=*/kChunkBlocks);
 }
 
@@ -431,7 +455,7 @@ void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) 
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::do_recv_rcot_begin() {
+void SoftSpokenOT<k, kChunkBlocks>::recv_begin_() {
     if (!setup_done) bootstrap_recv_();
     cur_recv_session_ = session_++;
     cur_recv_b0_ = 0;
@@ -439,7 +463,7 @@ void SoftSpokenOT<k, kChunkBlocks>::do_recv_rcot_begin() {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::do_recv_rcot_end() {
+void SoftSpokenOT<k, kChunkBlocks>::recv_end_() {
     if (malicious) {
         // Mirror the sender's sacrificial chunk at bs=1, then open the
         // chi-fold accumulators. Must run before the io->flush() below
@@ -450,12 +474,12 @@ void SoftSpokenOT<k, kChunkBlocks>::do_recv_rcot_end() {
         this->io->send_block(&check_t_, 1);
     }
     // Flush any d_buf bytes still buffered in NetIO so the peer's
-    // matching do_recv_rcot_next can complete.
+    // matching recv_next_ can complete.
     this->io->flush();
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::do_recv_rcot_next(block* out) {
+void SoftSpokenOT<k, kChunkBlocks>::recv_next_(block* out) {
     recv_chunk_pipeline(out, /*bs=*/kChunkBlocks);
 }
 

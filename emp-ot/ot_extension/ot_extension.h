@@ -13,23 +13,23 @@ namespace emp {
 // Common base class for OT extensions (IKNP / SoftSpokenOT / Ferret).
 // Conceptually `OTExtension` is `StreamingExtension<block>` with two
 // additions:
-//   - send_rcot / recv_rcot — the dual-role one-shot API inherited
-//     from RandomCOT, party-asserting wrappers around StreamingExtension::run().
-//     The single-role lifecycle (begin / next / end / run) is inherited
-//     verbatim from StreamingExtension; party is fixed at construction
-//     so the role is implicit there.
+//   - rcot(data, num) — the polymorphic one-shot entry from RandomCOT.
+//     Implemented here by forwarding to StreamingExtension::run (the
+//     leftover-buffer drainer). Concrete subclasses don't override
+//     this — they implement begin / next / end and let rcot delegate.
 //   - Δ / delta_bool / choice_prg / base_ot — OT-specific plumbing.
 //
-// Subclasses (IKNP, SoftSpoken, Ferret) override the three streaming
-// virtuals do_begin / do_next / do_end. The default implementation in
-// this base party-dispatches to do_send_rcot_*/do_recv_rcot_* helpers
-// (which IKNP / SoftSpoken override); Ferret instead overrides
-// do_begin / do_next / do_end directly.
+// Concrete subclasses (IKNP, SoftSpoken, Ferret) override the three
+// streaming virtuals begin / next / end directly:
+//   - IKNP / SoftSpoken: party-dispatch inline to private send/recv
+//     helpers (their bodies diverge per role).
+//   - Ferret: one unified body per stage (party-dispatches inside the
+//     private per-tree helpers).
 class OTExtension : public RandomCOT, public StreamingExtension<block> {
 public:
-    // Subclass do_begin trips this on first call; set_delta and any
-    // pre-bootstrap configuration assert !setup_done. (Inherited from
-    // StreamingExtension.)
+    // Subclass begin/next/end trip this on first call via
+    // enter_session_; set_delta and any pre-bootstrap configuration
+    // assert !setup_done. (Inherited from StreamingExtension.)
 
     // Owned base OT for the subclass's bootstrap. Allocated by the
     // subclass ctor (see IKNPBaseOT / SoftSpokenBaseOT / FerretBaseOT
@@ -89,16 +89,9 @@ public:
     // chunk_size() — one cGGM tree's leaves for Ferret, the max-batch
     // unit for IKNP / SoftSpoken.
 
-    // RandomCOT one-shot (the dual-role API surface from the base).
-    // Party-asserts then routes through the single-role streaming
-    // run(); lazy setup_done flip happens inside the subclass's
-    // first do_begin.
-    void send_rcot(block* data, int64_t num) final override {
-        assert(is_ot_sender());
-        run(data, num);
-    }
-    void recv_rcot(block* data, int64_t num) final override {
-        assert(!is_ot_sender());
+    // RandomCOT polymorphic entry. Single-method (role-implicit),
+    // forwards to the inherited leftover-buffer one-shot run().
+    void rcot(block* data, int64_t num) final override {
         run(data, num);
     }
 
@@ -131,37 +124,6 @@ protected:
             // via set_choice_seed.
         }
     }
-
-    // Default StreamingExtension hook implementations: party-dispatch
-    // to the per-role virtuals below. Subclasses that fit the dual-role
-    // split (IKNP, SoftSpoken) override the six per-role methods and
-    // inherit these dispatchers. Subclasses with a unified body (e.g.
-    // Ferret, whose per-tree path is the same up to a party-test)
-    // override do_begin / do_next / do_end directly and ignore the
-    // per-role hooks.
-    void do_begin() override {
-        if (is_ot_sender()) do_send_rcot_begin();
-        else                do_recv_rcot_begin();
-    }
-    void do_next(block* out) override {
-        if (is_ot_sender()) do_send_rcot_next(out);
-        else                do_recv_rcot_next(out);
-    }
-    void do_end() override {
-        if (is_ot_sender()) do_send_rcot_end();
-        else                do_recv_rcot_end();
-    }
-
-    // Per-role hooks. Default empty (so subclasses that override
-    // do_begin/do_next/do_end directly don't need to provide them).
-    // Subclasses using the default dispatch above must override these
-    // with their per-role bodies.
-    virtual void do_send_rcot_begin()        {}
-    virtual void do_send_rcot_next(block*)   {}
-    virtual void do_send_rcot_end()          {}
-    virtual void do_recv_rcot_begin()        {}
-    virtual void do_recv_rcot_next(block*)   {}
-    virtual void do_recv_rcot_end()          {}
 };
 
 }  // namespace emp

@@ -12,19 +12,21 @@
 // sVOLE extensions specialize this with their per-leaf carrier:
 //
 //   OTExtension : public StreamingExtension<block>            (RCOT)
-//                 + send_rcot / recv_rcot (dual-role one-shot from RandomCOT)
+//                 + rcot(data, num) from RandomCOT
 //                 + Δ / base_ot / choice_prg
 //   Svole<AuthValue, IO> : public StreamingExtension<AuthValue> (sVOLE)
 //
 // Lifecycle: begin → loop next* → end. One-shot wrapper run(data, num)
 // drains a per-instance leftover buffer so non-chunk-multiple requests
 // don't pay a fresh chunk per call. Lazy setup is gated by the
-// `setup_done` flag (subclass flips it inside its first do_begin).
+// `setup_done` flag (subclass flips it inside its first begin).
 //
 // Each instance is single-role at runtime (`party` is fixed at
-// construction). The streaming surface (begin/next/end/run) is the
-// canonical API on both subclasses; OTExtension additionally exposes
-// the dual-role one-shot send_rcot/recv_rcot inherited from RandomCOT.
+// construction). begin/next/end are virtual — subclasses override them
+// directly. Session-tripwire enforcement (no double-begin, no end
+// without begin, no destruction in-session) is provided by protected
+// helpers (enter_session_ / exit_session_ / assert_in_session_) that
+// the subclass calls from its overrides.
 
 namespace emp {
 
@@ -37,24 +39,20 @@ public:
 
     virtual int64_t chunk_size() const = 0;
 
-    void begin() {
-        assert(!in_session_ && "begin: previous session not ended");
-        do_begin();
-        in_session_ = true;
-    }
-    void next(Element *out) {
-        assert(in_session_ && "next: call begin first");
-        do_next(out);
-    }
-    void end() {
-        assert(in_session_ && "end: no active session");
-        do_end();
-        in_session_ = false;
-    }
+    // Streaming lifecycle. Each subclass overrides these with its
+    // bootstrap / per-chunk / round-end body. The override is
+    // expected to call enter_session_() at the top of begin(),
+    // exit_session_() at the end of end(), and assert_in_session_()
+    // inside next() — the protected helpers below enforce the
+    // tripwire without the NVI dispatcher layer.
+    virtual void begin() = 0;
+    virtual void next(Element *out) = 0;
+    virtual void end() = 0;
 
     // One-shot: produce `num` outputs into `data`, draining a
     // per-instance leftover buffer first so a partial tail from a
-    // previous call is consumed before extending again.
+    // previous call is consumed before extending again. Non-virtual;
+    // works for any subclass via the begin/next/end virtuals.
     void run(Element *data, int64_t num) {
         const int64_t chunk = chunk_size();
         int64_t produced = drain_leftover(data, num);
@@ -89,9 +87,20 @@ protected:
     StreamingExtension(int party_, bool malicious_)
         : party(party_), malicious(malicious_) {}
 
-    virtual void do_begin() = 0;
-    virtual void do_next(Element *out) = 0;
-    virtual void do_end() = 0;
+    // Session tripwire helpers. Subclass overrides call these from
+    // their begin/end (and assert_in_session_ from next) — the base
+    // can't manage the flag automatically without an NVI layer.
+    void enter_session_() {
+        assert(!in_session_ && "begin: previous session not ended");
+        in_session_ = true;
+    }
+    void exit_session_() {
+        assert(in_session_ && "end: no active session");
+        in_session_ = false;
+    }
+    void assert_in_session_() const {
+        assert(in_session_ && "next: call begin first");
+    }
 
 private:
     bool in_session_ = false;
