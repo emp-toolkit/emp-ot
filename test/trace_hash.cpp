@@ -117,9 +117,17 @@ int main(int argc, char** argv) {
     // is plenty. RCOT stress is large enough to trigger Ferret's
     // per-round rollover (~1M RCOTs for b11) so the chi-fold path is
     // exercised; small enough that IKNP/SoftSpoken finish quickly.
+    // Debug builds use ~16× smaller lengths so the suite finishes
+    // in a reasonable CI window; wire-trace baseline in README.md is
+    // Release-mode and won't match Debug-mode hashes.
     const int64_t base_len  = 128;
+#ifdef NDEBUG
     const int64_t rcot_len  = (1LL << 22) + 101;
     const int64_t svole_len = 1 << 20;
+#else
+    const int64_t rcot_len  = (1LL << 18) + 101;
+    const int64_t svole_len = 1 << 16;
+#endif
 
     // FS send_first conventions per protocol family:
     //   RCOT extensions: is_ot_sender() = (party == ALICE).

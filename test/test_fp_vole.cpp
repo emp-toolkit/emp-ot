@@ -43,8 +43,20 @@ void check_triple(uint64_t delta, const uint64_t *val, const uint64_t *mac,
   }
 }
 
+// Debug builds use a smaller Ferret parameter set so the suite
+// finishes in a reasonable CI window. Release-mode keeps the default
+// (b13) for stress coverage of the largest parameter point.
+#ifdef NDEBUG
+static constexpr auto kSvoleParam   = tuning::ferret_b13;
+static constexpr int  kOneshotIters = 8;
+#else
+static constexpr auto kSvoleParam   = tuning::ferret_b11;
+static constexpr int  kOneshotIters = 2;
+#endif
+
 void test_streaming(NetIO *io, int svole_party) {
-  FpVOLE<AuthValueFp, NetIO> vtriple(svole_party, io);
+  FpVOLE<AuthValueFp, NetIO> vtriple(svole_party, io,
+                                     /*malicious=*/true, kSvoleParam);
   uint64_t Delta = 0;
   if (svole_party == ALICE) {
     PRG prg;
@@ -76,7 +88,8 @@ void test_streaming(NetIO *io, int svole_party) {
 }
 
 void test_oneshot(NetIO *io, int svole_party) {
-  FpVOLE<AuthValueFp, NetIO> vtriple(svole_party, io);
+  FpVOLE<AuthValueFp, NetIO> vtriple(svole_party, io,
+                                     /*malicious=*/true, kSvoleParam);
   uint64_t Delta = 0;
   if (svole_party == ALICE) {
     PRG prg;
@@ -90,7 +103,7 @@ void test_oneshot(NetIO *io, int svole_party) {
   std::vector<AuthValueFp> buf(per_round);
   std::vector<uint64_t> buf_val(per_round), buf_mac(per_round);
 
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < kOneshotIters; ++i) {
     auto start = clock_start();
     vtriple.run(buf.data(), per_round);
     std::cout << "extend " << time_from(start) / 1000 << " ms" << std::endl;

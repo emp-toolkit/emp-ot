@@ -41,10 +41,22 @@ void check_triple(const block delta,
   }
 }
 
+// Debug builds use a smaller Ferret parameter set so the suite
+// finishes in a reasonable CI window. Release-mode keeps the default
+// (b13) for stress coverage of the largest parameter point.
+#ifdef NDEBUG
+static constexpr auto kSvoleParam   = tuning::ferret_b13;
+static constexpr int  kOneshotIters = 8;
+#else
+static constexpr auto kSvoleParam   = tuning::ferret_b11;
+static constexpr int  kOneshotIters = 2;
+#endif
+
 // Streaming-path exercise: begin → many next → end.
 // Walks chunk-by-chunk through ~one round of outputs, verifying each.
 void test_streaming(NetIO *io, int svole_party) {
-  F2kVOLE<AuthValueF2k, NetIO> vtriple(svole_party, io);
+  F2kVOLE<AuthValueF2k, NetIO> vtriple(svole_party, io,
+                                       /*malicious=*/true, kSvoleParam);
   const block Delta = (svole_party == BOB) ? vtriple.delta() : zero_block;
 
   const int64_t chunk = vtriple.chunk_size();
@@ -73,14 +85,15 @@ void test_streaming(NetIO *io, int svole_party) {
 // One-shot path: run(out, num) with chunk-aligned num. ram-zk uses
 // the same shape with `num = chunk_aligned_buf_sz()`.
 void test_oneshot(NetIO *io, int svole_party) {
-  F2kVOLE<AuthValueF2k, NetIO> vtriple(svole_party, io);
+  F2kVOLE<AuthValueF2k, NetIO> vtriple(svole_party, io,
+                                       /*malicious=*/true, kSvoleParam);
   const block Delta = (svole_party == BOB) ? vtriple.delta() : zero_block;
 
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();
   std::vector<AuthValueF2k> buf(per_round);
   std::vector<block> buf_x(per_round), buf_yz(per_round);
 
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < kOneshotIters; ++i) {
     auto start = clock_start();
     vtriple.run(buf.data(), per_round);
     std::cout << "extend " << time_from(start) / 1000 << " ms" << std::endl;
