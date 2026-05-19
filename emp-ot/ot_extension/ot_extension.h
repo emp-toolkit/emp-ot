@@ -11,18 +11,20 @@
 namespace emp {
 
 // Common base class for OT extensions (IKNP / SoftSpokenOT / Ferret).
-// Conceptually `OTExtension` is just `StreamingExtension<block>` with
-// three additions:
-//   - dual-role public API: rcot_send_* / rcot_recv_* (party-asserting
-//     wrappers around the inherited single-role begin/next/end).
+// Conceptually `OTExtension` is `StreamingExtension<block>` with three
+// additions:
+//   - rcot_begin / rcot_next / rcot_end — single-role lifecycle
+//     aliases (party is fixed at construction; the role is implicit).
+//   - send_rcot / recv_rcot — the dual-role one-shot API inherited
+//     from RandomCOT, party-asserting wrappers around StreamingExtension::run().
 //   - Δ / delta_bool / choice_prg / base_ot — OT-specific plumbing.
 //   - chunk_ots() as an alias for chunk_size().
 //
-// Each instance is single-role at runtime (`party` is fixed at
-// construction); the dual-role API is just two API surfaces over the
-// same single-role lifecycle. Subclasses (IKNP, SoftSpoken, Ferret)
-// override the three streaming virtuals do_begin / do_next / do_end
-// and dispatch by party internally.
+// Subclasses (IKNP, SoftSpoken, Ferret) override the three streaming
+// virtuals do_begin / do_next / do_end. The default implementation in
+// this base party-dispatches to do_send_rcot_*/do_recv_rcot_* helpers
+// (which IKNP / SoftSpoken override); Ferret instead overrides
+// do_begin / do_next / do_end directly.
 class OTExtension : public RandomCOT, public StreamingExtension<block> {
 public:
     // Subclass do_begin trips this on first call; set_delta and any
@@ -54,7 +56,7 @@ public:
 
     // Replace the ctor-sampled Δ with one supplied by an outer protocol.
     // Sender-only; must fire before the streaming bootstrap consumes Δ
-    // (i.e. before the first rcot_*_begin call). bits[0] must be true
+    // (i.e. before the first rcot_begin call). bits[0] must be true
     // (the COT LSB convention shared by all three extensions).
     //
     // Subclasses that need to propagate Δ into auxiliary state (e.g.
@@ -69,12 +71,12 @@ public:
 
     // Reseed the receiver-side choice PRG. Receiver-only; must fire
     // before the streaming bootstrap consumes the PRG (i.e. before
-    // the first rcot_*_begin call). Subclasses that nest another
+    // the first rcot_begin call). Subclasses that nest another
     // OTExtension at bootstrap (Ferret -> SoftSpoken / nested Ferret)
     // pull a sub-seed from choice_prg and forward it via the inner's
-    // set_choice_seed in their bootstrap path; no override of the
-    // setter itself is needed since the PRG lives on the base.
-    virtual void set_choice_seed(const block& seed) {
+    // set_choice_seed in their bootstrap path; the PRG lives on the
+    // base and no subclass needs to override the setter.
+    void set_choice_seed(const block& seed) {
         assert(!is_ot_sender() && "set_choice_seed: sender has no choice bits");
         assert(!setup_done && "set_choice_seed: bootstrap already fired");
         choice_prg.reseed(&seed);
@@ -82,28 +84,28 @@ public:
 
     // Per-_next chunk size in OTs. Subclasses override the inherited
     // chunk_size() (one cGGM tree's leaves for Ferret; the max-batch
-    // unit for IKNP / SoftSpoken). chunk_ots() is a non-virtual alias
-    // for external callers that pre-date the unified streaming name.
+    // unit for IKNP / SoftSpoken). chunk_ots() is a non-virtual,
+    // domain-specific alias for OT-extension callers.
     int64_t chunk_ots() const { return chunk_size(); }
 
-    // -------- Dual-role public API --------
-    // Each is a thin party-asserting alias for the inherited
-    // single-role begin/next/end/run. Subclasses don't see these —
-    // they implement do_begin/do_next/do_end and dispatch on party.
-    void rcot_send_begin()        { assert(is_ot_sender());  begin(); }
-    void rcot_send_next(block* o) { assert(is_ot_sender());  next(o); }
-    void rcot_send_end()          { assert(is_ot_sender());  end(); }
-    void rcot_recv_begin()        { assert(!is_ot_sender()); begin(); }
-    void rcot_recv_next(block* o) { assert(!is_ot_sender()); next(o); }
-    void rcot_recv_end()          { assert(!is_ot_sender()); end(); }
+    // -------- Public API --------
+    // Each instance is single-role at runtime (`party` is fixed at
+    // construction); the role is implicit in the lifecycle methods.
+    // rcot_begin/next/end are domain-named aliases for the inherited
+    // streaming begin/next/end.
+    void rcot_begin()        { begin(); }
+    void rcot_next(block* o) { next(o); }
+    void rcot_end()          { end(); }
 
-    // RandomCOT one-shot. Lifecycle: lazy setup_done flip happens
-    // inside the subclass's first do_begin.
-    void rcot_send(block* data, int64_t num) final override {
+    // RandomCOT one-shot (the dual-role API surface from the base).
+    // Party-asserts then routes through the single-role streaming
+    // run(); lazy setup_done flip happens inside the subclass's
+    // first do_begin.
+    void send_rcot(block* data, int64_t num) final override {
         assert(is_ot_sender());
         run(data, num);
     }
-    void rcot_recv(block* data, int64_t num) final override {
+    void recv_rcot(block* data, int64_t num) final override {
         assert(!is_ot_sender());
         run(data, num);
     }
@@ -142,32 +144,32 @@ protected:
     // to the per-role virtuals below. Subclasses that fit the dual-role
     // split (IKNP, SoftSpoken) override the six per-role methods and
     // inherit these dispatchers. Subclasses with a unified body (e.g.
-    // Ferret, which routes through TreeExtensionBase::engine_*) can
+    // Ferret, whose per-tree path is the same up to a party-test)
     // override do_begin / do_next / do_end directly and ignore the
     // per-role hooks.
     void do_begin() override {
-        if (is_ot_sender()) do_rcot_send_begin();
-        else                do_rcot_recv_begin();
+        if (is_ot_sender()) do_send_rcot_begin();
+        else                do_recv_rcot_begin();
     }
     void do_next(block* out) override {
-        if (is_ot_sender()) do_rcot_send_next(out);
-        else                do_rcot_recv_next(out);
+        if (is_ot_sender()) do_send_rcot_next(out);
+        else                do_recv_rcot_next(out);
     }
     void do_end() override {
-        if (is_ot_sender()) do_rcot_send_end();
-        else                do_rcot_recv_end();
+        if (is_ot_sender()) do_send_rcot_end();
+        else                do_recv_rcot_end();
     }
 
     // Per-role hooks. Default empty (so subclasses that override
     // do_begin/do_next/do_end directly don't need to provide them).
     // Subclasses using the default dispatch above must override these
     // with their per-role bodies.
-    virtual void do_rcot_send_begin()        {}
-    virtual void do_rcot_send_next(block*)   {}
-    virtual void do_rcot_send_end()          {}
-    virtual void do_rcot_recv_begin()        {}
-    virtual void do_rcot_recv_next(block*)   {}
-    virtual void do_rcot_recv_end()          {}
+    virtual void do_send_rcot_begin()        {}
+    virtual void do_send_rcot_next(block*)   {}
+    virtual void do_send_rcot_end()          {}
+    virtual void do_recv_rcot_begin()        {}
+    virtual void do_recv_rcot_next(block*)   {}
+    virtual void do_recv_rcot_end()          {}
 };
 
 }  // namespace emp

@@ -72,8 +72,7 @@ class Lpn { public:
     }
 
     // Process `length` consecutive output positions. M-batched first
-    // (tuning::lpn_batch_m), then 4-batched, then scalar — matches
-    // the previous LpnF2 / LpnFp dispatch shape.
+    // (tuning::lpn_batch_m), then 4-batched, then scalar tail.
     void compute_slice(AuthValue *out, const AuthValue *pre, int64_t length) {
         constexpr int M = tuning::lpn_batch_m;
         int64_t j = 0;

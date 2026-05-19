@@ -191,8 +191,8 @@ double test_rcot(T* ot, NetIO *io, int party, int64_t length,
 	io->sync();
 	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
 	auto start = clock_start();
-	if (party == ALICE) ot->rcot_send(b, length);
-	else                ot->rcot_recv(b, length);
+	if (party == ALICE) ot->send_rcot(b, length);
+	else                ot->recv_rcot(b, length);
 	long long t = time_from(start);
 	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
 	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
@@ -202,7 +202,7 @@ double test_rcot(T* ot, NetIO *io, int party, int64_t length,
 }
 
 // Same RCOT correctness check as test_rcot, but driven through the
-// streaming API directly (rcot_*_begin / _next / _end). The user's
+// streaming API directly (rcot_begin / _next / _end). The user's
 // `length` is rounded down to a multiple of `ot->chunk_ots()` so we
 // don't pay the leftover-buffer copy that the one-shot wrapper does
 // — this is what isolates the streaming-API speedup. Reports MOTps
@@ -222,15 +222,15 @@ double test_rcot_streaming(T* ot, NetIO *io, int party, int64_t length,
 	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
 	auto start = clock_start();
 	if (party == ALICE) {
-		ot->rcot_send_begin();
+		ot->rcot_begin();
 		for (int64_t i = 0; i < n_chunks; ++i)
-			ot->rcot_send_next(b + i * chunk);
-		ot->rcot_send_end();
+			ot->rcot_next(b + i * chunk);
+		ot->rcot_end();
 	} else {
-		ot->rcot_recv_begin();
+		ot->rcot_begin();
 		for (int64_t i = 0; i < n_chunks; ++i)
-			ot->rcot_recv_next(b + i * chunk);
-		ot->rcot_recv_end();
+			ot->rcot_next(b + i * chunk);
+		ot->rcot_end();
 	}
 	long long t = time_from(start);
 	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;

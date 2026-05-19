@@ -47,19 +47,19 @@ Ferret::Ferret(int party, IOChannel *io,
 	                      : std::unique_ptr<OT>(new FerretBaseOT(io))) {
 	this->param = param;
 
-	lpn_f2_ = std::make_unique<Lpn<AuthValueFerret, 10>>(param.k);
+	lpn_ = std::make_unique<Lpn<AuthValueFerret, 10>>(param.k);
 	if (is_ot_sender()) {
-		mpcot_sender_ = std::make_unique<MPCOT_Sender>(
+		gadget_send_ = std::make_unique<MPCOT_Sender>(
 		    param.t, param.tree_depth, io);
-		if (malicious) mpcot_sender_->set_malicious();
+		if (malicious) gadget_send_->set_malicious();
 		// Δ was sampled by the base ctor (LSB pinned to 1). Propagate
 		// it into mpcot; outer protocols that want a specific Δ call
 		// set_delta post-construction (which also re-propagates).
-		mpcot_sender_->set_cggm_delta(this->Delta);
+		gadget_send_->set_cggm_delta(this->Delta);
 	} else {
-		mpcot_receiver_ = std::make_unique<MPCOT_Receiver>(
+		gadget_recv_ = std::make_unique<MPCOT_Receiver>(
 		    param.t, param.tree_depth, io);
-		if (malicious) mpcot_receiver_->set_malicious();
+		if (malicious) gadget_recv_->set_malicious();
 	}
 
 	// Ping-pong buffers, each refill_trees * leave_n blocks. Slots
@@ -68,8 +68,8 @@ Ferret::Ferret(int party, IOChannel *io,
 	// reads but addressable.
 	const int64_t buf_blocks =
 	    param.refill_trees * (int64_t{1} << param.tree_depth);
-	ot_pre_data_curr_.resize(buf_blocks);
-	ot_pre_data_next_.resize(buf_blocks);
+	carry_curr_.resize(buf_blocks);
+	carry_next_.resize(buf_blocks);
 }
 
 Ferret::~Ferret() = default;
@@ -83,7 +83,7 @@ int64_t Ferret::chunk_size() const {
 // base, re-propagate into the sender's mpcot gadget.
 void Ferret::set_delta(const bool *bits) {
 	OTExtension::set_delta(bits);
-	mpcot_sender_->set_cggm_delta(this->Delta);
+	gadget_send_->set_cggm_delta(this->Delta);
 }
 
 // =====================================================================
@@ -92,7 +92,7 @@ void Ferret::set_delta(const bool *bits) {
 
 void Ferret::do_begin() {
 	bootstrap_();
-	std::swap(ot_pre_data_curr_, ot_pre_data_next_);
+	std::swap(carry_curr_, carry_next_);
 	tree_idx_ = 0;
 	inner_run_begin_();
 }
@@ -140,7 +140,7 @@ void Ferret::bootstrap_() {
 	auto pump = [&](auto* src) {
 		if (is_ot_sender()) {
 			src->set_delta(delta_bool);
-			src->rcot_send(ot_pre_data_next_.data(), param.M);
+			src->send_rcot(carry_next_.data(), param.M);
 		} else {
 			// Forward a sub-seed pulled from this Ferret's choice_prg
 			// to the inner source's receiver: the inner's base-COT
@@ -150,7 +150,7 @@ void Ferret::bootstrap_() {
 			block inner_seed;
 			choice_prg.random_block(&inner_seed, 1);
 			src->set_choice_seed(inner_seed);
-			src->rcot_recv(ot_pre_data_next_.data(), param.M);
+			src->recv_rcot(carry_next_.data(), param.M);
 		}
 	};
 
@@ -171,27 +171,27 @@ void Ferret::bootstrap_() {
 
 // One-shot per-Ferret-lifetime LPN seed exchange folds into here.
 // Receiver derives the seed from its choice_prg (with domain-
-// separated hash) and sends; sender receives. Both reseed lpn_f2_.
-// Subsequent rounds let lpn_f2_'s PRG state advance naturally
+// separated hash) and sends; sender receives. Both reseed lpn_.
+// Subsequent rounds let lpn_'s PRG state advance naturally
 // through compute_slice.
 void Ferret::inner_run_begin_() {
 	if (is_ot_sender()) {
-		mpcot_sender_->run_begin();
+		gadget_send_->run_begin();
 		if (!lpn_seed_set_) {
 			block lpn_seed;
 			io->recv_block(&lpn_seed, 1);
-			lpn_f2_->reseed(lpn_seed);
+			lpn_->reseed(lpn_seed);
 			lpn_seed_set_ = true;
 		}
 	} else {
-		mpcot_receiver_->run_begin();
+		gadget_recv_->run_begin();
 		if (!lpn_seed_set_) {
 			block r;
 			choice_prg.random_block(&r, 1);
 			block lpn_seed = derive_lpn_seed_(r);
 			io->send_block(&lpn_seed, 1);
 			io->flush();
-			lpn_f2_->reseed(lpn_seed);
+			lpn_->reseed(lpn_seed);
 			lpn_seed_set_ = true;
 		}
 	}
@@ -204,26 +204,26 @@ void Ferret::inner_run_begin_() {
 void Ferret::process_one_tree_(AuthValueFerret *out) {
 	const int64_t cggm_off = kConsistCheckCotNum + param.k;
 	const block* base_i =
-	    ot_pre_data_curr_.data() + cggm_off
+	    carry_curr_.data() + cggm_off
 	    + tree_idx_ * param.tree_depth;
 	if (is_ot_sender()) {
-		mpcot_sender_->run_next_tree(out, base_i, tree_idx_);
+		gadget_send_->run_next_tree(out, base_i, tree_idx_);
 	} else {
-		mpcot_receiver_->run_next_tree(out, base_i, tree_idx_);
+		gadget_recv_->run_next_tree(out, base_i, tree_idx_);
 	}
-	lpn_f2_->compute_slice(
+	lpn_->compute_slice(
 	    out,
 	    reinterpret_cast<AuthValueFerret*>(
-	        ot_pre_data_curr_.data() + kConsistCheckCotNum),
+	        carry_curr_.data() + kConsistCheckCotNum),
 	    chunk_size());
 	tree_idx_++;
 }
 
 void Ferret::inner_run_end_() {
 	if (is_ot_sender()) {
-		mpcot_sender_->run_end_packed(ot_pre_data_curr_.data());
+		gadget_send_->run_end_packed(carry_curr_.data());
 	} else {
-		mpcot_receiver_->run_end_packed(ot_pre_data_curr_.data());
+		gadget_recv_->run_end_packed(carry_curr_.data());
 	}
 }
 
@@ -235,7 +235,7 @@ void Ferret::run_refill_() {
 	for (int64_t i = 0; i < param.refill_trees; ++i) {
 		process_one_tree_(
 		    reinterpret_cast<AuthValueFerret*>(
-		        ot_pre_data_next_.data() + i * leave_n));
+		        carry_next_.data() + i * leave_n));
 	}
 }
 

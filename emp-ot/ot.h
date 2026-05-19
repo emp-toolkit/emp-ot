@@ -142,11 +142,11 @@ public:
 	// Role-specific random COT generation. Concrete backends supply both
 	// — the role is implicit in which method runs, so no party flag is
 	// needed at this layer for dispatch.
-	virtual void rcot_send(block* data, int64_t num) = 0;
-	virtual void rcot_recv(block* data, int64_t num) = 0;
+	virtual void send_rcot(block* data, int64_t num) = 0;
+	virtual void recv_rcot(block* data, int64_t num) = 0;
 
 	void send_cot(block* data, int64_t length) override {
-		rcot_send(data, length);
+		send_rcot(data, length);
 		// unsigned char (not bool) so the storage is one byte each —
 		// matches the wire layout that `recv_bool` writes (and avoids
 		// vector<bool>'s bit-packed specialization, which has no .data()).
@@ -158,7 +158,7 @@ public:
 	}
 
 	void recv_cot(block* data, const bool* b, int64_t length) override {
-		rcot_recv(data, length);
+		recv_rcot(data, length);
 		default_init_vector<unsigned char> bo(length);
 		for (int64_t i = 0; i < length; ++i) {
 			bo[i] = b[i] ^ getLSB(data[i]);

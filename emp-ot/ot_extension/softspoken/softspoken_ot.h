@@ -74,12 +74,12 @@ public:
 protected:
     // Per-role hooks; the OTExtension base's default do_begin / do_next /
     // do_end dispatch to these based on is_ot_sender().
-    void do_rcot_send_begin() override;
-    void do_rcot_send_next(block* out) override;
-    void do_rcot_send_end() override;
-    void do_rcot_recv_begin() override;
-    void do_rcot_recv_next(block* out) override;
-    void do_rcot_recv_end() override;
+    void do_send_rcot_begin() override;
+    void do_send_rcot_next(block* out) override;
+    void do_send_rcot_end() override;
+    void do_recv_rcot_begin() override;
+    void do_recv_rcot_next(block* out) override;
+    void do_recv_rcot_end() override;
 
 private:
     uint64_t session_ = 0;
@@ -108,7 +108,7 @@ private:
     block check_t_  = zero_block;   // receiver's running fold (T_i)
     block check_x_  = zero_block;   // receiver's running fold (R_i)
 
-    // Setup halves, lazy on first do_rcot_*_begin.
+    // Setup halves, lazy on first do_{send,recv}_rcot_begin.
     void bootstrap_send_();
     void bootstrap_recv_();
     void ensure_chunk_scratch_();
@@ -119,8 +119,8 @@ private:
     void combine_send_chunk(block* out, int64_t bs);
     void combine_recv_chunk(block* out, const block* u_canonical, int64_t bs);
     // Per-chunk pipeline at arbitrary bs (1..kChunkBlocks). Called with
-    // bs=kChunkBlocks from do_rcot_*_next, bs=1 from the sacrificial
-    // chunk in do_rcot_*_end.
+    // bs=kChunkBlocks from do_{send,recv}_rcot_next, bs=1 from the sacrificial
+    // chunk in do_{send,recv}_rcot_end.
     void send_chunk_pipeline(block* out, int64_t bs);
     void recv_chunk_pipeline(block* out, int64_t bs);
 };

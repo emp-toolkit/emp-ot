@@ -21,18 +21,18 @@ using IKNPBaseOT = OTCSW;
  * [REF] Active security via "Actively Secure OT Extension with Optimal Overhead"
  *       https://eprint.iacr.org/2015/546.pdf  (send_check / recv_check)
  *
- * Streaming Fiat-Shamir: each rcot_*_next derives a per-chunk chi seed
+ * Streaming Fiat-Shamir: each rcot_next derives a per-chunk chi seed
  * by snapshotting the IOChannel FS transcript (io->get_digest()) after
  * the chunk's u-matrix bytes have crossed the wire — they are absorbed
  * automatically by send_data/recv_data, no per-row puts needed. The
  * chunk's packed F_{2^128} elements fold into running accumulators
  * (check_q on the sender, check_t / check_x on the receiver) right
- * after sse_trans, while `out` is still cache-hot. rcot_send_end /
- * rcot_recv_end run a final 128-OT chunk (folded with chi from the
- * same continuing transcript) before the (x, t) io exchange and
+ * after sse_trans, while `out` is still cache-hot. rcot_end runs
+ * a final 128-OT chunk (folded with chi from the same continuing
+ * transcript) before the (x, t) io exchange and the
  * check_q ⊕ x·Δ == t compare. Each _next writes exactly chunk_ots()
  * = block_size = 2048 blocks; the OTExtension base class wraps the
- * streaming API into a one-shot rcot_send / rcot_recv with a leftover
+ * streaming API into a one-shot send_rcot / recv_rcot with a leftover
  * buffer for callers whose `num` isn't a multiple of block_size.
  *
  * Bit-0 choice encoding: with the invariant bit_0(Δ) = 1, row 0 of the
@@ -53,13 +53,13 @@ class IKNP : public OTExtension { public:
 	// Per-row PRG streams. The base-class choice_prg samples the
 	// bit-packed choice vector r on the receiver. The sender-side Δ
 	// bool form lives on the base as `delta_bool[]` and is read in
-	// do_rcot_send_next.
+	// do_send_rcot_next.
 	PRG G0[128], G1[128];
 	// Packs 128 consecutive COT outputs into a single F_{2^128} element
 	// via the gadget (1, X, ..., X^{127}). Lets the malicious check
 	// chi-combine 128x fewer elements than the unpacked version.
 	GaloisFieldPacking packer;
-	// Running malicious-check accumulators, reset at each rcot_*_begin.
+	// Running malicious-check accumulators, reset at each rcot_begin.
 	// Sender uses check_q; receiver uses check_t and check_x.
 	block check_q, check_t, check_x;
 
@@ -75,12 +75,12 @@ class IKNP : public OTExtension { public:
 protected:
 	// Per-role hooks; the OTExtension base's default do_begin / do_next /
 	// do_end dispatch to these based on is_ot_sender().
-	void do_rcot_send_begin() override;
-	void do_rcot_send_next(block *out) override;
-	void do_rcot_send_end() override;
-	void do_rcot_recv_begin() override;
-	void do_rcot_recv_next(block *out) override;
-	void do_rcot_recv_end() override;
+	void do_send_rcot_begin() override;
+	void do_send_rcot_next(block *out) override;
+	void do_send_rcot_end() override;
+	void do_recv_rcot_begin() override;
+	void do_recv_rcot_next(block *out) override;
+	void do_recv_rcot_end() override;
 
 public:
 	// ===== Internal helpers (chi-fold per chunk) =====

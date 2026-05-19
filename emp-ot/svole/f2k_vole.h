@@ -34,10 +34,6 @@ struct AuthValueF2k {
   static inline F    f_add (F a, F b)      { return a ^ b; }
   static inline F    f_sub (F a, F b)      { return a ^ b; }
   static inline F    f_mul (F a, F b)      { block r; gfmul(a, b, &r); return r; }
-  static inline bool f_eq  (F a, F b)      { return cmpBlock(&a, &b, 1); }
-
-  // FS-derived chi seed: under F_2^128 the hash digest IS an F element.
-  static inline F hash_to_f(block digest_b) { return digest_b; }
 
   // -------- Wire-format traits --------
   // Per-tree wire ships secret_sum:F; cGGM doesn't pre-mask the per-
@@ -54,12 +50,12 @@ struct AuthValueF2k {
 
   // -------- Chi-fold helpers --------
   // Per-tree chi vector: hash the FS-bound chi seed, expand via
-  // uni_hash_coeff_gen.
+  // uni_hash_coeff_gen. Under F_2^128 the digest IS an F element,
+  // so the hash output is used directly as the uni_hash seed.
   static inline void expand_chi(block chi_seed, F* chi, int64_t sz) {
     Hash hash;
     block digest = hash.hash_for_block(&chi_seed, sizeof(block));
-    F seed_f = hash_to_f(digest);
-    uni_hash_coeff_gen(chi, seed_f, sz);
+    uni_hash_coeff_gen(chi, digest, sz);
   }
 
   // VW[idx] = Σ chi[i] · leaves[i].mac.
@@ -120,23 +116,23 @@ struct AuthValueF2k {
         Svole<AuthValueF2k, IO> inner(svole.party, svole.io_,
                                        svole.malicious, base_param);
         if (svole.is_delta_holder()) inner.set_delta(svole.delta());
-        inner.extend(svole.pre_next_.data(), M);
+        inner.extend(svole.carry_next_.data(), M);
       } else {
         // Base case: direct Galois packing of M * 128 raw Ferret COTs.
         std::vector<block> ferret_buf((size_t)M * 128);
         svole.pull_cots_(ferret_buf.data(), M * 128);
         GaloisFieldPacking pack;
         for (int64_t i = 0; i < M; ++i) {
-          svole.pre_next_[i].val = zero_block;
+          svole.carry_next_[i].val = zero_block;
           // Non-Δ-holder packs the val side from RCOT LSBs; the
           // Δ-holder keeps val = 0 (no val on the sender side).
           if (!svole.is_delta_holder()) {
             bool val_b[128];
             for (int kk = 0; kk < 128; ++kk)
               val_b[kk] = getLSB(ferret_buf[i * 128 + kk]);
-            svole.pre_next_[i].val = bool_to_block(val_b);
+            svole.carry_next_[i].val = bool_to_block(val_b);
           }
-          pack.packing(&svole.pre_next_[i].mac,
+          pack.packing(&svole.carry_next_[i].mac,
                        ferret_buf.data() + i * 128);
         }
       }

@@ -15,7 +15,7 @@ namespace emp {
 //       = G1_R[i].rand ⊕ (G0_R[i].rand ⊕ G1_R[i].rand ⊕ r)
 //       = G0_R[i].rand ⊕ r
 // which gives the desired q_i ⊕ t_i = s_i · r per row.
-void IKNP::do_rcot_send_begin() {
+void IKNP::do_send_rcot_begin() {
 	if (!setup_done) {
 		// Sender bootstrap: feed delta_bool[1..127] into base_ot->recv,
 		// reseed G0[1..127] from the received keys. delta_bool[] is the
@@ -31,21 +31,21 @@ void IKNP::do_rcot_send_begin() {
 			io->enable_fs(/*send_first=*/is_ot_sender());
 		setup_done = true;
 	}
-	assert(is_ot_sender() && "rcot_send_begin: not in sender role");
+	assert(is_ot_sender() && "rcot_begin: not in sender role");
 	if (malicious) check_q = makeBlock(0, 0);
 }
 
-void IKNP::do_rcot_send_end() {
+void IKNP::do_send_rcot_end() {
 	if (malicious) {
 		// Sacrificial chunk: 128 extra OTs folded into check_q with chi
 		// from the same Fiat-Shamir transcript as the real chunks. The
 		// Q ⊕ T = R · Δ identity is linear in chi, so the final
 		// check_q ⊕ check_x · Δ == check_t comparison still holds.
-		// Built with the same do_rcot_send_next as a real chunk; the
+		// Built with the same do_send_rcot_next as a real chunk; the
 		// extra block_size − 128 OTs in the chunk are simply unused
 		// (the chi-fold over them still satisfies Q ⊕ T = R · Δ).
 		BlockVec scratch(block_size);
-		do_rcot_send_next(scratch.data());
+		do_send_rcot_next(scratch.data());
 		// Receiver opens (check_x, check_t); accept iff
 		// check_q ⊕ check_x · Δ == check_t.
 		block x, t, tmp;
@@ -58,7 +58,7 @@ void IKNP::do_rcot_send_end() {
 	}
 }
 
-// Row-by-row recv + compute, mirroring do_rcot_recv_next's interleave:
+// Row-by-row recv + compute, mirroring do_send_rcot_next's interleave:
 // the receiver sends the u-matrix one row at a time, so we read one
 // row, fold it into the transcript, and combine it with G0[i] before
 // the next read — keeping `tmp` to a single row and pipelining the
@@ -69,7 +69,7 @@ void IKNP::do_rcot_send_end() {
 // = choice directly. Both sides skip row 0 on the wire and in the
 // transcript (both know it's zeros), so only rows 1..127 are
 // exchanged and hashed — same chi seed on both sides.
-void IKNP::do_rcot_send_next(block *out) {
+void IKNP::do_send_rcot_next(block *out) {
 	block t[block_size];
 	block tmp[block_size / 128];
 	constexpr int64_t row_blocks = block_size / 128;
@@ -104,11 +104,11 @@ void IKNP::combine_send(block *out) {
 	}
 }
 
-void IKNP::do_rcot_recv_begin() {
+void IKNP::do_recv_rcot_begin() {
 	if (!setup_done) {
 		// Receiver bootstrap: sample (k0, k1) ← PRG, base_ot->send,
 		// reseed G0/G1. The base-class choice_prg supplies the per-
-		// chunk r vector at do_rcot_recv_next; outer protocols can
+		// chunk r vector at do_recv_rcot_next; outer protocols can
 		// override its seed pre-bootstrap via set_choice_seed.
 		block k0[128], k1[128];
 		this->prg.random_block(k0, 128);
@@ -122,22 +122,22 @@ void IKNP::do_rcot_recv_begin() {
 			io->enable_fs(/*send_first=*/is_ot_sender());
 		setup_done = true;
 	}
-	assert(!is_ot_sender() && "rcot_recv_begin: not in receiver role");
+	assert(!is_ot_sender() && "rcot_begin: not in receiver role");
 	if (malicious) {
 		check_t = makeBlock(0, 0);
 		check_x = makeBlock(0, 0);
 	}
 }
 
-void IKNP::do_rcot_recv_end() {
+void IKNP::do_recv_rcot_end() {
 	if (malicious) {
 		BlockVec scratch(block_size);
-		do_rcot_recv_next(scratch.data());
+		do_recv_rcot_next(scratch.data());
 		io->send_block(&check_x, 1);
 		io->send_block(&check_t, 1);
 	}
 	// Recv-side rcot is send-only over its lifetime — the last
-	// do_rcot_recv_next batch (and the malicious tail above) sit in
+	// do_recv_rcot_next batch (and the malicious tail above) sit in
 	// send_buf otherwise.
 	io->flush();
 }
@@ -148,7 +148,7 @@ void IKNP::do_rcot_recv_end() {
 // known-zero on both sides (sender forces q[0]=0, receiver pins
 // t[0]=r post-loop), so skip it on the wire and in the transcript —
 // only rows 1..127 are sent and hashed.
-void IKNP::do_rcot_recv_next(block *out) {
+void IKNP::do_recv_rcot_next(block *out) {
 	block r[block_size / 128];
 	block t[block_size];
 	block tmp[block_size / 128];

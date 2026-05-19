@@ -42,7 +42,7 @@ class PrimalLPNParameter { public:
 namespace tuning {
 
 // ===== IKNP =====
-// Chunk size in OTs per do_rcot_*_next call. Must be a multiple of
+// Chunk size in OTs per do_{send,recv}_rcot_next call. Must be a multiple of
 // 128 (one IKNP matrix row's worth) and a multiple of the F_{2^128}
 // gadget packing (128 OTs → one packed element).
 inline constexpr int64_t iknp_chunk_ots = 2048;

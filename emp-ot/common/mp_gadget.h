@@ -106,7 +106,7 @@ public:
   //   4. Malicious: chi seed from FS transcript; expand_chi; VW
   //      accumulation.
   //
-  // gamma_i is the per-tree carrier (sVOLE pre_curr_[tree_idx].mac).
+  // gamma_i is the per-tree carrier (sVOLE carry_curr_[tree_idx].mac).
   // For Ferret-style policies (kHasSecretSum=false) it is unused;
   // callers may omit it.
   void run_next_tree(AuthValue *leaves_i, const block *base_i, int tree_idx,
@@ -176,7 +176,7 @@ public:
   }
 
   // FTyped round-final check (sender). `triple_t` is the carry-over
-  // chi-fold triple (pre_curr_[t] on the outer-Svole side). For
+  // chi-fold triple (carry_curr_[t] on the outer-Svole side). For
   // Ferret-style policies this method is never instantiated (gated
   // by static_assert + the outer's chi-fold-flavor-aware caller),
   // so the .mac access in the body is fine.

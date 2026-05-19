@@ -4,7 +4,6 @@
 #include "emp-ot/ot_extension/ot_extension.h"
 #include "emp-ot/base_ot/csw.h"
 #include "emp-ot/tuning.h"
-#include <climits>
 #include <memory>
 
 // Forward-declare ferret internals so the public header doesn't pull
@@ -40,10 +39,11 @@ struct AuthValueFerret {
   F mac;   // sole storage; layout-equivalent to `block`.
 
   // -------- Field arithmetic --------
+  // Only f_zero / f_add are needed for the F2kPacked path; f_mul /
+  // f_sub live exclusively in the FTyped branches of mp_gadget.h
+  // which AuthValueFerret never instantiates.
   static inline F f_zero()         { return zero_block; }
   static inline F f_add(F a, F b)  { return a ^ b; }
-  static inline F f_sub(F a, F b)  { return a ^ b; }
-  static inline F f_mul(F a, F b)  { block r; gfmul(a, b, &r); return r; }
 
   // -------- Wire-format traits --------
   static constexpr bool          kHasSecretSum  = false;
@@ -99,7 +99,7 @@ using MPCOT_Receiver = MultiPointGadgetReceiver<AuthValueFerret>;
  * Single class for both roles; party-dispatched internally inside
  * do_begin / do_next / do_end and the per-tree helpers. Structurally
  * parallel to Svole<AuthValue, IO> — both inherit StreamingExtension<>
- * via OTExtension / SVoleExtension and implement the same 4-step
+ * (Ferret indirectly via OTExtension) and implement the same 4-step
  * round loop (bootstrap + ping-pong swap + tree counter + per-tree
  * inner gadget call → LPN slice → tree_idx_++ ; round-end refill +
  * chi-fold check).
@@ -147,7 +147,7 @@ private:
 
 	// Per-Ferret-lifetime LPN-seed exchange state. The seed is
 	// exchanged once on first do_begin (receiver derives from
-	// choice_prg, sender receives), and lpn_f2_'s PRG state advances
+	// choice_prg, sender receives), and lpn_'s PRG state advances
 	// continuously from there.
 	bool lpn_seed_set_ = false;
 
@@ -157,13 +157,13 @@ private:
 	// written by this round's refill trees. Swapped at every round
 	// boundary in do_begin. Element type is raw `block` (block
 	// storage; reinterpret to AuthValueFerret at the gadget/Lpn boundary).
-	BlockVec ot_pre_data_curr_;
-	BlockVec ot_pre_data_next_;
+	BlockVec carry_curr_;
+	BlockVec carry_next_;
 
 	// Exactly one of these is populated, depending on `party`.
-	std::unique_ptr<MPCOT_Sender>            mpcot_sender_;
-	std::unique_ptr<MPCOT_Receiver>          mpcot_receiver_;
-	std::unique_ptr<Lpn<AuthValueFerret, 10>> lpn_f2_;
+	std::unique_ptr<MPCOT_Sender>            gadget_send_;
+	std::unique_ptr<MPCOT_Receiver>          gadget_recv_;
+	std::unique_ptr<Lpn<AuthValueFerret, 10>> lpn_;
 };
 
 }  // namespace emp

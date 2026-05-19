@@ -3,7 +3,6 @@
 
 #include "emp-ot/base_ot/co.h"
 #include "emp-ot/svole/fp_utility.h"
-#include "emp-ot/svole/svole_extension.h"
 #include "emp-tool/emp-tool.h"
 #include <memory>
 #include <vector>

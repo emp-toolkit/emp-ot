@@ -38,12 +38,6 @@ struct AuthValueFp {
   static inline F    f_add (F a, F b)      { return add_mod(a, b); }
   static inline F    f_sub (F a, F b)      { return a >= b ? a - b : a + PR_VAL - b; }
   static inline F    f_mul (F a, F b)      { return mult_mod(a, b); }
-  static inline bool f_eq  (F a, F b)      { return a == b; }
-
-  // FS-derived chi seed: mod-p reduce the digest's low 64 to F.
-  static inline F hash_to_f(block digest_b) {
-    return mod((uint64_t)_mm_extract_epi64(digest_b, 0));
-  }
 
   // -------- Wire-format traits --------
   static constexpr bool kHasSecretSum = true;
@@ -65,7 +59,7 @@ struct AuthValueFp {
   static inline void expand_chi(block chi_seed, F* chi, int64_t sz) {
     Hash hash;
     block digest = hash.hash_for_block(&chi_seed, sizeof(block));
-    F seed_f = hash_to_f(digest);
+    F seed_f = mod((uint64_t)_mm_extract_epi64(digest, 0));
     uni_hash_coeff_gen(chi, seed_f, sz);
   }
 
@@ -79,8 +73,8 @@ struct AuthValueFp {
 
   // -------- LPN ops (Lpn<AuthValueFp, 10>) --------
   // mod-p adds overflow uint64_t after ~8 unreduced accumulations, so
-  // partial reduction is needed every 5 adds (matches the legacy
-  // LpnFp 5+5 split).
+  // partial reduction is needed every 5 adds. With Lpn d=10 this gives
+  // a 5+5 split: five adds → partial_reduce → five adds → final_reduce.
   static constexpr int kLpnSafeAddsPerReduce = 5;
 
   // SIMD: AuthValueFp is a packed 128-bit (val_low, mac_high);
@@ -115,7 +109,7 @@ struct AuthValueFp {
   // chi-fold algebra (in MultiPointGadget) consumes the F_p Δ.
   static inline void on_set_delta(F /*delta*/, Ferret * /*ferret*/) {}
 
-  // Bootstrap: COPE seed sVOLE → pre-stage MPFSS+LPN → pre_next_.
+  // Bootstrap: COPE seed sVOLE → pre-stage MPFSS+LPN → carry_next_.
   // Fixed inner PrimalLPNParameter (ferret_b10) for the pre stage,
   // mirroring F2k's bootstrap structure. No tiered recursion —
   // ferret_b10's n is comfortably > the main param's M for all
@@ -144,7 +138,7 @@ struct AuthValueFp {
       svole.pull_cots_(pre_base_cots.data(),
                        (int64_t)pre_base_cots.size());
 
-      // ---- Stage 3: pre-MPFSS + pre-LPN → last M into pre_next_ ----
+      // ---- Stage 3: pre-MPFSS + pre-LPN → last M into carry_next_ ----
       std::vector<AuthValueFp> pre_vole(n_pre, AuthValueFp{0, 0});
       MultiPointGadgetSender<AuthValueFp>   pre_send(
           pre_param.t, pre_param.tree_depth, svole.io_);
@@ -189,7 +183,7 @@ struct AuthValueFp {
       pre_lpn.compute_slice(pre_vole.data(),
                             seed_pairs.data() + pre_param.t + 1, n_pre);
 
-      std::memcpy(svole.pre_next_.data(),
+      std::memcpy(svole.carry_next_.data(),
                   pre_vole.data() + (n_pre - M),
                   M * sizeof(AuthValueFp));
     }

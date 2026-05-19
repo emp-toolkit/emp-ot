@@ -3,8 +3,8 @@
 
 #include "emp-ot/common/lpn.h"
 #include "emp-ot/common/mp_gadget.h"
+#include "emp-ot/common/streaming_extension.h"
 #include "emp-ot/ot_extension/ferret/ferret.h"
-#include "emp-ot/svole/svole_extension.h"
 #include <memory>
 #include <vector>
 
@@ -15,21 +15,21 @@
 // aliases over the corresponding carrier.
 //
 // Structurally parallel to Ferret (emp-ot/ot_extension/ferret/ferret.h):
-// both inherit StreamingExtension<Element> (via OTExtension or
-// SVoleExtension), implement the same 4-step round loop in do_begin /
+// both inherit StreamingExtension<Element> (Ferret indirectly via
+// OTExtension), implement the same 4-step round loop in do_begin /
 // do_next / do_end (bootstrap → swap → reset tree_idx_ → inner_begin;
 // rollover-check → process_one_tree; refill → inner_end), and use
 // MultiPointGadget as the per-tree inner gadget. Both ping-pong a
-// `pre_curr_/_next_` buffer of `refill_trees * 2^tree_depth` elements
+// `carry_curr_/_next_` buffer of `refill_trees * 2^tree_depth` elements
 // where refill trees write directly into next_.
 //
 // Party convention is carrier-determined via
 // `AuthValue::delta_holder_party()` (returns ALICE or BOB). The
 // invariant in both cases is:
 //
-//   Δ-holder party ↔ inner-Ferret-ALICE ↔ MPFSS sender ↔ rcot_send.
+//   Δ-holder party ↔ inner-Ferret-ALICE ↔ MPFSS sender ↔ send_rcot.
 //
-// Storage: pre_curr_/_next_ are AuthValue[] (val-first {val, mac}).
+// Storage: carry_curr_/_next_ are AuthValue[] (val-first {val, mac}).
 // Δ-holder: val = 0 throughout (no val on the sender side).
 // Non-Δ-holder: val at sparse positions after MPFSS, dense after LPN.
 
@@ -37,19 +37,15 @@ namespace emp {
 
 // Round geometry, derived from PrimalLPNParameter (shared with Ferret
 // and with both F2k / F_p sVOLE).
-//   n      = t * 2^tree_depth
-//   M      = t + k + 1     (carry-over: MPFSS reads t, LPN reads k,
-//                           +1 for the malicious chi-fold pseudo-triple)
-//   buf_sz = n - M         (user-visible per round; trailing M outputs
-//                           seed the next round)
+//   n = t * 2^tree_depth        (trees this round, total LPN-folded outputs)
+//   M = t + k + 1               (carry-over to next round: MPFSS reads t,
+//                                 LPN reads k, +1 for the malicious
+//                                 chi-fold pseudo-triple)
 inline constexpr int64_t svole_n(const PrimalLPNParameter &p) {
   return p.t * (int64_t{1} << p.tree_depth);
 }
 inline constexpr int64_t svole_M(const PrimalLPNParameter &p) {
   return p.t + p.k + 1;
-}
-inline constexpr int64_t svole_buf_sz(const PrimalLPNParameter &p) {
-  return svole_n(p) - svole_M(p);
 }
 
 // =================================================================
@@ -57,16 +53,15 @@ inline constexpr int64_t svole_buf_sz(const PrimalLPNParameter &p) {
 // =================================================================
 
 template <typename AuthValue_, typename IO = NetIO>
-class Svole : public SVoleExtension<AuthValue_> {
+class Svole : public StreamingExtension<AuthValue_> {
 public:
   using AuthValue = AuthValue_;
-  using Base      = SVoleExtension<AuthValue>;
   using F         = typename AuthValue::F;
 
   PrimalLPNParameter param;
 
   // State is intentionally public so AuthValue::Bootstrap<IO>::run
-  // can populate pre_next_ + pull from base_ferret_ without `friend`
+  // can populate carry_next_ + pull from base_ferret_ without `friend`
   // template-template incantations.
   IO *io_;
   F delta_value_;
@@ -75,39 +70,40 @@ public:
   // to mirror Ferret's slack-tolerant pattern: refill trees in
   // run_refill_() write directly here, and the first M = svole_M(param)
   // entries become next round's read region.
-  std::vector<AuthValue> pre_curr_, pre_next_;
+  std::vector<AuthValue> carry_curr_, carry_next_;
   // Per-round scratch for MPFSS sibling-OT base COTs (t * tree_depth
   // raw blocks from inner Ferret). Refilled in inner_run_begin_().
   std::vector<block>     base_cots_;
 
   std::unique_ptr<Ferret>                              base_ferret_;
-  std::unique_ptr<MultiPointGadgetSender<AuthValue>>   mpsvole_send_;
-  std::unique_ptr<MultiPointGadgetReceiver<AuthValue>> mpsvole_recv_;
+  std::unique_ptr<MultiPointGadgetSender<AuthValue>>   gadget_send_;
+  std::unique_ptr<MultiPointGadgetReceiver<AuthValue>> gadget_recv_;
   std::unique_ptr<Lpn<AuthValue, 10>>                  lpn_;
 
   Svole(int party, IO *io, bool malicious = true,
         PrimalLPNParameter param = tuning::ferret_b13)
-      : Base(party, malicious), param(param), io_(io) {
+      : StreamingExtension<AuthValue>(party, malicious),
+        param(param), io_(io) {
     // Δ-holder ↔ inner-Ferret-ALICE (COT-sender) in both carriers.
     const int inner_party =
         (party == AuthValue::delta_holder_party()) ? ALICE : BOB;
     base_ferret_ = std::make_unique<Ferret>(inner_party, io, malicious);
 
-    mpsvole_send_ = std::make_unique<MultiPointGadgetSender<AuthValue>>(
+    gadget_send_ = std::make_unique<MultiPointGadgetSender<AuthValue>>(
         param.t, param.tree_depth, io);
-    mpsvole_recv_ = std::make_unique<MultiPointGadgetReceiver<AuthValue>>(
+    gadget_recv_ = std::make_unique<MultiPointGadgetReceiver<AuthValue>>(
         param.t, param.tree_depth, io);
     if (malicious) {
-      mpsvole_send_->set_malicious();
-      mpsvole_recv_->set_malicious();
+      gadget_send_->set_malicious();
+      gadget_recv_->set_malicious();
     }
     lpn_ = std::make_unique<Lpn<AuthValue, 10>>(param.k);
     lpn_->reseed(zero_block);
 
     const int64_t carry_blocks =
         param.refill_trees * (int64_t{1} << param.tree_depth);
-    pre_curr_.assign(carry_blocks, AuthValue{});
-    pre_next_.assign(carry_blocks, AuthValue{});
+    carry_curr_.assign(carry_blocks, AuthValue{});
+    carry_next_.assign(carry_blocks, AuthValue{});
     base_cots_.assign(param.t * param.tree_depth, zero_block);
 
     // Pull a default Δ from the freshly-bootstrapped Ferret if the
@@ -157,11 +153,11 @@ public:
     return (param.t - param.refill_trees) * chunk_size();
   }
 
-  // One-shot rcot pull. Δ-holder = inner-Ferret-ALICE = rcot_send;
-  // non-Δ-holder = inner-Ferret-BOB = rcot_recv.
+  // One-shot rcot pull. Δ-holder = inner-Ferret-ALICE = send_rcot;
+  // non-Δ-holder = inner-Ferret-BOB = recv_rcot.
   void pull_cots_(block *buf, int64_t num) {
-    if (is_delta_holder()) base_ferret_->rcot_send(buf, num);
-    else                   base_ferret_->rcot_recv(buf, num);
+    if (is_delta_holder()) base_ferret_->send_rcot(buf, num);
+    else                   base_ferret_->recv_rcot(buf, num);
   }
 
 protected:
@@ -169,7 +165,7 @@ protected:
 
   void do_begin() override {
     bootstrap_();
-    std::swap(pre_curr_, pre_next_);
+    std::swap(carry_curr_, carry_next_);
     tree_idx_ = 0;
     inner_run_begin_();
   }
@@ -211,16 +207,16 @@ private:
     if (is_delta_holder()) {
       // cGGM Δ = Ferret's block Δ (for F2k this equals delta_value_;
       // for F_p they are independent). Chi-fold Δ = delta_value_.
-      mpsvole_send_->set_cggm_delta(base_ferret_->Delta);
-      mpsvole_send_->set_delta(delta_value_);
-      mpsvole_send_->run_begin();
+      gadget_send_->set_cggm_delta(base_ferret_->Delta);
+      gadget_send_->set_delta(delta_value_);
+      gadget_send_->run_begin();
     } else {
-      mpsvole_recv_->run_begin();
+      gadget_recv_->run_begin();
     }
   }
 
   // Per-tree body. `dst` is either the user's `out` (user-visible
-  // tree) or `pre_next_ + (refill_idx) * chunk` (refill tree). The
+  // tree) or `carry_next_ + (refill_idx) * chunk` (refill tree). The
   // MPFSS gadget writes leaves directly into `dst`; LPN folds
   // in-place over the same `dst` slot.
   void process_one_tree_(AuthValue *dst) {
@@ -230,40 +226,40 @@ private:
         base_cots_.data() + tree_idx_ * param.tree_depth;
 
     if (is_delta_holder()) {
-      mpsvole_send_->run_next_tree(dst, base_i, tree_idx_,
-                                   pre_curr_[tree_idx_].mac);
+      gadget_send_->run_next_tree(dst, base_i, tree_idx_,
+                                   carry_curr_[tree_idx_].mac);
     } else {
-      uint32_t alpha = mpsvole_recv_->run_next_tree(
-          dst, base_i, tree_idx_, pre_curr_[tree_idx_].mac);
+      uint32_t alpha = gadget_recv_->run_next_tree(
+          dst, base_i, tree_idx_, carry_curr_[tree_idx_].mac);
       // Insert val at α from the carry-over slot.
-      dst[alpha].val = pre_curr_[tree_idx_].val;
+      dst[alpha].val = carry_curr_[tree_idx_].val;
     }
 
-    // LPN slice folds the secret (pre_curr_[t..t+k]) into dst's chunk
+    // LPN slice folds the secret (carry_curr_[t..t+k]) into dst's chunk
     // entries. Slot t is dual-use as both the chi-fold triple and the
     // LPN secret's first element — both reads see authenticated
     // triples, which is all the protocol requires.
-    lpn_->compute_slice(dst, pre_curr_.data() + tt, chunk);
+    lpn_->compute_slice(dst, carry_curr_.data() + tt, chunk);
 
     tree_idx_++;
   }
 
   void inner_run_end_() {
     if (is_delta_holder()) {
-      mpsvole_send_->run_end_typed(pre_curr_[param.t]);
+      gadget_send_->run_end_typed(carry_curr_[param.t]);
     } else {
-      mpsvole_recv_->run_end_typed(pre_curr_.data(), pre_curr_[param.t]);
+      gadget_recv_->run_end_typed(carry_curr_.data(), carry_curr_[param.t]);
     }
   }
 
-  // Refill trees write LPN-folded outputs directly into pre_next_
+  // Refill trees write LPN-folded outputs directly into carry_next_
   // (parallel to Ferret's pattern). First M of those become next
-  // round's pre_curr_ after the swap in do_begin; the trailing
+  // round's carry_curr_ after the swap in do_begin; the trailing
   // slack is unused on the read side.
   void run_refill_() {
     const int64_t chunk = chunk_size();
     for (int64_t i = 0; i < param.refill_trees; ++i) {
-      process_one_tree_(pre_next_.data() + i * chunk);
+      process_one_tree_(carry_next_.data() + i * chunk);
     }
   }
 

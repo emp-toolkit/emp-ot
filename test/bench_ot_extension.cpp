@@ -1,7 +1,7 @@
 // Cross-protocol OT-extension RCOT throughput bench. Reports MOT/s and
 // B/RCOT for IKNP / SoftSpoken<k> / Ferret. Two-party via `run`.
 //
-// Streaming-only: each row drives rcot_*_begin → rcot_*_next loop into a
+// Streaming-only: each row drives rcot_begin → rcot_next loop into a
 // reusable chunk_ots()-sized scratch buffer and discards the generated
 // blocks. This keeps memory flat regardless of how many OTs the row
 // runs, so the length default sits at 2^25 (~33M OTs) without paying
@@ -24,15 +24,15 @@ void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) 
     uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
     auto start = clock_start();
     if (party == ALICE) {
-        ot->rcot_send_begin();
+        ot->rcot_begin();
         for (int64_t i = 0; i < n_chunks; ++i)
-            ot->rcot_send_next(buf.data());
-        ot->rcot_send_end();
+            ot->rcot_next(buf.data());
+        ot->rcot_end();
     } else {
-        ot->rcot_recv_begin();
+        ot->rcot_begin();
         for (int64_t i = 0; i < n_chunks; ++i)
-            ot->rcot_recv_next(buf.data());
-        ot->rcot_recv_end();
+            ot->rcot_next(buf.data());
+        ot->rcot_end();
     }
     io->flush();
     long long us = time_from(start);
