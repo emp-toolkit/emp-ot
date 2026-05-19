@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
                 [](auto& sv) {
                     PRG prg;
                     uint64_t d;
-                    prg.random_data(&d, sizeof(d));
+                    prg.random_data_unaligned(&d, sizeof(d));
                     sv.set_delta(d % AuthValueFp::PR_VAL);
                 });
         });

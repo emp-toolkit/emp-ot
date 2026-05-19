@@ -48,7 +48,7 @@ void test_streaming(NetIO *io, int svole_party) {
   uint64_t Delta = 0;
   if (svole_party == ALICE) {
     PRG prg;
-    prg.random_data(&Delta, sizeof(uint64_t));
+    prg.random_data_unaligned(&Delta, sizeof(uint64_t));
     Delta = mod(Delta);
     if (Delta == 0) Delta = 1;
     vtriple.set_delta(Delta);
@@ -80,7 +80,7 @@ void test_oneshot(NetIO *io, int svole_party) {
   uint64_t Delta = 0;
   if (svole_party == ALICE) {
     PRG prg;
-    prg.random_data(&Delta, sizeof(uint64_t));
+    prg.random_data_unaligned(&Delta, sizeof(uint64_t));
     Delta = mod(Delta);
     if (Delta == 0) Delta = 1;
     vtriple.set_delta(Delta);

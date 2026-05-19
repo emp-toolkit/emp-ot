@@ -95,7 +95,7 @@ public:
   void extend(__uint128_t *ret, int64_t size) {
     std::vector<uint64_t> w(m * size), v(m * size);
     for (int64_t i = 0; i < m; ++i) {
-      G0[i].random_data(&w[i * size], size * sizeof(uint64_t));
+      G0[i].random_data_unaligned(&w[i * size], size * sizeof(uint64_t));
       for (int64_t j = 0; j < size; ++j) {
         w[i * size + j] = mod(w[i * size + j]);
       }
@@ -137,8 +137,8 @@ public:
   void extend(__uint128_t *ret, uint64_t *u, int64_t size) {
     std::vector<uint64_t> w0(m * size), w1(m * size);
     for (int64_t i = 0; i < m; ++i) {
-      G0[i].random_data(&w0[i * size], size * sizeof(uint64_t));
-      G1[i].random_data(&w1[i * size], size * sizeof(uint64_t));
+      G0[i].random_data_unaligned(&w0[i * size], size * sizeof(uint64_t));
+      G1[i].random_data_unaligned(&w1[i * size], size * sizeof(uint64_t));
       for (int64_t j = 0; j < size; ++j) {
         w0[i * size + j] = mod(w0[i * size + j]);
         w1[i * size + j] = mod(w1[i * size + j]);
@@ -244,7 +244,7 @@ public:
   void triple_gen_recv(AV *share, int64_t size) {
     PRG prg;
     std::vector<uint64_t> x(size + 1);
-    prg.random_data(x.data(), (size + 1) * sizeof(uint64_t));
+    prg.random_data_unaligned(x.data(), (size + 1) * sizeof(uint64_t));
     for (int64_t i = 0; i < size + 1; ++i) x[i] = mod(x[i]);
     std::vector<__uint128_t> macs(size);
     cope->extend(macs.data(), x.data(), size);
@@ -259,7 +259,7 @@ public:
   void sender_check(__uint128_t *macs, uint64_t b, int64_t size) {
     PRG prg;
     uint64_t seed;
-    prg.random_data(&seed, sizeof(uint64_t));
+    prg.random_data_unaligned(&seed, sizeof(uint64_t));
     seed = mod(seed);
     io->send_data(&seed, sizeof(uint64_t));
     std::vector<uint64_t> chi(size);
