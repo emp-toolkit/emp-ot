@@ -61,17 +61,6 @@ add_library(emp-ot::emp-ot ALIAS emp-ot)
 
 target_compile_features(emp-ot PUBLIC cxx_std_17)
 
-# fp_utility.h's vec_partial_mod uses _mm_cmpgt_epi64, which is one
-# step past emp-tool's portable baseline (-maes -mpclmul -mssse3 -msse4.1).
-# Every CPU with AES-NI also has SSE4.2 (Westmere 2010+), so adding
-# -msse4.2 here doesn't change the supported hardware audience.
-# x86 only: ARM/Apple Silicon use NEON; the _mm intrinsic chain is
-# either polyfilled or unused on that path.
-if((CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|x64")
-    AND (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang"))
-    target_compile_options(emp-ot PUBLIC -msse4.2)
-endif()
-
 target_include_directories(emp-ot PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/emp-ot/base_ot/pvw_kyber)
 
