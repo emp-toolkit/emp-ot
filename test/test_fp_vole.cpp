@@ -54,25 +54,25 @@ void test_streaming(NetIO *io, int svole_party) {
     vtriple.set_delta(Delta);
   }
 
-  const int64_t chunk = vtriple.chunk_extends();
+  const int64_t chunk = vtriple.chunk_size();
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();
   std::vector<AuthValueFp> buf(chunk);
   std::vector<uint64_t> buf_val(chunk), buf_mac(chunk);
 
   auto t0 = clock_start();
-  vtriple.extend_begin();
+  vtriple.begin();
   std::cout << "setup+begin " << time_from(t0) / 1000 << " ms" << std::endl;
 
   const int64_t total_chunks = (per_round / chunk) * 2;
   for (int64_t i = 0; i < total_chunks; ++i) {
-    vtriple.extend_next(buf.data());
+    vtriple.next(buf.data());
     for (int64_t k = 0; k < chunk; ++k) {
       buf_val[k] = buf[k].val;
       buf_mac[k] = buf[k].mac;
     }
     check_triple(Delta, buf_val.data(), buf_mac.data(), chunk, io);
   }
-  vtriple.extend_end();
+  vtriple.end();
 }
 
 void test_oneshot(NetIO *io, int svole_party) {
@@ -92,7 +92,7 @@ void test_oneshot(NetIO *io, int svole_party) {
 
   for (int i = 0; i < 8; ++i) {
     auto start = clock_start();
-    vtriple.extend(buf.data(), per_round);
+    vtriple.run(buf.data(), per_round);
     std::cout << "extend " << time_from(start) / 1000 << " ms" << std::endl;
     for (int64_t k = 0; k < per_round; ++k) {
       buf_val[k] = buf[k].val;

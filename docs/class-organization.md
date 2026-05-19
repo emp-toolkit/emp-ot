@@ -86,8 +86,8 @@ OTExtension : public RandomCOT, public StreamingExtension<block>
 │   ├── choice_prg              (receiver-side PRG)
 │   ├── set_delta(bool*)        (override Δ pre-bootstrap)
 │   ├── set_choice_seed(block)  (override choice PRG seed)
-│   ├── chunk_ots()             (alias for chunk_size())
-│   ├── rcot_begin/next/end     (role-agnostic; party-fixed lifecycle)
+│   ├── chunk_size()            (inherited from StreamingExtension)
+│   ├── begin/next/end          (role-agnostic; party-fixed lifecycle, inherited)
 │   └── send_rcot / recv_rcot   (dual-role one-shot from RandomCOT,
 │                                party-asserts then delegates to run())
 │

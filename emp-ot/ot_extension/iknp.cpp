@@ -31,7 +31,7 @@ void IKNP::do_send_rcot_begin() {
 			io->enable_fs(/*send_first=*/is_ot_sender());
 		setup_done = true;
 	}
-	assert(is_ot_sender() && "rcot_begin: not in sender role");
+	assert(is_ot_sender() && "do_send_rcot_begin: not in sender role");
 	if (malicious) check_q = makeBlock(0, 0);
 }
 
@@ -122,7 +122,7 @@ void IKNP::do_recv_rcot_begin() {
 			io->enable_fs(/*send_first=*/is_ot_sender());
 		setup_done = true;
 	}
-	assert(!is_ot_sender() && "rcot_begin: not in receiver role");
+	assert(!is_ot_sender() && "do_recv_rcot_begin: not in receiver role");
 	if (malicious) {
 		check_t = makeBlock(0, 0);
 		check_x = makeBlock(0, 0);

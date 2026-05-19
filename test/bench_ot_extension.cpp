@@ -1,8 +1,8 @@
 // Cross-protocol OT-extension RCOT throughput bench. Reports MOT/s and
 // B/RCOT for IKNP / SoftSpoken<k> / Ferret. Two-party via `run`.
 //
-// Streaming-only: each row drives rcot_begin → rcot_next loop into a
-// reusable chunk_ots()-sized scratch buffer and discards the generated
+// Streaming-only: each row drives begin → next loop into a
+// reusable chunk_size()-sized scratch buffer and discards the generated
 // blocks. This keeps memory flat regardless of how many OTs the row
 // runs, so the length default sits at 2^25 (~33M OTs) without paying
 // length × 16 B of heap. The first row of each protocol absorbs the
@@ -15,7 +15,7 @@ using namespace std;
 
 template <typename T>
 void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) {
-    const int64_t chunk = ot->chunk_ots();
+    const int64_t chunk = ot->chunk_size();
     const int64_t n_chunks = length / chunk;
     const int64_t eff_len = n_chunks * chunk;
 
@@ -24,15 +24,15 @@ void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) 
     uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
     auto start = clock_start();
     if (party == ALICE) {
-        ot->rcot_begin();
+        ot->begin();
         for (int64_t i = 0; i < n_chunks; ++i)
-            ot->rcot_next(buf.data());
-        ot->rcot_end();
+            ot->next(buf.data());
+        ot->end();
     } else {
-        ot->rcot_begin();
+        ot->begin();
         for (int64_t i = 0; i < n_chunks; ++i)
-            ot->rcot_next(buf.data());
-        ot->rcot_end();
+            ot->next(buf.data());
+        ot->end();
     }
     io->flush();
     long long us = time_from(start);

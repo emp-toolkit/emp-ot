@@ -100,28 +100,16 @@ and then either returns or continues with `begin`/`next` loop.
 In other words, repeated `run(...)` calls on the same instance with
 `num != k·chunk_size()` don't pay a fresh chunk per call.
 
-## chunk_size, chunk_ots, chunk_extends
-
-Three names for the same thing — historical, kept as aliases:
-
-- `chunk_size()` is the canonical pure virtual on `StreamingExtension`.
-- `chunk_ots()` is a non-virtual alias on `OTExtension`, OT-domain idiom.
-- `chunk_extends()` is a non-virtual alias on `Svole`, sVOLE-domain idiom.
-
-All return the same value. New code should prefer the domain alias
-local to the class.
-
 ## The dual-role wrapper on OTExtension
 
 `StreamingExtension` is single-role: each instance, given its
-`party`, runs one side of the protocol. `OTExtension` is single-role
-internally too, but it inherits `RandomCOT`'s dual-role API
-(`send_rcot` / `recv_rcot`) and exposes the single-role lifecycle
-under both an OT-domain name and a role-agnostic name:
+`party`, runs one side of the protocol. `OTExtension` inherits this
+single-role lifecycle verbatim (`begin/next/end/run/chunk_size`) and
+additionally implements `RandomCOT`'s dual-role API
+(`send_rcot` / `recv_rcot`):
 
 ```cpp
-//   begin/next/end   (StreamingExtension contract — inherited)
-//   rcot_begin/next/end  (OT-domain alias for begin/next/end)
+//   begin/next/end / run / chunk_size  (StreamingExtension contract — inherited)
 //   send_rcot(data, num) / recv_rcot(data, num)
 //       (RandomCOT one-shot pair; asserts party then delegates to run())
 ```
@@ -132,31 +120,29 @@ can call the right method without knowing the instance's party.
 Internal call sites that already know the role (Ferret nesting,
 Svole pull_cots_) use them too.
 
-`rcot_begin/next/end` is the recommended path for streaming-savvy
-callers: it skips the role assertion entirely (the role is implicit
-in `party`).
+Streaming-savvy callers use `begin/next/end` directly — the role is
+implicit in `party`, and no party-assertion is needed.
 
 The dispatch tree inside `OTExtension`:
 
 ```
-  send_rcot ─┐
-             ├─► assert(is_ot_sender()) ─► run(data, num)
-  recv_rcot ─┘
+  send_rcot ─► assert(is_ot_sender()) ─► run(data, num)
+  recv_rcot ─► assert(!is_ot_sender()) ─► run(data, num)
 
-  rcot_begin ─► begin() ─┐
-  rcot_next  ─► next()   ├─► do_begin / do_next / do_end
-  rcot_end   ─► end()    │       │
-                         │       │ (OTExtension's default
-                         │       │  implementation)
-                         │       ▼
-                         │   if (is_ot_sender())
-                         │       do_send_rcot_{begin,next,end}();
-                         │   else
-                         │       do_recv_rcot_{begin,next,end}();
-                         │
-                         │ Subclasses override either:
-                         │   - the per-role hooks (IKNP, SoftSpoken), or
-                         │   - do_begin/do_next/do_end directly (Ferret).
+  begin ─┐
+  next   ├─► do_begin / do_next / do_end
+  end    │       │
+         │       │ (OTExtension's default
+         │       │  implementation)
+         │       ▼
+         │   if (is_ot_sender())
+         │       do_send_rcot_{begin,next,end}();
+         │   else
+         │       do_recv_rcot_{begin,next,end}();
+         │
+         │ Subclasses override either:
+         │   - the per-role hooks (IKNP, SoftSpoken), or
+         │   - do_begin/do_next/do_end directly (Ferret).
 ```
 
 ## Auto-rollover inside do_next

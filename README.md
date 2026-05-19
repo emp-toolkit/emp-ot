@@ -177,14 +177,14 @@ call a lower-level method on a higher-level object.
 |---------------------------|---------------------------------------------------|---------------------------------------------------------------------------------|
 | `OT`                      | `send(m0, m1, n)` / `recv(mc, c, n)`              | chosen-input 1-out-of-2: sender supplies both messages, receiver picks one      |
 | `COT : OT`                | `send_cot(m0, n)` / `recv_cot(mc, c, n)`; free `send_rot`/`recv_rot` | chosen-correlation: sender's two messages always differ by a public `Delta` |
-| `RandomCOT : COT`         | `rcot_send(m0, n)` / `rcot_recv(mc, n)`           | random correlation: no choice-bit input; receiver's choice ends up in `getLSB(mc[i])`, and `Delta`'s LSB is forced to 1 so the correlation survives that one bit |
-| `OTExtension : RandomCOT` | `set_delta(const bool* delta_bool)` (sender-only Δ override), `chunk_ots()`, `rcot_send_begin/_next/_end`, `rcot_recv_begin/_next/_end` | streaming RCOT (one fixed-size chunk per `_next`); base-OT bootstrap fires lazily on the first `_begin` |
+| `RandomCOT : COT`         | `send_rcot(m0, n)` / `recv_rcot(mc, n)`           | random correlation: no choice-bit input; receiver's choice ends up in `getLSB(mc[i])`, and `Delta`'s LSB is forced to 1 so the correlation survives that one bit |
+| `OTExtension : RandomCOT` | `set_delta(const bool* delta_bool)` (sender-only Δ override), `chunk_size()`, `begin/next/end`, `run(data, num)` | streaming RCOT (one fixed-size chunk per `next`); base-OT bootstrap fires lazily on the first `begin` |
 
 Concrete classes attach as follows:
 
 - **Base OTs** (`OT` only): `OTCO`, `OTPVW`, `OTCSW`, `OTPVWKyber`.
 - **OT extensions** (`OTExtension`, so all of the above): `IKNP`,
-  `SoftSpokenOT<k>`, `FerretCOT`.
+  `SoftSpokenOT<k>`, `Ferret`.
 
 The chosen-input / chosen-correlation / random conversions are
 implemented once in the base classes (one MITCCRH pass per OT for the
@@ -212,21 +212,21 @@ All four implement the same `OT` interface. `OTCO` is semi-honest;
 
 ### OT extensions
 
-`IKNP`, `SoftSpokenOT<k>`, and `FerretCOT` all derive from
+`IKNP`, `SoftSpokenOT<k>`, and `Ferret` all derive from
 `RandomCOT`, take the same constructor shape, and the same object
 exposes all four flavors:
 
 ```cpp
 IKNP ote(party, &io);
-// SoftSpokenOT<2> ote(party, &io); FerretCOT ote(party, &io); ... all the same below.
+// SoftSpokenOT<2> ote(party, &io); Ferret ote(party, &io); ... all the same below.
 
 if (party == ALICE) {
-    ote.rcot_send(m0, length);                    // RCOT: fills m0; m1[i] = m0[i]^Δ
+    ote.send_rcot(m0, length);                    // RCOT: fills m0; m1[i] = m0[i]^Δ
     ote.send_cot(m0, length);                     // COT:  fills m0; m1[i] = m0[i]^Δ
     ote.send_rot(m0, m1, length);                 // ROT:  fills m0, m1 (random)
     ote.send(m0, m1, length);                     // OT:   sends caller-chosen m0, m1
 } else {
-    ote.rcot_recv(mc, length);                    // RCOT: mc[i]=m_{c[i]}, c[i]=LSB(mc[i])
+    ote.recv_rcot(mc, length);                    // RCOT: mc[i]=m_{c[i]}, c[i]=LSB(mc[i])
     ote.recv_cot(mc, c, length);                  // COT:  mc[i] = m0[i] ^ c[i]*Δ
     ote.recv_rot(mc, c, length);                  // ROT:  mc[i] = c[i] ? m1[i] : m0[i]
     ote.recv(mc, c, length);                      // OT:   mc[i] = c[i] ? m1[i] : m0[i]
@@ -235,9 +235,9 @@ if (party == ALICE) {
 
 The constructor allocates per-instance state and (on the sender side)
 samples a random `Δ` with `LSB(Δ) = 1` pinned. No network I/O runs in
-the ctor. The base-OT bootstrap runs on the first `rcot_*_begin` (or
-the first `rcot_send` / `rcot_recv` one-shot call, which delegates to
-`_begin` internally).
+the ctor. The base-OT bootstrap runs on the first `begin()` (or the
+first `send_rcot` / `recv_rcot` one-shot call, which delegates to
+`run()` → `begin()` internally).
 
 `Δ` is readable as `ote.Delta` immediately after construction. The
 receiver has no `Δ`. To override the ctor-sampled `Δ` (e.g. when an
@@ -255,11 +255,12 @@ if (party == ALICE) {
 // ote.rcot_send(...); // bootstrap fires here, on first streaming begin
 ```
 
-`set_delta` must fire before the first `rcot_*` call (asserts otherwise).
+`set_delta` must fire before the first `send_rcot/recv_rcot/begin/run`
+call (asserts otherwise).
 
 Each extension can be parameterized to bootstrap from a non-default
 base OT (default is `OTPVW`); pair an extension's malicious mode with
-a malicious-secure base — `IKNP` / `SoftSpokenOT` / `FerretCOT` check
+a malicious-secure base — `IKNP` / `SoftSpokenOT` / `Ferret` check
 this at construction time and abort otherwise.
 
 ```cpp
@@ -267,7 +268,7 @@ IKNP            ote1(party, &io, /*malicious=*/true,
                      std::make_unique<OTCSW>(&io));
 SoftSpokenOT<4> ote2(party, &io, /*malicious=*/true,
                      std::make_unique<OTCSW>(&io));      // k=4
-FerretCOT       ote3(party, &io, /*malicious=*/true,
+Ferret          ote3(party, &io, /*malicious=*/true,
                      ferret_b13,
                      std::make_unique<OTCSW>(&io));
 ```
@@ -276,32 +277,23 @@ FerretCOT       ote3(party, &io, /*malicious=*/true,
 
 The `OTExtension` base also exposes a streaming API for callers that
 want to overlap RCOT production with downstream work (one fixed
-`chunk_ots()`-sized batch per `_next` call, no internal buffering):
+`chunk_size()`-sized batch per `next()` call, no internal buffering):
 
 ```cpp
-const int64_t chunk = ote.chunk_ots();
+const int64_t chunk = ote.chunk_size();
 BlockVec buf(chunk);
 
-if (party == ALICE) {
-    ote.rcot_send_begin();
-    for (int i = 0; i < n_chunks; ++i) {
-        ote.rcot_send_next(buf.data());
-        consume_sender_chunk(buf.data(), chunk);
-    }
-    ote.rcot_send_end();
-} else {
-    ote.rcot_recv_begin();
-    for (int i = 0; i < n_chunks; ++i) {
-        ote.rcot_recv_next(buf.data());
-        consume_receiver_chunk(buf.data(), chunk);
-    }
-    ote.rcot_recv_end();
+ote.begin();
+for (int i = 0; i < n_chunks; ++i) {
+    ote.next(buf.data());
+    consume_chunk(buf.data(), chunk);  // role implicit in party
 }
+ote.end();
 ```
 
-The one-shot `rcot_send` / `rcot_recv` wrappers are implemented in
+The one-shot `send_rcot` / `recv_rcot` wrappers are implemented in
 terms of this streaming API plus a small leftover buffer for tails
-that aren't a multiple of `chunk_ots()`.
+that aren't a multiple of `chunk_size()`.
 
 ## Performance
 

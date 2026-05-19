@@ -116,7 +116,7 @@ struct AuthValueF2k {
         Svole<AuthValueF2k, IO> inner(svole.party, svole.io_,
                                        svole.malicious, base_param);
         if (svole.is_delta_holder()) inner.set_delta(svole.delta());
-        inner.extend(svole.carry_next_.data(), M);
+        inner.run(svole.carry_next_.data(), M);
       } else {
         // Base case: direct Galois packing of M * 128 raw Ferret COTs.
         std::vector<block> ferret_buf((size_t)M * 128);

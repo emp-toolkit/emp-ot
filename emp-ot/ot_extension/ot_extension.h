@@ -11,14 +11,14 @@
 namespace emp {
 
 // Common base class for OT extensions (IKNP / SoftSpokenOT / Ferret).
-// Conceptually `OTExtension` is `StreamingExtension<block>` with three
+// Conceptually `OTExtension` is `StreamingExtension<block>` with two
 // additions:
-//   - rcot_begin / rcot_next / rcot_end — single-role lifecycle
-//     aliases (party is fixed at construction; the role is implicit).
 //   - send_rcot / recv_rcot — the dual-role one-shot API inherited
 //     from RandomCOT, party-asserting wrappers around StreamingExtension::run().
+//     The single-role lifecycle (begin / next / end / run) is inherited
+//     verbatim from StreamingExtension; party is fixed at construction
+//     so the role is implicit there.
 //   - Δ / delta_bool / choice_prg / base_ot — OT-specific plumbing.
-//   - chunk_ots() as an alias for chunk_size().
 //
 // Subclasses (IKNP, SoftSpoken, Ferret) override the three streaming
 // virtuals do_begin / do_next / do_end. The default implementation in
@@ -56,7 +56,7 @@ public:
 
     // Replace the ctor-sampled Δ with one supplied by an outer protocol.
     // Sender-only; must fire before the streaming bootstrap consumes Δ
-    // (i.e. before the first rcot_begin call). bits[0] must be true
+    // (i.e. before the first begin() call). bits[0] must be true
     // (the COT LSB convention shared by all three extensions).
     //
     // Subclasses that need to propagate Δ into auxiliary state (e.g.
@@ -71,7 +71,7 @@ public:
 
     // Reseed the receiver-side choice PRG. Receiver-only; must fire
     // before the streaming bootstrap consumes the PRG (i.e. before
-    // the first rcot_begin call). Subclasses that nest another
+    // the first begin() call). Subclasses that nest another
     // OTExtension at bootstrap (Ferret -> SoftSpoken / nested Ferret)
     // pull a sub-seed from choice_prg and forward it via the inner's
     // set_choice_seed in their bootstrap path; the PRG lives on the
@@ -82,20 +82,12 @@ public:
         choice_prg.reseed(&seed);
     }
 
-    // Per-_next chunk size in OTs. Subclasses override the inherited
-    // chunk_size() (one cGGM tree's leaves for Ferret; the max-batch
-    // unit for IKNP / SoftSpoken). chunk_ots() is a non-virtual,
-    // domain-specific alias for OT-extension callers.
-    int64_t chunk_ots() const { return chunk_size(); }
-
-    // -------- Public API --------
-    // Each instance is single-role at runtime (`party` is fixed at
-    // construction); the role is implicit in the lifecycle methods.
-    // rcot_begin/next/end are domain-named aliases for the inherited
-    // streaming begin/next/end.
-    void rcot_begin()        { begin(); }
-    void rcot_next(block* o) { next(o); }
-    void rcot_end()          { end(); }
+    // Streaming surface: begin / next / end / run / chunk_size are
+    // inherited verbatim from StreamingExtension<block>. Each instance
+    // is single-role at runtime (`party` is fixed at construction), so
+    // the role is implicit. Subclasses override the inherited
+    // chunk_size() — one cGGM tree's leaves for Ferret, the max-batch
+    // unit for IKNP / SoftSpoken.
 
     // RandomCOT one-shot (the dual-role API surface from the base).
     // Party-asserts then routes through the single-role streaming

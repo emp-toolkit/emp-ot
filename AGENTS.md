@@ -136,7 +136,7 @@ from a subdoc.
 - **Buffer-length and count parameters use `int64_t`.** Not `int`
   (overflows at 2^31 elements) or `size_t` (underflows in `len -=
   batch` loops). This mirrors the convention emp-tool's public API
-  uses and which Ferret's `param.t`, `param.M`, `chunk_ots()`, etc.
+  uses and which Ferret's `param.t`, `param.M`, `chunk_size()`, etc.
   already follow. Internal counters (`int64_t i = 0; i < len; ++i`)
   match. Template non-type parameters (`int k`, `int kChunkBlocks`)
   stay `int`.

@@ -136,13 +136,6 @@ public:
   int64_t chunk_size() const override {
     return int64_t{1} << param.tree_depth;
   }
-  // Back-compat aliases for the sVOLE-specific naming that pre-dates
-  // the unified StreamingExtension API.
-  int64_t chunk_extends() const                { return chunk_size(); }
-  void    extend_begin()                       { this->begin(); }
-  void    extend_next(AuthValue *out)          { this->next(out); }
-  void    extend_end()                         { this->end(); }
-  void    extend(AuthValue *data, int64_t num) { this->run(data, num); }
 
   // Largest chunk-aligned count of user-visible outputs per round.
   // Equal to `(param.t - param.refill_trees) * chunk` by the

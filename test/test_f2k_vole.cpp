@@ -41,36 +41,36 @@ void check_triple(const block delta,
   }
 }
 
-// Streaming-path exercise: extend_begin → many extend_next → extend_end.
+// Streaming-path exercise: begin → many next → end.
 // Walks chunk-by-chunk through ~one round of outputs, verifying each.
 void test_streaming(NetIO *io, int svole_party) {
   F2kVOLE<AuthValueF2k, NetIO> vtriple(svole_party, io);
   const block Delta = (svole_party == BOB) ? vtriple.delta() : zero_block;
 
-  const int64_t chunk = vtriple.chunk_extends();
+  const int64_t chunk = vtriple.chunk_size();
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();
   std::vector<AuthValueF2k> buf(chunk);
   std::vector<block> buf_x(chunk), buf_yz(chunk);
 
   // Two rounds via the streaming API. setup_done flips inside the first
-  // extend_begin (lazy bootstrap).
+  // begin (lazy bootstrap).
   auto t0 = clock_start();
-  vtriple.extend_begin();
+  vtriple.begin();
   std::cout << "setup+begin " << time_from(t0) / 1000 << " ms" << std::endl;
 
   const int64_t total_chunks = (per_round / chunk) * 2;
   for (int64_t i = 0; i < total_chunks; ++i) {
-    vtriple.extend_next(buf.data());
+    vtriple.next(buf.data());
     for (int64_t k = 0; k < chunk; ++k) {
       buf_x[k]  = buf[k].val;
       buf_yz[k] = buf[k].mac;
     }
     check_triple(Delta, buf_x.data(), buf_yz.data(), chunk, io);
   }
-  vtriple.extend_end();
+  vtriple.end();
 }
 
-// One-shot path: extend(out, num) with chunk-aligned num. ram-zk uses
+// One-shot path: run(out, num) with chunk-aligned num. ram-zk uses
 // the same shape with `num = chunk_aligned_buf_sz()`.
 void test_oneshot(NetIO *io, int svole_party) {
   F2kVOLE<AuthValueF2k, NetIO> vtriple(svole_party, io);
@@ -82,7 +82,7 @@ void test_oneshot(NetIO *io, int svole_party) {
 
   for (int i = 0; i < 8; ++i) {
     auto start = clock_start();
-    vtriple.extend(buf.data(), per_round);
+    vtriple.run(buf.data(), per_round);
     std::cout << "extend " << time_from(start) / 1000 << " ms" << std::endl;
     for (int64_t k = 0; k < per_round; ++k) {
       buf_x[k]  = buf[k].val;

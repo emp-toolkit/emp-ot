@@ -12,7 +12,6 @@
 // sVOLE extensions specialize this with their per-leaf carrier:
 //
 //   OTExtension : public StreamingExtension<block>            (RCOT)
-//                 + rcot_begin/next/end (single-role lifecycle aliases)
 //                 + send_rcot / recv_rcot (dual-role one-shot from RandomCOT)
 //                 + Δ / base_ot / choice_prg
 //   Svole<AuthValue, IO> : public StreamingExtension<AuthValue> (sVOLE)
@@ -23,9 +22,9 @@
 // `setup_done` flag (subclass flips it inside its first do_begin).
 //
 // Each instance is single-role at runtime (`party` is fixed at
-// construction). OTExtension exposes the lifecycle as the
-// role-agnostic rcot_begin/next/end, plus the dual-role one-shot
-// send_rcot/recv_rcot inherited from RandomCOT.
+// construction). The streaming surface (begin/next/end/run) is the
+// canonical API on both subclasses; OTExtension additionally exposes
+// the dual-role one-shot send_rcot/recv_rcot inherited from RandomCOT.
 
 namespace emp {
 
