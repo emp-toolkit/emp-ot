@@ -345,27 +345,7 @@ bootstrap fraction shrinks linearly with bench length.
 `COT`, `ROT`, `OT` flavors layer one MITCCRH pass (and, for
 chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.
 
-## Citation
-
-```bibtex
-@misc{emp-toolkit,
-   author = {Xiao Wang and Alex J. Malozemoff and Jonathan Katz},
-   title = {{EMP-toolkit: Efficient MultiParty computation toolkit}},
-   howpublished = {\url{https://github.com/emp-toolkit}},
-   year={2016}
-}
-```
-
-## Acknowledgement
-
-This work was supported in part by the National Science Foundation under
-Awards #1111599 and #1563722. The Ferret implementation is partially
-based upon work supported by DARPA under Contract No. HR001120C0087. Any
-opinions, findings and conclusions or recommendations expressed in this
-material are those of the author(s) and do not necessarily reflect the
-views of DARPA. The authors would also like to thank the support from
-PlatON Network and Facebook. Ferret is also developed and maintained by
-Chenkai Weng.
+## [Acknowledgement, Reference, and Questions](https://github.com/emp-toolkit/emp-readme/blob/master/README.md#citation)
 
 ## License
 
