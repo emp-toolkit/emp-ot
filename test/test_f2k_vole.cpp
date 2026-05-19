@@ -44,12 +44,12 @@ void check_triple(const block delta,
 // Streaming-path exercise: extend_begin → many extend_next → extend_end.
 // Walks chunk-by-chunk through ~one round of outputs, verifying each.
 void test_streaming(NetIO *io, int svole_party) {
-  F2kVOLE<F2kDefaultPolicy, NetIO> vtriple(svole_party, io);
+  F2kVOLE<AuthValueF2k, NetIO> vtriple(svole_party, io);
   const block Delta = (svole_party == BOB) ? vtriple.delta() : zero_block;
 
   const int64_t chunk = vtriple.chunk_extends();
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();
-  std::vector<F2kDefaultPolicy::AuthValue> buf(chunk);
+  std::vector<AuthValueF2k> buf(chunk);
   std::vector<block> buf_x(chunk), buf_yz(chunk);
 
   // Two rounds via the streaming API. setup_done flips inside the first
@@ -73,11 +73,11 @@ void test_streaming(NetIO *io, int svole_party) {
 // One-shot path: extend(out, num) with chunk-aligned num. ram-zk uses
 // the same shape with `num = chunk_aligned_buf_sz()`.
 void test_oneshot(NetIO *io, int svole_party) {
-  F2kVOLE<F2kDefaultPolicy, NetIO> vtriple(svole_party, io);
+  F2kVOLE<AuthValueF2k, NetIO> vtriple(svole_party, io);
   const block Delta = (svole_party == BOB) ? vtriple.delta() : zero_block;
 
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();
-  std::vector<F2kDefaultPolicy::AuthValue> buf(per_round);
+  std::vector<AuthValueF2k> buf(per_round);
   std::vector<block> buf_x(per_round), buf_yz(per_round);
 
   for (int i = 0; i < 8; ++i) {

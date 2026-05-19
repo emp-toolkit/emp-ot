@@ -6,34 +6,29 @@
 #include <algorithm>
 #include <memory>
 #include "emp-ot/ot.h"
+#include "emp-ot/common/streaming_extension.h"
 
 namespace emp {
 
 // Common base class for OT extensions (IKNP / SoftSpokenOT / Ferret).
+// Conceptually `OTExtension` is just `StreamingExtension<block>` with
+// three additions:
+//   - dual-role public API: rcot_send_* / rcot_recv_* (party-asserting
+//     wrappers around the inherited single-role begin/next/end).
+//   - Δ / delta_bool / choice_prg / base_ot — OT-specific plumbing.
+//   - chunk_ots() as an alias for chunk_size().
 //
-// Defines the streaming RCOT contract — chunk_ots() blocks per
-// _next, lifecycle is _begin -> loop _next* -> _end — and provides
-// the one-shot rcot_send / rcot_recv wrappers shared across all
-// three backends.
-//
-// Subclasses override the protected do_* virtuals; the public
-// _begin/_next/_end are concrete and enforce the session lifecycle
-// (assert + flag flip) before delegating, so each backend gets the
-// same in_*_session_ tripwire for free.
-//
-// Role / config plumbing — `party`, `malicious`, `setup_done`, the
-// owned `base_ot`, and the sender-side random Δ with LSB pinned to
-// 1 — also live here so subclasses don't redeclare them.
-class OTExtension : public RandomCOT {
+// Each instance is single-role at runtime (`party` is fixed at
+// construction); the dual-role API is just two API surfaces over the
+// same single-role lifecycle. Subclasses (IKNP, SoftSpoken, Ferret)
+// override the three streaming virtuals do_begin / do_next / do_end
+// and dispatch by party internally.
+class OTExtension : public RandomCOT, public StreamingExtension<block> {
 public:
-    // Role; locked at construction. is_ot_sender() (ALICE) iff this
-    // instance produces sender-side RCOT outputs. The OT-sender role
-    // also serves as the IOChannel FS send_first side and owns Δ.
-    int  party = 0;
-    bool malicious = false;
-    // Subclass do_rcot_*_begin trips this on first call; set_delta and
-    // any pre-bootstrap configuration assert !setup_done.
-    bool setup_done = false;
+    // Subclass do_begin trips this on first call; set_delta and any
+    // pre-bootstrap configuration assert !setup_done. (Inherited from
+    // StreamingExtension.)
+
     // Owned base OT for the subclass's bootstrap. Allocated by the
     // subclass ctor (see IKNPBaseOT / SoftSpokenBaseOT / FerretBaseOT
     // typedefs); each subclass picks its own default and can be
@@ -85,65 +80,32 @@ public:
         choice_prg.reseed(&seed);
     }
 
-    // Per-_next chunk size in OTs. Subclasses pick a value that's
-    // natural for their pipeline (one cGGM tree's leaves for ferret;
-    // the max-batch unit for IKNP / SoftSpoken). Constant per
-    // instance after setup.
-    virtual int64_t chunk_ots() const = 0;
+    // Per-_next chunk size in OTs. Subclasses override the inherited
+    // chunk_size() (one cGGM tree's leaves for Ferret; the max-batch
+    // unit for IKNP / SoftSpoken). chunk_ots() is a non-virtual alias
+    // for external callers that pre-date the unified streaming name.
+    int64_t chunk_ots() const { return chunk_size(); }
 
-    // Streaming primitives. Each _next writes exactly chunk_ots()
-    // blocks. Lifecycle: _begin -> loop _next* -> _end. Sessions
-    // can be re-started.
-    void rcot_send_begin() {
-        assert(!in_send_session_ && "rcot_send_begin: previous session not ended");
-        do_rcot_send_begin();
-        in_send_session_ = true;
-    }
-    void rcot_send_next(block* out) {
-        assert(in_send_session_ && "rcot_send_next: call rcot_send_begin first");
-        do_rcot_send_next(out);
-    }
-    void rcot_send_end() {
-        assert(in_send_session_ && "rcot_send_end: no active session");
-        do_rcot_send_end();
-        in_send_session_ = false;
-    }
-    void rcot_recv_begin() {
-        assert(!in_recv_session_ && "rcot_recv_begin: previous session not ended");
-        do_rcot_recv_begin();
-        in_recv_session_ = true;
-    }
-    void rcot_recv_next(block* out) {
-        assert(in_recv_session_ && "rcot_recv_next: call rcot_recv_begin first");
-        do_rcot_recv_next(out);
-    }
-    void rcot_recv_end() {
-        assert(in_recv_session_ && "rcot_recv_end: no active session");
-        do_rcot_recv_end();
-        in_recv_session_ = false;
-    }
+    // -------- Dual-role public API --------
+    // Each is a thin party-asserting alias for the inherited
+    // single-role begin/next/end/run. Subclasses don't see these —
+    // they implement do_begin/do_next/do_end and dispatch on party.
+    void rcot_send_begin()        { assert(is_ot_sender());  begin(); }
+    void rcot_send_next(block* o) { assert(is_ot_sender());  next(o); }
+    void rcot_send_end()          { assert(is_ot_sender());  end(); }
+    void rcot_recv_begin()        { assert(!is_ot_sender()); begin(); }
+    void rcot_recv_next(block* o) { assert(!is_ot_sender()); next(o); }
+    void rcot_recv_end()          { assert(!is_ot_sender()); end(); }
 
-    // RandomCOT one-shot, implemented once here in terms of the
-    // streaming primitives + a per-instance leftover buffer. The
-    // leftover holds the unused suffix of one chunk when num isn't
-    // a multiple of chunk_ots(); subsequent calls drain it before
-    // producing more chunks, so repeated tiny rcot_send calls don't
-    // pay a fresh chunk per call.
-    //
-    // Setup runs lazily on the first do_rcot_*_begin (gated by
-    // setup_done). Callers that need to inject Δ before bootstrap
-    // call set_delta on the sender side; do_rcot_send_begin will
-    // observe the injected Delta on its first run.
+    // RandomCOT one-shot. Lifecycle: lazy setup_done flip happens
+    // inside the subclass's first do_begin.
     void rcot_send(block* data, int64_t num) final override {
-        rcot_run(data, num, /*sender=*/true);
+        assert(is_ot_sender());
+        run(data, num);
     }
     void rcot_recv(block* data, int64_t num) final override {
-        rcot_run(data, num, /*sender=*/false);
-    }
-
-    ~OTExtension() override {
-        assert(!in_send_session_ && "~OTExtension: missing rcot_send_end");
-        assert(!in_recv_session_ && "~OTExtension: missing rcot_recv_end");
+        assert(!is_ot_sender());
+        run(data, num);
     }
 
 protected:
@@ -153,11 +115,11 @@ protected:
     // samples the sender-side random Δ with LSB pinned to 1.
     OTExtension(int party_, IOChannel* io_, bool malicious_,
                 std::unique_ptr<OT> base_ot_)
-        : party(party_), malicious(malicious_),
+        : StreamingExtension<block>(party_, malicious_),
           base_ot(std::move(base_ot_)) {
         assert(base_ot && "OTExtension: subclass must provide a non-null base_ot");
         this->io = io_;
-        if (malicious && !base_ot->is_malicious_secure())
+        if (malicious_ && !base_ot->is_malicious_secure())
             error("OT extension malicious mode requires a malicious-secure base OT");
         if (is_ot_sender()) {
             // Random Δ with bit 0 = 1 (LSB-encoded choice convention
@@ -176,65 +138,36 @@ protected:
         }
     }
 
-    // Subclass implementation hooks. Called from the public concrete
-    // _begin/_next/_end above after the lifecycle asserts have
-    // passed. do_*_begin must trigger first-call setup itself (gated
-    // by the inherited `setup_done` flag).
-    virtual void do_rcot_send_begin() = 0;
-    virtual void do_rcot_send_next(block* out) = 0;
-    virtual void do_rcot_send_end() = 0;
-    virtual void do_rcot_recv_begin() = 0;
-    virtual void do_rcot_recv_next(block* out) = 0;
-    virtual void do_rcot_recv_end() = 0;
-
-private:
-    bool in_send_session_ = false;
-    bool in_recv_session_ = false;
-
-    // One leftover buffer per instance; role is fixed at construction
-    // so send and recv never share a single instance.
-    BlockVec leftover_;
-    int64_t  leftover_pos_   = 0;
-    int64_t  leftover_count_ = 0;
-
-    // Drain up to `take_max` blocks of leftover into `out`.
-    int64_t drain_leftover(block* out, int64_t take_max) {
-        if (leftover_count_ == 0) return 0;
-        int64_t take = std::min<int64_t>(take_max, leftover_count_);
-        memcpy(out, leftover_.data() + leftover_pos_, take * sizeof(block));
-        leftover_pos_   += take;
-        leftover_count_ -= take;
-        return take;
+    // Default StreamingExtension hook implementations: party-dispatch
+    // to the per-role virtuals below. Subclasses that fit the dual-role
+    // split (IKNP, SoftSpoken) override the six per-role methods and
+    // inherit these dispatchers. Subclasses with a unified body (e.g.
+    // Ferret, which routes through TreeExtensionBase::engine_*) can
+    // override do_begin / do_next / do_end directly and ignore the
+    // per-role hooks.
+    void do_begin() override {
+        if (is_ot_sender()) do_rcot_send_begin();
+        else                do_rcot_recv_begin();
+    }
+    void do_next(block* out) override {
+        if (is_ot_sender()) do_rcot_send_next(out);
+        else                do_rcot_recv_next(out);
+    }
+    void do_end() override {
+        if (is_ot_sender()) do_rcot_send_end();
+        else                do_rcot_recv_end();
     }
 
-    // Shared body for both rcot_send and rcot_recv. `sender` picks
-    // which streaming primitives to call; the loop / leftover logic
-    // is the same.
-    void rcot_run(block* data, int64_t num, bool sender) {
-        const int64_t chunk = chunk_ots();
-        int64_t produced = drain_leftover(data, num);
-        if (produced == num) return;
-
-        if (sender) rcot_send_begin(); else rcot_recv_begin();
-        while (produced + chunk <= num) {
-            if (sender) rcot_send_next(data + produced);
-            else        rcot_recv_next(data + produced);
-            produced += chunk;
-        }
-        if (produced < num) {
-            // Partial tail: produce one more chunk into leftover_,
-            // copy the user-requested prefix to data, save the
-            // suffix for the next call.
-            if (leftover_.empty()) leftover_.resize(chunk);
-            if (sender) rcot_send_next(leftover_.data());
-            else        rcot_recv_next(leftover_.data());
-            int64_t take = num - produced;
-            memcpy(data + produced, leftover_.data(), take * sizeof(block));
-            leftover_pos_   = take;
-            leftover_count_ = chunk - take;
-        }
-        if (sender) rcot_send_end(); else rcot_recv_end();
-    }
+    // Per-role hooks. Default empty (so subclasses that override
+    // do_begin/do_next/do_end directly don't need to provide them).
+    // Subclasses using the default dispatch above must override these
+    // with their per-role bodies.
+    virtual void do_rcot_send_begin()        {}
+    virtual void do_rcot_send_next(block*)   {}
+    virtual void do_rcot_send_end()          {}
+    virtual void do_rcot_recv_begin()        {}
+    virtual void do_rcot_recv_next(block*)   {}
+    virtual void do_rcot_recv_end()          {}
 };
 
 }  // namespace emp

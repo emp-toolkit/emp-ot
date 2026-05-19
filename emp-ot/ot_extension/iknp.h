@@ -69,10 +69,12 @@ class IKNP : public OTExtension { public:
 	                  base_ot_ ? std::move(base_ot_)
 	                           : std::unique_ptr<OT>(new IKNPBaseOT(io_))) {}
 
-	// ===== OTExtension contract =====
-	int64_t chunk_ots() const override { return block_size; }
+	// ===== StreamingExtension contract =====
+	int64_t chunk_size() const override { return block_size; }
 
 protected:
+	// Per-role hooks; the OTExtension base's default do_begin / do_next /
+	// do_end dispatch to these based on is_ot_sender().
 	void do_rcot_send_begin() override;
 	void do_rcot_send_next(block *out) override;
 	void do_rcot_send_end() override;

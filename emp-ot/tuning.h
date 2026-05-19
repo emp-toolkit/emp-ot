@@ -54,7 +54,7 @@ inline constexpr int64_t iknp_chunk_ots = 2048;
 // and aarch64 NEON.
 inline constexpr int64_t cot_chosen_input_tile = 8;
 
-// ===== cGGM tree expand (emp-ot/ot_extension/cggm.h) =====
+// ===== cGGM tree expand (emp-ot/common/cggm.h) =====
 // Per-arch in-register tile for the children-from-parents step.
 // cggm.h selects which one at compile time based on EMP_HAS_*
 // (VAES-512, AES-NI, or aarch64 NEON via sse2neon).

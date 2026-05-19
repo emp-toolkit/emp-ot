@@ -6,23 +6,23 @@
 #include <algorithm>
 
 // Generic LPN linear-code amplifier. One file, one function shape,
-// works for Ferret (Ops::AuthValue = block, XOR) and sVOLE (F2k:
-// AuthValue<block,block>, XOR; Fp: AuthValue<uint64_t,uint64_t>,
-// mod-p add with periodic partial reduction).
+// works for Ferret (AuthValue=AuthValueFerret, single-block carrier,
+// XOR) and sVOLE (AuthValueF2k: block val+mac, XOR; AuthValueFp:
+// uint64 val+mac, mod-p add with periodic partial reduction).
 //
 // Each output position consumes d uint32_t pseudorandom indices; for
 // each index, pre[index] is folded into the accumulator via
-// Ops::auth_add_into. Randomness comes from a sequential PRG keyed
-// by reseed(); PRG state advances naturally across compute_slice
-// calls, so per-tree (Ferret) or per-chunk (sVOLE) slicing maps
-// cleanly onto contiguous PRG output ranges.
+// AuthValue::auth_add_into. Randomness comes from a sequential PRG
+// keyed by reseed(); PRG state advances naturally across
+// compute_slice calls, so per-tree (Ferret) or per-chunk (sVOLE)
+// slicing maps cleanly onto contiguous PRG output ranges.
 //
 // k must be a power of 2 (callers' LPN parameters pin it via logk in
 // PrimalLPNParameter): idx = r & (k-1) is then uniform on [0, k)
 // with no rejection step.
 //
-// Ops contract:
-//   using AuthValue;
+// AuthValue contract (provided by the concrete carrier type itself —
+// AuthValueFerret / AuthValueF2k / AuthValueFp):
 //   static constexpr int kLpnSafeAddsPerReduce;     // INT_MAX for F2,
 //                                                   // 5 for Mersenne Fp
 //   static void auth_add_into(AuthValue&, const AuthValue&);
@@ -31,9 +31,8 @@
 
 namespace emp {
 
-template <typename Ops, int d = tuning::lpn_d>
+template <typename AuthValue, int d = tuning::lpn_d>
 class Lpn { public:
-    using AuthValue = typename Ops::AuthValue;
     int k, mask;
     PRG prg_;
 
@@ -53,8 +52,8 @@ class Lpn { public:
         prg_.random_block(tmp, kNeededBlocks);
         const uint32_t* r = (const uint32_t*)(tmp);
         const int lmask = mask;
-        constexpr int kStep = (Ops::kLpnSafeAddsPerReduce < d)
-                              ? Ops::kLpnSafeAddsPerReduce : d;
+        constexpr int kStep = (AuthValue::kLpnSafeAddsPerReduce < d)
+                              ? AuthValue::kLpnSafeAddsPerReduce : d;
         for (int m = 0; m < M; ++m) {
             AuthValue acc = out[i+m];
             int j = 0;
@@ -63,11 +62,11 @@ class Lpn { public:
                 for (; j < batch_end; ++j) {
                     const int idx = (int)((*r) & lmask);
                     ++r;
-                    Ops::auth_add_into(acc, pre[idx]);
+                    AuthValue::auth_add_into(acc, pre[idx]);
                 }
-                if (j < d) Ops::auth_partial_reduce(acc);
+                if (j < d) AuthValue::auth_partial_reduce(acc);
             }
-            Ops::auth_final_reduce(acc);
+            AuthValue::auth_final_reduce(acc);
             out[i+m] = acc;
         }
     }

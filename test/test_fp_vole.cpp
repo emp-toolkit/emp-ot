@@ -44,7 +44,7 @@ void check_triple(uint64_t delta, const uint64_t *val, const uint64_t *mac,
 }
 
 void test_streaming(NetIO *io, int svole_party) {
-  FpVOLE<MersennePolicy61, NetIO> vtriple(svole_party, io);
+  FpVOLE<AuthValueFp, NetIO> vtriple(svole_party, io);
   uint64_t Delta = 0;
   if (svole_party == ALICE) {
     PRG prg;
@@ -56,7 +56,7 @@ void test_streaming(NetIO *io, int svole_party) {
 
   const int64_t chunk = vtriple.chunk_extends();
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();
-  std::vector<MersennePolicy61::AuthValue> buf(chunk);
+  std::vector<AuthValueFp> buf(chunk);
   std::vector<uint64_t> buf_val(chunk), buf_mac(chunk);
 
   auto t0 = clock_start();
@@ -76,7 +76,7 @@ void test_streaming(NetIO *io, int svole_party) {
 }
 
 void test_oneshot(NetIO *io, int svole_party) {
-  FpVOLE<MersennePolicy61, NetIO> vtriple(svole_party, io);
+  FpVOLE<AuthValueFp, NetIO> vtriple(svole_party, io);
   uint64_t Delta = 0;
   if (svole_party == ALICE) {
     PRG prg;
@@ -87,7 +87,7 @@ void test_oneshot(NetIO *io, int svole_party) {
   }
 
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();
-  std::vector<MersennePolicy61::AuthValue> buf(per_round);
+  std::vector<AuthValueFp> buf(per_round);
   std::vector<uint64_t> buf_val(per_round), buf_mac(per_round);
 
   for (int i = 0; i < 8; ++i) {

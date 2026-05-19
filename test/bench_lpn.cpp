@@ -1,7 +1,7 @@
 #include <iostream>
 #include "emp-tool/emp-tool.h"
 #include "emp-ot/emp-ot.h"
-#include "emp-ot/lpn.h"
+#include "emp-ot/common/lpn.h"
 #include "emp-ot/ot_extension/ferret/ferret.h"
 #include <stdlib.h>
 using namespace std;
@@ -35,11 +35,16 @@ int main(int argc, char** argv) {
 	prg.random_block(nn, 1<<n);
 
 	for (int kkk = 10; kkk < k; ++kkk) {
-		Lpn<FerretF2LpnOps, 10> lpn(1<<kkk);
+		Lpn<AuthValueFerret, 10> lpn(1<<kkk);
 		auto t1 = clock_start();
 		for (int ttt = 0; ttt < 20; ttt++) {
 			lpn.reseed(makeBlock(0, 1));
-			lpn.compute_slice(nn, kk, 1<<n);
+			// AuthValueFerret is layout-equivalent to block (single
+			// mac field); reinterpret to feed the LPN with the raw
+			// block buffers.
+			lpn.compute_slice(reinterpret_cast<AuthValueFerret*>(nn),
+			                  reinterpret_cast<AuthValueFerret*>(kk),
+			                  1<<n);
 			kk[0] = nn[0];
 		}
 		cout << n<<"\t"<<kkk<<"\t";

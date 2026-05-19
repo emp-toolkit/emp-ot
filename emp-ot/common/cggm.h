@@ -14,7 +14,7 @@
 // H is emp-tool's CCRH (= π(σ(x)) ⊕ σ(x), Theorem 4.3).
 //
 // Used as:
-//   - the per-tree puncturable PRF in ferret's MPCOT (mpcot.h);
+//   - the per-tree puncturable PRF in MultiPointGadget (mp_gadget.h);
 //   - the puncturable-PRF tree in softspoken (per-tree fresh Δ;
 //     the receiver's view of `leaves[α]` is pseudorandom because
 //     it never learns Δ).

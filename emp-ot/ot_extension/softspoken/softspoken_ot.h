@@ -3,7 +3,7 @@
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/ot_extension/ot_extension.h"
 #include "emp-ot/base_ot/csw.h"
-#include "emp-ot/ot_extension/cggm.h"
+#include "emp-ot/common/cggm.h"
 #include "emp-ot/ot_extension/softspoken/sfvole_butterfly.h"
 #include "emp-ot/tuning.h"
 #include <cstdint>
@@ -69,9 +69,11 @@ public:
 
     static constexpr int kChunkBlocks_value = kChunkBlocks;
     static constexpr int kChunkOTs          = kChunkBlocks * 128;
-    int64_t chunk_ots() const override { return kChunkOTs; }
+    int64_t chunk_size() const override { return kChunkOTs; }
 
 protected:
+    // Per-role hooks; the OTExtension base's default do_begin / do_next /
+    // do_end dispatch to these based on is_ot_sender().
     void do_rcot_send_begin() override;
     void do_rcot_send_next(block* out) override;
     void do_rcot_send_end() override;

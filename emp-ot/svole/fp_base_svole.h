@@ -16,11 +16,11 @@
 // Why not Ferret for Cope's base OTs: Cope is a chosen-bit OT
 // construction — the OT-receiver picks delta_bool, the OT-sender
 // supplies both K0,K1. Mapping that onto raw Ferret COT requires the
-// chooser to be the COT-*receiver*, but the FpVOLE Δ-holder (ALICE)
-// must be the inner-Ferret COT-*sender* to drive the main MPFSS
-// sibling-OT layer (c[j]=base[j]^K0[j], identical to F2kMpsvole).
-// The two roles conflict; using OTCO directly for Cope's 61 base OTs
-// avoids running a second Ferret with swapped roles.
+// chooser to be the COT-*receiver*, but the F_p sVOLE Δ-holder
+// (ALICE) must be the inner-Ferret COT-*sender* to drive the main
+// MPFSS sibling-OT layer (c[j]=base[j]^K0[j], identical to the F_2k
+// case). The two roles conflict; using OTCO directly for Cope's 61
+// base OTs avoids running a second Ferret with swapped roles.
 
 namespace emp {
 
@@ -202,9 +202,13 @@ public:
 // check (one round per triple_gen_send/recv call).
 // =================================================================
 
-template <typename IO> class Base_svole {
+// Templated on the AuthValue carrier (AuthValueFp; defined in
+// fp_vole.h). Passing it as a template parameter makes the name
+// lookup of AV-typed expressions dependent, so this header can
+// forward-use the carrier without a complete definition here.
+template <typename AuthValue, typename IO> class Base_svole {
 public:
-  using AV = emp::AuthValue<uint64_t, uint64_t>;  // val-first carrier
+  using AV = AuthValue;  // val-first carrier
 
   int party;
   IO *io;

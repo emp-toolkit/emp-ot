@@ -3,12 +3,13 @@
 
 #include <emp-tool/emp-tool.h>
 
-// Mersenne 2^61 - 1 arithmetic helpers used by FpVOLE / FpMpsvole /
-// LpnFp. mod / add_mod / mult_mod come in scalar (uint64_t) and SIMD
-// (block / __m512i) flavors. extract_fp reduces a __uint128_t's low
-// 64 bits in place. uni_hash_coeff_gen / vector_inn_prdt_sum_red are
-// the F_p variants of the corresponding emp-tool helpers (the
-// emp-tool versions are GF(2^128)).
+// Mersenne 2^61 - 1 arithmetic helpers used by AuthValueFp (the F_p
+// sVOLE carrier-and-ops type) and Base_svole. mod / add_mod /
+// mult_mod come in scalar (uint64_t) and SIMD (block / __m512i)
+// flavors. extract_fp reduces a __uint128_t's low 64 bits in place.
+// uni_hash_coeff_gen / vector_inn_prdt_sum_red are the F_p variants
+// of the corresponding emp-tool helpers (the emp-tool versions are
+// GF(2^128)).
 
 namespace emp {
 
