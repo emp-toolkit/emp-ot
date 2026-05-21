@@ -4,8 +4,6 @@
 
 namespace emp {
 class OTIdeal: public COT { public:
-	int64_t cnt = 0;
-	PRG prg;
 	OTIdeal(IOChannel * io, bool * delta = nullptr) {
 		this->io = io;
 		// Public, deterministic seed so both parties' OTIdeal PRGs agree
@@ -16,12 +14,10 @@ class OTIdeal: public COT { public:
 	}
 
 	void send_cot(block* data, int64_t length) override {
-		cnt+=length;
 		prg.random_block(data);
 	}
 
 	void recv_cot(block* data, const bool* b, int64_t length) override {
-		cnt+=length;
 		prg.random_block(data);
 		for(int i = 0; i < length; ++i)
 			if(b[i])

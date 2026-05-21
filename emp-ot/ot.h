@@ -13,46 +13,27 @@ inline constexpr block kDefaultBaseOtSid =
     makeBlock(0x656D702D6F742D62ULL, 0x6173652D7369642DULL);  // "emp-ot-base-sid-"
 
 // Abstract 1-out-of-2 OT.
-class OT { public:
+class OT {
+public:
 	virtual void send(const block* data0, const block* data1, int64_t length) = 0;
 	virtual void recv(block* data, const bool* b, int64_t length)  = 0;
-	virtual ~OT() {
-	}
+	virtual ~OT() {}
 
-	// Static security level of the protocol. Base OTs override to true
-	// when malicious-secure (OTPVW / OTCSW / OTPVWKyber) and false
-	// otherwise (OTCO). Used by extensions (IKNP / SoftSpokenOT /
-	// Ferret) to verify at runtime that their own malicious mode
-	// is paired with a malicious-secure base OT. Default returns false
-	// — safest for any unannotated subclass.
+	// Security level of the OT protocol.
 	virtual bool is_malicious_secure() const { return false; }
 
-	// Optional per-session domain separator. Override in subclasses that
-	// bind a sid into their protocol transcript (OTCSW, OTPVWKyber);
-	// no-op default for subclasses that don't (OTCO, OTPVW). Callers
-	// may call this between construction and the first send/recv to
-	// replace the default sid.
+	// Optional session id
 	virtual void set_sid(block /*sid*/) {}
+protected:
+	IOChannel * io = nullptr;       
 };
 
 // Correlated OT (sender's two messages differ by a fixed Δ). Subclasses
 // provide send_cot / recv_cot; the chosen-input send/recv overrides
 // here build the standard 1-bit-per-COT chosen-message correction wrapper
 // on top of MITCCRH.
-class COT : public OT {
-private:
-	// Tile size for the chosen-input MITCCRH wrapper: each tile hashes
-	// `ot_bsize` COT outputs in one ParaEnc<1, ot_bsize> AES-NI call.
-	// Value lives in tuning.h; see cot_chosen_input_tile for rationale.
-	static constexpr int64_t ot_bsize = tuning::cot_chosen_input_tile;
-
-public:
-	block Delta;     // sender's correlation; exposed for test / check code
-	IOChannel * io = nullptr;       // assignable post-construction; concrete
-	                                // subclasses run setup_send/setup_recv
-	                                // after io is wired.
-	MITCCRH<ot_bsize> mitccrh;
-	PRG prg;
+class COT : public OT { public:
+	block Delta;     // sender's correlation; 
 
 	virtual void send_cot(block* data0, int64_t length) = 0;
 	virtual void recv_cot(block* data, const bool* b, int64_t length) = 0;
@@ -63,7 +44,6 @@ public:
 		block s;prg.random_block(&s, 1);
 		io->send_block(&s,1);
 		mitccrh.setS(s);
-		io->flush();
 		block pad[2*ot_bsize];
 		for(int64_t i = 0; i < length; i+=ot_bsize) {
 			for(int64_t j = i; j < std::min(i+ot_bsize, length); ++j) {
@@ -77,7 +57,6 @@ public:
 			}
 			io->send_data(pad, 2*sizeof(block)*std::min(ot_bsize,length-i));
 		}
-		io->flush();
 	}
 
 	void recv(block* data, const bool* r, int64_t length) override {
@@ -131,6 +110,15 @@ public:
 			memcpy(data+i, pad, std::min(ot_bsize,length-i)*sizeof(block));
 		}
 	}
+	
+private:
+	// Tile size for the chosen-input MITCCRH wrapper: each tile hashes
+	// `ot_bsize` COT outputs in one ParaEnc<1, ot_bsize> AES-NI call.
+	// Value lives in tuning.h; see cot_chosen_input_tile for rationale.
+	static constexpr int64_t ot_bsize = tuning::cot_chosen_input_tile;
+	MITCCRH<ot_bsize> mitccrh;
+protected:
+	PRG prg;
 };
 
 // Random COT (random correlated OT). Subclasses produce LSB-encoded
@@ -152,19 +140,20 @@ public:
 		// vector<bool>'s bit-packed specialization, which has no .data()).
 		default_init_vector<unsigned char> bo(length);
 		io->recv_bool(reinterpret_cast<bool*>(bo.data()), length);
-		for (int64_t i = 0; i < length; ++i) {
-			if (bo[i]) data[i] = data[i] ^ Delta;
-		}
+
+		block tab[2] = {zero_block, all_one_block};
+
+		for (int64_t i = 0; i < length; ++i)
+			data[i] ^= Delta & tab[bo[i]];
 	}
 
 	void recv_cot(block* data, const bool* b, int64_t length) override {
 		rcot(data, length);
 		default_init_vector<unsigned char> bo(length);
-		for (int64_t i = 0; i < length; ++i) {
+		for (int64_t i = 0; i < length; ++i)
 			bo[i] = b[i] ^ getLSB(data[i]);
-		}
+
 		io->send_bool(reinterpret_cast<bool*>(bo.data()), length);
-		io->flush();
 	}
 };
 

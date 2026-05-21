@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-// Svole<AuthValue, IO>: the single sVOLE extension class. Both the
+// Svole<AuthValue>: the single sVOLE extension class. Both the
 // F_2^k case (AuthValue=AuthValueF2k) and the F_p case
 // (AuthValue=AuthValueFp) instantiate this with their respective
 // concrete carrier-and-ops type. F2kVOLE / FpVOLE remain as `using`
@@ -49,10 +49,10 @@ inline constexpr int64_t svole_M(const PrimalLPNParameter &p) {
 }
 
 // =================================================================
-// Svole<AuthValue, IO> — unified sVOLE class for F_2^k and F_p.
+// Svole<AuthValue> — unified sVOLE class for F_2^k and F_p.
 // =================================================================
 
-template <typename AuthValue_, typename IO = NetIO>
+template <typename AuthValue_>
 class Svole : public StreamingExtension<AuthValue_> {
 public:
   using AuthValue = AuthValue_;
@@ -60,10 +60,10 @@ public:
 
   PrimalLPNParameter param;
 
-  // State is intentionally public so AuthValue::Bootstrap<IO>::run
+  // State is intentionally public so AuthValue::Bootstrap::run
   // can populate carry_next_ + pull from base_ferret_ without `friend`
-  // template-template incantations.
-  IO *io_;
+  // declarations.
+  IOChannel *io_;
   F delta_value_;
 
   // Ping-pong carry-over buffers. Size = `refill_trees * 2^tree_depth`
@@ -80,7 +80,7 @@ public:
   std::unique_ptr<MultiPointGadgetReceiver<AuthValue>> gadget_recv_;
   std::unique_ptr<Lpn<AuthValue, 10>>                  lpn_;
 
-  Svole(int party, IO *io, bool malicious = true,
+  Svole(int party, IOChannel *io, bool malicious = true,
         PrimalLPNParameter param = tuning::ferret_b13)
       : StreamingExtension<AuthValue>(party, malicious),
         param(param), io_(io) {
@@ -191,7 +191,7 @@ private:
     if (this->setup_done) return;
     if (!io_->fs_enabled())
       io_->enable_fs(/*send_first=*/is_delta_holder());
-    AuthValue::template Bootstrap<IO>::run(*this);
+    AuthValue::Bootstrap::run(*this);
     this->setup_done = true;
   }
 

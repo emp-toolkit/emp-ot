@@ -31,20 +31,18 @@ namespace emp {
  * at 3 messages (matching the random-OT version).
  *
  * `length` must be ≥ 80 (≈ 2σ for σ = 40); the sender-input extraction
- * argument needs ℓ > 2σ (paper sec 4 / overview.tex).
+ * argument needs ℓ > 2σ 
  */
 class OTCSW : public OT { public:
-	// UC-secure under CDH in the random oracle model, with selective-
-	// failure resistance via the aggregated-proof check (length ≥ 80).
+	// UC-secure under CDH in the random oracle model.
 	bool is_malicious_secure() const override { return true; }
 
-	IOChannel * io;
 	ECGroup G;
 	block sid;
 
 	// sid defaults to kDefaultBaseOtSid (see emp-ot/ot.h). Callers
 	// wanting per-session domain separation override via set_sid().
-	OTCSW(IOChannel * io_) : io(io_), sid(kDefaultBaseOtSid) {}
+	OTCSW(IOChannel * io_) : sid(kDefaultBaseOtSid) {this->io = io_;}
 
 	void set_sid(block sid_) override { sid = sid_; }
 
@@ -109,7 +107,7 @@ public:
 
 		// Round 1 (R→S): receive seed, {B_i}.
 		block seed;
-		io->recv_data(&seed, sizeof(block));
+		io->recv_block(&seed, 1);
 		std::vector<Point> B(length);
 		io->recv_pt(&G, B.data(), length);
 
@@ -155,7 +153,6 @@ public:
 		io->send_block(&proof, 1);
 		io->send_block(c0.data(), length);
 		io->send_block(c1.data(), length);
-		io->flush();
 
 		// Round 3 (R→S): receive otans' and verify against otans.
 		block otans_prime;
@@ -169,10 +166,12 @@ public:
 		assert(length >= 80 && "OTCSW: length must be ≥ 80");
 
 		// Receiver params: seed ← {0,1}^κ; T = H_1(sid, seed).
-		block seed;
+		// Round 1 (R→S): send seed, {B_i}.
+		block seed; 
 		PRG prg;
 		prg.random_block(&seed, 1);
 		Point T = H_to_curve(seed);
+		io->send_block(&seed, 1);
 
 		// Per-OT receiver msg: α_i ← Z_q; B_i = g^{α_i} · T^{b_i}.
 		std::vector<Scalar> alpha(length);
@@ -182,12 +181,9 @@ public:
 			B[i] = G.mul_gen(alpha[i]);
 			if (b[i])
 				B[i] = B[i].add(T);
+			io->send_pt(&B[i], 1);
 		}
 
-		// Round 1 (R→S): send seed, {B_i}.
-		io->send_data(&seed, sizeof(block));
-		io->send_pt(B.data(), length);
-		io->flush();
 
 		// Round 2 (S→R): recv (z, {χ_i}, Π, {c_{i,0}, c_{i,1}}).
 		// α_i·z, p_bi[i], H_short(p_bi[i]) depend only on (z, alpha), so

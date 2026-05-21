@@ -7,7 +7,7 @@
 namespace emp {
 
 /*
- * Peikert-Vaikuntanathan-Waters OT (PVW '08), RO-derived CRS, messy mode.
+ * Peikert-Vaikuntanathan-Waters OT (PVW '08), RO-derived CRS.
  * [REF] "A Framework for Efficient and Composable Oblivious Transfer"
  *       https://eprint.iacr.org/2007/348
  *
@@ -21,36 +21,19 @@ namespace emp {
  *            u_b = g_b^{s_b} * h_b^{t_b}     // consistency check on CRS bases
  *            c_b = g^{s_b}  * h^{t_b}  * x_b // masked under receiver's (g, h)
  *   Recv:  output x_sigma = c_sigma / u_sigma^r.
- *
- * Correctness for b = sigma:
- *   c_sigma   = (g_sigma^r)^{s_sigma} * (h_sigma^r)^{t_sigma} * x_sigma
- *             = g_sigma^{r·s_sigma} * h_sigma^{r·t_sigma} * x_sigma
- *   u_sigma^r = (g_sigma^{s_sigma} * h_sigma^{t_sigma})^r
- *             = g_sigma^{r·s_sigma} * h_sigma^{r·t_sigma}
- *   c_sigma / u_sigma^r = x_sigma  (the masking term cancels exactly).
- *
- * For b ≠ sigma the bases differ (g_{1-sigma}/h_{1-sigma} in u_b vs
- * g_sigma/h_sigma in c_b), so u_b^r doesn't match the masking — the
- * receiver gets a uniform-looking element, not x_{1-sigma}.
- *
- * Block-OT layer: x_b is a fresh random group element used only as key
- * material. The actual block payload is transmitted as
- *   ciphertext_b = data_b XOR KDF(x_b)
- * sent alongside (u_b, c_b). Receiver recovers x_sigma, decrypts
- * ciphertext_sigma.
- */
+ * */
 class OTPVW: public OT { public:
 	// Messy-mode PVW: receiver-secure under DDH against a malicious
 	// sender; sender statistically secure against a malicious receiver.
 	bool is_malicious_secure() const override { return true; }
 
-	IOChannel* io;
 	ECGroup G;
 
 	Point g0, g1, h0, h1;
 
-	OTPVW(IOChannel* io) : io(io) {
+	OTPVW(IOChannel* io_) {
 		// CRS labels — both parties derive identical points.
+		this->io = io_;
 		static const char *labels[4] = {
 			"CRS g0 for C:PeiVaiWat08",
 			"CRS g1 for C:PeiVaiWat08",
@@ -113,7 +96,6 @@ class OTPVW: public OT { public:
 			io->send_pt(&g_send);
 			io->send_pt(&h_send);
 		}
-		io->flush();
 
 		// Round 2: receive (u_b, c_b) for each b, plus ciphertexts.
 		// Recover x_sigma = c_sigma / u_sigma^r and decrypt ct_sigma.

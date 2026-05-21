@@ -14,7 +14,7 @@
 //   OTExtension : public StreamingExtension<block>            (RCOT)
 //                 + rcot(data, num) from RandomCOT
 //                 + Δ / base_ot / choice_prg
-//   Svole<AuthValue, IO> : public StreamingExtension<AuthValue> (sVOLE)
+//   Svole<AuthValue> : public StreamingExtension<AuthValue> (sVOLE)
 //
 // Lifecycle: begin → loop next* → end. One-shot wrapper run(data, num)
 // drains a per-instance leftover buffer so non-chunk-multiple requests

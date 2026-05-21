@@ -24,20 +24,20 @@
 namespace emp {
 
 // =================================================================
-// Cope<IO> — COPE folding chosen-input OT into F_p sVOLE pairs.
+// Cope — COPE folding chosen-input OT into F_p sVOLE pairs.
 // =================================================================
 
-template <typename IO> class Cope {
+class Cope {
 public:
   int party;
   int64_t m;
-  IO *io;
+  IOChannel *io;
   __uint128_t delta;
   std::vector<PRG> G0, G1;
   std::unique_ptr<bool[]> delta_bool;
   __uint128_t mask;
 
-  Cope(int party, IO *io, int64_t m) : party(party), m(m), io(io) {
+  Cope(int party, IOChannel *io, int64_t m) : party(party), m(m), io(io) {
     mask = (__uint128_t)0xFFFFFFFFFFFFFFFFLL;
   }
 
@@ -197,7 +197,7 @@ public:
 };
 
 // =================================================================
-// Base_svole<IO> — seed sVOLE via Cope, with chi-fold consistency
+// Base_svole — seed sVOLE via Cope, with chi-fold consistency
 // check (one round per triple_gen_send/recv call).
 // =================================================================
 
@@ -205,25 +205,25 @@ public:
 // fp_vole.h). Passing it as a template parameter makes the name
 // lookup of AV-typed expressions dependent, so this header can
 // forward-use the carrier without a complete definition here.
-template <typename AuthValue, typename IO> class Base_svole {
+template <typename AuthValue> class Base_svole {
 public:
   using AV = AuthValue;  // val-first carrier
 
   int party;
-  IO *io;
-  Cope<IO> *cope;
+  IOChannel *io;
+  Cope *cope;
   __uint128_t Delta;
 
   // SENDER (ALICE = Δ-holder)
-  Base_svole(int party, IO *io, __uint128_t Delta)
+  Base_svole(int party, IOChannel *io, __uint128_t Delta)
       : party(party), io(io), Delta(Delta) {
-    cope = new Cope<IO>(party, io, MERSENNE_PRIME_EXP);
+    cope = new Cope(party, io, MERSENNE_PRIME_EXP);
     cope->initialize(Delta);
   }
 
   // RECEIVER (BOB)
-  Base_svole(int party, IO *io) : party(party), io(io) {
-    cope = new Cope<IO>(party, io, MERSENNE_PRIME_EXP);
+  Base_svole(int party, IOChannel *io) : party(party), io(io) {
+    cope = new Cope(party, io, MERSENNE_PRIME_EXP);
     cope->initialize();
   }
 

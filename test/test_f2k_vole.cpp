@@ -55,8 +55,8 @@ static constexpr int  kOneshotIters = 2;
 // Streaming-path exercise: begin → many next → end.
 // Walks chunk-by-chunk through ~one round of outputs, verifying each.
 void test_streaming(NetIO *io, int svole_party) {
-  F2kVOLE<AuthValueF2k, NetIO> vtriple(svole_party, io,
-                                       /*malicious=*/true, kSvoleParam);
+  F2kVOLE<AuthValueF2k> vtriple(svole_party, io,
+                                /*malicious=*/true, kSvoleParam);
   const block Delta = (svole_party == BOB) ? vtriple.delta() : zero_block;
 
   const int64_t chunk = vtriple.chunk_size();
@@ -85,8 +85,8 @@ void test_streaming(NetIO *io, int svole_party) {
 // One-shot path: run(out, num) with chunk-aligned num. ram-zk uses
 // the same shape with `num = chunk_aligned_buf_sz()`.
 void test_oneshot(NetIO *io, int svole_party) {
-  F2kVOLE<AuthValueF2k, NetIO> vtriple(svole_party, io,
-                                       /*malicious=*/true, kSvoleParam);
+  F2kVOLE<AuthValueF2k> vtriple(svole_party, io,
+                                /*malicious=*/true, kSvoleParam);
   const block Delta = (svole_party == BOB) ? vtriple.delta() : zero_block;
 
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();

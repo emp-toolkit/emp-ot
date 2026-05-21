@@ -1,6 +1,6 @@
 // Out-of-line definitions for Ferret. See ferret.h for the API.
 //
-// Structure parallel to Svole<AuthValue, IO>: a single class
+// Structure parallel to Svole<AuthValue>: a single class
 // inheriting StreamingExtension<block> (via OTExtension), implementing
 // the same 4-step round loop directly in begin / next / end:
 //

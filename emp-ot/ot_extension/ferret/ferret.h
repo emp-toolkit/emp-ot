@@ -98,7 +98,7 @@ using MPCOT_Receiver = MultiPointGadgetReceiver<AuthValueFerret>;
  *
  * Single class for both roles; party-dispatched internally inside
  * begin / next / end and the per-tree helpers. Structurally parallel
- * to Svole<AuthValue, IO> — both inherit StreamingExtension<> (Ferret
+ * to Svole<AuthValue> — both inherit StreamingExtension<> (Ferret
  * indirectly via OTExtension) and implement the same 4-step round
  * loop (bootstrap + ping-pong swap + tree counter + per-tree inner
  * gadget call → LPN slice → tree_idx_++ ; round-end refill + chi-fold

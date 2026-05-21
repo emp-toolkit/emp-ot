@@ -10,29 +10,20 @@ namespace emp {
  * [REF] Implementation of "The Simplest Protocol for Oblivious Transfer"
  * https://eprint.iacr.org/2015/267.pdf
  *
- * Semi-honest only: the simple two-message CO transcript has known
- * malicious-receiver attacks (Genc et al., eprint 2017/596) — the
- * patched UC variant requires extra messages that this implementation
- * doesn't carry. Use OTPVW / OTCSW / OTPVWKyber for malicious-secure
- * base OTs.
  */
 class OTCO: public OT { public:
-	bool is_malicious_secure() const override { return false; }
-	IOChannel* io;
 	ECGroup G;
-	OTCO(IOChannel* io) : io(io) {}
+	OTCO(IOChannel* io) { this-> io = io;}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
-		Point A, AaInv;
 		block res[2];
 		std::vector<Point> B(length);
 		std::vector<Point> BA(length);
 
 		Scalar a = G.rand_scalar();
-		A = G.mul_gen(a);
+		Point A = G.mul_gen(a);
 		io->send_pt(&A);
-		AaInv = A.mul(a);
-		AaInv = AaInv.inv();
+		Point AaInv = A.mul(a).inv();
 
 		for(int64_t i = 0; i < length; ++i) {
 			io->recv_pt(&G, &B[i]);
@@ -54,18 +45,18 @@ class OTCO: public OT { public:
 		std::vector<Point> As(length);
 		Point A;
 
-		for(int64_t i = 0; i < length; ++i)
+		for(int64_t i = 0; i < length; ++i) {
 			bb[i] = G.rand_scalar();
+			B[i] = G.mul_gen(bb[i]);
+		}
 
 		io->recv_pt(&G, &A);
 
 		for(int64_t i = 0; i < length; ++i) {
-			B[i] = G.mul_gen(bb[i]);
 			if (b[i])
 				B[i] = B[i].add(A);
 			io->send_pt(&B[i]);
 		}
-		io->flush();
 
 		for(int64_t i = 0; i < length; ++i)
 			As[i] = A.mul(bb[i]);
@@ -73,11 +64,7 @@ class OTCO: public OT { public:
 		block res[2];
 		for(int64_t i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
-			data[i] = Hash::KDF(As[i], i);
-			if(b[i])
-				data[i] = data[i] ^ res[1];
-			else
-				data[i] = data[i] ^ res[0];
+			data[i] = Hash::KDF(As[i], i) ^ res[b[i]];
 		}
 	}
 };

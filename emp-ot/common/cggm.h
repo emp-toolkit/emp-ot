@@ -33,7 +33,7 @@ namespace emp { namespace cggm {
 #if EMP_HAS_VAES512
 constexpr int kTile = tuning::cggm_tile_x86_vaes512;
 #elif EMP_HAS_VAES256
-constexpr int kTile = tuning::cggm_tile_x86_aesni;
+constexpr int kTile = tuning::cggm_tile_x86_vaes256;
 #else
 constexpr int kTile = tuning::cggm_tile_aarch64;
 #endif

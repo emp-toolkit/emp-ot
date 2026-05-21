@@ -55,8 +55,8 @@ static constexpr int  kOneshotIters = 2;
 #endif
 
 void test_streaming(NetIO *io, int svole_party) {
-  FpVOLE<AuthValueFp, NetIO> vtriple(svole_party, io,
-                                     /*malicious=*/true, kSvoleParam);
+  FpVOLE<AuthValueFp> vtriple(svole_party, io,
+                              /*malicious=*/true, kSvoleParam);
   uint64_t Delta = 0;
   if (svole_party == ALICE) {
     PRG prg;
@@ -88,8 +88,8 @@ void test_streaming(NetIO *io, int svole_party) {
 }
 
 void test_oneshot(NetIO *io, int svole_party) {
-  FpVOLE<AuthValueFp, NetIO> vtriple(svole_party, io,
-                                     /*malicious=*/true, kSvoleParam);
+  FpVOLE<AuthValueFp> vtriple(svole_party, io,
+                              /*malicious=*/true, kSvoleParam);
   uint64_t Delta = 0;
   if (svole_party == ALICE) {
     PRG prg;

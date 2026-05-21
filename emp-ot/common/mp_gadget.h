@@ -89,11 +89,23 @@ public:
   std::vector<F>      consist_check_VW;
   GaloisFieldPacking  pack;   // F2kPacked only.
 
+  // Per-tree scratch — sized once at construction (or on set_malicious
+  // for chi) instead of std::vector ctor per run_next_tree call.
+  std::vector<block> K0;
+  std::vector<block> c;
+  std::vector<block> leaves_block;  // sized only when kHasSecretSum
+  std::vector<F>     chi;           // sized only when is_malicious
+
   MultiPointGadgetSender(int64_t t, int64_t td, IOChannel *io_in)
       : io(io_in), tree_n(t), tree_depth(td),
-        leave_n(int64_t{1} << td) {}
+        leave_n(int64_t{1} << td) {
+    K0.resize(tree_depth);
+    c.resize(tree_depth);
+    if constexpr (AuthValue::kHasSecretSum)
+      leaves_block.resize(leave_n);
+  }
 
-  void set_malicious()         { is_malicious = true; }
+  void set_malicious()         { is_malicious = true; chi.resize(leave_n); }
   void set_cggm_delta(block d) { cggm_delta = d; }
   void set_delta(F d)          { delta = d; }
 
@@ -116,10 +128,9 @@ public:
   // For Ferret-style policies (kHasSecretSum=false) it is unused;
   // callers may omit it.
   void run_next_tree(AuthValue *leaves_i, const block *base_i, int tree_idx,
-                     F gamma_i = AuthValue::f_zero()) {
+                     [[maybe_unused]] F gamma_i = AuthValue::f_zero()) {
     block seed;
     prg.random_block(&seed, 1);
-    std::vector<block> K0(tree_depth);
 
     if constexpr (!AuthValue::kHasSecretSum) {
       // AuthValueFerret has single `block mac` field → layout = block.
@@ -127,14 +138,12 @@ public:
           tree_depth, cggm_delta, seed,
           reinterpret_cast<block*>(leaves_i), K0.data());
     } else {
-      std::vector<block> leaves_block(leave_n);
       cggm::build_sender<cggm::kTile, AuthValue::kClearLeafLSB>(
           tree_depth, cggm_delta, seed, leaves_block.data(), K0.data());
       for (int64_t i = 0; i < leave_n; ++i)
         leaves_i[i] = AuthValue::auth_from_block(leaves_block[i]);
     }
 
-    std::vector<block> c(tree_depth);
     for (int64_t j = 0; j < tree_depth; ++j) c[j] = base_i[j] ^ K0[j];
     io->send_block(c.data(), tree_depth);
 
@@ -144,14 +153,11 @@ public:
         leaves_sum = AuthValue::f_add(leaves_sum, leaves_i[i].mac);
       F secret_sum = AuthValue::f_sub(gamma_i, leaves_sum);
       io->send_data(&secret_sum, sizeof(F));
-    } else {
-      (void)gamma_i;
     }
     io->flush();
 
     if (is_malicious) {
       block chi_seed = io->get_digest();
-      std::vector<F> chi(leave_n);
       AuthValue::expand_chi(chi_seed, chi.data(), leave_n);
       AuthValue::accumulate_VW(consist_check_VW[tree_idx], chi.data(),
                                leaves_i, leave_n);
@@ -221,11 +227,23 @@ public:
   std::vector<F> consist_check_VW;
   GaloisFieldPacking pack;   // F2kPacked only.
 
+  // Per-tree scratch — sized once at construction (or on set_malicious
+  // for chi) instead of std::vector ctor per run_next_tree call.
+  std::vector<block> c;
+  std::vector<block> K_recv;
+  std::vector<block> leaves_block;  // sized only when kHasSecretSum
+  std::vector<F>     chi;           // sized only when is_malicious
+
   MultiPointGadgetReceiver(int64_t t, int64_t td, IOChannel *io_in)
       : io(io_in), tree_n(t), tree_depth(td),
-        leave_n(int64_t{1} << td) {}
+        leave_n(int64_t{1} << td) {
+    c.resize(tree_depth);
+    K_recv.resize(tree_depth);
+    if constexpr (AuthValue::kHasSecretSum)
+      leaves_block.resize(leave_n);
+  }
 
-  void set_malicious() { is_malicious = true; }
+  void set_malicious() { is_malicious = true; chi.resize(leave_n); }
 
   void run_begin() {
     if (is_malicious) {
@@ -252,14 +270,12 @@ public:
       if (!getLSB(base_i[j])) alpha += 1;
     }
 
-    std::vector<block> c(tree_depth);
     io->recv_block(c.data(), tree_depth);
     F secret_sum = AuthValue::f_zero();
     if constexpr (AuthValue::kHasSecretSum) {
       io->recv_data(&secret_sum, sizeof(F));
     }
 
-    std::vector<block> K_recv(tree_depth);
     for (int64_t j = 0; j < tree_depth; ++j) K_recv[j] = base_i[j] ^ c[j];
 
     if constexpr (!AuthValue::kHasSecretSum) {
@@ -277,7 +293,6 @@ public:
       (void)secret_sum;
       (void)triple_yz_i;
     } else {
-      std::vector<block> leaves_block(leave_n);
       cggm::eval_receiver<cggm::kTile, AuthValue::kClearLeafLSB>(
           tree_depth, alpha, K_recv.data(), leaves_block.data());
       F nodes_sum = AuthValue::f_zero();
@@ -296,7 +311,6 @@ public:
 
     if (is_malicious) {
       block chi_seed = io->get_digest();
-      std::vector<F> chi(leave_n);
       AuthValue::expand_chi(chi_seed, chi.data(), leave_n);
       consist_check_chi_alpha[tree_idx] = chi[alpha];
       AuthValue::accumulate_VW(consist_check_VW[tree_idx], chi.data(),

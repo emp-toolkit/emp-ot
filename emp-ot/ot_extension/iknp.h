@@ -48,6 +48,19 @@ using IKNPBaseOT = OTCSW;
  * bytes.
  */
 class IKNP : public OTExtension { public:
+	explicit IKNP(int party_, IOChannel *io_, bool malicious_ = true,
+	              std::unique_ptr<OT> base_ot_ = nullptr)
+	    : OTExtension(party_, io_, malicious_,
+	                  base_ot_ ? std::move(base_ot_)
+	                           : std::unique_ptr<OT>(new IKNPBaseOT(io_))) {}
+
+	// ===== StreamingExtension contract =====
+	int64_t chunk_size() const override { return block_size; }
+	void begin() override;
+	void next(block *out) override;
+	void end() override;
+
+private:
 	// ===== State =====
 	static constexpr int64_t block_size = tuning::iknp_chunk_ots;
 	// Per-row PRG streams. The base-class choice_prg samples the
@@ -63,23 +76,10 @@ class IKNP : public OTExtension { public:
 	// Sender uses check_q; receiver uses check_t and check_x.
 	block check_q, check_t, check_x;
 
-	explicit IKNP(int party_, IOChannel *io_, bool malicious_ = true,
-	              std::unique_ptr<OT> base_ot_ = nullptr)
-	    : OTExtension(party_, io_, malicious_,
-	                  base_ot_ ? std::move(base_ot_)
-	                           : std::unique_ptr<OT>(new IKNPBaseOT(io_))) {}
-
-	// ===== StreamingExtension contract =====
-	int64_t chunk_size() const override { return block_size; }
-	void begin() override;
-	void next(block *out) override;
-	void end() override;
-
 	// ===== Internal helpers (chi-fold per chunk) =====
 	void combine_send(block *out);
 	void combine_recv(block *out, block *r);
 
-private:
 	// Per-role bodies invoked from begin/next/end with inline
 	// party-dispatch — IKNP's sender and receiver paths share no work.
 	void send_begin_();

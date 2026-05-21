@@ -32,11 +32,11 @@
 namespace emp {
 
 template <typename AuthValue, int d = tuning::lpn_d>
-class Lpn { public:
-    int k, mask;
+class Lpn { private:
+    int mask;
     PRG prg_;
-
-    explicit Lpn(int k_) : k(k_), mask(k_ - 1) {}
+public:
+    explicit Lpn(int k_) : mask(k_ - 1) {}
     void reseed(block seed) { prg_.reseed(&seed); }
 
     // Fold one block of M output positions starting at i. Reads d

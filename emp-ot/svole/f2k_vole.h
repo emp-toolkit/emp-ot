@@ -6,7 +6,7 @@
 #include <limits>
 
 // F_2 ⊂ F_{2^128} sVOLE: AuthValueF2k carrier + F2kVOLE alias over
-// the generic Svole<AuthValue, IO>. Bootstrap is Galois packing of
+// the generic Svole<AuthValue>. Bootstrap is Galois packing of
 // M*128 raw Ferret COTs into M seed sVOLE pairs, with optional
 // tiered recursion via a smaller inner Svole when M exceeds the
 // threshold.
@@ -15,7 +15,7 @@ namespace emp {
 
 // Forward declaration so the carrier's Bootstrap can reference Svole<>
 // before it's fully visible (Svole.h is already included above).
-template <typename AuthValue, typename IO> class Svole;
+template <typename AuthValue> class Svole;
 
 // Concrete carrier + ops for F_2k sVOLE. Storage is val/mac pair
 // (val-first, 32 bytes total). Static methods provide field
@@ -103,8 +103,8 @@ struct AuthValueF2k {
 
   // Bootstrap: Galois packing, with optional tiered nesting if the
   // main param's M would exhaust ferret_b10's amplification budget.
-  template <typename IO> struct Bootstrap {
-    static void run(Svole<AuthValueF2k, IO> &svole) {
+  struct Bootstrap {
+    static void run(Svole<AuthValueF2k> &svole) {
       const int64_t M = svole_M(svole.param);
       constexpr PrimalLPNParameter base_param = tuning::ferret_b10;
       const int64_t base_M = svole_M(base_param);
@@ -113,8 +113,8 @@ struct AuthValueF2k {
         // Nested: a smaller Svole (default ferret_b10) provides M seed
         // pairs. Inner's own bootstrap hits the base case (direct
         // Galois packing) since its M is below the nest threshold.
-        Svole<AuthValueF2k, IO> inner(svole.party, svole.io_,
-                                       svole.malicious, base_param);
+        Svole<AuthValueF2k> inner(svole.party, svole.io_,
+                                  svole.malicious, base_param);
         if (svole.is_delta_holder()) inner.set_delta(svole.delta());
         inner.run(svole.carry_next_.data(), M);
       } else {
@@ -140,9 +140,9 @@ struct AuthValueF2k {
   };
 };
 
-// Back-compat alias for old call sites that used F2kVOLE<>.
-template <typename AuthValue = AuthValueF2k, typename IO = NetIO>
-using F2kVOLE = Svole<AuthValue, IO>;
+// Convenience alias naming the F_2^k carrier.
+template <typename AuthValue = AuthValueF2k>
+using F2kVOLE = Svole<AuthValue>;
 
 } // namespace emp
 #endif

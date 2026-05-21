@@ -8,7 +8,7 @@
 #include <vector>
 
 // F_p sVOLE: AuthValueFp carrier + FpVOLE alias over the generic
-// Svole<AuthValue, IO>. The bootstrap runs Base_svole (COPE +
+// Svole<AuthValue>. The bootstrap runs Base_svole (COPE +
 // chi-fold) for seed sVOLE pairs, then a pre-stage MPFSS+LPN to
 // amplify into n_pre carry-over pairs.
 
@@ -16,7 +16,7 @@ namespace emp {
 
 // Forward declaration so the carrier's Bootstrap can reference Svole<>
 // before it's fully visible (svole.h is already included above).
-template <typename AuthValue, typename IO> class Svole;
+template <typename AuthValue> class Svole;
 
 // =================================================================
 // AuthValueFp — F_p = GF(2^61 - 1) carrier + ops.
@@ -114,8 +114,8 @@ struct AuthValueFp {
   // mirroring F2k's bootstrap structure. No tiered recursion —
   // ferret_b10's n is comfortably > the main param's M for all
   // b10..b13 main configurations.
-  template <typename IO> struct Bootstrap {
-    static void run(Svole<AuthValueFp, IO> &svole) {
+  struct Bootstrap {
+    static void run(Svole<AuthValueFp> &svole) {
       constexpr PrimalLPNParameter pre_param = tuning::ferret_b10;
       const int64_t M     = svole_M(svole.param);
       const int64_t n_pre = svole_n(pre_param);
@@ -125,11 +125,11 @@ struct AuthValueFp {
       const int64_t triple_n = 1 + pre_param.t + pre_param.k;
       std::vector<AuthValueFp> seed_pairs(triple_n);
       if (svole.is_delta_holder()) {
-        Base_svole<AuthValueFp, IO> bv(ALICE, svole.io_,
-                                       (__uint128_t)svole.delta_value_);
+        Base_svole<AuthValueFp> bv(ALICE, svole.io_,
+                                   (__uint128_t)svole.delta_value_);
         bv.triple_gen_send(seed_pairs.data(), triple_n);
       } else {
-        Base_svole<AuthValueFp, IO> bv(BOB, svole.io_);
+        Base_svole<AuthValueFp> bv(BOB, svole.io_);
         bv.triple_gen_recv(seed_pairs.data(), triple_n);
       }
 
@@ -190,9 +190,9 @@ struct AuthValueFp {
   };
 };
 
-// Back-compat alias for old call sites that used FpVOLE<>.
-template <typename AuthValue = AuthValueFp, typename IO = NetIO>
-using FpVOLE = Svole<AuthValue, IO>;
+// Convenience alias naming the F_p carrier.
+template <typename AuthValue = AuthValueFp>
+using FpVOLE = Svole<AuthValue>;
 
 } // namespace emp
 #endif
