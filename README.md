@@ -137,22 +137,22 @@ protocol's wire format changed — fine if intentional, but flag it
 clearly in the commit message and update this table.
 
 ```
-OTCO                   send=518c0a899289ae04 recv=1527f501eb006b21
+OTCO                   send=cb1241385e1fa266 recv=1527f501eb006b21
 OTCSW                  send=802e9b74d81f63a8 recv=634c8c41847634f2
-OTPVW                  send=63ab8df66b20f4fa recv=c956d4e5d25e9d51
+OTPVW                  send=06ff8f3498188271 recv=73bc62e4d02ea245
 OTPVWKyber             send=1708ae2aabef619e recv=d8195b395536297d
 IKNP semi              send=dd62b5bfb8bd58b3 recv=864359025637ab39
 SoftSpoken<2> semi     send=88a0f2beefc46db6 recv=1eb6e07a69caef89
 SoftSpoken<8> semi     send=603e88eb6df74e89 recv=5bb51d48d00a7fa3
 Ferret(b11) semi       send=ff448b0082027cf7 recv=94d52630ea03254f
 F2kVOLE semi           send=7d3a7d36c2d9fa2d recv=dd3d78437dcf83ce
-FpVOLE semi            send=f5c718cad1045c43 recv=01a94980ae1c37f7
+FpVOLE semi            send=f5c718cad1045c43 recv=c6a7dd2cd1d5e151
 IKNP mali              send=bc4e21045185ec28 recv=400bfc6cfc0b8ce5
 SoftSpoken<2> mali     send=11140b0811a43cf8 recv=ca94e1cb8504d953
 SoftSpoken<8> mali     send=7237ddafdc4c756f recv=16d5d0b06bb325d1
-Ferret(b11) mali       send=fb500a9b804b5d79 recv=2b3ca1bb079a2547
-F2kVOLE mali           send=019696a7d222877e recv=44f02ef59955c835
-FpVOLE mali            send=f841a07146387c89 recv=03c66bcc71017c74
+Ferret(b11) mali       send=8f9a145b28c64411 recv=4aa826efab96b7fb
+F2kVOLE mali           send=7b4f883135755427 recv=52ea5b7c3dba0e9d
+FpVOLE mali            send=a3a80f3e18ae5d94 recv=eaff1eddddecbe9b
 ```
 
 ## Usage

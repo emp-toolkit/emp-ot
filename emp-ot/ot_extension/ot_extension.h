@@ -87,10 +87,10 @@ public:
     // Pre-bootstrap, like the setters above. (Subclasses that nest another
     // extension at bootstrap — Ferret — additionally derive a child sid for
     // that nested instance in their bootstrap path.)
-    void set_sid(block s) override {
+    void set_sid(SessionID s) override {
         assert(!setup_done && "set_sid: bootstrap already fired");
         sid = s;
-        base_ot->set_sid(derive_child_sid(sid, child_sid_cnt_++));
+        base_ot->set_sid(sid.derive());
     }
 
     // Streaming surface: begin / next / end / run / chunk_size are
@@ -107,11 +107,6 @@ public:
     }
 
 protected:
-    // Per-parent counter for child-sid derivation (one tick per derived
-    // child sid). Increments in role-symmetric code order, so both parties
-    // stay in lockstep without any value crossing the wire.
-    uint64_t child_sid_cnt_ = 0;
-
     // Shared ctor used by every concrete extension. Stores the base_ot
     // (subclasses always pass non-null — their per-extension typedef
     // picks the default), runs the malicious-secure cross-check, and

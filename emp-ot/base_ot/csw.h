@@ -56,14 +56,14 @@ private:
 
 	// H_2(sid, i, P) → block. P is a curve point (the DH share ρ).
 	block H_pad(int64_t i, Point & P) {
-		return RO("emp-ot:csw-base-ot:pad", sid)
+		return RO("emp-ot:csw-base-ot:pad", sid.value())
 		           .absorb((uint64_t)i).absorb(P).squeeze_block();
 	}
 
 	// H_3(sid, x) → block. x is a single block (used both for hashing
 	// individual p_{i,b} and for the Π = H_3(sid, otans) proof).
 	block H_short(const block & x) {
-		return RO("emp-ot:csw-base-ot:short", sid)
+		return RO("emp-ot:csw-base-ot:short", sid.value())
 		           .absorb(x).squeeze_block();
 	}
 
@@ -82,7 +82,7 @@ public:
 		// Sender params: T = H_1(sid, seed); r ← Z_q; z = g^r.
 		// Amortize T^r over the batch: ρ_{i,1} = (B_i/T)^r = B_i^r · (T^r)^{-1}
 		// = ρ_{i,0} + (-T_r). One mul/OT instead of two.
-		Point T = RO(kDomToCurve, sid).absorb(seed).squeeze_point(G);
+		Point T = RO(kDomToCurve, sid.value()).absorb(seed).squeeze_point(G);
 		Scalar r = G.rand_scalar();
 		Point z = G.mul_gen(r);
 		Point T_r_neg = T.mul(r).inv();                // -(T^r), reused per OT
@@ -100,7 +100,7 @@ public:
 		}
 
 		// Aggregate otans = H_4(sid, h0_1, …, h0_ℓ) and proof Π = H_3(sid, otans).
-		block otans = RO(kDomAgg, sid).absorb(h0.data(), (size_t)length * sizeof(block)).squeeze_block();
+		block otans = RO(kDomAgg, sid.value()).absorb(h0.data(), (size_t)length * sizeof(block)).squeeze_block();
 		block proof = H_short(otans);
 
 		// Per-OT challenge χ_i = H_3(sid, p_{i,0}) ⊕ H_3(sid, p_{i,1});
@@ -138,7 +138,7 @@ public:
 		block seed; 
 		PRG prg;
 		prg.random_block(&seed, 1);
-		Point T = RO(kDomToCurve, sid).absorb(seed).squeeze_point(G);
+		Point T = RO(kDomToCurve, sid.value()).absorb(seed).squeeze_point(G);
 		io->send_block(&seed, 1);
 
 		// Per-OT receiver msg: α_i ← Z_q; B_i = g^{α_i} · T^{b_i}.
@@ -186,7 +186,7 @@ public:
 		// Aggregate otans' and verify Π. Aborts on mismatch — covers
 		// both honest abort (sender malformed χ_i) and the
 		// selective-failure-detected case from the paper.
-		block otans_prime = RO(kDomAgg, sid).absorb(otresp.data(), (size_t)length * sizeof(block)).squeeze_block();
+		block otans_prime = RO(kDomAgg, sid.value()).absorb(otresp.data(), (size_t)length * sizeof(block)).squeeze_block();
 		block proof_check = H_short(otans_prime);
 		if (!cmpBlock(&proof, &proof_check, 1))
 			error("OTCSW::recv: proof verification failed (sender misbehavior or selective-failure attack)");

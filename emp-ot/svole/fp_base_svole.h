@@ -32,12 +32,14 @@ public:
   int party;
   int64_t m;
   IOChannel *io;
+  block sid;                 // session id forwarded to the base OTCO
   __uint128_t delta;
   std::vector<PRG> G0, G1;
   std::unique_ptr<bool[]> delta_bool;
   __uint128_t mask;
 
-  Cope(int party, IOChannel *io, int64_t m) : party(party), m(m), io(io) {
+  Cope(int party, IOChannel *io, int64_t m, block sid)
+      : party(party), m(m), io(io), sid(sid) {
     mask = (__uint128_t)0xFFFFFFFFFFFFFFFFLL;
   }
 
@@ -49,6 +51,7 @@ public:
 
     std::vector<block> K(m);
     OTCO otco(io);
+    otco.set_sid(sid);
     otco.recv(K.data(), delta_bool.get(), m);
 
     G0.resize(m);
@@ -62,6 +65,7 @@ public:
     PRG prg;
     prg.random_block(K.data(), 2 * m);
     OTCO otco(io);
+    otco.set_sid(sid);
     otco.send(K.data(), K.data() + m, m);
 
     G0.resize(m);
@@ -215,15 +219,15 @@ public:
   __uint128_t Delta;
 
   // SENDER (ALICE = Δ-holder)
-  Base_svole(int party, IOChannel *io, __uint128_t Delta)
+  Base_svole(int party, IOChannel *io, block sid, __uint128_t Delta)
       : party(party), io(io), Delta(Delta) {
-    cope = new Cope(party, io, MERSENNE_PRIME_EXP);
+    cope = new Cope(party, io, MERSENNE_PRIME_EXP, sid);
     cope->initialize(Delta);
   }
 
   // RECEIVER (BOB)
-  Base_svole(int party, IOChannel *io) : party(party), io(io) {
-    cope = new Cope(party, io, MERSENNE_PRIME_EXP);
+  Base_svole(int party, IOChannel *io, block sid) : party(party), io(io) {
+    cope = new Cope(party, io, MERSENNE_PRIME_EXP, sid);
     cope->initialize();
   }
 

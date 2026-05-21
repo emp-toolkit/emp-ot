@@ -64,6 +64,11 @@ enum class ChiFoldFlavor {
 // sides of the gadget agree.
 inline constexpr block lsb_only_mask = makeBlock(0LL, 1LL);
 
+// Domain separators for the round-final consistency-check commitments,
+// at file scope so the sender and receiver hash byte-identical inputs.
+inline constexpr char kDomCheckPacked[] = "emp-ot:mpcot:check-f2kpacked";
+inline constexpr char kDomCheckTyped[]  = "emp-ot:mpcot:check-ftyped";
+
 // =================================================================
 // MultiPointGadgetSender — Δ-holder side.
 // =================================================================
@@ -74,6 +79,7 @@ public:
   using F = typename AuthValue::F;
 
   IOChannel *io;
+  block     sid = zero_block;   // set by the owner; bound into the check RO
   bool      is_malicious = false;
   int64_t   tree_n;
   int64_t   tree_depth;
@@ -181,8 +187,7 @@ public:
     pack.packing(&r2, pre_cot_data);
     r1 = r1 ^ r2;
     block dig[2];
-    Hash hash;
-    hash.hash_once(dig, &r1, sizeof(block));
+    RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
     io->send_data(dig, 2 * sizeof(block));
     io->flush();
   }
@@ -201,8 +206,7 @@ public:
     F vb = AuthValue::f_add(AuthValue::f_mul(delta, x_star), triple_t.mac);
     for (int64_t i = 0; i < tree_n; ++i)
       vb = AuthValue::f_add(vb, consist_check_VW[i]);
-    Hash hash;
-    block h = hash.hash_for_block(&vb, sizeof(F));
+    block h = RO(kDomCheckTyped, sid).absorb(&vb, sizeof(F)).squeeze_block();
     io->send_data(&h, sizeof(block));
     io->flush();
   }
@@ -218,6 +222,7 @@ public:
   using F = typename AuthValue::F;
 
   IOChannel *io;
+  block     sid = zero_block;   // set by the owner; bound into the check RO
   bool      is_malicious = false;
   int64_t   tree_n;
   int64_t   tree_depth;
@@ -347,8 +352,7 @@ public:
     pack.packing(&r3, pre_cot_data);
     r1 = r1 ^ r3;
     block dig[2];
-    Hash hash;
-    hash.hash_once(dig, &r1, sizeof(block));
+    RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
     block recv[2];
     io->recv_data(recv, 2 * sizeof(block));
     if (!cmpBlock(dig, recv, 2))
@@ -377,8 +381,7 @@ public:
     F va = triple_t.mac;
     for (int64_t i = 0; i < tree_n; ++i)
       va = AuthValue::f_add(va, consist_check_VW[i]);
-    Hash hash;
-    block h = hash.hash_for_block(&va, sizeof(F));
+    block h = RO(kDomCheckTyped, sid).absorb(&va, sizeof(F)).squeeze_block();
     block r;
     io->recv_data(&r, sizeof(block));
     if (!cmpBlock(&r, &h, 1))

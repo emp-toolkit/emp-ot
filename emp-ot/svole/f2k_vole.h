@@ -49,13 +49,11 @@ struct AuthValueF2k {
   }
 
   // -------- Chi-fold helpers --------
-  // Per-tree chi vector: hash the FS-bound chi seed, expand via
-  // uni_hash_coeff_gen. Under F_2^128 the digest IS an F element,
-  // so the hash output is used directly as the uni_hash seed.
+  // Per-tree chi vector: PRG-expand the FS-bound chi seed directly into
+  // sz F_2^128 elements (mirrors Ferret's expand_chi).
   static inline void expand_chi(block chi_seed, F* chi, int64_t sz) {
-    Hash hash;
-    block digest = hash.hash_for_block(&chi_seed, sizeof(block));
-    uni_hash_coeff_gen(chi, digest, sz);
+    PRG prg(&chi_seed);
+    prg.random_block(chi, sz);
   }
 
   // VW[idx] = Σ chi[i] · leaves[i].mac.
@@ -115,7 +113,7 @@ struct AuthValueF2k {
         // Galois packing) since its M is below the nest threshold.
         Svole<AuthValueF2k> inner(svole.party, svole.io_,
                                   svole.malicious, base_param);
-        inner.set_sid(derive_child_sid(svole.sid, svole.child_sid_cnt_++));
+        inner.set_sid(svole.sid.derive());
         if (svole.is_delta_holder()) inner.set_delta(svole.delta());
         inner.run(svole.carry_next_.data(), M);
       } else {

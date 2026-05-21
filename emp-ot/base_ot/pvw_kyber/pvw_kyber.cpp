@@ -64,7 +64,7 @@ void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
     if (length <= 0) return;
 
     uint8_t session_seed[kSymBytes];
-    sid_to_session_seed(sid, session_seed);
+    sid_to_session_seed(sid.value(), session_seed);
 
     // CRS: A^T (sender side) and V_0, V_1, all in NTT domain.
     polyvec AT[kK];
@@ -140,7 +140,7 @@ void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
             out_ptr += kPolyCompBytes;
 
             // Chosen-input mask: c_β = K_β ⊕ data_β[i].
-            const block K = derive_output_key(sid, i, beta, m);
+            const block K = derive_output_key(sid.value(), i, beta, m);
             const block masked = K ^ (beta == 0 ? data0[i] : data1[i]);
             std::memcpy(out_ptr, &masked, sizeof(block));
             out_ptr += sizeof(block);
@@ -154,7 +154,7 @@ void OTPVWKyber::recv(block* data, const bool* b, int64_t length) {
     if (length <= 0) return;
 
     uint8_t session_seed[kSymBytes];
-    sid_to_session_seed(sid, session_seed);
+    sid_to_session_seed(sid.value(), session_seed);
 
     // CRS: A (receiver side, non-transposed); V_β stay in coefficient
     // domain since the receiver adds V_b in the t = A·s + e + V_b step
@@ -230,7 +230,7 @@ void OTPVWKyber::recv(block* data, const bool* b, int64_t length) {
         uint8_t m_b[kSymBytes];
         poly_tomsg(m_b, &v);
 
-        const block K = derive_output_key(sid, i, chosen, m_b);
+        const block K = derive_output_key(sid.value(), i, chosen, m_b);
         data[i] = K ^ c;
     }
 }

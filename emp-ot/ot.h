@@ -5,19 +5,6 @@
 
 namespace emp {
 
-// Deterministic child-session-id derivation: a parent that constructs a
-// sub-protocol gives the child sid = AES_{parent_sid}(cnt), with cnt a
-// per-parent counter. Pure function of (parent sid, cnt) — both parties
-// derive identical child sids from the same construction order, with no
-// extra wire messages, and it is independent of EMP_TEST_MODE.
-inline block derive_child_sid(block parent_sid, uint64_t cnt) {
-	AES_KEY k;
-	AES_set_encrypt_key(parent_sid, &k);
-	block in = makeBlock(0, cnt);
-	AES_ecb_encrypt_blks<1>(&in, &k);
-	return in;
-}
-
 // Abstract 1-out-of-2 OT.
 class OT {
 public:
@@ -28,14 +15,14 @@ public:
 	// Security level of the OT protocol.
 	virtual bool is_malicious_secure() const { return false; }
 
-	// Per-session domain separator, default zero_block. Protocols that bind
-	// sid into their transcript (OTCSW, OTPVWKyber) read the inherited
-	// field; others carry it inertly. Extensions override to also forward a
-	// derived sid to their base OT (see OTExtension). Call before first use.
-	virtual void set_sid(block s) { sid = s; }
+	// Per-session domain separator, default the zero id. Extensions forward a
+	// derived child sid to their base OT (see OTExtension); callers may set a
+	// session-unique value before first use, but are not required to. The
+	// SessionID ctor is implicit, so set_sid(some_block) still works.
+	virtual void set_sid(SessionID s) { sid = s; }
 protected:
 	IOChannel * io = nullptr;
-	block sid = zero_block;
+	SessionID sid;
 };
 
 // Correlated OT (sender's two messages differ by a fixed Δ). Subclasses

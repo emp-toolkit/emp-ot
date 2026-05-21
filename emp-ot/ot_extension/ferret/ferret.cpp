@@ -137,7 +137,7 @@ void Ferret::bootstrap_() {
 		// Give the nested bootstrap source its own derived session id
 		// (it re-forwards a further-derived sid to the moved-in base OT).
 		// Role-symmetric: both parties tick the counter identically.
-		src->set_sid(derive_child_sid(sid, child_sid_cnt_++));
+		src->set_sid(sid.derive());
 		if (is_ot_sender()) {
 			src->set_delta(delta_bool);
 		} else {
@@ -172,12 +172,15 @@ void Ferret::bootstrap_() {
 // from the shared session id (no wire exchange). Subsequent rounds let
 // lpn_'s PRG state advance naturally through compute_slice.
 void Ferret::inner_run_begin_() {
-	if (is_ot_sender())
+	if (is_ot_sender()) {
+		gadget_send_->sid = sid.value();
 		gadget_send_->run_begin();
-	else
+	} else {
+		gadget_recv_->sid = sid.value();
 		gadget_recv_->run_begin();
+	}
 	if (!lpn_seed_set_) {
-		lpn_->reseed(derive_lpn_seed_(sid));
+		lpn_->reseed(derive_lpn_seed_(sid.value()));
 		lpn_seed_set_ = true;
 	}
 }

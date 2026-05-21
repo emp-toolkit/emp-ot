@@ -66,13 +66,12 @@ public:
   IOChannel *io_;
   F delta_value_;
 
-  // Session id for this VOLE instance (default zero_block). Svole is not
-  // an OT, so it carries its own sid; set via set_sid before the first
-  // begin()/run(), and propagated as a derived child sid to the inner
-  // Ferret (and, on the F2k path, to the nested bootstrap Svole).
-  block sid = zero_block;
-  uint64_t child_sid_cnt_ = 0;
-  void set_sid(block s) { sid = s; }
+  // Session id for this VOLE instance (default the zero id). Svole is not
+  // an OT, so it carries its own SessionID; set via set_sid before the first
+  // begin()/run(), and it is propagated as a derived child sid to the
+  // inner Ferret (and, on the F2k path, to the nested bootstrap Svole).
+  SessionID sid;
+  void set_sid(SessionID s) { sid = s; }
 
   // Ping-pong carry-over buffers. Size = `refill_trees * 2^tree_depth`
   // to mirror Ferret's slack-tolerant pattern: refill trees in
@@ -201,7 +200,7 @@ private:
       io_->enable_fs(/*send_first=*/is_delta_holder());
     // Session-separate the inner Ferret before it bootstraps (its rcot is
     // first consumed inside Bootstrap::run / inner_run_begin_).
-    base_ferret_->set_sid(derive_child_sid(sid, child_sid_cnt_++));
+    base_ferret_->set_sid(sid.derive());
     AuthValue::Bootstrap::run(*this);
     this->setup_done = true;
   }
@@ -213,10 +212,12 @@ private:
     if (is_delta_holder()) {
       // cGGM Δ = Ferret's block Δ (for F2k this equals delta_value_;
       // for F_p they are independent). Chi-fold Δ = delta_value_.
+      gadget_send_->sid = sid.value();
       gadget_send_->set_cggm_delta(base_ferret_->Delta);
       gadget_send_->set_delta(delta_value_);
       gadget_send_->run_begin();
     } else {
+      gadget_recv_->sid = sid.value();
       gadget_recv_->run_begin();
     }
   }

@@ -54,13 +54,13 @@ struct AuthValueFp {
   }
 
   // -------- Chi-fold helpers --------
-  // Per-tree chi vector: hash the FS-bound chi seed, reduce digest's
-  // low 64 mod p, expand via uni_hash_coeff_gen<uint64_t>.
+  // Per-tree chi vector: PRG-expand the FS-bound chi seed into sz
+  // uint64_t, each reduced mod p (mirrors Ferret's expand_chi, plus the
+  // mod-p reduction the F_p field requires).
   static inline void expand_chi(block chi_seed, F* chi, int64_t sz) {
-    Hash hash;
-    block digest = hash.hash_for_block(&chi_seed, sizeof(block));
-    F seed_f = mod((uint64_t)_mm_extract_epi64(digest, 0));
-    uni_hash_coeff_gen(chi, seed_f, sz);
+    PRG prg(&chi_seed);
+    prg.random_data_unaligned(chi, sz * sizeof(uint64_t));
+    for (int64_t i = 0; i < sz; ++i) chi[i] = mod(chi[i]);
   }
 
   static inline void accumulate_VW(F& VW_slot, const F* chi,
@@ -124,12 +124,15 @@ struct AuthValueFp {
       //   Base_svole produces (1 + t_pre + k_pre) seed pairs.
       const int64_t triple_n = 1 + pre_param.t + pre_param.k;
       std::vector<AuthValueFp> seed_pairs(triple_n);
+      // Derived child sid for the COPE base OTCO — computed once (same
+      // counter tick on both parties) and passed to whichever role runs.
+      const block bv_sid = svole.sid.derive().value();
       if (svole.is_delta_holder()) {
-        Base_svole<AuthValueFp> bv(ALICE, svole.io_,
+        Base_svole<AuthValueFp> bv(ALICE, svole.io_, bv_sid,
                                    (__uint128_t)svole.delta_value_);
         bv.triple_gen_send(seed_pairs.data(), triple_n);
       } else {
-        Base_svole<AuthValueFp> bv(BOB, svole.io_);
+        Base_svole<AuthValueFp> bv(BOB, svole.io_, bv_sid);
         bv.triple_gen_recv(seed_pairs.data(), triple_n);
       }
 
@@ -146,6 +149,8 @@ struct AuthValueFp {
           pre_param.t, pre_param.tree_depth, svole.io_);
       Lpn<AuthValueFp, 10> pre_lpn(pre_param.k);
       pre_lpn.reseed(zero_block);
+      pre_send.sid = svole.sid.value();
+      pre_recv.sid = svole.sid.value();
       if (svole.malicious) {
         pre_send.set_malicious();
         pre_recv.set_malicious();

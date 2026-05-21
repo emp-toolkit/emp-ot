@@ -30,10 +30,15 @@ class OTPVW: public OT { public:
 	ECGroup G;
 
 	Point g0, g1, h0, h1;
+	bool crs_ready_ = false;
 
-	OTPVW(IOChannel* io_) {
-		// CRS labels — both parties derive identical points.
-		this->io = io_;
+	OTPVW(IOChannel* io_) { this->io = io_; }
+
+	// Derive the CRS lazily on first use so it binds the session id (set
+	// via OT::set_sid after construction). Both parties derive identical,
+	// non-DH points from the shared sid.
+	void ensure_crs_() {
+		if (crs_ready_) return;
 		static const char *labels[4] = {
 			"CRS g0 for C:PeiVaiWat08",
 			"CRS g1 for C:PeiVaiWat08",
@@ -42,11 +47,13 @@ class OTPVW: public OT { public:
 		};
 		Point *crs[4] = {&g0, &g1, &h0, &h1};
 		for (int i = 0; i < 4; ++i)
-			*crs[i] = RO("emp-ot:pvw-base-ot:crs")
+			*crs[i] = RO("emp-ot:pvw-base-ot:crs", sid.value())
 			              .absorb(std::string_view(labels[i])).squeeze_point(G);
+		crs_ready_ = true;
 	}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
+		ensure_crs_();
 		// Per i: receive (g_i, h_i), build (u_b, c_b) for b in {0,1},
 		// send them and the ciphertexts. (g_i, h_i) is consumed within
 		// the iteration so no length-sized staging array is needed.
@@ -73,14 +80,15 @@ class OTPVW: public OT { public:
 				io->send_pt(&c_pt);
 			}
 			block ct[2];
-			ct[0] = RO("emp-ot:pvw-base-ot:kdf").absorb(xb[0]).absorb((uint64_t)i).squeeze_block() ^ data0[i];
-			ct[1] = RO("emp-ot:pvw-base-ot:kdf").absorb(xb[1]).absorb((uint64_t)i).squeeze_block() ^ data1[i];
+			ct[0] = RO("emp-ot:pvw-base-ot:kdf", sid.value()).absorb(xb[0]).absorb((uint64_t)i).squeeze_block() ^ data0[i];
+			ct[1] = RO("emp-ot:pvw-base-ot:kdf", sid.value()).absorb(xb[1]).absorb((uint64_t)i).squeeze_block() ^ data1[i];
 			io->send_data(ct, 2 * sizeof(block));
 		}
 		io->flush();
 	}
 
 	void recv(block* data, const bool* b, int64_t length) override {
+		ensure_crs_();
 		// Round 1: send (g, h) = (g_sigma^r, h_sigma^r) per OT instance.
 		// r_i is needed across rounds (used to recover x_sigma in round
 		// 2), so keep all r_i live in an array.
@@ -113,7 +121,7 @@ class OTPVW: public OT { public:
 			Point u_r = u[sigma].mul(rs[i]);
 			Point x_sigma = c_pt[sigma].add(u_r.inv());
 
-			data[i] = RO("emp-ot:pvw-base-ot:kdf").absorb(x_sigma).absorb((uint64_t)i).squeeze_block() ^ ct[sigma];
+			data[i] = RO("emp-ot:pvw-base-ot:kdf", sid.value()).absorb(x_sigma).absorb((uint64_t)i).squeeze_block() ^ ct[sigma];
 		}
 	}
 };
