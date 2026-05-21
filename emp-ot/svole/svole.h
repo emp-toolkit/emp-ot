@@ -66,6 +66,14 @@ public:
   IOChannel *io_;
   F delta_value_;
 
+  // Session id for this VOLE instance (default zero_block). Svole is not
+  // an OT, so it carries its own sid; set via set_sid before the first
+  // begin()/run(), and propagated as a derived child sid to the inner
+  // Ferret (and, on the F2k path, to the nested bootstrap Svole).
+  block sid = zero_block;
+  uint64_t child_sid_cnt_ = 0;
+  void set_sid(block s) { sid = s; }
+
   // Ping-pong carry-over buffers. Size = `refill_trees * 2^tree_depth`
   // to mirror Ferret's slack-tolerant pattern: refill trees in
   // run_refill_() write directly here, and the first M = svole_M(param)
@@ -191,6 +199,9 @@ private:
     if (this->setup_done) return;
     if (!io_->fs_enabled())
       io_->enable_fs(/*send_first=*/is_delta_holder());
+    // Session-separate the inner Ferret before it bootstraps (its rcot is
+    // first consumed inside Bootstrap::run / inner_run_begin_).
+    base_ferret_->set_sid(derive_child_sid(sid, child_sid_cnt_++));
     AuthValue::Bootstrap::run(*this);
     this->setup_done = true;
   }

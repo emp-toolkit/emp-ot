@@ -22,21 +22,12 @@
 
 namespace emp {
 
-// Derive the per-Ferret-lifetime LPN seed: H("LPN seed" || r). The
-// domain separator makes the resulting seed unrelated to other uses
-// of choice_prg (alpha derivation, nested sub-seeds); hashing also
-// breaks any algebraic relation, since only the receiver knows
-// choice_prg's state but the LPN seed is sent in the clear.
-static block derive_lpn_seed_(const block& r) {
-	Hash h;
-	static const char label[] = "LPN seed";
-	h.put(label, sizeof(label) - 1);
-	h.put(&r, sizeof(r));
-	unsigned char digest[Hash::DIGEST_SIZE];
-	h.digest(digest);
-	block out;
-	memcpy(&out, digest, sizeof(block));
-	return out;
+// Derive the per-Ferret-lifetime LPN seed: RO(domain, sid). Both parties
+// compute it locally from the shared session id, so it needs no wire
+// exchange. The domain separator and sid make it independent of other
+// derivations and of other sessions; the LPN matrix it seeds is public.
+static block derive_lpn_seed_(block sid) {
+	return RO("emp-ot:ferret:lpn-seed", sid).squeeze_block();
 }
 
 Ferret::Ferret(int party, IOChannel *io,
@@ -143,6 +134,10 @@ void Ferret::bootstrap_() {
 		io->enable_fs(/*send_first=*/is_ot_sender());
 
 	auto pump = [&](auto* src) {
+		// Give the nested bootstrap source its own derived session id
+		// (it re-forwards a further-derived sid to the moved-in base OT).
+		// Role-symmetric: both parties tick the counter identically.
+		src->set_sid(derive_child_sid(sid, child_sid_cnt_++));
 		if (is_ot_sender()) {
 			src->set_delta(delta_bool);
 		} else {
@@ -173,31 +168,17 @@ void Ferret::bootstrap_() {
 	setup_done = true;
 }
 
-// One-shot per-Ferret-lifetime LPN seed exchange folds into here.
-// Receiver derives the seed from its choice_prg (with domain-
-// separated hash) and sends; sender receives. Both reseed lpn_.
-// Subsequent rounds let lpn_'s PRG state advance naturally
-// through compute_slice.
+// One-shot per-Ferret-lifetime LPN seed. Both parties derive it locally
+// from the shared session id (no wire exchange). Subsequent rounds let
+// lpn_'s PRG state advance naturally through compute_slice.
 void Ferret::inner_run_begin_() {
-	if (is_ot_sender()) {
+	if (is_ot_sender())
 		gadget_send_->run_begin();
-		if (!lpn_seed_set_) {
-			block lpn_seed;
-			io->recv_block(&lpn_seed, 1);
-			lpn_->reseed(lpn_seed);
-			lpn_seed_set_ = true;
-		}
-	} else {
+	else
 		gadget_recv_->run_begin();
-		if (!lpn_seed_set_) {
-			block r;
-			choice_prg.random_block(&r, 1);
-			block lpn_seed = derive_lpn_seed_(r);
-			io->send_block(&lpn_seed, 1);
-			io->flush();
-			lpn_->reseed(lpn_seed);
-			lpn_seed_set_ = true;
-		}
+	if (!lpn_seed_set_) {
+		lpn_->reseed(derive_lpn_seed_(sid));
+		lpn_seed_set_ = true;
 	}
 }
 

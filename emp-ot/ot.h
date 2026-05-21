@@ -5,12 +5,18 @@
 
 namespace emp {
 
-// Default sid used by base OTs that bind a per-session identifier into
-// their hash transcript (OTCSW, OTPVWKyber). Callers needing a session-
-// unique sid call OT::set_sid() post-construction; protocols that
-// don't bind a sid (OTCO, OTPVW) inherit the no-op default and ignore it.
-inline constexpr block kDefaultBaseOtSid =
-    makeBlock(0x656D702D6F742D62ULL, 0x6173652D7369642DULL);  // "emp-ot-base-sid-"
+// Deterministic child-session-id derivation: a parent that constructs a
+// sub-protocol gives the child sid = AES_{parent_sid}(cnt), with cnt a
+// per-parent counter. Pure function of (parent sid, cnt) — both parties
+// derive identical child sids from the same construction order, with no
+// extra wire messages, and it is independent of EMP_TEST_MODE.
+inline block derive_child_sid(block parent_sid, uint64_t cnt) {
+	AES_KEY k;
+	AES_set_encrypt_key(parent_sid, &k);
+	block in = makeBlock(0, cnt);
+	AES_ecb_encrypt_blks<1>(&in, &k);
+	return in;
+}
 
 // Abstract 1-out-of-2 OT.
 class OT {
@@ -22,10 +28,14 @@ public:
 	// Security level of the OT protocol.
 	virtual bool is_malicious_secure() const { return false; }
 
-	// Optional session id
-	virtual void set_sid(block /*sid*/) {}
+	// Per-session domain separator, default zero_block. Protocols that bind
+	// sid into their transcript (OTCSW, OTPVWKyber) read the inherited
+	// field; others carry it inertly. Extensions override to also forward a
+	// derived sid to their base OT (see OTExtension). Call before first use.
+	virtual void set_sid(block s) { sid = s; }
 protected:
-	IOChannel * io = nullptr;       
+	IOChannel * io = nullptr;
+	block sid = zero_block;
 };
 
 // Correlated OT (sender's two messages differ by a fixed Δ). Subclasses

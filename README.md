@@ -137,22 +137,22 @@ protocol's wire format changed — fine if intentional, but flag it
 clearly in the commit message and update this table.
 
 ```
-OTCO                   send=b0ac916e9e5aefdc recv=1527f501eb006b21
-OTCSW                  send=25bbf1f26a330566 recv=8cba51dc9b3e2aa1
-OTPVW                  send=132aa714d2190ed1 recv=14b52351f71c746c
-OTPVWKyber             send=30b4c67c8dd8e3ad recv=9c2189fdcd744b64
-IKNP semi              send=8e166550690e050d recv=cb066d35f7e00eef
-SoftSpoken<2> semi     send=6259617147d3c92d recv=4bf85355dce130cb
-SoftSpoken<8> semi     send=6b20910650f0d85b recv=6bec324652e97ded
-Ferret(b11) semi       send=07ab346fe6233fd9 recv=3bd3a45118d4ce70
-F2kVOLE semi           send=2c0252596e6fd186 recv=a96081e25a9f168c
-FpVOLE semi            send=94fdcb7e3a9a78cf recv=81a9357ce2e08712
-IKNP mali              send=190d10a5e6815e4e recv=ae2c4a2673320c0b
-SoftSpoken<2> mali     send=9aa8755f443c469b recv=d4a5285de2ba604d
-SoftSpoken<8> mali     send=4a6dd995073f71db recv=802f41fddb2c8227
-Ferret(b11) mali       send=6faf885dc5cd65d2 recv=e0982be4c531c796
-F2kVOLE mali           send=1ca3b628bbb85e32 recv=ca3b5e2580152fe0
-FpVOLE mali            send=9611063595fb9ee5 recv=b3e21b77ec404dc0
+OTCO                   send=518c0a899289ae04 recv=1527f501eb006b21
+OTCSW                  send=802e9b74d81f63a8 recv=634c8c41847634f2
+OTPVW                  send=63ab8df66b20f4fa recv=c956d4e5d25e9d51
+OTPVWKyber             send=1708ae2aabef619e recv=d8195b395536297d
+IKNP semi              send=dd62b5bfb8bd58b3 recv=864359025637ab39
+SoftSpoken<2> semi     send=88a0f2beefc46db6 recv=1eb6e07a69caef89
+SoftSpoken<8> semi     send=603e88eb6df74e89 recv=5bb51d48d00a7fa3
+Ferret(b11) semi       send=ff448b0082027cf7 recv=94d52630ea03254f
+F2kVOLE semi           send=7d3a7d36c2d9fa2d recv=dd3d78437dcf83ce
+FpVOLE semi            send=f5c718cad1045c43 recv=01a94980ae1c37f7
+IKNP mali              send=bc4e21045185ec28 recv=400bfc6cfc0b8ce5
+SoftSpoken<2> mali     send=11140b0811a43cf8 recv=ca94e1cb8504d953
+SoftSpoken<8> mali     send=7237ddafdc4c756f recv=16d5d0b06bb325d1
+Ferret(b11) mali       send=fb500a9b804b5d79 recv=2b3ca1bb079a2547
+F2kVOLE mali           send=019696a7d222877e recv=44f02ef59955c835
+FpVOLE mali            send=f841a07146387c89 recv=03c66bcc71017c74
 ```
 
 ## Usage

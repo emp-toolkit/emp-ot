@@ -38,65 +38,33 @@ class OTCSW : public OT { public:
 	bool is_malicious_secure() const override { return true; }
 
 	ECGroup G;
-	block sid;
 
-	// sid defaults to kDefaultBaseOtSid (see emp-ot/ot.h). Callers
-	// wanting per-session domain separation override via set_sid().
-	OTCSW(IOChannel * io_) : sid(kDefaultBaseOtSid) {this->io = io_;}
-
-	void set_sid(block sid_) override { sid = sid_; }
+	// sid is the inherited OT::sid (default zero_block); set via OT::set_sid
+	// before first use. It is the leading bytes of every RO input below.
+	OTCSW(IOChannel * io_) {this->io = io_;}
 
 private:
-	// ===== Random oracles (each tagged with a 1-byte domain separator,
-	// prefixed by sid; all four ROs are independent and session-bound).
-	// Private — internal protocol primitives, no external contract. =====
-
-	// H_1(sid, seed) → curve point T. Programmable in the CDH reduction.
-	Point H_to_curve(const block & seed) {
-		unsigned char buf[1 + sizeof(block) + sizeof(block)];
-		buf[0] = '1';
-		memcpy(buf + 1, &sid, sizeof(block));
-		memcpy(buf + 1 + sizeof(block), &seed, sizeof(block));
-		static constexpr const char kDST[] = "emp-ot:csw-base-ot:v1";
-		return G.hash_to_point((const char *)buf, sizeof(buf),
-		                        kDST, sizeof(kDST) - 1);
-	}
+	// ===== Random oracles. Each uses a distinct domain string and binds
+	// sid; all four are independent and session-bound. =====
+	//
+	// H_1 (to-curve) and H_4 (aggregate) are called inline at their two
+	// send/recv sites via RO directly; their domain strings live here so
+	// both sides stay byte-identical. H_2 (pad) and H_3 (short) keep a
+	// helper each — more call sites, and pad has a multi-field order.
+	static constexpr char kDomToCurve[] = "emp-ot:csw-base-ot:to-curve";
+	static constexpr char kDomAgg[]     = "emp-ot:csw-base-ot:agg";
 
 	// H_2(sid, i, P) → block. P is a curve point (the DH share ρ).
-	// Stack buffer (no heap alloc per call). P-256 uncompressed = 65 B;
-	// total max ≈ 90 B; 128 B is comfortably above that and aligns nicely.
 	block H_pad(int64_t i, Point & P) {
-		unsigned char buf[128];
-		size_t plen = P.size();
-		assert(1 + sizeof(block) + sizeof(int64_t) + plen <= sizeof(buf));
-		buf[0] = '2';
-		memcpy(buf + 1, &sid, sizeof(block));
-		memcpy(buf + 1 + sizeof(block), &i, sizeof(int64_t));
-		P.to_bin(buf + 1 + sizeof(block) + sizeof(int64_t), plen);
-		return Hash::hash_for_block(buf,
-			1 + sizeof(block) + sizeof(int64_t) + plen);
+		return RO("emp-ot:csw-base-ot:pad", sid)
+		           .absorb((uint64_t)i).absorb(P).squeeze_block();
 	}
 
 	// H_3(sid, x) → block. x is a single block (used both for hashing
 	// individual p_{i,b} and for the Π = H_3(sid, otans) proof).
 	block H_short(const block & x) {
-		unsigned char buf[1 + sizeof(block) + sizeof(block)];
-		buf[0] = '3';
-		memcpy(buf + 1, &sid, sizeof(block));
-		memcpy(buf + 1 + sizeof(block), &x, sizeof(block));
-		return Hash::hash_for_block(buf, sizeof(buf));
-	}
-
-	// H_4(sid, h_1, …, h_ℓ) → block. Aggregates ℓ blocks into one.
-	// For typical ℓ = 128 the buffer is 1 + 16 + 2048 = 2065 B — heap
-	// alloc once is fine since H_aggregate is called twice per batch.
-	block H_aggregate(const block * hs, int64_t ell) {
-		size_t hlen = 1 + sizeof(block) + (size_t)ell * sizeof(block);
-		default_init_vector<unsigned char> buf(hlen);
-		buf[0] = '4';
-		memcpy(buf.data() + 1, &sid, sizeof(block));
-		memcpy(buf.data() + 1 + sizeof(block), hs, (size_t)ell * sizeof(block));
-		return Hash::hash_for_block(buf.data(), hlen);
+		return RO("emp-ot:csw-base-ot:short", sid)
+		           .absorb(x).squeeze_block();
 	}
 
 public:
@@ -114,7 +82,7 @@ public:
 		// Sender params: T = H_1(sid, seed); r ← Z_q; z = g^r.
 		// Amortize T^r over the batch: ρ_{i,1} = (B_i/T)^r = B_i^r · (T^r)^{-1}
 		// = ρ_{i,0} + (-T_r). One mul/OT instead of two.
-		Point T = H_to_curve(seed);
+		Point T = RO(kDomToCurve, sid).absorb(seed).squeeze_point(G);
 		Scalar r = G.rand_scalar();
 		Point z = G.mul_gen(r);
 		Point T_r_neg = T.mul(r).inv();                // -(T^r), reused per OT
@@ -132,7 +100,7 @@ public:
 		}
 
 		// Aggregate otans = H_4(sid, h0_1, …, h0_ℓ) and proof Π = H_3(sid, otans).
-		block otans = H_aggregate(h0.data(), length);
+		block otans = RO(kDomAgg, sid).absorb(h0.data(), (size_t)length * sizeof(block)).squeeze_block();
 		block proof = H_short(otans);
 
 		// Per-OT challenge χ_i = H_3(sid, p_{i,0}) ⊕ H_3(sid, p_{i,1});
@@ -170,7 +138,7 @@ public:
 		block seed; 
 		PRG prg;
 		prg.random_block(&seed, 1);
-		Point T = H_to_curve(seed);
+		Point T = RO(kDomToCurve, sid).absorb(seed).squeeze_point(G);
 		io->send_block(&seed, 1);
 
 		// Per-OT receiver msg: α_i ← Z_q; B_i = g^{α_i} · T^{b_i}.
@@ -218,7 +186,7 @@ public:
 		// Aggregate otans' and verify Π. Aborts on mismatch — covers
 		// both honest abort (sender malformed χ_i) and the
 		// selective-failure-detected case from the paper.
-		block otans_prime = H_aggregate(otresp.data(), length);
+		block otans_prime = RO(kDomAgg, sid).absorb(otresp.data(), (size_t)length * sizeof(block)).squeeze_block();
 		block proof_check = H_short(otans_prime);
 		if (!cmpBlock(&proof, &proof_check, 1))
 			error("OTCSW::recv: proof verification failed (sender misbehavior or selective-failure attack)");

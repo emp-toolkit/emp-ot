@@ -115,6 +115,7 @@ struct AuthValueF2k {
         // Galois packing) since its M is below the nest threshold.
         Svole<AuthValueF2k> inner(svole.party, svole.io_,
                                   svole.malicious, base_param);
+        inner.set_sid(derive_child_sid(svole.sid, svole.child_sid_cnt_++));
         if (svole.is_delta_holder()) inner.set_delta(svole.delta());
         inner.run(svole.carry_next_.data(), M);
       } else {

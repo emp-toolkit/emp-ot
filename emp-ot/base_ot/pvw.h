@@ -40,11 +40,10 @@ class OTPVW: public OT { public:
 			"CRS h0 for C:PeiVaiWat08",
 			"CRS h1 for C:PeiVaiWat08",
 		};
-		static constexpr const char kDST[] = "emp-ot:pvw-base-ot:v1";
 		Point *crs[4] = {&g0, &g1, &h0, &h1};
 		for (int i = 0; i < 4; ++i)
-			*crs[i] = G.hash_to_point(labels[i], strlen(labels[i]),
-			                           kDST, sizeof(kDST) - 1);
+			*crs[i] = RO("emp-ot:pvw-base-ot:crs")
+			              .absorb(std::string_view(labels[i])).squeeze_point(G);
 	}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
@@ -74,8 +73,8 @@ class OTPVW: public OT { public:
 				io->send_pt(&c_pt);
 			}
 			block ct[2];
-			ct[0] = Hash::KDF(xb[0], i) ^ data0[i];
-			ct[1] = Hash::KDF(xb[1], i) ^ data1[i];
+			ct[0] = RO("emp-ot:pvw-base-ot:kdf").absorb(xb[0]).absorb((uint64_t)i).squeeze_block() ^ data0[i];
+			ct[1] = RO("emp-ot:pvw-base-ot:kdf").absorb(xb[1]).absorb((uint64_t)i).squeeze_block() ^ data1[i];
 			io->send_data(ct, 2 * sizeof(block));
 		}
 		io->flush();
@@ -114,7 +113,7 @@ class OTPVW: public OT { public:
 			Point u_r = u[sigma].mul(rs[i]);
 			Point x_sigma = c_pt[sigma].add(u_r.inv());
 
-			data[i] = Hash::KDF(x_sigma, i) ^ ct[sigma];
+			data[i] = RO("emp-ot:pvw-base-ot:kdf").absorb(x_sigma).absorb((uint64_t)i).squeeze_block() ^ ct[sigma];
 		}
 	}
 };

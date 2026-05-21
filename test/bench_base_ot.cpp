@@ -37,9 +37,9 @@ int main(int argc, char **argv) {
 		run_one("PVW", &pvw, io, party, length);
 	}
 	{
-		// CSW / PVWKy take a sid via set_sid(); without it they fall back
-		// to kDefaultBaseOtSid. The bench overrides with a deterministic
-		// test sid so cross-party transcripts match exactly.
+		// CSW / PVWKy take a sid via set_sid(); without it they default to
+		// zero_block. The bench sets a deterministic test sid so cross-party
+		// transcripts match exactly.
 		block sid = makeBlock(0xCAFEBABE12345678ULL, 0xDEADBEEFFACEFEEDULL);
 		OTCSW csw(io);
 		csw.set_sid(sid);

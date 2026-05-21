@@ -32,8 +32,8 @@ class OTCO: public OT { public:
 		}
 
 		for(int64_t i = 0; i < length; ++i) {
-			res[0] = Hash::KDF(B[i], i) ^ data0[i];
-			res[1] = Hash::KDF(BA[i], i) ^ data1[i];
+			res[0] = RO("emp-ot:co-base-ot:kdf").absorb(B[i]).absorb((uint64_t)i).squeeze_block() ^ data0[i];
+			res[1] = RO("emp-ot:co-base-ot:kdf").absorb(BA[i]).absorb((uint64_t)i).squeeze_block() ^ data1[i];
 			io->send_data(res, 2*sizeof(block));
 		}
 		io->flush();
@@ -64,7 +64,7 @@ class OTCO: public OT { public:
 		block res[2];
 		for(int64_t i = 0; i < length; ++i) {
 			io->recv_data(res, 2*sizeof(block));
-			data[i] = Hash::KDF(As[i], i) ^ res[b[i]];
+			data[i] = RO("emp-ot:co-base-ot:kdf").absorb(As[i]).absorb((uint64_t)i).squeeze_block() ^ res[b[i]];
 		}
 	}
 };

@@ -58,19 +58,16 @@ public:
     // but post-quantum.
     bool is_malicious_secure() const override { return true; }
 
-    // sid defaults to kDefaultBaseOtSid (see emp-ot/ot.h). Callers
-    // wanting per-session domain separation override via set_sid().
+    // sid is the inherited OT::sid (default zero_block); set via OT::set_sid
+    // before first use. It seeds the CRS expansion and output-key derivation.
     explicit OTPVWKyber(IOChannel* io_);
     ~OTPVWKyber() override = default;
 
     void send(const block* data0, const block* data1, int64_t length) override;
     void recv(block* data, const bool* b, int64_t length) override;
 
-    void set_sid(block sid_in) override { sid_ = sid_in; }
-
 private:
     IOChannel* io;
-    block sid_;
 };
 
 }  // namespace emp
