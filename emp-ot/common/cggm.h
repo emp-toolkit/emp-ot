@@ -21,6 +21,21 @@
 //
 // alpha bit convention: alpha_1 is MSB (alpha_j = bit (d-j) of
 // alpha).
+//
+// Leaf storage is the split (bit-reversed) layout: each level expands
+// in place by writing all left children to the lower half and all right
+// children to the upper half, so the leaf for path p lands at array
+// index bit_reverse(p, d). This keeps the per-level write pattern two
+// sequential streams (left half stationary, right half appended) rather
+// than a scatter to (2j, 2j+1). The leveled XOR correlations K^0_i / K^1_i
+// are over the same child multisets and so are independent of the order;
+// only the array positions change. Consumers handle the order two ways:
+//   - MultiPointGadget: leaf order is irrelevant to its downstream (LPN
+//     fold + VW sum), so it just reads the punctured slot at bit_reverse(α).
+//   - softspoken: its sub-VOLE butterfly indexes leaves[x] as field
+//     element x, so it picks the field element it wants and drives the
+//     tree with path = bit_reverse(field element); the hole then lands at
+//     storage index == field element (no reordering of the leaf array).
 
 namespace emp { namespace cggm {
 
@@ -40,14 +55,6 @@ constexpr int kTile = tuning::cggm_tile_aarch64;
 
 namespace detail {
 
-// Per-level XOR sums of the just-expanded children, accumulated in
-// register inside expand_level. `left` = XOR of all left children
-// at this level; `right` = XOR of all right children. Caller picks
-// whichever is needed: sender uses `left` directly as K^0_i;
-// receiver uses one or the other (with a one-block correction for
-// the on-path junk; see eval_receiver).
-struct ExpandSums { block left, right; };
-
 // Bit-0-clear mask for the COT LSB convention. Used when callers
 // want the final-level leaves to carry the choice signal in bit 0
 // rather than its raw cGGM bit (currently ferret's MPCOT). The mask
@@ -56,54 +63,65 @@ struct ExpandSums { block left, right; };
 inline constexpr block kCggmLsbClearMask = makeBlock(0xFFFFFFFFFFFFFFFFLL,
                                                      0xFFFFFFFFFFFFFFFELL);
 
-// Expand `parents` parents at leaves[0..parents) into children at
-// leaves[0..2*parents) using batched CCRH::H<Tile> over the whole
-// level. Returns per-level (left_sum, right_sum) so callers don't
-// have to re-read the just-written child array.
+// Expand `n` parents at leaves[0..n) into 2n children stored in the
+// split (bit-reversed) layout: all left children at [0, n) — each
+// overwriting its own parent in place — and all right children at
+// [n, 2n). The new tree bit thus lands in the most-significant index
+// position, so a parent at index j has children at j (left) and n+j
+// (right).
+//
+// Returns the XOR-sum of one side, selected by `want_right`: the sender
+// only ever needs the left sum (K^0_i), and the receiver needs exactly
+// the alpha_bar_i side per level — so we accumulate just the one wanted
+// (the unused side's sum would be derivable as the other XOR Δ, but the
+// sender has Δ already and the receiver never has both needs at once).
 //
 // `ClearLSB`: if true, AND every written leaf with kCggmLsbClearMask
-// and accumulate the XOR-sums over the cleared values. Used at the
+// and accumulate the XOR-sum over the cleared values. Used at the
 // final level only — intermediate levels' children feed AES at the
 // next level, so clearing them would corrupt the cGGM correlation.
 //
-// Tile invariant: process tiles top-down so each tile reads
-// `parents[base..base+n)` and writes children at
-// `[2*base, 2*(base+n))`. The next iteration's parents at
-// `[0, base)` are strictly below the just-written `[2*base, ...)`
-// region — no clobber.
+// Tile invariant: tiles ascend. CCRH::H reads leaves[base..base+m) into
+// lefts_buf up front, so the in-place left write leaves[j]=left (j in
+// the tile) only touches already-consumed inputs; right writes land at
+// [n+base, ...), strictly above the unread parents [base+m, n).
 template <int Tile = kTile, bool ClearLSB = false>
-inline ExpandSums expand_level(CCRH& ccrh, block* leaves, int parents) {
+inline block expand_level(CCRH& ccrh, block* leaves, int n, bool want_right) {
     block lefts_buf[Tile];
-    block left_sum = zero_block, right_sum = zero_block;
-    for (int s = parents; s > 0; ) {
-        const int n    = std::min(s, Tile);
-        const int base = s - n;
-        // CCRH::H reads `in` once per element, doesn't alias `out`,
-        // so we can pass leaves+base directly. Within the second
-        // loop below, reads of leaves[j] at j=base..base+n-1 don't
-        // overlap the just-written children at indices ≥ 2*base.
-        if (n == Tile) ccrh.H<Tile>(lefts_buf, leaves + base);
-        else           ccrh.Hn(lefts_buf, leaves + base, n);
-        for (int t = n - 1; t >= 0; --t) {
+    block sum = zero_block;
+    for (int base = 0; base < n; base += Tile) {
+        const int m = std::min(Tile, n - base);
+        if (m == Tile) ccrh.H<Tile>(lefts_buf, leaves + base);
+        else           ccrh.Hn(lefts_buf, leaves + base, m);
+        for (int t = 0; t < m; ++t) {
             const int j = base + t;
             const block parent = leaves[j];
-            block left   = lefts_buf[t];
-            block right  = parent ^ left;
+            block left  = lefts_buf[t];
+            block right = parent ^ left;
             if constexpr (ClearLSB) {
                 left  = left  & kCggmLsbClearMask;
                 right = right & kCggmLsbClearMask;
             }
-            leaves[2 * j]     = left;
-            leaves[2 * j + 1] = right;
-            left_sum  ^= left;
-            right_sum ^= right;
+            leaves[n + j] = right;   // upper half, fresh space
+            leaves[j]     = left;    // in place (parent already consumed)
+            sum ^= want_right ? right : left;
         }
-        s = base;
     }
-    return {left_sum, right_sum};
+    return sum;
 }
 
 }  // namespace detail
+
+// Reverse the low `d` bits of `x`. The split layout stores the leaf for
+// path α (α_1 the MSB, top-down) at array index bit_reverse(α, d): each
+// expansion prepends the new tree bit as the index MSB, so the final
+// index reads the path bits least-significant-first. Callers that hold a
+// top-down path integer use this to find / puncture the leaf slot.
+inline uint32_t bit_reverse(uint32_t x, int d) {
+    uint32_t r = 0;
+    for (int i = 0; i < d; ++i) { r = (r << 1) | (x & 1u); x >>= 1; }
+    return r;
+}
 
 // Sender: build the depth-d cGGM tree given Δ and a top secret k.
 // Writes 2^d leaves into `leaves` and the per-level left-side
@@ -133,20 +151,23 @@ inline void build_sender(int d, block Delta, block k,
     // at the next level; clearing would corrupt the cGGM tree).
     for (int i = 2; i < d; ++i) {
         const int parents = 1 << (i - 1);
-        K0[i - 1] = detail::expand_level<Tile, false>(ccrh, leaves, parents).left;
+        K0[i - 1] = detail::expand_level<Tile, false>(ccrh, leaves, parents,
+                                                      /*want_right=*/false);
     }
 
     // Level d: leaf level. Optionally clear LSBs in-place.
     if (d >= 2) {
         const int parents = 1 << (d - 1);
-        K0[d - 1] = detail::expand_level<Tile, ClearLeafLSB>(ccrh, leaves, parents).left;
+        K0[d - 1] = detail::expand_level<Tile, ClearLeafLSB>(ccrh, leaves, parents,
+                                                             /*want_right=*/false);
     }
 }
 
 // Receiver: reconstruct the depth-d cGGM tree from the punctured
 // path `alpha` (d bits, MSB-first) and d corrections K_recv[i] =
-// K^{ᾱ_{i+1}}_{i+1}. After return, leaves[x] holds the correct
-// cGGM leaf for every x != alpha; leaves[alpha] is zero_block.
+// K^{ᾱ_{i+1}}_{i+1}. After return, leaves[x] holds the correct cGGM
+// leaf for every x != bit_reverse(alpha, d); the punctured leaf at
+// index bit_reverse(alpha, d) is zero_block (split layout).
 //
 // `ClearLeafLSB`: same convention as build_sender. Both sides must
 // agree; if the sender used ClearLeafLSB the receiver must too,
@@ -160,23 +181,26 @@ inline void eval_receiver(int d, int alpha,
 
     CCRH ccrh;
 
-    // path = prefixsum_{i-1}(alpha): integer formed by alpha_1..alpha_{i-1}
-    // (top-down, MSB-first). Doubles per level; alpha_i appended at end.
-    int path = 0;
+    // `pos` = split-layout storage index of the on-path node at the
+    // current level. In the split layout a node at index j has its
+    // children at j (left) and j+half (right), so the on-path index
+    // grows by alpha_i*half per level (the new bit is the index MSB).
+    int pos = 0;
 
     // Level 1: receiver knows the alpha_bar_1-side root child only.
     {
         const int alpha_1     = (alpha >> (d - 1)) & 1;
         const int alpha_bar_1 = 1 - alpha_1;
         leaves[alpha_bar_1] = K_recv[0];
-        path = alpha_1;
+        pos = alpha_1;
     }
 
-    // Levels 2..d. Expand the whole previous-level layer (the
-    // on-path parent at `path` is zero, so its two children become
-    // junk from H(0); we overwrite both right after expansion).
-    // Then recover the sibling on the alpha_bar_i side via
-    // K_recv[i-1] XOR (XOR of expanded alpha_bar_i-side nodes).
+    // Levels 2..d. Expand the whole previous-level layer (the on-path
+    // parent at `pos` is zero, so both its children — left at `pos`,
+    // right at `pos+half` — become junk H(0); we overwrite both right
+    // after expansion). Then recover the sibling on the alpha_bar_i
+    // side via K_recv[i-1] XOR (XOR of expanded alpha_bar_i-side nodes,
+    // with the on-path junk removed).
     //
     // The `step` lambda is invoked once per level. The bool template
     // parameter on expand_level / sibling-write must match across
@@ -184,27 +208,27 @@ inline void eval_receiver(int d, int alpha,
     // std::bool_constant to dispatch (false for i<d, ClearLeafLSB for i==d).
     auto step = [&](int i, auto clear_lsb) {
         constexpr bool C = decltype(clear_lsb)::value;
-        const int parents = 1 << (i - 1);
-        const auto sums = detail::expand_level<Tile, C>(ccrh, leaves, parents);
-
+        const int half = 1 << (i - 1);   // parents = lower-half size
         const int alpha_i     = (alpha >> (d - i)) & 1;
         const int alpha_bar_i = 1 - alpha_i;
-        const int on_path_lvl = path * 2 + alpha_i;
-        const int sibling_lvl = path * 2 + alpha_bar_i;
 
-        // expand_level wrote junk H(0) at the on-path slot (parent
-        // at index `path` was zero). Capture, zero both children,
-        // then subtract junk out of the side-sum we care about.
-        const block junk = leaves[2 * path];
-        leaves[2 * path]     = zero_block;
-        leaves[2 * path + 1] = zero_block;
-        const block sum_pre = (alpha_bar_i == 0) ? sums.left : sums.right;
-        const block sum     = sum_pre ^ junk;
-        block sib = sum ^ K_recv[i - 1];
+        // Accumulate only the alpha_bar_i side (the side the sibling lives
+        // on); the other side's sum is never used here.
+        const block sum_pre =
+            detail::expand_level<Tile, C>(ccrh, leaves, half,
+                                          /*want_right=*/alpha_bar_i != 0);
+
+        // Both children of the punctured parent at `pos` carry junk
+        // H(0): left at `pos`, right at `pos+half`. Capture (either is
+        // H(0)), zero both, then remove that junk from the side-sum.
+        const block junk = leaves[pos];
+        leaves[pos]        = zero_block;
+        leaves[pos + half] = zero_block;
+        block sib = sum_pre ^ junk ^ K_recv[i - 1];
         if constexpr (C) sib = sib & detail::kCggmLsbClearMask;
-        leaves[sibling_lvl] = sib;
+        leaves[pos + alpha_bar_i * half] = sib;
 
-        path = on_path_lvl;
+        pos += alpha_i * half;   // on-path child = next level's `pos`
     };
 
     for (int i = 2; i < d; ++i) step(i, std::false_type{});

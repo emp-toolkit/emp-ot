@@ -266,7 +266,8 @@ public:
   //   5. α-fill (F2kPacked: XOR closure + lsb_only_mask;
   //              FTyped: triple_yz − secret_sum − Σ_{j≠α} mac).
   //   6. Malicious: chi seed, expand_chi, chi_alpha + VW.
-  // Returns α.
+  // Returns the punctured leaf's storage index = bit_reverse(α), which
+  // is where the caller writes its val (split-layout leaf order).
   uint32_t run_next_tree(AuthValue *leaves_i, const block *base_i, int tree_idx,
                          F triple_yz_i = AuthValue::f_zero()) {
     uint32_t alpha = 0;
@@ -274,6 +275,10 @@ public:
       alpha <<= 1;
       if (!getLSB(base_i[j])) alpha += 1;
     }
+    // `alpha` is the top-down path; the split-layout cGGM stores its leaf
+    // (the punctured slot) at bit_reverse(alpha). eval_receiver takes the
+    // path; every leaf-array access below uses the reversed storage index.
+    const uint32_t rev = cggm::bit_reverse(alpha, (int)tree_depth);
 
     io->recv_block(c.data(), tree_depth);
     F secret_sum = AuthValue::f_zero();
@@ -294,7 +299,7 @@ public:
       block nodes_sum = zero_block;
       for (int64_t k = 0; k < leave_n; ++k)
         nodes_sum = nodes_sum ^ leaves_block_view[k];
-      leaves_block_view[alpha] = nodes_sum ^ lsb_only_mask;
+      leaves_block_view[rev] = nodes_sum ^ lsb_only_mask;
       (void)secret_sum;
       (void)triple_yz_i;
     } else {
@@ -302,14 +307,14 @@ public:
           tree_depth, alpha, K_recv.data(), leaves_block.data());
       F nodes_sum = AuthValue::f_zero();
       for (int64_t i = 0; i < leave_n; ++i) {
-        if ((uint32_t)i == alpha) {
+        if ((uint32_t)i == rev) {
           leaves_i[i] = AuthValue{};   // .mac filled below; .val by caller
           continue;
         }
         leaves_i[i] = AuthValue::auth_from_block(leaves_block[i]);
         nodes_sum = AuthValue::f_add(nodes_sum, leaves_i[i].mac);
       }
-      leaves_i[alpha].mac =
+      leaves_i[rev].mac =
           AuthValue::f_sub(triple_yz_i,
                            AuthValue::f_add(secret_sum, nodes_sum));
     }
@@ -317,12 +322,12 @@ public:
     if (is_malicious) {
       block chi_seed = io->get_digest();
       AuthValue::expand_chi(chi_seed, chi.data(), leave_n);
-      consist_check_chi_alpha[tree_idx] = chi[alpha];
+      consist_check_chi_alpha[tree_idx] = chi[rev];
       AuthValue::accumulate_VW(consist_check_VW[tree_idx], chi.data(),
                                leaves_i, leave_n);
     }
 
-    return alpha;
+    return rev;
   }
 
   // F2kPacked round-final check (receiver).

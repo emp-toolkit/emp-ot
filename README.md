@@ -142,17 +142,17 @@ OTCSW                  send=802e9b74d81f63a8 recv=634c8c41847634f2
 OTPVW                  send=06ff8f3498188271 recv=73bc62e4d02ea245
 OTPVWKyber             send=1708ae2aabef619e recv=d8195b395536297d
 IKNP semi              send=dd62b5bfb8bd58b3 recv=864359025637ab39
-SoftSpoken<2> semi     send=88a0f2beefc46db6 recv=1eb6e07a69caef89
-SoftSpoken<8> semi     send=603e88eb6df74e89 recv=5bb51d48d00a7fa3
-Ferret(b11) semi       send=ff448b0082027cf7 recv=94d52630ea03254f
-F2kVOLE semi           send=7d3a7d36c2d9fa2d recv=dd3d78437dcf83ce
-FpVOLE semi            send=f5c718cad1045c43 recv=c6a7dd2cd1d5e151
+SoftSpoken<2> semi     send=0e7edf2b638a30db recv=3dafa542197102c0
+SoftSpoken<8> semi     send=784c7d47a9f146a2 recv=13c3d9136aaa1698
+Ferret(b11) semi       send=42e75ecf31cec7e7 recv=04549cff31949b6c
+F2kVOLE semi           send=784ac978756e932c recv=5cf72d6ec0c8248c
+FpVOLE semi            send=320ae55724cc85bb recv=04358d21086fbdeb
 IKNP mali              send=bc4e21045185ec28 recv=400bfc6cfc0b8ce5
-SoftSpoken<2> mali     send=11140b0811a43cf8 recv=ca94e1cb8504d953
-SoftSpoken<8> mali     send=7237ddafdc4c756f recv=16d5d0b06bb325d1
-Ferret(b11) mali       send=8f9a145b28c64411 recv=4aa826efab96b7fb
-F2kVOLE mali           send=7b4f883135755427 recv=52ea5b7c3dba0e9d
-FpVOLE mali            send=a3a80f3e18ae5d94 recv=eaff1eddddecbe9b
+SoftSpoken<2> mali     send=9e9d7a0ff4815691 recv=be74fc600d3ee7b7
+SoftSpoken<8> mali     send=74a54a2eb2f0fcdd recv=381ad0d603383439
+Ferret(b11) mali       send=14349b47d4840654 recv=95a3fc38a39e43a7
+F2kVOLE mali           send=dc93e25b4b3b0d56 recv=932f73c273156a16
+FpVOLE mali            send=687cf07828fd876b recv=a3392c323c9e5871
 ```
 
 ## Usage

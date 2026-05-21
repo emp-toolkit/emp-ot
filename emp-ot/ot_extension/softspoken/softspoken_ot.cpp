@@ -95,9 +95,16 @@ SoftSpokenOT<k, kChunkBlocks>::SoftSpokenOT(int party, IOChannel* io_, bool mali
 template <int k, int kChunkBlocks>
 void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
     // Δ = α_0 + α_1·X + … + α_{n-1}·X^{n-1} over F_{2^k}: α_i is the
-    // i-th k-bit slice of Δ (LSB-first within α_i). Base OT choice
-    // bits ᾱ_{i,j} = 1 − α_{i,j} are sent MSB-first per α_i. The
-    // base-class delta_bool[] is the Δ bool mirror.
+    // i-th k-bit slice of Δ (bit m of α_i = delta_bool[i*k + m]). α_i is
+    // the sub-VOLE field element; the butterfly indexes leaves[x] by it.
+    //
+    // The split-layout cGGM stores the leaf for path p at index
+    // bit_reverse(p), so a path-p puncture holes storage slot
+    // bit_reverse(p). We want the hole at storage slot α_i (so storage
+    // index == field element and the butterfly needs no reordering), so
+    // we drive the tree with path = bit_reverse(α_i). The base-OT choice
+    // for level j (instance j-1, MSB-first) is then 1 − (path bit at
+    // level j) = !bit_{j-1}(α_i).
     const int total = n * k;     // == 128
     // unsigned char (not bool) so .data() is contiguous one-byte-each
     // storage; the OT::recv signature still expects bool* so we
@@ -105,12 +112,10 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
     default_init_vector<unsigned char> choices(total);
     for (int i = 0; i < n; ++i) {
         int alpha = 0;
-        for (int j = 1; j <= k; ++j) {
-            // α_{i,j} (j-th MSB of α_i) = bit (k-j) of α_i = delta_bool[i*k + (k-j)].
-            const bool b = delta_bool[i*k + (k - j)];
-            if (b) alpha |= 1 << (k - j);
-            choices[i*k + (j-1)] = !b;
-        }
+        for (int m = 0; m < k; ++m)
+            if (delta_bool[i*k + m]) alpha |= 1 << m;
+        for (int j = 1; j <= k; ++j)
+            choices[i*k + (j-1)] = !((alpha >> (j - 1)) & 1);
         alphas_[i] = alpha;
     }
 
@@ -118,13 +123,15 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
     base_ot->recv(received.data(),
                   reinterpret_cast<bool*>(choices.data()), total);
 
-    // Reconstruct each sub-VOLE's punctured GGM tree. cggm::eval_receiver
-    // fills leaves[x] for x != alpha_i and pins leaves[alpha_i] to zero.
+    // Reconstruct each sub-VOLE's punctured GGM tree under path =
+    // bit_reverse(α_i); cggm::eval_receiver then fills leaves[x] for
+    // x != α_i and pins leaves[α_i] (storage == field element) to zero.
     leaves_recv_.resize(static_cast<size_t>(n) * Q);
     block K_recv[k];
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < k; ++j) K_recv[j] = received[i * k + j];
-        cggm::eval_receiver(k, alphas_[i], K_recv, &leaves_recv_[i * Q]);
+        cggm::eval_receiver(k, (int)cggm::bit_reverse((uint32_t)alphas_[i], k),
+                            K_recv, &leaves_recv_[i * Q]);
     }
 
     if (malicious) pprf_check_recv();
@@ -161,6 +168,10 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_recv_() {
         block Delta, root;
         this->choice_prg.random_block(&Delta, 1);
         this->choice_prg.random_block(&root, 1);
+        // build_sender stores leaves in the split layout (leaf for path p
+        // at index bit_reverse(p)); the sub-VOLE sender has no puncture and
+        // its butterfly reads leaves[x] as field element x, matching the
+        // receiver's storage==field-element convention (see bootstrap_send_).
         cggm::build_sender(k, Delta, root, &leaves_send_[i * Q], K0_buf);
         for (int h = 0; h < k; ++h) K1_buf[h] = K0_buf[h] ^ Delta;
         for (int j = 0; j < k; ++j) {
