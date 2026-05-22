@@ -1,5 +1,5 @@
-#ifndef EMP_OTPVW_H__
-#define EMP_OTPVW_H__
+#ifndef EMP_PVW_H__
+#define EMP_PVW_H__
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/ot.h"
 #include <vector>
@@ -22,7 +22,7 @@ namespace emp {
  *            c_b = g^{s_b}  * h^{t_b}  * x_b // masked under receiver's (g, h)
  *   Recv:  output x_sigma = c_sigma / u_sigma^r.
  * */
-class OTPVW: public OT { public:
+class PVW: public OT { public:
 	// Messy-mode PVW: receiver-secure under DDH against a malicious
 	// sender; sender statistically secure against a malicious receiver.
 	bool is_malicious_secure() const override { return true; }
@@ -32,7 +32,7 @@ class OTPVW: public OT { public:
 	Point g0, g1, h0, h1;
 	bool crs_ready_ = false;
 
-	OTPVW(IOChannel* io_) { this->io = io_; }
+	PVW(IOChannel* io_) { this->io = io_; }
 
 	// Derive the CRS lazily on first use so it binds the session id (set
 	// via OT::set_sid after construction). Both parties derive identical,

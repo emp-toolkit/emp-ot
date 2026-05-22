@@ -13,11 +13,11 @@
 
 namespace emp {
 
-// Default base OT for Ferret. Forwarded into the inner SoftSpokenOT<8>
+// Default base OT for Ferret. Forwarded into the inner SoftSpoken<8>
 // bootstrap (or the inner ferret_b10 in the tiered-bootstrap path).
 // Change here to swap; OTExtension's contract just needs any
 // malicious-secure (when malicious=true) OT.
-using FerretBaseOT = OTCSW;
+using FerretBaseOT = CSW;
 
 template <typename AuthValue, int d> class Lpn;
 
@@ -108,8 +108,8 @@ class Ferret : public OTExtension {
 public:
 	PrimalLPNParameter param;
 
-	// `base_ot` is forwarded to the internal SoftSpokenOT<8> bootstrap.
-	// Default (nullptr) → the base allocates an OTCSW.
+	// `base_ot` is forwarded to the internal SoftSpoken<8> bootstrap.
+	// Default (nullptr) → the base allocates an CSW.
 	Ferret(int party, IOChannel *io, bool malicious = true,
 			PrimalLPNParameter param = tuning::ferret_b13,
 			std::unique_ptr<OT> base_ot = nullptr);

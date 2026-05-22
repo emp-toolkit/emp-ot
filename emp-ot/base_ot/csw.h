@@ -1,5 +1,5 @@
-#ifndef EMP_OTCSW_H__
-#define EMP_OTCSW_H__
+#ifndef EMP_CSW_H__
+#define EMP_CSW_H__
 #include <emp-tool/emp-tool.h>
 #include <memory>
 #include <vector>
@@ -33,7 +33,7 @@ namespace emp {
  * `length` must be ≥ 80 (≈ 2σ for σ = 40); the sender-input extraction
  * argument needs ℓ > 2σ 
  */
-class OTCSW : public OT { public:
+class CSW : public OT { public:
 	// UC-secure under CDH in the random oracle model.
 	bool is_malicious_secure() const override { return true; }
 
@@ -41,7 +41,7 @@ class OTCSW : public OT { public:
 
 	// sid is the inherited OT::sid (default zero_block); set via OT::set_sid
 	// before first use. It is the leading bytes of every RO input below.
-	OTCSW(IOChannel * io_) {this->io = io_;}
+	CSW(IOChannel * io_) {this->io = io_;}
 
 private:
 	// ===== Random oracles. Each uses a distinct domain string and binds
@@ -71,7 +71,7 @@ public:
 	// ----- Sender side. Plays the OT sender role (S in the paper). -----
 	void send(const block * data0, const block * data1, int64_t length) override {
 		assert(length >= 80 &&
-		       "OTCSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
+		       "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
 
 		// Round 1 (R→S): receive seed, {B_i}.
 		block seed;
@@ -126,12 +126,12 @@ public:
 		block otans_prime;
 		io->recv_block(&otans_prime, 1);
 		if (!cmpBlock(&otans, &otans_prime, 1))
-			error("OTCSW::send: otans verification failed (receiver misbehavior)");
+			error("CSW::send: otans verification failed (receiver misbehavior)");
 	}
 
 	// ----- Receiver side. Plays the OT receiver role (R in the paper). -----
 	void recv(block * data, const bool * b, int64_t length) override {
-		assert(length >= 80 && "OTCSW: length must be ≥ 80");
+		assert(length >= 80 && "CSW: length must be ≥ 80");
 
 		// Receiver params: seed ← {0,1}^κ; T = H_1(sid, seed).
 		// Round 1 (R→S): send seed, {B_i}.
@@ -189,7 +189,7 @@ public:
 		block otans_prime = RO(kDomAgg, sid.value()).absorb(otresp.data(), (size_t)length * sizeof(block)).squeeze_block();
 		block proof_check = H_short(otans_prime);
 		if (!cmpBlock(&proof, &proof_check, 1))
-			error("OTCSW::recv: proof verification failed (sender misbehavior or selective-failure attack)");
+			error("CSW::recv: proof verification failed (sender misbehavior or selective-failure attack)");
 
 		// Decrypt outputs.
 		for (int64_t i = 0; i < length; ++i) {
@@ -204,4 +204,4 @@ public:
 };
 
 }  // namespace emp
-#endif  // EMP_OTCSW_H__
+#endif  // EMP_CSW_H__

@@ -18,7 +18,7 @@
 
 #include "emp-ot/ot_extension/ferret/ferret.h"
 #include "emp-ot/common/lpn.h"
-#include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
+#include "emp-ot/ot_extension/softspoken/softspoken.h"
 
 namespace emp {
 
@@ -161,7 +161,7 @@ void Ferret::bootstrap_() {
 		// kChunkBlocks sized so b10.M (~74k) fits in a single
 		// SoftSpoken chunk — default 1024-block chunk would
 		// overproduce ~131k OTs and ship unused overhead on the wire.
-		SoftSpokenOT<8, tuning::softspoken_ferret_bootstrap_chunk_blocks>
+		SoftSpoken<8, tuning::softspoken_ferret_bootstrap_chunk_blocks>
 		    ssp(party, io, /*malicious=*/malicious, std::move(base_ot));
 		pump(&ssp);
 	}

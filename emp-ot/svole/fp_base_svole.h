@@ -18,7 +18,7 @@
 // chooser to be the COT-*receiver*, but the F_p sVOLE Δ-holder
 // (ALICE) must be the inner-Ferret COT-*sender* to drive the main
 // MPFSS sibling-OT layer (c[j]=base[j]^K0[j], identical to the F_2k
-// case). The two roles conflict; using OTCO directly for Cope's 61
+// case). The two roles conflict; using CO directly for Cope's 61
 // base OTs avoids running a second Ferret with swapped roles.
 
 namespace emp {
@@ -32,7 +32,7 @@ public:
   int party;
   int64_t m;
   IOChannel *io;
-  block sid;                 // session id forwarded to the base OTCO
+  block sid;                 // session id forwarded to the base CO
   __uint128_t delta;
   std::vector<PRG> G0, G1;
   std::unique_ptr<bool[]> delta_bool;
@@ -50,7 +50,7 @@ public:
     delta64_to_bool(delta_bool.get(), delta_in);
 
     std::vector<block> K(m);
-    OTCO otco(io);
+    CO otco(io);
     otco.set_sid(sid);
     otco.recv(K.data(), delta_bool.get(), m);
 
@@ -64,7 +64,7 @@ public:
     std::vector<block> K(2 * m);
     PRG prg;
     prg.random_block(K.data(), 2 * m);
-    OTCO otco(io);
+    CO otco(io);
     otco.set_sid(sid);
     otco.send(K.data(), K.data() + m, m);
 

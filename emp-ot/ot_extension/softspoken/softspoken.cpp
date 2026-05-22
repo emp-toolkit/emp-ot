@@ -25,7 +25,7 @@
 //   k=8 → 1024: Q=256 leaves means lots of fold work per chunk;
 //               the larger window amortizes setup overhead.
 //
-// Ferret's bootstrap instantiates SoftSpokenOT<8, 580> so its
+// Ferret's bootstrap instantiates SoftSpoken<8, 580> so its
 // one-shot ~74k base-COT request fits in a single chunk instead of
 // overproducing the default 131,072-OT chunk and shipping ~107 KB of
 // unused PPRF planes over the wire.
@@ -78,7 +78,7 @@
 //       check_q ?= check_t ⊕ check_x · Δ compare. Same shape as IKNP
 //       — see emp-ot/iknp.{h,cpp}.
 
-#include "emp-ot/ot_extension/softspoken/softspoken_ot.h"
+#include "emp-ot/ot_extension/softspoken/softspoken.h"
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -86,14 +86,14 @@
 namespace emp {
 
 template <int k, int kChunkBlocks>
-SoftSpokenOT<k, kChunkBlocks>::SoftSpokenOT(int party, IOChannel* io_, bool malicious,
+SoftSpoken<k, kChunkBlocks>::SoftSpoken(int party, IOChannel* io_, bool malicious,
                               std::unique_ptr<OT> base_ot)
     : OTExtension(party, io_, malicious,
                   base_ot ? std::move(base_ot)
                           : std::unique_ptr<OT>(new SoftSpokenBaseOT(io_))) {}
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
+void SoftSpoken<k, kChunkBlocks>::bootstrap_send_() {
     // Δ = α_0 + α_1·X + … + α_{n-1}·X^{n-1} over F_{2^k}: α_i is the
     // i-th k-bit slice of Δ (bit m of α_i = delta_bool[i*k + m]). α_i is
     // the sub-VOLE field element; the butterfly indexes leaves[x] by it.
@@ -145,7 +145,7 @@ void SoftSpokenOT<k, kChunkBlocks>::bootstrap_send_() {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::bootstrap_recv_() {
+void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
     // Build n GGM trees and ship the per-level XOR sums via base OT.
     // Each tree gets a fresh Δ and root; K0[h] = level-(h+1) left-side
     // XOR-sum, K1[h] = K0[h] ⊕ Δ (leveled correlation, paper §2.2).
@@ -222,7 +222,7 @@ constexpr int64_t kPPRFCheckSessionHigh = 0x70505246434B5F00LL; // "pPRFCK_\0"
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::pprf_check_send() {
+void SoftSpoken<k, kChunkBlocks>::pprf_check_send() {
     constexpr int kHashSize = Hash::DIGEST_SIZE;  // 32 B
 
     AES_KEY check_K;
@@ -257,7 +257,7 @@ void SoftSpokenOT<k, kChunkBlocks>::pprf_check_send() {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::pprf_check_recv() {
+void SoftSpoken<k, kChunkBlocks>::pprf_check_recv() {
     constexpr int kHashSize = Hash::DIGEST_SIZE;
 
     AES_KEY check_K;
@@ -340,7 +340,7 @@ void SoftSpokenOT<k, kChunkBlocks>::pprf_check_recv() {
 // well past L3 on small-cache parts.
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::ensure_chunk_scratch_() {
+void SoftSpoken<k, kChunkBlocks>::ensure_chunk_scratch_() {
     // n*k = 128 always (static_assert in n_subvoles<k>).
     if (planes_chunk_.size() < static_cast<size_t>(128) * kChunkBlocks)
         planes_chunk_.resize(static_cast<size_t>(128) * kChunkBlocks);
@@ -353,28 +353,28 @@ void SoftSpokenOT<k, kChunkBlocks>::ensure_chunk_scratch_() {
 // StreamingExtension lifecycle: party-dispatch inline to the per-role
 // helpers below. Sender and receiver paths share no per-stage work.
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::begin() {
+void SoftSpoken<k, kChunkBlocks>::begin() {
     this->enter_session_();
     if (this->is_ot_sender()) send_begin_();
     else                      recv_begin_();
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::next(block* out) {
+void SoftSpoken<k, kChunkBlocks>::next(block* out) {
     this->assert_in_session_();
     if (this->is_ot_sender()) send_next_(out);
     else                      recv_next_(out);
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::end() {
+void SoftSpoken<k, kChunkBlocks>::end() {
     if (this->is_ot_sender()) send_end_();
     else                      recv_end_();
     this->exit_session_();
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::send_begin_() {
+void SoftSpoken<k, kChunkBlocks>::send_begin_() {
     if (!setup_done) bootstrap_send_();
     cur_send_session_ = session_++;
     cur_send_b0_ = 0;
@@ -382,7 +382,7 @@ void SoftSpokenOT<k, kChunkBlocks>::send_begin_() {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::send_end_() {
+void SoftSpoken<k, kChunkBlocks>::send_end_() {
     if (malicious) {
         // Sacrificial 128-OT chunk: extends the chi-fold by one packed
         // F_{2^128} element so the revealed (check_x, check_t) doesn't
@@ -404,12 +404,12 @@ void SoftSpokenOT<k, kChunkBlocks>::send_end_() {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::send_next_(block* out) {
+void SoftSpoken<k, kChunkBlocks>::send_next_(block* out) {
     send_chunk_pipeline(out, /*bs=*/kChunkBlocks);
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
+void SoftSpoken<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
     const int64_t b0 = cur_send_b0_;             // PRG counter offset
 
     ensure_chunk_scratch_();
@@ -466,7 +466,7 @@ void SoftSpokenOT<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) 
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::recv_begin_() {
+void SoftSpoken<k, kChunkBlocks>::recv_begin_() {
     if (!setup_done) bootstrap_recv_();
     cur_recv_session_ = session_++;
     cur_recv_b0_ = 0;
@@ -474,7 +474,7 @@ void SoftSpokenOT<k, kChunkBlocks>::recv_begin_() {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::recv_end_() {
+void SoftSpoken<k, kChunkBlocks>::recv_end_() {
     if (malicious) {
         // Mirror the sender's sacrificial chunk at bs=1, then open the
         // chi-fold accumulators. Must run before the io->flush() below
@@ -490,12 +490,12 @@ void SoftSpokenOT<k, kChunkBlocks>::recv_end_() {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::recv_next_(block* out) {
+void SoftSpoken<k, kChunkBlocks>::recv_next_(block* out) {
     recv_chunk_pipeline(out, /*bs=*/kChunkBlocks);
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
+void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
     const int64_t b0 = cur_recv_b0_;
 
     ensure_chunk_scratch_();
@@ -564,7 +564,7 @@ void SoftSpokenOT<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) 
 // Same shape as IKNP::combine_send / combine_recv — see iknp.cpp.
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::combine_send_chunk(block* out, int64_t bs) {
+void SoftSpoken<k, kChunkBlocks>::combine_send_chunk(block* out, int64_t bs) {
     block seed = this->io->get_digest();
     PRG chiPRG(&seed);
     block Q_i, chi, tmp;
@@ -577,7 +577,7 @@ void SoftSpokenOT<k, kChunkBlocks>::combine_send_chunk(block* out, int64_t bs) {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpokenOT<k, kChunkBlocks>::combine_recv_chunk(block* out, const block* u_canonical, int64_t bs) {
+void SoftSpoken<k, kChunkBlocks>::combine_recv_chunk(block* out, const block* u_canonical, int64_t bs) {
     block seed = this->io->get_digest();
     PRG chiPRG(&seed);
     block T_i, chi, tmp;
@@ -596,10 +596,10 @@ void SoftSpokenOT<k, kChunkBlocks>::combine_recv_chunk(block* out, const block* 
     }
 }
 
-template class SoftSpokenOT<2>;
-template class SoftSpokenOT<4>;
-template class SoftSpokenOT<8>;
+template class SoftSpoken<2>;
+template class SoftSpoken<4>;
+template class SoftSpoken<8>;
 // Smaller-chunk variant for Ferret::bootstrap_base_cots_.
-template class SoftSpokenOT<8, emp::tuning::softspoken_ferret_bootstrap_chunk_blocks>;
+template class SoftSpoken<8, emp::tuning::softspoken_ferret_bootstrap_chunk_blocks>;
 
 } // namespace emp

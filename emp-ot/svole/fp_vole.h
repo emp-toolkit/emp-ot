@@ -124,7 +124,7 @@ struct AuthValueFp {
       //   Base_svole produces (1 + t_pre + k_pre) seed pairs.
       const int64_t triple_n = 1 + pre_param.t + pre_param.k;
       std::vector<AuthValueFp> seed_pairs(triple_n);
-      // Derived child sid for the COPE base OTCO — computed once (same
+      // Derived child sid for the COPE base CO — computed once (same
       // counter tick on both parties) and passed to whichever role runs.
       const block bv_sid = svole.sid.derive().value();
       if (svole.is_delta_holder()) {

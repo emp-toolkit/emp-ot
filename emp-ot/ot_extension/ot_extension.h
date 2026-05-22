@@ -10,7 +10,7 @@
 
 namespace emp {
 
-// Common base class for OT extensions (IKNP / SoftSpokenOT / Ferret).
+// Common base class for OT extensions (IKNP / SoftSpoken / Ferret).
 // Conceptually `OTExtension` is `StreamingExtension<block>` with two
 // additions:
 //   - rcot(data, num) — the polymorphic one-shot entry from RandomCOT.

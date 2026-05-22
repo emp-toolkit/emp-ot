@@ -10,7 +10,7 @@ namespace emp {
 
 // Default base OT for IKNP. Change here to swap; OTExtension's contract
 // just needs any malicious-secure (when malicious_=true) OT subclass.
-using IKNPBaseOT = OTCSW;
+using IKNPBaseOT = CSW;
 
 /*
  * IKNP OT Extension — RandomCOT backend.

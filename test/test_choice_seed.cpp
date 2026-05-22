@@ -66,10 +66,10 @@ int main(int argc, char** argv) {
     });
 
     check_one(io, party, "SoftSpoken<8> semi", seed, [&]{
-        return std::make_unique<SoftSpokenOT<8>>(party, io, /*malicious=*/false);
+        return std::make_unique<SoftSpoken<8>>(party, io, /*malicious=*/false);
     });
     check_one(io, party, "SoftSpoken<8> mali", seed, [&]{
-        return std::make_unique<SoftSpokenOT<8>>(party, io, /*malicious=*/true);
+        return std::make_unique<SoftSpoken<8>>(party, io, /*malicious=*/true);
     });
 
     check_one(io, party, "Ferret(b13) semi", seed, [&]{

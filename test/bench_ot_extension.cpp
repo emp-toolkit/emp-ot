@@ -49,13 +49,13 @@ template <int k>
 void run_softspoken_k(NetIO* io, int party, int64_t length) {
     char name[32];
     {
-        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(party, io, /*malicious=*/false);
+        SoftSpoken<k>* ot = new SoftSpoken<k>(party, io, /*malicious=*/false);
         snprintf(name, sizeof(name), "SoftSpoken<%d> semi", k);
         run_row(ot, io, party, length, name);
         delete ot;
     }
     {
-        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(party, io, /*malicious=*/true);
+        SoftSpoken<k>* ot = new SoftSpoken<k>(party, io, /*malicious=*/true);
         snprintf(name, sizeof(name), "SoftSpoken<%d> mali", k);
         run_row(ot, io, party, length, name);
         delete ot;

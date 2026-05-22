@@ -233,7 +233,7 @@ the session tripwire honest without an NVI dispatcher layer.
 
 namespace emp {
 
-using MyIKNPBaseOT = OTCSW;   // pick a malicious-secure base OT
+using MyIKNPBaseOT = CSW;   // pick a malicious-secure base OT
 
 class MyIKNP : public OTExtension {
 public:
@@ -320,8 +320,8 @@ do_begin/do_next/do_end pattern with five private helpers.
 ## 3. New base OT (chosen-input)
 
 Base OTs subclass `OT` (or `RandomCOT` if you want native RCOT
-output). The four existing ones (`OTCO`, `OTCSW`, `OTPVW`,
-`OTPVWKyber`) all subclass `OT` and provide:
+output). The four existing ones (`CO`, `CSW`, `PVW`,
+`PVWKyber`) all subclass `OT` and provide:
 
 ```cpp
 class MyBaseOT : public OT {

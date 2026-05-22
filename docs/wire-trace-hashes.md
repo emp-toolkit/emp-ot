@@ -42,7 +42,7 @@ Empty diff → wire-byte equivalent. Any change → see below.
 Each line of the output is one protocol invocation:
 
 ```
-OTCO                   send=b0ac916e9e5aefdc recv=1527f501eb006b21
+CO                   send=b0ac916e9e5aefdc recv=1527f501eb006b21
                        ↑ first 16 hex chars of SHA-256 over each direction
 ```
 

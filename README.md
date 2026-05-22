@@ -13,41 +13,31 @@
 >   Bug fixes and security patches will be backported to `v0.3.x`.
 > - **New projects, or willing to migrate: track the development branch**
 >   (this branch). It will become `1.0.0-alpha` after a polish pass and
->   then `1.0.0`. New SoftSpokenOT butterfly kernel with rounds 0-2
+>   then `1.0.0`. New SoftSpoken butterfly kernel with rounds 0-2
 >   fused into AES generation at k=8 (eight leaves' Davies-Meyer
 >   outputs folded through three halving levels in-register;
 >   cross-platform via emp-tool's AesLane abstraction over VAES-512 /
->   VAES-256 / AES-NI / NEON), post-quantum `OTPVWKyber` base OT,
+>   VAES-256 / AES-NI / NEON), post-quantum `PVWKyber` base OT,
 >   reorganized base OTs and extensions, the wire-equivalence framework
 >   from emp-tool 1.0 — but the API is not yet frozen and headers may
 >   move between alphas. Requires emp-tool ≥ 1.0.0-alpha.
 
 State-of-the-art OT implementations on top of [emp-tool](https://github.com/emp-toolkit/emp-tool):
-four base OTs (`OTCO`, `OTPVW`, `OTCSW`, `OTPVWKyber`), IKNP and
+four base OTs (`CO`, `PVW`, `CSW`, `PVWKyber`), IKNP and
 SoftSpoken OT extensions (semi-honest + malicious), and Ferret silent
 COT extension. All hash functions used for OT are instantiated with
 [MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/main/emp-tool/crypto/mitccrh.h)
 for optimal concrete security.
 
-> **Heads up — AI-assisted drafts, not yet audited.** The development
-> branch adds `OTPVW`, `OTCSW`, `OTPVWKyber`, and `SoftSpokenOT` on
-> top of the long-standing `OTCO` / `IKNP` / `FerretCOT` core. These
-> were implemented largely through AI-assisted coding against their
-> published specifications; the byte-equality and cross-protocol
-> consistency tests pass end-to-end, but the careful line-by-line
-> human review usually expected of cryptographic code hasn't happened
-> yet — these should be treated more as research-grade drafts than
-> vetted releases. Fine for prototyping and exploration; for
-> production paths today, stick to `OTCO` with `IKNP` / `FerretCOT`,
-> or pin to the
-> [`v0.3.x`](https://github.com/emp-toolkit/emp-ot/tree/v0.3.x) branch.
+> **Heads up — AI-assisted drafts, not yet audited.** `PVWKyber` is not
+> yet auditted.
 
 ## Requirements
 
 - CMake ≥ 3.21
 - A C++17 compiler (Clang ≥ 12, GCC ≥ 9, AppleClang 14+)
 - [emp-tool](https://github.com/emp-toolkit/emp-tool) ≥ 1.0
-- OpenSSL ≥ 3.0. `OTPVWKyber`'s SHAKE shim uses `EVP_DigestSqueeze` on
+- OpenSSL ≥ 3.0. `PVWKyber`'s SHAKE shim uses `EVP_DigestSqueeze` on
   ≥ 3.3 (one-shot squeeze) and falls back to a re-init / re-absorb
   loop on 3.0.x — same answers, slightly slower CRS expansion. No
   build-time configuration needed; the version is detected from
@@ -114,7 +104,7 @@ ctest --test-dir build --output-on-failure
 The two-party benches (`bench_iknp_rcot`, `bench_softspoken_rcot`,
 `bench_ferret_rcot`, `bench_ot_extension`, `bench_base_ot`,
 `trace_equiv`) launch ALICE/BOB on localhost via the `run` script.
-`bench_lpn`, `bench_cggm`, and `bench_sfvole_v2` are single-process
+`bench_lpn` and `bench_cggm` are single-process
 benchmarks of internal kernels.
 
 ### Wire-trace hashes
@@ -137,10 +127,10 @@ protocol's wire format changed — fine if intentional, but flag it
 clearly in the commit message and update this table.
 
 ```
-OTCO                   send=cb1241385e1fa266 recv=1527f501eb006b21
-OTCSW                  send=802e9b74d81f63a8 recv=634c8c41847634f2
-OTPVW                  send=06ff8f3498188271 recv=73bc62e4d02ea245
-OTPVWKyber             send=1708ae2aabef619e recv=d8195b395536297d
+CO                     send=cb1241385e1fa266 recv=1527f501eb006b21
+CSW                    send=802e9b74d81f63a8 recv=634c8c41847634f2
+PVW                    send=06ff8f3498188271 recv=73bc62e4d02ea245
+PVWKyber               send=1708ae2aabef619e recv=d8195b395536297d
 IKNP semi              send=dd62b5bfb8bd58b3 recv=864359025637ab39
 SoftSpoken<2> semi     send=0e7edf2b638a30db recv=3dafa542197102c0
 SoftSpoken<8> semi     send=784c7d47a9f146a2 recv=13c3d9136aaa1698
@@ -182,9 +172,9 @@ call a lower-level method on a higher-level object.
 
 Concrete classes attach as follows:
 
-- **Base OTs** (`OT` only): `OTCO`, `OTPVW`, `OTCSW`, `OTPVWKyber`.
+- **Base OTs** (`OT` only): `CO`, `PVW`, `CSW`, `PVWKyber`.
 - **OT extensions** (`OTExtension`, so all of the above): `IKNP`,
-  `SoftSpokenOT<k>`, `Ferret`.
+  `SoftSpoken<k>`, `Ferret`.
 
 The chosen-input / chosen-correlation / random conversions are
 implemented once in the base classes (one MITCCRH pass per OT for the
@@ -194,7 +184,7 @@ flavor.
 
 ### Base OTs
 
-The four base OTs (`OTCO`, `OTPVW`, `OTCSW`, `OTPVWKyber`) implement
+The four base OTs (`CO`, `PVW`, `CSW`, `PVWKyber`) implement
 only the `OT` interface — chosen-input 1-out-of-2.
 
 ```cpp
@@ -202,23 +192,23 @@ block m0[length], m1[length];   // sender's two messages
 block mc[length];               // receiver's chosen message
 bool  c [length];               // receiver's choice bits
 
-OTPVW ot(&io);
+PVW ot(&io);
 if (party == ALICE) ot.send(m0, m1, length);
 else                ot.recv(mc, c, length);    // mc[i] = m_{c[i]}
 ```
 
-All four implement the same `OT` interface. `OTCO` is semi-honest;
-`OTCSW`, `OTPVW`, `OTPVWKyber` are malicious-secure.
+All four implement the same `OT` interface. `CO` is semi-honest;
+`CSW`, `PVW`, `PVWKyber` are malicious-secure.
 
 ### OT extensions
 
-`IKNP`, `SoftSpokenOT<k>`, and `Ferret` all derive from
+`IKNP`, `SoftSpoken<k>`, and `Ferret` all derive from
 `RandomCOT`, take the same constructor shape, and the same object
 exposes all four flavors:
 
 ```cpp
 IKNP ote(party, &io);
-// SoftSpokenOT<2> ote(party, &io); Ferret ote(party, &io); ... all the same below.
+// SoftSpoken<2> ote(party, &io); Ferret ote(party, &io); ... all the same below.
 block buf[length];
 
 // rcot() is single-method and role-implicit — the instance's party
@@ -264,18 +254,18 @@ if (party == ALICE) {
 otherwise).
 
 Each extension can be parameterized to bootstrap from a non-default
-base OT (default is `OTPVW`); pair an extension's malicious mode with
-a malicious-secure base — `IKNP` / `SoftSpokenOT` / `Ferret` check
+base OT (default is `PVW`); pair an extension's malicious mode with
+a malicious-secure base — `IKNP` / `SoftSpoken` / `Ferret` check
 this at construction time and abort otherwise.
 
 ```cpp
 IKNP            ote1(party, &io, /*malicious=*/true,
-                     std::make_unique<OTCSW>(&io));
-SoftSpokenOT<4> ote2(party, &io, /*malicious=*/true,
-                     std::make_unique<OTCSW>(&io));      // k=4
+                     std::make_unique<CSW>(&io));
+SoftSpoken<4>   ote2(party, &io, /*malicious=*/true,
+                     std::make_unique<CSW>(&io));      // k=4
 Ferret          ote3(party, &io, /*malicious=*/true,
                      ferret_b13,
-                     std::make_unique<OTCSW>(&io));
+                     std::make_unique<CSW>(&io));
 ```
 
 ### Streaming RCOT
@@ -311,10 +301,10 @@ One batch of 128 base OTs.
 
 | Protocol     | Time   |  Send B |  Recv B | Security                                     |
 |--------------|-------:|--------:|--------:|----------------------------------------------|
-| `OTCO`       | 6.2 ms |   4,165 |   8,832 | semi-honest                                  |
-| `OTCSW`      | 9.3 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
-| `OTPVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `OTPVWKyber` | 7.3 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
+| `CO`       | 6.2 ms |   4,165 |   8,832 | semi-honest                                  |
+| `CSW`      | 9.3 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
+| `PVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
+| `PVWKyber` | 7.3 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
 
 ### OT extensions (RCOT throughput)
 

@@ -29,11 +29,11 @@ int main(int argc, char **argv) {
 	     << " — " << length << " base OTs:\n";
 
 	{
-		OTCO co(io);
+		CO co(io);
 		run_one("CO", &co, io, party, length);
 	}
 	{
-		OTPVW pvw(io);
+		PVW pvw(io);
 		run_one("PVW", &pvw, io, party, length);
 	}
 	{
@@ -41,13 +41,13 @@ int main(int argc, char **argv) {
 		// zero_block. The bench sets a deterministic test sid so cross-party
 		// transcripts match exactly.
 		block sid = makeBlock(0xCAFEBABE12345678ULL, 0xDEADBEEFFACEFEEDULL);
-		OTCSW csw(io);
+		CSW csw(io);
 		csw.set_sid(sid);
 		run_one("CSW", &csw, io, party, length);
 	}
 	{
 		block sid = makeBlock(0xCAFEBABE12345678ULL, 0x0BADC0DE0DEFACE0ULL);
-		OTPVWKyber pvw_kyber(io);
+		PVWKyber pvw_kyber(io);
 		pvw_kyber.set_sid(sid);
 		run_one("PVWKy", &pvw_kyber, io, party, length);
 	}

@@ -141,10 +141,10 @@ int main(int argc, char** argv) {
     const bool base_sf = (party == ALICE);
 
     // Base OTs.
-    measure(party, port, "OTCO",       base_sf, [&](NetIO* io){ run_base_ot<OTCO>      (io, party, base_len); });
-    measure(party, port, "OTCSW",      base_sf, [&](NetIO* io){ run_base_ot<OTCSW>     (io, party, base_len); });
-    measure(party, port, "OTPVW",      base_sf, [&](NetIO* io){ run_base_ot<OTPVW>     (io, party, base_len); });
-    measure(party, port, "OTPVWKyber", base_sf, [&](NetIO* io){ run_base_ot<OTPVWKyber>(io, party, base_len); });
+    measure(party, port, "CO",       base_sf, [&](NetIO* io){ run_base_ot<CO>      (io, party, base_len); });
+    measure(party, port, "CSW",      base_sf, [&](NetIO* io){ run_base_ot<CSW>     (io, party, base_len); });
+    measure(party, port, "PVW",      base_sf, [&](NetIO* io){ run_base_ot<PVW>     (io, party, base_len); });
+    measure(party, port, "PVWKyber", base_sf, [&](NetIO* io){ run_base_ot<PVWKyber>(io, party, base_len); });
 
     for (bool mali : {false, true}) {
         const string mode = mali ? "mali" : "semi";
@@ -158,15 +158,15 @@ int main(int argc, char** argv) {
         measure(party, port, "SoftSpoken<2> " + mode, rcot_sf, [&](NetIO* io){
             run_rcot(io, party, rcot_len,
                 [&](IOChannel* x, bool m) {
-                    return std::unique_ptr<SoftSpokenOT<2>>(
-                        new SoftSpokenOT<2>(party, x, m));
+                    return std::unique_ptr<SoftSpoken<2>>(
+                        new SoftSpoken<2>(party, x, m));
                 }, mali);
         });
         measure(party, port, "SoftSpoken<8> " + mode, rcot_sf, [&](NetIO* io){
             run_rcot(io, party, rcot_len,
                 [&](IOChannel* x, bool m) {
-                    return std::unique_ptr<SoftSpokenOT<8>>(
-                        new SoftSpokenOT<8>(party, x, m));
+                    return std::unique_ptr<SoftSpoken<8>>(
+                        new SoftSpoken<8>(party, x, m));
                 }, mali);
         });
         measure(party, port, "Ferret(b11) " + mode, rcot_sf, [&](NetIO* io){

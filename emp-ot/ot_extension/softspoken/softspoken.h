@@ -1,5 +1,5 @@
-#ifndef EMP_SOFTSPOKEN_OT_H__
-#define EMP_SOFTSPOKEN_OT_H__
+#ifndef EMP_SOFTSPOKEN_H__
+#define EMP_SOFTSPOKEN_H__
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/ot_extension/ot_extension.h"
 #include "emp-ot/base_ot/csw.h"
@@ -12,9 +12,9 @@
 
 namespace emp {
 
-// Default base OT for SoftSpokenOT. Change here to swap; OTExtension's
+// Default base OT for SoftSpoken. Change here to swap; OTExtension's
 // contract just needs any malicious-secure (when malicious_=true) OT.
-using SoftSpokenBaseOT = OTCSW;
+using SoftSpokenBaseOT = CSW;
 
 } // namespace emp
 
@@ -22,7 +22,7 @@ namespace emp { namespace softspoken {
 
 // Conv: F_2-linear bit packing between F_{2^k}^n and F_{2^128}. Bulk
 // direction is one sse_trans_n128 of the plane buffer (see
-// softspoken_ot.cpp); the scalar inverse (Δ → n α_i bytes) is inlined
+// softspoken.cpp); the scalar inverse (Δ → n α_i bytes) is inlined
 // at bootstrap_send_'s single use site.
 
 template <int k>
@@ -46,26 +46,26 @@ constexpr int chunk_blocks_for() {
 namespace emp {
 
 // SoftSpoken OT Extension — RandomCOT subclass.
-// [REF] L. Roy, "SoftSpokenOT" (Crypto '22, eprint 2022/192).
+// [REF] L. Roy, "SoftSpoken" (Crypto '22, eprint 2022/192).
 //
 // Templated on k = F_{2^k} sub-field exponent (k ∈ {2, 4, 8}). Larger k
 // = less bandwidth (~κ/k B/COT) but more compute (~2^k/k AES blocks
-// /COT). Pre-instantiated for k in {2, 4, 8} in softspoken_ot.cpp.
+// /COT). Pre-instantiated for k in {2, 4, 8} in softspoken.cpp.
 //
-// Pipeline + malicious-mode design lives in softspoken_ot.cpp.
+// Pipeline + malicious-mode design lives in softspoken.cpp.
 template <int k, int kChunkBlocks = softspoken::chunk_blocks_for<k>()>
-class SoftSpokenOT : public OTExtension {
-    static_assert(k >= 1 && k <= 8, "SoftSpokenOT supports k in [1, 8]");
+class SoftSpoken : public OTExtension {
+    static_assert(k >= 1 && k <= 8, "SoftSpoken supports k in [1, 8]");
 public:
     static constexpr int n = softspoken::n_subvoles<k>();
     static constexpr int Q = 1 << k;
 
-    // Default base OT is OTCSW (CDH-based "Blazing Fast" OT, malicious-secure).
-    // Pass another (OTPVW / OTPVWKyber) via the fourth ctor arg.
-    explicit SoftSpokenOT(int party, IOChannel* io_,
+    // Default base OT is CSW (CDH-based "Blazing Fast" OT, malicious-secure).
+    // Pass another (PVW / PVWKyber) via the fourth ctor arg.
+    explicit SoftSpoken(int party, IOChannel* io_,
                           bool malicious = true,
                           std::unique_ptr<OT> base_ot = nullptr);
-    ~SoftSpokenOT() override = default;
+    ~SoftSpoken() override = default;
 
     static constexpr int kChunkBlocks_value = kChunkBlocks;
     static constexpr int kChunkOTs          = kChunkBlocks * 128;
@@ -131,11 +131,11 @@ private:
     void recv_end_();
 };
 
-extern template class SoftSpokenOT<2>;
-extern template class SoftSpokenOT<4>;
-extern template class SoftSpokenOT<8>;
+extern template class SoftSpoken<2>;
+extern template class SoftSpoken<4>;
+extern template class SoftSpoken<8>;
 // Smaller-chunk variant for Ferret::bootstrap_base_cots_.
-extern template class SoftSpokenOT<8, emp::tuning::softspoken_ferret_bootstrap_chunk_blocks>;
+extern template class SoftSpoken<8, emp::tuning::softspoken_ferret_bootstrap_chunk_blocks>;
 
 } // namespace emp
 #endif

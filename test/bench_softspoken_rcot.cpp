@@ -1,4 +1,4 @@
-// SoftSpokenOT<k> RCOT-only bench, k ∈ {2, 4, 8}, semi + malicious.
+// SoftSpoken<k> RCOT-only bench, k ∈ {2, 4, 8}, semi + malicious.
 // Two-party via `run`. Default length is sized for tighter RCOT-path
 // timing.
 #include "test/test.h"
@@ -6,21 +6,21 @@ using namespace std;
 
 template <int k>
 void run_k(NetIO* io, int party, int64_t length) {
-    auto bench = [&](const char* mode_name, SoftSpokenOT<k>* ot) {
+    auto bench = [&](const char* mode_name, SoftSpoken<k>* ot) {
         uint64_t ds = 0, dr = 0;
-        double us = test_rcot<SoftSpokenOT<k>>(ot, io, party, length, &ds, &dr);
+        double us = test_rcot<SoftSpoken<k>>(ot, io, party, length, &ds, &dr);
         cout << "SoftSpoken<" << k << "> " << mode_name << " RCOT\t"
              << double(length) / us << " MOTps  "
              << "send=" << double(ds) / length << " B/COT  "
              << "recv=" << double(dr) / length << " B/COT" << endl;
     };
     {
-        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(party, io, /*malicious=*/false);
+        SoftSpoken<k>* ot = new SoftSpoken<k>(party, io, /*malicious=*/false);
         bench("semi", ot);
         delete ot;
     }
     {
-        SoftSpokenOT<k>* ot = new SoftSpokenOT<k>(party, io, /*malicious=*/true);
+        SoftSpoken<k>* ot = new SoftSpoken<k>(party, io, /*malicious=*/true);
         bench("mali", ot);
         delete ot;
     }

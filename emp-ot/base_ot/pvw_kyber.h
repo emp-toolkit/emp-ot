@@ -8,7 +8,7 @@ namespace emp {
 
 /*
  * Peikert-Vaikuntanathan-Waters base OT instantiated with Kyber's
- * Module-LWE primitives (post-quantum analogue of OTPVW '08, which
+ * Module-LWE primitives (post-quantum analogue of PVW '08, which
  * lives in emp-ot/base_ot/pvw.h and uses elliptic-curve groups).
  * [REF] PVW '08, "A Framework for Efficient and Composable Oblivious
  *       Transfer", https://eprint.iacr.org/2007/348.
@@ -50,18 +50,18 @@ namespace emp {
  * shape (FIPS 203 §5.5; ML-KEM-512 failure rate ≈ 2^{-139} per coeff).
  * Wrong-branch hiding follows from DMLWE on the (V_b - V_β) shift.
  */
-class OTPVWKyber : public OT {
+class PVWKyber : public OT {
 public:
     // Messy-mode PVW over Module-LWE: receiver-secure under DMLWE
     // against a malicious sender; sender statistically secure against
-    // a malicious receiver. Same security shape as OTPVW (DDH-based)
+    // a malicious receiver. Same security shape as PVW (DDH-based)
     // but post-quantum.
     bool is_malicious_secure() const override { return true; }
 
     // sid is the inherited OT::sid (default zero_block); set via OT::set_sid
     // before first use. It seeds the CRS expansion and output-key derivation.
-    explicit OTPVWKyber(IOChannel* io_);
-    ~OTPVWKyber() override = default;
+    explicit PVWKyber(IOChannel* io_);
+    ~PVWKyber() override = default;
 
     void send(const block* data0, const block* data1, int64_t length) override;
     void recv(block* data, const bool* b, int64_t length) override;

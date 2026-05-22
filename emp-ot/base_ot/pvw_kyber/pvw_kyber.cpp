@@ -58,9 +58,9 @@ inline void sample_polyvec_eta1(polyvec* p, const uint8_t seed[kSymBytes],
 
 }  // anonymous namespace
 
-OTPVWKyber::OTPVWKyber(IOChannel* io_) : io(io_) {}
+PVWKyber::PVWKyber(IOChannel* io_) : io(io_) {}
 
-void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
+void PVWKyber::send(const block* data0, const block* data1, int64_t length) {
     if (length <= 0) return;
 
     uint8_t session_seed[kSymBytes];
@@ -77,7 +77,7 @@ void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
     polyvec_ntt(&V[1]);
 
     // Pull all of receiver's t's in one batched recv (one round-trip
-    // for the entire batch — matches the OTCSW pattern).
+    // for the entire batch — matches the CSW pattern).
     default_init_vector<uint8_t> recv_t_batch((size_t)length * kRecvBytesPerOT);
     io->recv_data(recv_t_batch.data(), (size_t)length * kRecvBytesPerOT);
 
@@ -150,7 +150,7 @@ void OTPVWKyber::send(const block* data0, const block* data1, int64_t length) {
     io->send_data(send_buf.data(), (size_t)length * kSendBytesPerOT);
 }
 
-void OTPVWKyber::recv(block* data, const bool* b, int64_t length) {
+void PVWKyber::recv(block* data, const bool* b, int64_t length) {
     if (length <= 0) return;
 
     uint8_t session_seed[kSymBytes];

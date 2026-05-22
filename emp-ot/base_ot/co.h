@@ -1,5 +1,5 @@
-#ifndef EMP_OTCO_H__
-#define EMP_OTCO_H__
+#ifndef EMP_CO_H__
+#define EMP_CO_H__
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/ot.h"
 #include <vector>
@@ -11,9 +11,9 @@ namespace emp {
  * https://eprint.iacr.org/2015/267.pdf
  *
  */
-class OTCO: public OT { public:
+class CO: public OT { public:
 	ECGroup G;
-	OTCO(IOChannel* io) { this-> io = io;}
+	CO(IOChannel* io) { this-> io = io;}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
 		block res[2];

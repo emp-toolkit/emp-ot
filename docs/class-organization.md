@@ -20,15 +20,15 @@ emp-ot/
 ├── tuning.h               PrimalLPNParameter + tuned constants
 │
 ├── base_ot/               OT (chosen-input) implementations
-│   ├── co.h                     OTCO         (Chou-Orlandi)
-│   ├── csw.h                    OTCSW        (CSW "blazing-fast")
-│   ├── pvw.h                    OTPVW        (Peikert-Vaikuntanathan-Waters)
-│   └── pvw_kyber.h              OTPVWKyber   (PVW over Kyber, post-quantum)
+│   ├── co.h                     CO         (Chou-Orlandi)
+│   ├── csw.h                    CSW        (CSW "blazing-fast")
+│   ├── pvw.h                    PVW        (Peikert-Vaikuntanathan-Waters)
+│   └── pvw_kyber.h              PVWKyber   (PVW over Kyber, post-quantum)
 │
 ├── ot_extension/          RandomCOT extensions
 │   ├── ot_extension.h           OTExtension base
 │   ├── iknp.{h,cpp}             IKNP
-│   ├── softspoken/              SoftSpokenOT<k, kChunkBlocks>
+│   ├── softspoken/              SoftSpoken<k, kChunkBlocks>
 │   └── ferret/                  Ferret (+ AuthValueFerret carrier)
 │
 └── svole/                 sVOLE
@@ -68,7 +68,7 @@ emp-ot/
               │
    ┌──────────┼──────────┬─────────────────┐
    │          │          │                 │
-  IKNP    SoftSpokenOT  Ferret
+  IKNP    SoftSpoken  Ferret
                 <k>
 ```
 
@@ -98,7 +98,7 @@ OTExtension : public RandomCOT, public StreamingExtension<block>
     enter_session_ / exit_session_ / assert_in_session_ helpers)
     ├── IKNP                    (inline party-dispatch to
     │                            send/recv_{begin,next,end}_)
-    ├── SoftSpokenOT<k, kChunkBlocks>  (same shape as IKNP)
+    ├── SoftSpoken<k, kChunkBlocks>  (same shape as IKNP)
     └── Ferret                  (unified body per stage; party-dispatch
                                  inside the per-tree helpers)
 ```
