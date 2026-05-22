@@ -16,10 +16,17 @@
 //                 + Δ / base_ot / choice_prg
 //   Svole<AuthValue> : public StreamingExtension<AuthValue> (sVOLE)
 //
-// Lifecycle: begin → loop next* → end. One-shot wrapper run(data, num)
-// drains a per-instance leftover buffer so non-chunk-multiple requests
-// don't pay a fresh chunk per call. Lazy setup is gated by the
-// `setup_done` flag (subclass flips it inside its first begin).
+// Lifecycle: begin → loop next* → end. Two convenience draws sit on top
+// of the begin/next/end primitives:
+//   - run(data, num)   — one-shot: opens and closes a session per call,
+//     draining a per-instance leftover buffer so non-chunk-multiple
+//     requests don't pay a fresh chunk per call.
+//   - next_n(dst, n)   — buffered draw *within* a caller-owned session
+//     (begin once, draw incrementally, end once). Keeps the round-end
+//     work amortized over the whole session instead of per call, which
+//     matters for callers that consume a few elements at a time.
+// Lazy setup is gated by the `setup_done` flag (subclass flips it inside
+// its first begin).
 //
 // Each instance is single-role at runtime (`party` is fixed at
 // construction). begin/next/end are virtual — subclasses override them
@@ -75,6 +82,37 @@ public:
         end();
     }
 
+    // Buffered multi-element draw within an open session: produce `n`
+    // elements into `dst`, refilling an internal chunk buffer via the
+    // single-element next() as needed. Lets a caller consume the stream
+    // incrementally (even one element at a time) while the round-end work
+    // (refill trees + malicious check) amortizes over the whole session —
+    // unlike run(), which opens/closes a session per call. The caller owns
+    // the session: begin() once (e.g. in its constructor), draw via
+    // next_n(dst, n), end() once (e.g. in its destructor). enter_session_
+    // resets the buffer, so a fresh begin() never serves a stale tail.
+    // (Distinct name, not `next`, so it isn't hidden by the subclass's
+    // single-element next() override.)
+    void next_n(Element *dst, int64_t n) {
+        assert_in_session_();
+        const int64_t chunk = chunk_size();
+        int64_t got = 0;
+        while (got < n) {
+            if (leftover_count_ == 0) {
+                if ((int64_t)leftover_.size() < chunk) leftover_.resize(chunk);
+                next(leftover_.data());        // virtual single-chunk next
+                leftover_pos_   = 0;
+                leftover_count_ = chunk;
+            }
+            const int64_t take = std::min<int64_t>(n - got, leftover_count_);
+            std::memcpy(dst + got, leftover_.data() + leftover_pos_,
+                        take * sizeof(Element));
+            leftover_pos_   += take;
+            leftover_count_ -= take;
+            got += take;
+        }
+    }
+
     virtual ~StreamingExtension() {
         // Always-on (not just debug): a missed end() leaves the wire
         // transcript / FS state desynchronized — silently OK in NDEBUG
@@ -93,6 +131,9 @@ protected:
     void enter_session_() {
         assert(!in_session_ && "begin: previous session not ended");
         in_session_ = true;
+        // Drop any leftover from a prior session so next_n() / run() never
+        // serve a stale chunk tail across a begin().
+        leftover_count_ = 0;
     }
     void exit_session_() {
         assert(in_session_ && "end: no active session");

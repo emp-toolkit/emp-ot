@@ -168,7 +168,7 @@ call a lower-level method on a higher-level object.
 | `OT`                      | `send(m0, m1, n)` / `recv(mc, c, n)`              | chosen-input 1-out-of-2: sender supplies both messages, receiver picks one      |
 | `COT : OT`                | `send_cot(m0, n)` / `recv_cot(mc, c, n)`; free `send_rot`/`recv_rot` | chosen-correlation: sender's two messages always differ by a public `Delta` |
 | `RandomCOT : COT`         | `rcot(data, n)` (role implicit in instance party) | random correlation: no choice-bit input; receiver's choice ends up in `getLSB(data[i])`, and `Delta`'s LSB is forced to 1 so the correlation survives that one bit |
-| `OTExtension : RandomCOT` | `set_delta(const bool* delta_bool)` (sender-only Δ override), `chunk_size()`, `begin/next/end`, `run(data, num)` | streaming RCOT (one fixed-size chunk per `next`); base-OT bootstrap fires lazily on the first `begin` |
+| `OTExtension : RandomCOT` | `set_delta(const bool* delta_bool)` (sender-only Δ override), `chunk_size()`, `begin/next/end`, `next_n(data, n)`, `run(data, num)` | streaming RCOT (one fixed-size chunk per `next`); base-OT bootstrap fires lazily on the first `begin` |
 
 Concrete classes attach as follows:
 
@@ -289,6 +289,25 @@ ote.end();
 The one-shot `rcot(data, num)` is implemented in terms of this
 streaming API plus a small leftover buffer for tails that aren't a
 multiple of `chunk_size()`.
+
+For callers that consume the stream **incrementally** — even one COT at
+a time — draw from a single long-lived session with `next_n(dst, n)`
+instead of calling `rcot` repeatedly:
+
+```cpp
+ote.begin();                       // open one session (e.g. in your ctor)
+ote.next_n(&one, 1);               // draw any count; refills a chunk internally
+ote.next_n(batch.data(), k);       // …amortizes the per-round end-work
+ote.end();                         // close it (e.g. in your dtor)
+```
+
+This matters because `rcot(data, num)` opens and closes a session per
+call, so the per-round end-work (refill trees + the malicious chi-fold
+check) is paid every `chunk_size()` COTs. `next_n` keeps one session
+open, amortizing that over the whole stream — e.g. emp-zk's per-AND-gate
+COT draw is ~20× faster this way than calling `rcot(_, 1)` in a loop.
+`next_n` is mutually exclusive with `run()`/`rcot()` on the same
+instance (both touch the same leftover buffer).
 
 ## Performance
 

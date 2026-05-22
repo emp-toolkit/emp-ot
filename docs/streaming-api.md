@@ -1,11 +1,17 @@
 # Streaming API
 
 Every OT-extension and sVOLE-extension instance is a streaming
-producer: callers either ask for a fixed-size batch at a time
-(`begin` → `next* → `end`) or hand off the chunking to the library
-(`run(data, num)`). This doc covers the lifecycle, the leftover
-buffer, the dual-role wrapper, auto-rollover, and the Fiat-Shamir
-hooks.
+producer. Callers pick one of three access styles:
+
+- a fixed-size batch at a time, owning the session (`begin` → `next*`
+  → `end`);
+- an arbitrary-size *incremental* draw within a session they own
+  (`begin` → `next_n*` → `end`) — refills a chunk internally;
+- hand the whole thing to the library as a one-shot (`run(data, num)`),
+  which opens and closes a session per call.
+
+This doc covers the lifecycle, the leftover buffer, `next_n`, the
+dual-role wrapper, auto-rollover, and the Fiat-Shamir hooks.
 
 The base lives in
 [`emp-ot/common/streaming_extension.h`](../emp-ot/common/streaming_extension.h)
@@ -22,10 +28,11 @@ virtual void    next(Element* out) = 0;
 virtual void    end() = 0;
 ```
 
-Plus one public non-virtual entry point the base provides:
+Plus two public non-virtual entry points the base provides:
 
 ```cpp
-void run(Element* data, int64_t num);   // one-shot (leftover-buffer drain)
+void run   (Element* data, int64_t num);  // one-shot: opens+closes a session per call
+void next_n(Element* dst,  int64_t n);    // buffered draw within a caller-owned session
 ```
 
 The lifecycle is
@@ -109,6 +116,58 @@ and then either returns or continues with `begin`/`next` loop.
 
 In other words, repeated `run(...)` calls on the same instance with
 `num != k·chunk_size()` don't pay a fresh chunk per call.
+
+## Incremental draw (`next_n(dst, n)`)
+
+`run()` is convenient but opens and closes a session *per call*. For a
+backend that consumes the stream a little at a time (emp-zk draws one
+COT per AND gate, a few per multiplication), that means paying the
+per-round end-work — `run_refill_`'s refill trees **plus** the
+malicious chi-fold check — every `chunk_size()` elements, amortized
+over a single produced tree instead of a whole round (~hundreds of
+trees). That was a ~20× slowdown in emp-zk before this API.
+
+`next_n` instead draws from one long-lived session the caller owns:
+
+```cpp
+void next_n(Element *dst, int64_t n) {
+    assert_in_session_();
+    const int64_t chunk = chunk_size();
+    int64_t got = 0;
+    while (got < n) {
+        if (leftover_count_ == 0) {        // refill one chunk
+            next(leftover_.data());        // the virtual single-chunk next
+            leftover_pos_ = 0; leftover_count_ = chunk;
+        }
+        int64_t take = std::min(n - got, leftover_count_);
+        memcpy(dst + got, leftover_.data() + leftover_pos_, take * sizeof(Element));
+        leftover_pos_ += take; leftover_count_ -= take; got += take;
+    }
+}
+```
+
+Usage — the caller owns the session (typically begin in its ctor, end
+in its dtor):
+
+```cpp
+ote.begin();
+ote.next_n(&one, 1);            // any count; refills a chunk internally
+ote.next_n(batch.data(), k);    // round-end work amortizes over the whole session
+ote.end();
+```
+
+Notes:
+- It shares the same `leftover_` buffer as `run()`, so the two are
+  **mutually exclusive** on one instance — pick streaming (`next_n` /
+  `begin`/`next`/`end`) *or* one-shot (`run` / `rcot`), not both.
+- `enter_session_()` resets `leftover_count_ = 0`, so a fresh `begin()`
+  never serves a stale tail from a previous session. (This is also why
+  it composes with auto-rollover: the internal `end()`/`begin()` only
+  fires when the buffer is empty mid-refill, so nothing is dropped.)
+- The name is `next_n`, not an overload of `next`, on purpose: a
+  subclass's `next(Element*)` override would otherwise hide a base
+  `next(Element*, int64_t)` overload (C++ name hiding), forcing a
+  `using` in every subclass. A distinct name avoids that.
 
 ## The polymorphic entry on OTExtension
 
@@ -223,6 +282,12 @@ A protocol may also have FS pre-enabled by an outer harness; the
 A protocol object destructed in the middle of a session is a bug —
 the leftover buffer may hold un-consumed bytes; the peer is waiting
 for more. The base catches this at all build flavors (not just debug).
+This is also the tripwire for a `next_n` caller that forgets to
+`end()`: since `next_n` keeps the session open, the owner must close it
+(e.g. in its destructor) before the extension is destroyed — `end()`
+must run while the concrete subclass is still alive, so it can't be
+called from `~StreamingExtension` itself (the override would already be
+gone).
 
 ## What about `setup_done`?
 
