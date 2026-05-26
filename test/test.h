@@ -31,7 +31,7 @@ double test_ot(T * ot, NetIO *io, int party, int64_t length,
 	PRG prg2;
 	prg2.random_bool(b, length);
 
-	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
+	uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 	auto start = clock_start();
 	if (party == ALICE) {
 		ot->send(b0, b1, length);
@@ -40,8 +40,8 @@ double test_ot(T * ot, NetIO *io, int party, int64_t length,
 	}
 	io->flush();
 	long long t = time_from(start);
-	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
-	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
+	if (bytes_sent_out) *bytes_sent_out = io->send_counter - s0;
+	if (bytes_recv_out) *bytes_recv_out = io->recv_counter - r0;
 	if (party == BOB) {
 		for (int64_t i = 0; i < length; ++i) {
 			if (b[i]){ if(!cmpBlock(&r[i], &b1[i], 1)) {
@@ -75,7 +75,7 @@ double test_cot(T * ot, NetIO *io, int party, int64_t length,
 	prg.random_bool(b, length);
 
 	io->sync();
-	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
+	uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 	auto start = clock_start();
 	if (party == ALICE) {
 		ot->send_cot(b0, length);
@@ -85,8 +85,8 @@ double test_cot(T * ot, NetIO *io, int party, int64_t length,
 	}
 	io->flush();
 	long long t = time_from(start);
-	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
-	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
+	if (bytes_sent_out) *bytes_sent_out = io->send_counter - s0;
+	if (bytes_recv_out) *bytes_recv_out = io->recv_counter - r0;
 	if (party == ALICE) {
 		io->send_block(&delta, 1);
 		io->send_block(b0, length);
@@ -124,7 +124,7 @@ double test_rot(T* ot, NetIO *io, int party, int64_t length,
 	prg.random_bool(b, length);
 
 	io->sync();
-	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
+	uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 	auto start = clock_start();
 	if (party == ALICE) {
 		ot->send_rot(b0, b1, length);
@@ -133,8 +133,8 @@ double test_rot(T* ot, NetIO *io, int party, int64_t length,
 	}
 	io->flush();
 	long long t = time_from(start);
-	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
-	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
+	if (bytes_sent_out) *bytes_sent_out = io->send_counter - s0;
+	if (bytes_recv_out) *bytes_recv_out = io->recv_counter - r0;
 	if (party == ALICE) {
 		io->send_block(b0, length);
 		io->send_block(b1, length);
@@ -189,12 +189,12 @@ double test_rcot(T* ot, NetIO *io, int party, int64_t length,
                  uint64_t* bytes_recv_out = nullptr) {
 	block *b = new block[length];
 	io->sync();
-	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
+	uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 	auto start = clock_start();
 	ot->rcot(b, length);
 	long long t = time_from(start);
-	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
-	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
+	if (bytes_sent_out) *bytes_sent_out = io->send_counter - s0;
+	if (bytes_recv_out) *bytes_recv_out = io->recv_counter - r0;
 	verify_rcot(ot, io, party, b, length);
 	delete[] b;
 	return t;
@@ -218,7 +218,7 @@ double test_rcot_streaming(T* ot, NetIO *io, int party, int64_t length,
 
 	block *b = new block[eff_len];
 	io->sync();
-	uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
+	uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 	auto start = clock_start();
 	if (party == ALICE) {
 		ot->begin();
@@ -232,8 +232,8 @@ double test_rcot_streaming(T* ot, NetIO *io, int party, int64_t length,
 		ot->end();
 	}
 	long long t = time_from(start);
-	if (bytes_sent_out) *bytes_sent_out = io->bytes_sent - s0;
-	if (bytes_recv_out) *bytes_recv_out = io->bytes_recv - r0;
+	if (bytes_sent_out) *bytes_sent_out = io->send_counter - s0;
+	if (bytes_recv_out) *bytes_recv_out = io->recv_counter - r0;
 	verify_rcot(ot, io, party, b, eff_len);
 	delete[] b;
 	return t;

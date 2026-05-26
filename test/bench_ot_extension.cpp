@@ -21,7 +21,7 @@ void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) 
 
     BlockVec buf(chunk);
     io->sync();
-    uint64_t s0 = io->bytes_sent, r0 = io->bytes_recv;
+    uint64_t s0 = io->send_counter, r0 = io->recv_counter;
     auto start = clock_start();
     if (party == ALICE) {
         ot->begin();
@@ -36,8 +36,8 @@ void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) 
     }
     io->flush();
     long long us = time_from(start);
-    uint64_t ds = io->bytes_sent - s0;
-    uint64_t dr = io->bytes_recv - r0;
+    uint64_t ds = io->send_counter - s0;
+    uint64_t dr = io->recv_counter - r0;
 
     cout << row_name << "\t"
          << double(eff_len) / us << " MOTps  "
