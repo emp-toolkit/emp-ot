@@ -44,6 +44,16 @@ public:
     bool malicious = false;
     bool setup_done = false;
 
+    // Per-chunk extend (next()) traffic direction: does the ALICE-role party
+    // (party == ALICE) send during next(), or receive? Callers that interleave
+    // a streaming extension with a fixed-direction protocol on the same socket
+    // read this to place the send-dominant role on the send channel and avoid
+    // flipping a socket's direction mid-stream. Subclasses redefine it from
+    // their own next() body; the default (false = ALICE recv-dominant) matches
+    // IKNP / SoftSpoken. (begin()/end() bookends may differ but run before/after
+    // the streaming loop, so only the per-chunk direction matters here.)
+    static constexpr bool kSenderSendsOnExtend = false;
+
     virtual int64_t chunk_size() const = 0;
 
     // Streaming lifecycle. Each subclass overrides these with its

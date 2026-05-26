@@ -60,6 +60,11 @@ class IKNP : public OTExtension { public:
 	void next(block *out) override;
 	void end() override;
 
+	// Per-chunk extend direction: the OT-sender role is recv-dominant
+	// (send_next_ recv_data's the receiver's matrix correction); the receiver
+	// send-dominant. Same as SoftSpoken.
+	static constexpr bool kSenderSendsOnExtend = false;
+
 private:
 	// ===== State =====
 	static constexpr int64_t block_size = tuning::iknp_chunk_ots;

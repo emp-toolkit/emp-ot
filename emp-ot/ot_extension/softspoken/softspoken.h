@@ -71,6 +71,13 @@ public:
     static constexpr int kChunkOTs          = kChunkBlocks * 128;
     int64_t chunk_size() const override { return kChunkOTs; }
 
+    // Per-chunk extend (next()) traffic direction: the OT-sender role here is
+    // recv-dominant (recv_block of the d_buf correction), the receiver send-
+    // dominant. Callers that interleave the COT with a fixed-direction protocol
+    // on the same sockets read this to place the send-dominant role on the
+    // send channel. (Ferret is the opposite — its sender sends per tree.)
+    static constexpr bool kSenderSendsOnExtend = false;
+
     // StreamingExtension lifecycle. Party-dispatches inline to the
     // private per-role helpers below — SoftSpoken's sender and receiver
     // paths share no per-stage work.

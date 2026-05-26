@@ -129,6 +129,15 @@ public:
 	void next(block *out) override;
 	void end() override;
 
+	// Per-chunk extend (next()) traffic direction: the OT-sender role is
+	// send-dominant per tree (MPCOT_Sender::run_next_tree sends the cGGM
+	// correction + secret_sum), the receiver recv-dominant — the opposite of
+	// SoftSpoken. Callers interleaving the COT with a fixed-direction protocol
+	// on the same sockets read this to place the send-dominant role on the send
+	// channel. (begin()'s nested-SoftSpoken bootstrap is recv-dominant, but
+	// that is an isolated one-time bookend, not the per-chunk streaming path.)
+	static constexpr bool kSenderSendsOnExtend = true;
+
 private:
 	// Per-stage helpers, called from begin / next / end. Each
 	// party-dispatches internally where the sender and receiver

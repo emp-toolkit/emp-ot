@@ -144,6 +144,11 @@ public:
     return int64_t{1} << param.tree_depth;
   }
 
+  // Per-chunk extend direction: the Δ-holder maps to the ALICE/sender role and
+  // drives MultiPointGadgetSender, which sends the cGGM correction per tree —
+  // so the sender is send-dominant (like Ferret, the opposite of IKNP/SoftSpoken).
+  static constexpr bool kSenderSendsOnExtend = true;
+
   // Largest chunk-aligned count of user-visible outputs per round.
   // Equal to `(param.t - param.refill_trees) * chunk` by the
   // refill_trees = ceil(M / chunk) identity (param.refill_trees uses
