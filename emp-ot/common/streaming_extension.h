@@ -93,33 +93,40 @@ public:
     }
 
     // Buffered multi-element draw within an open session: produce `n`
-    // elements into `dst`, refilling an internal chunk buffer via the
-    // single-element next() as needed. Lets a caller consume the stream
-    // incrementally (even one element at a time) while the round-end work
-    // (refill trees + malicious check) amortizes over the whole session —
-    // unlike run(), which opens/closes a session per call. The caller owns
-    // the session: begin() once (e.g. in its constructor), draw via
-    // next_n(dst, n), end() once (e.g. in its destructor). enter_session_
-    // resets the buffer, so a fresh begin() never serves a stale tail.
-    // (Distinct name, not `next`, so it isn't hidden by the subclass's
-    // single-element next() override.)
+    // elements into `dst`. Lets a caller consume the stream incrementally
+    // (even one element at a time) while the round-end work (refill trees +
+    // malicious check) amortizes over the whole session — unlike run(),
+    // which opens/closes a session per call. The caller owns the session:
+    // begin() once (e.g. in its constructor), draw via next_n(dst, n),
+    // end() once (e.g. in its destructor). enter_session_ resets the buffer,
+    // so a fresh begin() never serves a stale tail. (Distinct name, not
+    // `next`, so it isn't hidden by the subclass's single-element next().)
+    //
+    // Whole chunks are produced *straight into* `dst` (next() writes
+    // chunk_size() elements with no intermediate copy); only a prior partial
+    // tail and a trailing sub-chunk remainder ever pass through leftover_, so
+    // the per-call copy is bounded by one chunk regardless of n (vs copying
+    // all n through the buffer). Mirrors run() minus the begin()/end().
     void next_n(Element *dst, int64_t n) {
         assert_in_session_();
         const int64_t chunk = chunk_size();
-        int64_t got = 0;
-        while (got < n) {
-            if (leftover_count_ == 0) {
-                if ((int64_t)leftover_.size() < chunk) leftover_.resize(chunk);
-                next(leftover_.data());        // virtual single-chunk next
-                leftover_pos_   = 0;
-                leftover_count_ = chunk;
-            }
-            const int64_t take = std::min<int64_t>(n - got, leftover_count_);
-            std::memcpy(dst + got, leftover_.data() + leftover_pos_,
-                        take * sizeof(Element));
-            leftover_pos_   += take;
-            leftover_count_ -= take;
-            got += take;
+        // 1. Consume any partial tail left by a previous call (stream order
+        //    requires these elements come first).
+        int64_t got = drain_leftover(dst, n);
+        // 2. Fill whole chunks directly in the caller's buffer — no copy.
+        while (got + chunk <= n) {
+            next(dst + got);
+            got += chunk;
+        }
+        // 3. Sub-chunk remainder: produce one chunk into leftover_, copy the
+        //    needed prefix, and keep the rest for the next call.
+        if (got < n) {
+            if ((int64_t)leftover_.size() < chunk) leftover_.resize(chunk);
+            next(leftover_.data());
+            int64_t take = n - got;
+            std::memcpy(dst + got, leftover_.data(), take * sizeof(Element));
+            leftover_pos_   = take;
+            leftover_count_ = chunk - take;
         }
     }
 

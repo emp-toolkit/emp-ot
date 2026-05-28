@@ -127,24 +127,35 @@ malicious chi-fold check — every `chunk_size()` elements, amortized
 over a single produced tree instead of a whole round (~hundreds of
 trees). That was a ~20× slowdown in emp-zk before this API.
 
-`next_n` instead draws from one long-lived session the caller owns:
+`next_n` instead draws from one long-lived session the caller owns. It
+fills whole chunks *straight into* `dst` (no intermediate copy) and only
+buffers a sub-chunk remainder, so the per-call copy is bounded by one
+chunk regardless of `n` — same structure as `run()`, minus begin/end:
 
 ```cpp
 void next_n(Element *dst, int64_t n) {
     assert_in_session_();
     const int64_t chunk = chunk_size();
-    int64_t got = 0;
-    while (got < n) {
-        if (leftover_count_ == 0) {        // refill one chunk
-            next(leftover_.data());        // the virtual single-chunk next
-            leftover_pos_ = 0; leftover_count_ = chunk;
-        }
-        int64_t take = std::min(n - got, leftover_count_);
-        memcpy(dst + got, leftover_.data() + leftover_pos_, take * sizeof(Element));
-        leftover_pos_ += take; leftover_count_ -= take; got += take;
+    int64_t got = drain_leftover(dst, n);      // 1. prior partial tail (stream order)
+    while (got + chunk <= n) {                 // 2. whole chunks: no copy
+        next(dst + got);
+        got += chunk;
+    }
+    if (got < n) {                             // 3. sub-chunk remainder via leftover_
+        next(leftover_.data());
+        int64_t take = n - got;
+        memcpy(dst + got, leftover_.data(), take * sizeof(Element));
+        leftover_pos_ = take; leftover_count_ = chunk - take;
     }
 }
 ```
+
+Writing whole chunks directly into `dst` is safe at the (possibly
+non-chunk-aligned) offset `dst + got` because `Element`-pointer
+arithmetic preserves alignment for `block` carriers (a chunk is a whole
+number of `block`s) and the sVOLE carriers write element-wise (no SIMD
+alignment requirement) — the same direct-`next` contract `run()` relies
+on after its own `drain_leftover`.
 
 Usage — the caller owns the session (typically begin in its ctor, end
 in its dtor):
