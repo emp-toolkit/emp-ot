@@ -10,6 +10,7 @@
 #include "emp-ot/ot_extension/iknp.h"
 
 #include "emp-ot/ot_extension/ferret/ferret.h"
+#include "emp-ot/ot_extension/ferret/silent_ferret.h"
 
 #include "emp-ot/ot_extension/softspoken/softspoken.h"
 

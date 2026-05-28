@@ -54,6 +54,7 @@ set(KYBER_C_SOURCES
 add_library(emp-ot STATIC
     emp-ot/ot_extension/iknp.cpp
     emp-ot/ot_extension/ferret/ferret.cpp
+    emp-ot/ot_extension/ferret/silent_ferret.cpp
     emp-ot/ot_extension/softspoken/softspoken.cpp
     emp-ot/base_ot/pvw_kyber/pvw_kyber.cpp
     ${KYBER_C_SOURCES})

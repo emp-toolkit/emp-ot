@@ -138,13 +138,16 @@ public:
 	// that is an isolated one-time bookend, not the per-chunk streaming path.)
 	static constexpr bool kSenderSendsOnExtend = true;
 
-private:
+protected:
 	// Per-stage helpers, called from begin / next / end. Each
 	// party-dispatches internally where the sender and receiver
-	// bodies diverge.
+	// bodies diverge. `protected` (not private) so SilentFerret can
+	// reuse the bootstrap / buffers / LPN / round-end machinery and
+	// override only the per-tree body. process_one_tree_ is virtual so
+	// the inherited next() / run_refill_ dispatch to the override.
 	void bootstrap_();
 	void inner_run_begin_();
-	void process_one_tree_(AuthValueFerret *out);
+	virtual void process_one_tree_(AuthValueFerret *out);
 	void inner_run_end_();
 	void run_refill_();
 
