@@ -111,6 +111,8 @@ private:
     block check_q_  = zero_block;   // sender's running fold
     block check_t_  = zero_block;   // receiver's running fold (T_i)
     block check_x_  = zero_block;   // receiver's running fold (R_i)
+    BlockVec check_chi_chunk_;      // bs chi_i values for deferred inner product
+    BlockVec check_pack_chunk_;     // bs packed Q_i / T_i values
 
     // Setup halves, lazy on first begin() per role.
     void bootstrap_send_();

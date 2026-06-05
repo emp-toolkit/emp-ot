@@ -90,7 +90,7 @@ void SilentFerret::produce_range_(block *out, int64_t tree_begin,
 	// naturally through it (one AES key-schedule amortized over n_trees).
 	block k_scratch[kMaxTreeDepth];
 	PRG lpn_prg(&lpn_key_);
-	lpn_prg.counter = round_base_ + (uint64_t)tree_begin * bpc_;
+	lpn_prg.seek(round_base_ + (uint64_t)tree_begin * bpc_);
 
 	for (int64_t i = 0; i < n_trees; ++i) {
 		const int64_t j = tree_begin + i;

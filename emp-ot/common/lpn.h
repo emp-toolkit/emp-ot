@@ -76,7 +76,7 @@ public:
     // from it and seek its counter to fold an arbitrary chunk
     // independently of prg_'s position — used for order-independent,
     // thread-safe slicing (see SilentFerret::produce_range).
-    block prg_key() const { return prg_.key; }
+    block prg_key() const { return prg_.seed(); }
 
     // Exact number of PRG blocks compute_slice() consumes for one chunk
     // of `length` outputs. Deterministic in (length, d), so chunk k's

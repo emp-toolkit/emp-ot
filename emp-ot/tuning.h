@@ -58,7 +58,12 @@ inline constexpr int64_t cot_chosen_input_tile = 8;
 // Per-arch in-register tile for the children-from-parents step.
 // cggm.h selects which one at compile time based on EMP_HAS_*
 // (VAES-512, VAES-256, or aarch64 NEON via sse2neon).
-inline constexpr int cggm_tile_x86_vaes512 = 16;
+// VAES-512: 32 lands two CCRH::H tiles on the AES interleaved path (relies on
+// aes.hpp's apply_grouped emitting <=4-tile groups); a sweep on Intel Granite
+// Rapids and AMD Zen 5 picks 32 over 16 at production depths d>=12. Larger
+// tiles help Zen 5 further but regress Granite Rapids, so 32 is the cross-x86
+// optimum. aarch64 is flat across 4..64 (within noise); 4 retained.
+inline constexpr int cggm_tile_x86_vaes512 = 32;
 inline constexpr int cggm_tile_x86_vaes256 = 32;
 inline constexpr int cggm_tile_aarch64     = 4;
 
@@ -66,11 +71,16 @@ inline constexpr int cggm_tile_aarch64     = 4;
 // Per-chunk size in 128-block units; chunk_ots = N * 128.
 // Larger N = more in-register AES pipeline depth, but more L1
 // pressure on the plane buffer.
+// kChunkBlocks: per-chunk plane buffer is `128 * kChunkBlocks * 16 B`
+// (128 KB at kcb=64, 256 KB at kcb=128, ..., 2 MB at kcb=1024). The sweet
+// spot keeps the plane L1/L2-resident while still amortizing per-chunk
+// setup (FS digest, malicious VW, butterfly key schedule). Values below
+// are selected from local aarch64 and AWS x86_64 sweeps across k x mode.
 template <int k>
 constexpr int softspoken_chunk_blocks() {
-    if constexpr (k <= 2)      return 128;
-    else if constexpr (k <= 4) return 1024;
-    else                       return 1024;
+    if constexpr (k <= 2)      return  64;
+    else if constexpr (k <= 4) return  64;
+    else                       return 128;
 }
 // Compile-time cap for the chunk-blocks template parameter. Sizes
 // scratch buffers that get reused across chunks.

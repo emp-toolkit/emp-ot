@@ -118,14 +118,17 @@ void IKNP::send_next_(block *out) {
 void IKNP::combine_send(block *out) {
 	block seed = io->get_digest();
 	PRG chiPRG(&seed);
-	block Q_i, chi, tmp;
 	constexpr int64_t chunks = block_size / 128;
+	block chi[chunks];
+	block packed[chunks];
+	chiPRG.random_block(chi, chunks);
 	for (int64_t i = 0; i < chunks; ++i) {
-		packer.packing(&Q_i, out + 128 * i);
-		chiPRG.random_block(&chi, 1);
-		gfmul(chi, Q_i, &tmp);
-		check_q = check_q ^ tmp;
+		packer.packing(&packed[i], out + 128 * i);
 	}
+
+	block lo_hi[2];
+	vector_inn_prdt_sum_no_red(lo_hi, chi, packed, chunks);
+	check_q = check_q ^ reduce(lo_hi[0], lo_hi[1]);
 }
 
 void IKNP::recv_begin_() {
@@ -202,17 +205,19 @@ void IKNP::recv_next_(block *out) {
 void IKNP::combine_recv(block *out, block *r) {
 	block seed = io->get_digest();
 	PRG chiPRG(&seed);
-	block T_i, R_i, chi, tmp;
 	constexpr int64_t chunks = block_size / 128;
+	block chi[chunks];
+	block packed[chunks];
+	chiPRG.random_block(chi, chunks);
 	for (int64_t i = 0; i < chunks; ++i) {
-		packer.packing(&T_i, out + 128 * i);
-		R_i = r[i];
-		chiPRG.random_block(&chi, 1);
-		gfmul(chi, T_i, &tmp);
-		check_t = check_t ^ tmp;
-		gfmul(chi, R_i, &tmp);
-		check_x = check_x ^ tmp;
+		packer.packing(&packed[i], out + 128 * i);
 	}
+
+	block lo_hi[2];
+	vector_inn_prdt_sum_no_red(lo_hi, chi, packed, chunks);
+	check_t = check_t ^ reduce(lo_hi[0], lo_hi[1]);
+	vector_inn_prdt_sum_no_red(lo_hi, chi, r, chunks);
+	check_x = check_x ^ reduce(lo_hi[0], lo_hi[1]);
 }
 
 }  // namespace emp

@@ -293,15 +293,12 @@ inline void sfvole_fuse_round01_quad(block* A_round1_y,
 template <int k, int T = 8>
 EMP_AES_TARGET_ATTR
 inline void sfvole_sender_butterfly(const block leaves[1 << k],
-                                     uint64_t session,
+                                     const AES_KEY* session_K,
                                      int64_t b0, int64_t bs,
                                      block* u_chunk,
                                      block* v_planes_chunk) {
     constexpr int Q = 1 << k;
     static_assert(k >= 2, "sfvole_sender_butterfly: k must be >= 2");
-
-    AES_KEY session_K;
-    AES_set_encrypt_key(makeBlock(0LL, (int64_t)session), &session_K);
 
     if constexpr (k <= 4) {
         // Quad path. A_round1[Q/4][T]: post-quad scratch.
@@ -319,7 +316,7 @@ inline void sfvole_sender_butterfly(const block leaves[1 << k],
 
             for (int y = 0; y < Q/4; ++y)
                 sfvole_fuse_round01_quad<T>(A_round1[y], v0_acc, v1_acc,
-                                             b0 + t0, &session_K,
+                                             b0 + t0, session_K,
                                              leaves[4*y    ], leaves[4*y + 1],
                                              leaves[4*y + 2], leaves[4*y + 3]);
 
@@ -360,7 +357,7 @@ inline void sfvole_sender_butterfly(const block leaves[1 << k],
 
             for (int y = 0; y < Q/8; ++y)
                 sfvole_fuse_round012_oct<T>(A_round2[y], v0_acc, v1_acc, v2_acc,
-                                             b0 + t0, &session_K,
+                                             b0 + t0, session_K,
                                              leaves[8*y    ], leaves[8*y + 1],
                                              leaves[8*y + 2], leaves[8*y + 3],
                                              leaves[8*y + 4], leaves[8*y + 5],
@@ -397,7 +394,7 @@ template <int k, int T = 8>
 EMP_AES_TARGET_ATTR
 inline void sfvole_receiver_butterfly(int alpha,
                                        const block leaves[1 << k],
-                                       uint64_t session,
+                                       const AES_KEY* session_K,
                                        int64_t b0, int64_t bs,
                                        block* w_planes_chunk) {
     constexpr int Q = 1 << k;
@@ -405,9 +402,6 @@ inline void sfvole_receiver_butterfly(int alpha,
 
     block tweaks[Q];
     for (int y = 0; y < Q; ++y) tweaks[y] = leaves[alpha ^ y];
-
-    AES_KEY session_K;
-    AES_set_encrypt_key(makeBlock(0LL, (int64_t)session), &session_K);
 
     if constexpr (k <= 4) {
         // Quad path. A_round1[Q/4][T] post-quad scratch.
@@ -423,7 +417,7 @@ inline void sfvole_receiver_butterfly(int alpha,
 
             for (int y = 0; y < Q/4; ++y)
                 sfvole_fuse_round01_quad<T>(A_round1[y], w0_acc, w1_acc,
-                                             b0 + t0, &session_K,
+                                             b0 + t0, session_K,
                                              tweaks[4*y    ], tweaks[4*y + 1],
                                              tweaks[4*y + 2], tweaks[4*y + 3]);
 
@@ -462,7 +456,7 @@ inline void sfvole_receiver_butterfly(int alpha,
 
             for (int y = 0; y < Q/8; ++y)
                 sfvole_fuse_round012_oct<T>(A_round2[y], w0_acc, w1_acc, w2_acc,
-                                             b0 + t0, &session_K,
+                                             b0 + t0, session_K,
                                              tweaks[8*y    ], tweaks[8*y + 1],
                                              tweaks[8*y + 2], tweaks[8*y + 3],
                                              tweaks[8*y + 4], tweaks[8*y + 5],

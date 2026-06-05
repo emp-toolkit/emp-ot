@@ -348,6 +348,12 @@ void SoftSpoken<k, kChunkBlocks>::ensure_chunk_scratch_() {
         if (d_bufs_chunk_.size() < static_cast<size_t>(n - 1) * kChunkBlocks)
             d_bufs_chunk_.resize(static_cast<size_t>(n - 1) * kChunkBlocks);
     }
+    if (malicious) {
+        if (check_chi_chunk_.size() < static_cast<size_t>(kChunkBlocks))
+            check_chi_chunk_.resize(static_cast<size_t>(kChunkBlocks));
+        if (check_pack_chunk_.size() < static_cast<size_t>(kChunkBlocks))
+            check_pack_chunk_.resize(static_cast<size_t>(kChunkBlocks));
+    }
 }
 
 // StreamingExtension lifecycle: party-dispatch inline to the per-role
@@ -416,12 +422,17 @@ void SoftSpoken<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
     block* w_planes_chunk = planes_chunk_.data();
     block* d_bufs = d_bufs_chunk_.data();
 
+    // One session AES key, scheduled once per chunk and shared across every
+    // sub-VOLE's butterfly (the session is constant within a chunk).
+    AES_KEY session_K;
+    AES_set_encrypt_key(makeBlock(0LL, (int64_t)cur_send_session_), &session_K);
+
     // Compute every sub-VOLE's contribution to this chunk's w_planes.
     for (int i = 0; i < n; ++i) {
         block* w_i = w_planes_chunk + i * k * bs;
         softspoken::sfvole_receiver_butterfly<k>(
             alphas_[i], &leaves_recv_[i * Q],
-            cur_send_session_, b0, bs, w_i);
+            &session_K, b0, bs, w_i);
     }
 
     // Pull this chunk's batched d_bufs (n-1 vectors of bs blocks).
@@ -509,11 +520,16 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
     block u_canonical[kChunkBlocks];   // sub-VOLE 0's u
     block u_temp[kChunkBlocks];        // sub-VOLE i ≥ 1
 
+    // One session AES key, scheduled once per chunk and shared across every
+    // sub-VOLE's butterfly (the session is constant within a chunk).
+    AES_KEY session_K;
+    AES_set_encrypt_key(makeBlock(0LL, (int64_t)cur_recv_session_), &session_K);
+
     // Sub-VOLE 0 produces u_canonical (no d_buf for i=0).
     {
         block* v_0 = v_planes_chunk + 0 * k * bs;
         softspoken::sfvole_sender_butterfly<k>(
-            &leaves_send_[0 * Q], cur_recv_session_, b0, bs,
+            &leaves_send_[0 * Q], &session_K, b0, bs,
             u_canonical, v_0);
     }
 
@@ -521,7 +537,7 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
     for (int i = 1; i < n; ++i) {
         block* v_i = v_planes_chunk + i * k * bs;
         softspoken::sfvole_sender_butterfly<k>(
-            &leaves_send_[i * Q], cur_recv_session_, b0, bs,
+            &leaves_send_[i * Q], &session_K, b0, bs,
             u_temp, v_i);
         block* d_i = d_bufs + (i - 1) * bs;
         xorBlocks_arr(d_i, u_canonical, u_temp, bs);
@@ -567,33 +583,38 @@ template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::combine_send_chunk(block* out, int64_t bs) {
     block seed = this->io->get_digest();
     PRG chiPRG(&seed);
-    block Q_i, chi, tmp;
+    block* chi = check_chi_chunk_.data();
+    block* packed = check_pack_chunk_.data();
+    chiPRG.random_block(chi, bs);
     for (int64_t i = 0; i < bs; ++i) {
-        packer_.packing(&Q_i, out + 128 * i);
-        chiPRG.random_block(&chi, 1);
-        gfmul(chi, Q_i, &tmp);
-        check_q_ = check_q_ ^ tmp;
+        packer_.packing(&packed[i], out + 128 * i);
     }
+
+    block lo_hi[2];
+    vector_inn_prdt_sum_no_red(lo_hi, chi, packed, bs);
+    check_q_ = check_q_ ^ reduce(lo_hi[0], lo_hi[1]);
 }
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::combine_recv_chunk(block* out, const block* u_canonical, int64_t bs) {
     block seed = this->io->get_digest();
     PRG chiPRG(&seed);
-    block T_i, chi, tmp;
+    block* chi = check_chi_chunk_.data();
+    block* packed = check_pack_chunk_.data();
+    chiPRG.random_block(chi, bs);
     for (int64_t i = 0; i < bs; ++i) {
-        packer_.packing(&T_i, out + 128 * i);
         // R_i = u_canonical[i]: after Conv, bit_0(out[128i+j]) =
         // bit_j(u_canonical[i]) by the LSB pinning convention, so
         // u_canonical[i] is exactly the packed F_{2^128} choice for
         // this 128-OT block.
-        const block R_i = u_canonical[i];
-        chiPRG.random_block(&chi, 1);
-        gfmul(chi, T_i, &tmp);
-        check_t_ = check_t_ ^ tmp;
-        gfmul(chi, R_i, &tmp);
-        check_x_ = check_x_ ^ tmp;
+        packer_.packing(&packed[i], out + 128 * i);
     }
+
+    block lo_hi[2];
+    vector_inn_prdt_sum_no_red(lo_hi, chi, packed, bs);
+    check_t_ = check_t_ ^ reduce(lo_hi[0], lo_hi[1]);
+    vector_inn_prdt_sum_no_red(lo_hi, chi, u_canonical, bs);
+    check_x_ = check_x_ ^ reduce(lo_hi[0], lo_hi[1]);
 }
 
 template class SoftSpoken<2>;
