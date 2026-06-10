@@ -60,7 +60,8 @@ add_library(emp-ot STATIC
     ${KYBER_C_SOURCES})
 add_library(emp-ot::emp-ot ALIAS emp-ot)
 
-target_compile_features(emp-ot PUBLIC cxx_std_17)
+# Tracks emp-tool's C++20 public contract (it depends on emp-tool transitively).
+target_compile_features(emp-ot PUBLIC cxx_std_20)
 
 target_include_directories(emp-ot PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/emp-ot/base_ot/pvw_kyber)

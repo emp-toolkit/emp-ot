@@ -17,13 +17,9 @@
 //
 // ===== Per-k chunk-size rationale =====
 //
-// kChunkBlocks (chunk_blocks_for<k>() in the header):
-//   k=2 → 128: little compute per leaf — small chunk avoids cache
-//              pressure.
-//   k=4 → 1024: heavier compute per leaf supports a larger
-//               amortization window.
-//   k=8 → 1024: Q=256 leaves means lots of fold work per chunk;
-//               the larger window amortizes setup overhead.
+// kChunkBlocks (chunk_blocks_for<k>() in the header; values live in
+// tuning.h — currently 64 for k=2/4 and 128 for k=8, selected by
+// per-arch sweeps; see tuning.h for the cache-pressure rationale).
 //
 // Ferret's bootstrap instantiates SoftSpoken<8, 580> so its
 // one-shot ~74k base-COT request fits in a single chunk instead of

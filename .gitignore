@@ -1,6 +1,7 @@
 Testing/
 build/
 build-*/
+build_local/
 *.DS_Store
 *.txt.cpp
 *CTestTestfile.cmake
