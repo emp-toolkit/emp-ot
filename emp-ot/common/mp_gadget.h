@@ -202,22 +202,24 @@ public:
   // stay on this thread in tree order, so the resulting chi seeds — and
   // thus the whole malicious transcript — are bit-identical to the
   // interleaved run_next_tree path. Only the *timing* of the traffic moves.
-  std::vector<block> seeds_;          // one cGGM root per tree
-  std::vector<block> c_all_;          // tree_n * tree_depth corrections
+  std::vector<block> c_scratch_;      // tree_n * tree_depth corrections (ship-and-forget)
   std::vector<block> leaves_scratch_; // batch * leave_n  (per-task slots)
   std::vector<block> K0_scratch_;     // batch * tree_depth
   std::vector<F>     chi_scratch_;    // batch * leave_n (malicious only)
 
   // `base` points at the tree_n*tree_depth cGGM-correction base COTs
-  // (contiguous; base + i*tree_depth is tree i's K^{ᾱ} input). `pool`
-  // may be null (serial); `batch` bounds peak leaf scratch.
-  void prepare_all(ThreadPool *pool, int batch, const block *base) {
+  // (contiguous; base + i*tree_depth is tree i's K^{ᾱ} input). `seeds`
+  // supplies the tree_n cGGM root seeds — caller-owned and *reproducible*
+  // (e.g. a seek'd PRG) so produce_tree can re-derive the same leaves
+  // later with no stored per-round state. `pool` may be null (serial);
+  // `batch` bounds peak leaf scratch. Corrections are shipped and not
+  // retained (the sender never re-reads them).
+  void prepare_all(ThreadPool *pool, int batch, const block *base,
+                   const block *seeds) {
     static_assert(!AuthValue::kHasSecretSum,
                   "prepare_all: Ferret-style (no secret_sum) path only");
     if (batch < 1) batch = 1;
-    seeds_.resize(tree_n);
-    c_all_.resize(tree_n * tree_depth);
-    prg.random_block(seeds_.data(), tree_n);   // all roots, this thread
+    c_scratch_.resize(tree_n * tree_depth);
     leaves_scratch_.resize((int64_t)batch * leave_n);
     K0_scratch_.resize((int64_t)batch * tree_depth);
     std::vector<block> chi_seeds(batch);
@@ -231,15 +233,15 @@ public:
         block *lv = leaves_scratch_.data() + (int64_t)s * leave_n;
         block *k0 = K0_scratch_.data() + (int64_t)s * tree_depth;
         cggm::build_sender<cggm::kTile, AuthValue::kClearLeafLSB>(
-            tree_depth, cggm_delta, seeds_[i], lv, k0);
+            tree_depth, cggm_delta, seeds[i], lv, k0);
         const block *base_i = base + i * tree_depth;
-        block *c_i = c_all_.data() + i * tree_depth;
+        block *c_i = c_scratch_.data() + i * tree_depth;
         for (int64_t j = 0; j < tree_depth; ++j) c_i[j] = base_i[j] ^ k0[j];
       });
       // (2) ship corrections + snapshot chi seed — this thread, tree order.
       for (int s = 0; s < B; ++s) {
         const int64_t i = b0 + s;
-        io->send_block(c_all_.data() + i * tree_depth, tree_depth);
+        io->send_block(c_scratch_.data() + i * tree_depth, tree_depth);
         if (is_malicious) chi_seeds[s] = io->get_digest();
       }
       // (3) VW fold — parallel; each tree writes its own slot.
@@ -256,17 +258,17 @@ public:
     io->flush();
   }
 
-  // Re-derive tree `tree_idx`'s leaves into `leaves_i` from its stored
-  // seed (layout-compat block* since kHasSecretSum=false). No wire I/O,
-  // no VW (already folded in prepare_all). Reentrant / const: the caller
-  // supplies `k0_scratch` (tree_depth blocks, the throwaway correction
-  // sink) so concurrent threads can produce disjoint trees.
-  void produce_tree(AuthValue *leaves_i, int tree_idx,
+  // Re-derive one tree's leaves into `leaves_i` from its cGGM root `seed`
+  // (layout-compat block* since kHasSecretSum=false). No wire I/O, no VW
+  // (already folded in prepare_all). Reentrant / const: the caller supplies
+  // `k0_scratch` (tree_depth blocks, the throwaway correction sink) so
+  // concurrent threads can produce disjoint trees.
+  void produce_tree(AuthValue *leaves_i, block seed,
                     block *k0_scratch) const {
     static_assert(!AuthValue::kHasSecretSum,
                   "produce_tree: Ferret-style path only");
     cggm::build_sender<cggm::kTile, AuthValue::kClearLeafLSB>(
-        tree_depth, cggm_delta, seeds_[tree_idx],
+        tree_depth, cggm_delta, seed,
         reinterpret_cast<block *>(leaves_i), k0_scratch);
   }
 
@@ -286,6 +288,45 @@ public:
         pre_cot_data[i] = pre_cot_data[i] ^ cggm_delta;
     pack.packing(&r2, pre_cot_data);
     r1 = r1 ^ r2;
+    block dig[2];
+    RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
+    io->send_data(dig, 2 * sizeof(block));
+    io->flush();
+  }
+
+  // ---- Batched F2kPacked check (SilentFerret multi-round prepay) --------
+  // Ferret's per-round run_end_packed IS the paper's Appendix-C batched check
+  // over the round's t trees (eprint 2020/924). These two methods extend it to
+  // ONE check over a whole K-round prepay (m = K*t executions): fold each round's
+  // VW into a running accumulator with NO I/O, then run a single round-trip with
+  // ONE mask. The check is a pure XOR-linear combination, so only the running
+  // F(2^128) scalar is retained — never the per-tree/per-leaf values.
+  //
+  // fold_round_check: XOR this round's chi-fold (sum over the round's trees,
+  // already in consist_check_VW from prepare_all) into the batch accumulator.
+  void fold_round_check(block &acc_vw) {
+    if (!is_malicious) return;
+    block r;
+    vector_self_xor(&r, consist_check_VW.data(), tree_n);
+    acc_vw = acc_vw ^ r;
+  }
+
+  // Single round-trip over the whole batch. `mask128` = the batch's 128 consist-
+  // check COTs (the paper's one-time kappa-COT mask; the sender's keys). `acc_vw`
+  // = running XOR of every round's VW. The Δ-XOR is applied to a local copy, so
+  // the caller's mask buffer stays pristine. For K=1 this is byte-identical to
+  // run_end_packed (one VW, one digest) — the no-arg SilentFerret path is then a
+  // wire-equivalent drop-in for Ferret.
+  void finalize_batched_packed_sender(block acc_vw, const block *mask128) {
+    if (!is_malicious) return;
+    bool x_prime[kConsistCheckCotNum];
+    io->recv_bool(x_prime, kConsistCheckCotNum);
+    block consist[kConsistCheckCotNum];
+    for (int i = 0; i < kConsistCheckCotNum; ++i)
+      consist[i] = x_prime[i] ? (mask128[i] ^ cggm_delta) : mask128[i];
+    block Y;
+    pack.packing(&Y, consist);
+    block r1 = acc_vw ^ Y;
     block dig[2];
     RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
     io->send_data(dig, 2 * sizeof(block));
@@ -441,19 +482,21 @@ public:
   // recv + per-tree get_digest() stay on this thread in tree order (so the
   // chi seeds match the sender's snapshots); the cGGM eval + VW run on
   // `pool` a batch at a time over disjoint per-task scratch.
-  std::vector<block> c_all_;          // tree_n * tree_depth corrections
   std::vector<block> leaves_scratch_; // batch * leave_n  (per-task slots)
   std::vector<block> K_recv_scratch_; // batch * tree_depth
   std::vector<F>     chi_scratch_;    // batch * leave_n (malicious only)
 
   // `base` points at the tree_n*tree_depth cGGM-correction base COTs
-  // (contiguous; base + i*tree_depth is tree i's input). `pool` may be
-  // null (serial); `batch` bounds peak leaf scratch.
-  void prepare_all(ThreadPool *pool, int batch, const block *base) {
+  // (contiguous; base + i*tree_depth is tree i's input). The received
+  // corrections are written into `c_out` (tree_n*tree_depth, caller-owned)
+  // — the receiver *cannot* re-derive them, so the caller retains them and
+  // hands the matching slice back to produce_tree. `pool` may be null
+  // (serial); `batch` bounds peak leaf scratch.
+  void prepare_all(ThreadPool *pool, int batch, const block *base,
+                   block *c_out) {
     static_assert(!AuthValue::kHasSecretSum,
                   "prepare_all: Ferret-style (no secret_sum) path only");
     if (batch < 1) batch = 1;
-    c_all_.resize(tree_n * tree_depth);
     leaves_scratch_.resize((int64_t)batch * leave_n);
     K_recv_scratch_.resize((int64_t)batch * tree_depth);
     std::vector<block> chi_seeds(batch);
@@ -464,14 +507,14 @@ public:
       // (1) recv corrections + snapshot chi seed — this thread, tree order.
       for (int s = 0; s < B; ++s) {
         const int64_t i = b0 + s;
-        io->recv_block(c_all_.data() + i * tree_depth, tree_depth);
+        io->recv_block(c_out + i * tree_depth, tree_depth);
         if (is_malicious) chi_seeds[s] = io->get_digest();
       }
       // (2) eval + α-fill (+ malicious chi_alpha / VW) — parallel.
       mp_parallel_for(pool, B, [&](int s) {
         const int64_t i = b0 + s;
         const block *base_i = base + i * tree_depth;
-        const block *c_i = c_all_.data() + i * tree_depth;
+        const block *c_i = c_out + i * tree_depth;
         block *lv = leaves_scratch_.data() + (int64_t)s * leave_n;
         block *kr = K_recv_scratch_.data() + (int64_t)s * tree_depth;
         const uint32_t rev = eval_one_(base_i, c_i, lv, kr);
@@ -486,16 +529,16 @@ public:
     }
   }
 
-  // Re-evaluate tree `tree_idx`'s leaves into `leaves_i` from its stored
-  // correction + base. No wire I/O, no VW (already folded in prepare_all).
-  // Reentrant / const: the caller supplies `kr_scratch` (tree_depth
-  // blocks) so concurrent threads can produce disjoint trees. Returns
-  // bit_reverse(alpha) (the punctured storage slot).
-  uint32_t produce_tree(AuthValue *leaves_i, const block *base_i, int tree_idx,
-                        block *kr_scratch) const {
+  // Re-evaluate one tree's leaves into `leaves_i` from its `base_i` cGGM
+  // input and stored correction `c_i` (tree_depth blocks). No wire I/O, no
+  // VW (already folded in prepare_all). Reentrant / const: the caller
+  // supplies `kr_scratch` (tree_depth blocks) so concurrent threads can
+  // produce disjoint trees. Returns bit_reverse(alpha) (the punctured slot).
+  uint32_t produce_tree(AuthValue *leaves_i, const block *base_i,
+                        const block *c_i, block *kr_scratch) const {
     static_assert(!AuthValue::kHasSecretSum,
                   "produce_tree: Ferret-style path only");
-    return eval_one_(base_i, c_all_.data() + (int64_t)tree_idx * tree_depth,
+    return eval_one_(base_i, c_i,
                      reinterpret_cast<block *>(leaves_i), kr_scratch);
   }
 
@@ -554,6 +597,49 @@ public:
     io->recv_data(recv, 2 * sizeof(block));
     if (!cmpBlock(dig, recv, 2))
       error("MultiPointGadget consistency check fails");
+  }
+
+  // ---- Batched F2kPacked check (SilentFerret multi-round prepay) --------
+  // Mirror of the sender's batched check (see that comment). The receiver folds
+  // both VW and chi_alpha per round; the running chi_alpha sum is the paper's
+  // phi = sum_l chi_{alpha_l}. One mask, one round-trip for the whole batch.
+  void fold_round_check(block &acc_vw, block &acc_phi) {
+    if (!is_malicious) return;
+    block rv, rp;
+    vector_self_xor(&rv, consist_check_VW.data(), tree_n);
+    vector_self_xor(&rp, consist_check_chi_alpha.data(), tree_n);
+    acc_vw  = acc_vw  ^ rv;
+    acc_phi = acc_phi ^ rp;
+  }
+
+  // `mask128` = the batch's 128 consist-check COTs (receiver's MAC side; LSBs are
+  // the kappa-COT choice bits x*). `acc_vw` / `acc_phi` are the running batch
+  // accumulators. One round-trip; aborts on mismatch. K=1 is byte-identical to
+  // run_end_packed.
+  void finalize_batched_packed_receiver(block acc_vw, block acc_phi,
+                                        const block *mask128) {
+    if (!is_malicious) return;
+    uint64_t pos[2];
+    static_assert(sizeof(pos) == sizeof(block), "pos must alias a block exactly");
+    std::memcpy(pos, &acc_phi, sizeof(block));
+    bool x_prime[kConsistCheckCotNum];
+    for (int i = 0; i < 2; ++i) {
+      for (int j = 0; j < 64; ++j) {
+        x_prime[i * 64 + j] = ((pos[i] & 1) == 1) ^ getLSB(mask128[i * 64 + j]);
+        pos[i] >>= 1;
+      }
+    }
+    io->send_bool(x_prime, kConsistCheckCotNum);
+    io->flush();
+    block Z;
+    pack.packing(&Z, mask128);
+    block r1 = acc_vw ^ Z;
+    block dig[2];
+    RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
+    block recv[2];
+    io->recv_data(recv, 2 * sizeof(block));
+    if (!cmpBlock(dig, recv, 2))
+      error("MultiPointGadget batched consistency check fails");
   }
 
   // FTyped round-final check (receiver). Both val- and mac-side
