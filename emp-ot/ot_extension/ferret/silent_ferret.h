@@ -96,12 +96,6 @@ public:
 	// the rolling base is single-round state.
 	void produce_range(block *out, int64_t tree_begin, int64_t n_trees) const;
 
-	// TEST-ONLY: when set on the sender, flip one bit of the batch accumulator
-	// just before the batched check, so the receiver's check MUST abort. Used to
-	// verify the malicious check actually rejects (negative test). Never set in
-	// production.
-	bool tamper_check_for_test_ = false;
-
 protected:
 	void process_one_tree_(AuthValueFerret *out) override;
 

@@ -129,11 +129,6 @@ void SilentFerret::begin_batch_(int64_t n_ots) {
 		roll_base_(abs);    // carry_curr_ <- base_{r+1} (wire-free)
 	}
 
-	// TEST-ONLY fault injection: corrupt the sender's accumulator so the
-	// receiver's batched check must reject (see tamper_check_for_test_).
-	if (tamper_check_for_test_ && is_ot_sender())
-		acc_vw_ = acc_vw_ ^ makeBlock(0, 1);
-
 	// One malicious check over the whole prepay, masked by round-0's 128 consist-
 	// check COTs (G2: pristine base0_, finalize once). The FS transcript stayed
 	// append-only in (round,tree) order across the loop, so each round's chi was

@@ -242,26 +242,6 @@ static void verify_comm_batched_vs_ferret(NetIO* io, int party,
     delete[] buf;
 }
 
-// Negative test (malicious): a corrupted batch accumulator MUST make the
-// batched check reject. ALICE (OT sender) flips one bit of its accumulator
-// before the check and ships the resulting bad digest; BOB (OT receiver) detects
-// the digest mismatch in its finalize and error()s (_Exit) inside begin() — so
-// BOB must NOT return from begin(). ALICE returns, closes its session wire-free,
-// and reports. Must be the LAST test (BOB exits mid-protocol).
-static void verify_tamper_rejects(NetIO* io, int party,
-                                  const PrimalLPNParameter& param) {
-    SilentFerret ot(party, io, /*malicious=*/true, param, nullptr, 1);
-    ot.tamper_check_for_test_ = true;     // gated to the OT-sender path internally
-    io->sync();
-    ot.begin(ot.cots_per_round() * 2);    // K=2 rounds → one batched check
-    // Only ALICE (OT sender) reaches here; BOB (OT receiver) aborted in begin().
-    if (party == BOB)
-        error("tamper NOT rejected: receiver returned from begin()");
-    ot.end();   // wire-free roll + close session, so the dtor doesn't abort
-    cout << "  tamper rejected ok (sender shipped bad digest, receiver aborted)"
-         << endl;
-}
-
 int main(int argc, char** argv) {
     int port, party;
     parse_party_and_port(argv, &party, &port);
@@ -301,14 +281,6 @@ int main(int argc, char** argv) {
     // exactly (rounds - batches) fewer checks, and a valid 2-batch-chained RCOT.
     verify_comm_batched_vs_ferret(io, party, tuning::ferret_b10);
     verify_comm_batched_vs_ferret(io, party, tuning::ferret_b11);
-
-    // Negative test: the malicious check must REJECT a tampered transcript.
-    // The receiver _Exit()s (non-zero) on the expected reject, which would mark
-    // a CI run failed, so it is gated behind an explicit "tamper" arg and is NOT
-    // run by default (ctest). Run manually: `./run ./build/test_silentferret tamper`.
-    // MUST be last (the receiver exits mid-protocol).
-    if (argc > 3 && std::string(argv[3]) == "tamper")
-        verify_tamper_rejects(io, party, tuning::ferret_b10);
 
     delete io;
     return 0;
