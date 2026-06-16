@@ -119,5 +119,6 @@ export(EXPORT emp-otTargets
 # ---------------------------------------------------------------------
 if(EMP_OT_BUILD_TESTS)
     include(CTest)
-    add_subdirectory(test)
+    add_subdirectory(test)    # correctness tests (ctest)
+    add_subdirectory(bench)   # performance benchmarks (build-only)
 endif()

@@ -1,14 +1,14 @@
-// SoftSpoken<k> RCOT-only bench, k ∈ {2, 4, 8}, semi + malicious.
-// Two-party via `run`. Default length is sized for tighter RCOT-path
-// timing.
-#include "test/test.h"
+// SoftSpoken<k> RCOT throughput bench, k ∈ {2, 4, 8}, semi + malicious.
+// Reports MOT/s and B/COT per mode. Two-party via `run`. Default length is
+// sized for tighter RCOT-path timing under a release build.
+#include "bench/bench.h"
 using namespace std;
 
 template <int k>
 void run_k(NetIO* io, int party, int64_t length) {
     auto bench = [&](const char* mode_name, SoftSpoken<k>* ot) {
         uint64_t ds = 0, dr = 0;
-        double us = test_rcot<SoftSpoken<k>>(ot, io, party, length, &ds, &dr);
+        double us = time_rcot<SoftSpoken<k>>(ot, io, party, length, &ds, &dr);
         cout << "SoftSpoken<" << k << "> " << mode_name << " RCOT\t"
              << double(length) / us << " MOTps  "
              << "send=" << double(ds) / length << " B/COT  "
@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
     parse_party_and_port(argv, &party, &port);
     NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
 
-    cout << "# bench_softspoken_rcot: length=" << length << endl;
+    cout << "# bench_softspoken: length=" << length << endl;
     run_k<2>(io, party, length);
     run_k<4>(io, party, length);
     run_k<8>(io, party, length);

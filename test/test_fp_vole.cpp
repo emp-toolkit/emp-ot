@@ -1,14 +1,13 @@
 #include "emp-ot/emp-ot.h"
 #include "emp-ot/svole/fp_vole.h"
 #include "emp-tool/emp-tool.h"
-#if defined(__linux__)
-#include <sys/time.h>
-#include <sys/resource.h>
-#elif defined(__APPLE__)
-#include <unistd.h>
-#include <sys/resource.h>
-#include <mach/mach.h>
-#endif
+
+// Correctness test for VOLE over F_p (Mersenne 2^61 - 1). Mirror of
+// test_f2k_vole: drives the streaming (begin/next/end) and one-shot
+// (run) paths and asserts every output via the authenticated-triple
+// oracle below. No timing here -- throughput lives in bench_fp_vole.
+// Includes emp-ot.h directly. A small fixed Ferret parameter set keeps
+// CI fast regardless of NDEBUG.
 
 using namespace emp;
 using namespace std;
@@ -43,17 +42,13 @@ void check_triple(uint64_t delta, const uint64_t *val, const uint64_t *mac,
   }
 }
 
-// Debug builds use a smaller Ferret parameter set so the suite
-// finishes in a reasonable CI window. Release-mode keeps the default
-// (b13) for stress coverage of the largest parameter point.
-#ifdef NDEBUG
-static constexpr auto kSvoleParam   = tuning::ferret_b13;
-static constexpr int  kOneshotIters = 8;
-#else
+// Small fixed parameter set so CI finishes quickly regardless of
+// NDEBUG. The largest-point stress coverage lives in bench_fp_vole.
 static constexpr auto kSvoleParam   = tuning::ferret_b11;
 static constexpr int  kOneshotIters = 2;
-#endif
 
+// Streaming-path exercise: begin → many next → end.
+// Walks chunk-by-chunk through ~one round of outputs, verifying each.
 void test_streaming(NetIO *io, int svole_party) {
   FpVOLE<AuthValueFp> vtriple(svole_party, io,
                               /*malicious=*/true, kSvoleParam);
@@ -71,9 +66,7 @@ void test_streaming(NetIO *io, int svole_party) {
   std::vector<AuthValueFp> buf(chunk);
   std::vector<uint64_t> buf_val(chunk), buf_mac(chunk);
 
-  auto t0 = clock_start();
   vtriple.begin();
-  std::cout << "setup+begin " << time_from(t0) / 1000 << " ms" << std::endl;
 
   const int64_t total_chunks = (per_round / chunk) * 2;
   for (int64_t i = 0; i < total_chunks; ++i) {
@@ -87,6 +80,7 @@ void test_streaming(NetIO *io, int svole_party) {
   vtriple.end();
 }
 
+// One-shot path: run(out, num) with chunk-aligned num.
 void test_oneshot(NetIO *io, int svole_party) {
   FpVOLE<AuthValueFp> vtriple(svole_party, io,
                               /*malicious=*/true, kSvoleParam);
@@ -104,29 +98,13 @@ void test_oneshot(NetIO *io, int svole_party) {
   std::vector<uint64_t> buf_val(per_round), buf_mac(per_round);
 
   for (int i = 0; i < kOneshotIters; ++i) {
-    auto start = clock_start();
     vtriple.run(buf.data(), per_round);
-    std::cout << "extend " << time_from(start) / 1000 << " ms" << std::endl;
     for (int64_t k = 0; k < per_round; ++k) {
       buf_val[k] = buf[k].val;
       buf_mac[k] = buf[k].mac;
     }
     check_triple(Delta, buf_val.data(), buf_mac.data(), per_round, io);
   }
-
-#if defined(__linux__)
-  struct rusage rusage;
-  if (!getrusage(RUSAGE_SELF, &rusage))
-    std::cout << "[Linux]Peak resident set size: " << (size_t)rusage.ru_maxrss
-              << std::endl;
-#elif defined(__APPLE__)
-  struct mach_task_basic_info info;
-  mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
-  if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info,
-                &count) == KERN_SUCCESS)
-    std::cout << "[Mac]Peak resident set size: "
-              << (size_t)info.resident_size_max << std::endl;
-#endif
 }
 
 int main(int argc, char **argv) {

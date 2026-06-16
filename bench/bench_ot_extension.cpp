@@ -10,7 +10,7 @@
 // triggers it lazily) inside the timed window; this is intentional —
 // the reported B/RCOT for a protocol includes its one-time bootstrap
 // amortised over the bench length.
-#include "test/test.h"
+#include "bench/bench.h"
 using namespace std;
 
 template <typename T>

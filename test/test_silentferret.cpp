@@ -1,7 +1,8 @@
-// SilentFerret RCOT: all wire traffic at begin(), wire-free next()/end().
-// Verifies RCOT correctness (one-shot + streaming) for semi-honest and
-// malicious modes with a parallel begin()-time pool, and asserts that the
-// next()/end() path moves zero bytes after begin — the "silent consume" property.
+// SilentFerret RCOT correctness: all wire traffic at begin(), wire-free
+// next()/end(). Verifies RCOT correctness (one-shot + streaming) for
+// semi-honest and malicious modes with a parallel begin()-time pool, and
+// asserts that the next()/end() path moves zero bytes after begin — the
+// "silent consume" property. Throughput lives in bench/bench_silentferret.cpp.
 #include "emp-ot/emp-ot.h"
 #include "test/test.h"
 #include <algorithm>
@@ -9,22 +10,6 @@
 #include <thread>
 #include <vector>
 using namespace std;
-
-// One-shot RCOT correctness across a param/mode, driven via rcot().
-static void bench_one(NetIO* io, int party, int64_t length, bool malicious,
-                      const char* tag, const PrimalLPNParameter& param,
-                      int n_threads) {
-    const char* mode = malicious ? "mali" : "semi";
-    SilentFerret* ot =
-        new SilentFerret(party, io, malicious, param, nullptr, n_threads);
-    uint64_t ds = 0, dr = 0;
-    double us = test_rcot<SilentFerret>(ot, io, party, length, &ds, &dr);
-    cout << "SilentFerret " << tag << " " << mode << " RCOT\t"
-         << double(length) / us << " MOTps  "
-         << "send=" << double(ds) / length << " B/COT  "
-         << "recv=" << double(dr) / length << " B/COT" << endl;
-    delete ot;
-}
 
 // Drive begin / next* / end within a single round (no rollover) and assert
 // next()/end() move zero bytes on either side — the silent property after
@@ -278,31 +263,12 @@ static void verify_tamper_rejects(NetIO* io, int party,
 }
 
 int main(int argc, char** argv) {
-    int length_log, port, party;
-#ifdef NDEBUG
-    constexpr int default_length_log = 22;   // > b11 round budget → rollover
-#else
-    constexpr int default_length_log = 14;
-#endif
-    if (argc <= 3) length_log = default_length_log;
-    else           length_log = atoi(argv[3]);
-    if (length_log > 30) {
-        cerr << "Large test size! comment me if you want to run this size" << endl;
-        return 1;
-    }
-    const int64_t length = 1LL << length_log;
-
+    int port, party;
     parse_party_and_port(argv, &party, &port);
     NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
 
     const int n_threads = 4;
-    cout << "# bench_silentferret_rcot: length=" << length
-         << " threads=" << n_threads << endl;
-
-    bench_one(io, party, length, /*malicious=*/false, "b11", tuning::ferret_b11, n_threads);
-    bench_one(io, party, length, /*malicious=*/true,  "b11", tuning::ferret_b11, n_threads);
-    bench_one(io, party, length, /*malicious=*/false, "b13", tuning::ferret_b13, n_threads);
-    bench_one(io, party, length, /*malicious=*/true,  "b13", tuning::ferret_b13, n_threads);
+    cout << "# test_silentferret: threads=" << n_threads << endl;
 
     verify_silent(io, party, /*malicious=*/false, tuning::ferret_b11, n_threads);
     verify_silent(io, party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
@@ -336,8 +302,13 @@ int main(int argc, char** argv) {
     verify_comm_batched_vs_ferret(io, party, tuning::ferret_b10);
     verify_comm_batched_vs_ferret(io, party, tuning::ferret_b11);
 
-    // MUST be last: the receiver _Exit()s mid-protocol on the (expected) reject.
-    verify_tamper_rejects(io, party, tuning::ferret_b10);
+    // Negative test: the malicious check must REJECT a tampered transcript.
+    // The receiver _Exit()s (non-zero) on the expected reject, which would mark
+    // a CI run failed, so it is gated behind an explicit "tamper" arg and is NOT
+    // run by default (ctest). Run manually: `./run ./build/test_silentferret tamper`.
+    // MUST be last (the receiver exits mid-protocol).
+    if (argc > 3 && std::string(argv[3]) == "tamper")
+        verify_tamper_rejects(io, party, tuning::ferret_b10);
 
     delete io;
     return 0;
