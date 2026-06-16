@@ -44,3 +44,57 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  # AddressSanitizer + UndefinedBehaviorSanitizer. One Ubuntu leg (LSan is
+  # Linux-only); RelWithDebInfo for line numbers without Debug's slowdown.
+  # The emp-tool dep is rebuilt with the same flags so coverage extends into
+  # it and there are no std::vector container-overflow false positives at the
+  # static-lib boundary. detect_leaks=0 focuses on memory corruption / UB;
+  # UBSan halt_on_error=1 turns a detected violation into a non-zero exit.
+  # -fno-sanitize=alignment: emp-tool's SSE bit-transpose does deliberate
+  # unaligned 2-byte stores (well-defined on x86-64/arm64); every other check on.
+  sanitize:
+    name: ASan + UBSan (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read emp-tool ref
+        id: dep
+        run: echo "ref=$(cat .github/workflows/emp-tool.dep)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and install emp-tool sibling (sanitized)
+        run: |
+          git clone --depth 1 --branch "${{ steps.dep.outputs.ref }}" \
+            https://github.com/emp-toolkit/emp-tool.git "$RUNNER_TEMP/emp-tool"
+          cmake -S "$RUNNER_TEMP/emp-tool" -B "$RUNNER_TEMP/emp-tool/build" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/emp-tool-install" \
+            -DEMP_TOOL_NATIVE_ARCH=OFF \
+            -DEMP_TOOL_BUILD_TESTS=OFF \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize=alignment -fno-omit-frame-pointer" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize=alignment -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined"
+          cmake --build "$RUNNER_TEMP/emp-tool/build" -j
+          cmake --install "$RUNNER_TEMP/emp-tool/build"
+
+      - name: Configure (ASan + UBSan)
+        run: |
+          cmake -B build-san \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/emp-tool-install" \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize=alignment -fno-omit-frame-pointer" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize=alignment -fno-omit-frame-pointer" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build
+        run: cmake --build build-san -j
+
+      - name: Test (ASan + UBSan)
+        run: ctest --test-dir build-san --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
