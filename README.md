@@ -254,7 +254,7 @@ if (party == ALICE) {
 otherwise).
 
 Each extension can be parameterized to bootstrap from a non-default
-base OT (default is `PVW`); pair an extension's malicious mode with
+base OT (default is `CSW`); pair an extension's malicious mode with
 a malicious-secure base — `IKNP` / `SoftSpoken` / `Ferret` check
 this at construction time and abort otherwise.
 

@@ -92,8 +92,8 @@ struct AuthValueXxx {
   static constexpr int delta_holder_party();
   static F resolve_delta(Ferret*);
   static void on_set_delta(F, Ferret*);
-  template <typename IO> struct Bootstrap {
-    static void run(Svole<AuthValueXxx, IO>&);
+  struct Bootstrap {
+    static void run(Svole<AuthValueXxx>&);
   };
 };
 ```
@@ -156,7 +156,7 @@ Notes:
     the two need to share it. F_2k bool-decomposes the F-typed Δ and
     forwards to `Ferret::set_delta` (asserts `LSB(Δ) = 1`); F_p is a
     no-op (Fp's Δ is independent of Ferret's).
-  - `Bootstrap<IO>::run(svole)` is the lazy setup body. Owns the
+  - `Bootstrap::run(svole)` is the lazy setup body. Owns the
     initial-round seed sVOLE pairs. See `f2k_vole.h` (Galois packing
     with optional nested Svole) and `fp_vole.h` (COPE + Base_svole +
     pre-stage MPFSS+LPN) for the two existing flavors.
@@ -175,8 +175,8 @@ struct AuthValueMyField {
 };
 
 // Optional: domain-named alias matching the existing F2kVOLE/FpVOLE pattern.
-template <typename AuthValue = AuthValueMyField, typename IO = NetIO>
-using MyFieldVOLE = Svole<AuthValue, IO>;
+template <typename AuthValue = AuthValueMyField>
+using MyFieldVOLE = Svole<AuthValue>;
 
 } // namespace emp
 ```
@@ -186,7 +186,7 @@ wherever consumers need it (test, emp-ot.h umbrella).
 
 ### 1d. Why this works without touching the gadget / Lpn / Svole
 
-`Svole<AuthValue, IO>`, `MultiPointGadget<AuthValue>`, and
+`Svole<AuthValue>`, `MultiPointGadget<AuthValue>`, and
 `Lpn<AuthValue, d>` only see the carrier through its compile-time
 trait constants and static methods. As long as your carrier
 satisfies the contract above, the templates instantiate cleanly.

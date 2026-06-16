@@ -107,12 +107,17 @@ if(EMP_OT_INSTALL)
         ${CMAKE_CURRENT_BINARY_DIR}/emp-ot-config.cmake
         ${CMAKE_CURRENT_BINARY_DIR}/emp-ot-config-version.cmake
         DESTINATION ${_cmake_install_dir})
-endif()
 
-# Build-tree export so siblings can consume without `make install`.
-export(EXPORT emp-otTargets
-       NAMESPACE emp-ot::
-       FILE      ${CMAKE_CURRENT_BINARY_DIR}/emp-otTargets.cmake)
+    # Build-tree export so siblings can consume without `make install`.
+    # Gated on EMP_OT_INSTALL because the emp-otTargets export set is only
+    # registered by install(TARGETS ... EXPORT) above; with EMP_OT_INSTALL off
+    # (the add_subdirectory case) that set never exists, so an unconditional
+    # export() would abort configure. add_subdirectory consumers link the
+    # emp-ot::emp-ot ALIAS target directly and need no exported file.
+    export(EXPORT emp-otTargets
+           NAMESPACE emp-ot::
+           FILE      ${CMAKE_CURRENT_BINARY_DIR}/emp-otTargets.cmake)
+endif()
 
 # ---------------------------------------------------------------------
 # Tests

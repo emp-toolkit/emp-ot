@@ -32,7 +32,7 @@ emp-ot/
 │   └── ferret/                  Ferret (+ AuthValueFerret carrier)
 │
 └── svole/                 sVOLE
-    ├── svole.h                  Svole<AuthValue, IO> + svole_n / svole_M
+    ├── svole.h                  Svole<AuthValue> + svole_n / svole_M
     ├── f2k_vole.h               AuthValueF2k (carrier + Bootstrap)
     ├── fp_vole.h                AuthValueFp  (carrier + Bootstrap)
     ├── fp_base_svole.h          Base_svole + Cope (Fp-only bootstrap helpers)
@@ -62,7 +62,7 @@ emp-ot/
                               │
               ┌───────────────┴───────────────┐
               │                               │
-   public RandomCOT, public                Svole<AuthValue, IO>
+   public RandomCOT, public                Svole<AuthValue>
    StreamingExtension<block>               : public StreamingExtension<AuthValue>
    (OTExtension)
               │
@@ -117,7 +117,7 @@ party-dispatch internally.
 ## Svole — one template, two carriers, two policies
 
 ```
-Svole<AuthValue, IO> : public StreamingExtension<AuthValue>
+Svole<AuthValue> : public StreamingExtension<AuthValue>
                                                        ▲
                                   AuthValue determines │
                                   every protocol detail
@@ -134,8 +134,8 @@ Svole<AuthValue, IO> : public StreamingExtension<AuthValue>
                                                                                 resolve_delta = 0 (user must set)
 ```
 
-`F2kVOLE` and `FpVOLE` are `using` aliases over `Svole<AuthValueF2k,
-NetIO>` and `Svole<AuthValueFp, NetIO>` respectively.
+`F2kVOLE` and `FpVOLE` are `using` aliases over `Svole<AuthValueF2k>`
+and `Svole<AuthValueFp>` respectively.
 
 ## The carrier (AuthValueXxx) is the protocol description
 
@@ -168,11 +168,11 @@ struct AuthValueXxx {
   // cGGM leaf to element
   static AuthValueXxx auth_from_block(block leaf);
 
-  // sVOLE-specific (Svole<AuthValue, IO> only)
+  // sVOLE-specific (Svole<AuthValue> only)
   static constexpr int delta_holder_party();
   static F resolve_delta(Ferret*);
   static void on_set_delta(F, Ferret*);
-  template <typename IO> struct Bootstrap { static void run(Svole<...>&); };
+  struct Bootstrap { static void run(Svole<...>&); };
 };
 ```
 
