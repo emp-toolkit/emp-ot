@@ -20,14 +20,9 @@
 #include "emp-ot/common/cggm.h"
 #include <cstdio>
 #include <cstdlib>
-#include <chrono>
 #include <algorithm>
 using namespace emp;
 
-static double now_us() {
-    using clk = std::chrono::high_resolution_clock;
-    return std::chrono::duration<double, std::micro>(clk::now().time_since_epoch()).count();
-}
 
 static block* aligned_blocks(int64_t n) {
     void* p = nullptr;
@@ -42,9 +37,9 @@ static double bench_raw_H(CCRH& ccrh, block* in, block* out, int64_t total_H) {
     for (int i = 0; i < 4; ++i) ccrh.H<Tile>(out, in);
     double best = 1e18;
     for (int trial = 0; trial < 5; ++trial) {
-        double t0 = now_us();
+        auto t0 = clock_start();
         for (int64_t c = 0; c < calls; ++c) ccrh.H<Tile>(out, in);
-        best = std::min(best, now_us() - t0);
+        best = std::min(best, time_from(t0));
     }
     volatile uint64_t sink = 0;
     for (int i = 0; i < Tile; ++i) sink ^= _mm_extract_epi64(out[i], 0);
@@ -59,10 +54,10 @@ static double bench_cggm_at(int d, int64_t trees, block* leaves, block* K0,
     for (int i = 0; i < 4; ++i) cggm::build_sender<Tile>(d, Delta, k, leaves, K0);
     double best = 1e18;
     for (int trial = 0; trial < 5; ++trial) {
-        double t0 = now_us();
+        auto t0 = clock_start();
         for (int64_t t = 0; t < trees; ++t)
             cggm::build_sender<Tile>(d, Delta, k, leaves, K0);
-        best = std::min(best, now_us() - t0);
+        best = std::min(best, time_from(t0));
     }
     volatile uint64_t sink = 0;
     for (int j = 0; j < (1 << d); ++j) sink ^= _mm_extract_epi64(leaves[j], 0);

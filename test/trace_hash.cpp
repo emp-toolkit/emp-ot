@@ -23,17 +23,6 @@
 using namespace emp;
 using namespace std;
 
-// First 16 hex chars (8 B) of a block digest — enough to detect any
-// real change while keeping the table readable.
-static string hex16(block b) {
-    unsigned char raw[16];
-    memcpy(raw, &b, sizeof(b));
-    ostringstream o;
-    for (int i = 0; i < 8; ++i)
-        o << hex << setw(2) << setfill('0') << (int)raw[i];
-    return o.str();
-}
-
 // Open a fresh NetIO + FS, run `body(io)`, snapshot per-direction
 // digests, print (ALICE only — the BOB-side hashes are the inverse
 // pair and would just produce a duplicate table). Each call uses
@@ -48,9 +37,11 @@ static void measure(int party, int port, const string& name,
     body(&io);
     io.flush();
     if (party == ALICE) {
+        // First 8 B per direction — enough to spot any change, keeps the table tight.
+        block sd = io.get_send_digest(), rd = io.get_recv_digest();
         cout << left << setw(22) << name
-             << " send=" << hex16(io.get_send_digest())
-             << " recv=" << hex16(io.get_recv_digest()) << "\n";
+             << " send=" << to_hex(&sd, 8)
+             << " recv=" << to_hex(&rd, 8) << "\n";
     }
 }
 
