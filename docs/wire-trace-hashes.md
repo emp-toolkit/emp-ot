@@ -11,6 +11,12 @@ sVOLE flavors, in semi and malicious modes) and prints one SHA-256
 digest per direction per protocol — derived from the IOChannel
 Fiat-Shamir transcript over a fresh `NetIO` per protocol.
 
+Each protocol is measured from a **reset deterministic seed state**
+(`reset_test_seed_counter()` before each one), so its digest depends
+only on that protocol's own bytes — not on which protocols ran
+before it. The table is order-independent: you can add or reorder a
+protocol and only its own row changes.
+
 If your refactor doesn't change any wire bytes, the digests stay
 exactly the same. If they change, the protocol's wire format
 changed.
@@ -119,7 +125,9 @@ A hash change is not automatically bad. There are three categories:
 If you add a new protocol or want to test a new parameter combination:
 
 1. Add a `measure(party, port, "<name>", <send_first>, [&](NetIO* io){
-   run_*(io, party, length, ...); });` line in `trace_hash.cpp`.
+   run_*(io, party, length, ...); });` line in `trace_hash.cpp`. It can
+   go anywhere — `measure()` resets the seed state per protocol, so the
+   table is order-independent and the existing rows are unaffected.
 2. Pick `send_first` to match what the protocol's internal `enable_fs`
    would have used — the protocol's `if (!io->fs_enabled())
    enable_fs(<convention>)` should be a no-op when our pre-enable

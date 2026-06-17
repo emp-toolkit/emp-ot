@@ -111,11 +111,13 @@ benchmarks of internal kernels.
 
 `test/trace_hash.cpp` runs every protocol in the repo under a fresh
 `NetIO` with Fiat-Shamir enabled and prints one SHA-256 digest per
-direction per protocol. Refactors that leave the wire bytes
-untouched leave the hashes untouched; refactors that *do* change the
-wire are visible as a single-line diff. See
-[`docs/wire-trace-hashes.md`](docs/wire-trace-hashes.md) for the
-full workflow.
+direction per protocol. Each protocol is measured from a reset
+deterministic seed state, so the digests are *order-independent*:
+adding or reordering a protocol changes only its own row. Refactors
+that leave the wire bytes untouched leave the hashes untouched;
+refactors that *do* change the wire are visible as a single-line
+diff. See [`docs/wire-trace-hashes.md`](docs/wire-trace-hashes.md)
+for the full workflow.
 
 ```
 $ EMP_TEST_MODE=1 ./run ./build/trace_hash | grep '^[A-Za-z(]'
@@ -126,23 +128,31 @@ SHA-256). A change to any of these hashes means the corresponding
 protocol's wire format changed — fine if intentional, but flag it
 clearly in the commit message and update this table.
 
+`Ferret(b11)` and `SilentFerret(b11)` are run over a whole number of
+SilentFerret rounds, where the two are **wire-identical by design**
+(SilentFerret only changes *when* the correction traffic is sent, not
+the bytes). Their rows must stay equal in both modes; a divergence
+means a refactor broke the equivalence, not just one protocol's format.
+
 ```
 CO                     send=cb1241385e1fa266 recv=1527f501eb006b21
-CSW                    send=802e9b74d81f63a8 recv=634c8c41847634f2
-PVW                    send=06ff8f3498188271 recv=73bc62e4d02ea245
-PVWKyber               send=1708ae2aabef619e recv=d8195b395536297d
-IKNP semi              send=dd62b5bfb8bd58b3 recv=864359025637ab39
-SoftSpoken<2> semi     send=0e7edf2b638a30db recv=3dafa542197102c0
-SoftSpoken<8> semi     send=784c7d47a9f146a2 recv=13c3d9136aaa1698
-Ferret(b11) semi       send=42e75ecf31cec7e7 recv=04549cff31949b6c
-F2kVOLE semi           send=784ac978756e932c recv=5cf72d6ec0c8248c
-FpVOLE semi            send=320ae55724cc85bb recv=04358d21086fbdeb
-IKNP mali              send=bc4e21045185ec28 recv=400bfc6cfc0b8ce5
-SoftSpoken<2> mali     send=9e9d7a0ff4815691 recv=be74fc600d3ee7b7
-SoftSpoken<8> mali     send=74a54a2eb2f0fcdd recv=381ad0d603383439
-Ferret(b11) mali       send=14349b47d4840654 recv=95a3fc38a39e43a7
-F2kVOLE mali           send=dc93e25b4b3b0d56 recv=932f73c273156a16
-FpVOLE mali            send=687cf07828fd876b recv=a3392c323c9e5871
+CSW                    send=5e28a037597ce72d recv=17a67a58030cf7de
+PVW                    send=fb1f9d384ef04ffe recv=b64a168b41ee1583
+PVWKyber               send=776a2bea95c8fc2d recv=4826e520ff44ed50
+IKNP semi              send=032eb31e4b9f214f recv=26864c1c34271817
+SoftSpoken<2> semi     send=e0ab2ce21f8e5c56 recv=50920aecaca2d449
+SoftSpoken<8> semi     send=e0ab2ce21f8e5c56 recv=b80ed1915ced45fe
+Ferret(b11) semi       send=6f8df98fdfcb1c2e recv=ee131dbd917f8475
+SilentFerret(b11) semi send=6f8df98fdfcb1c2e recv=ee131dbd917f8475
+F2kVOLE semi           send=1f989cd8128eeb79 recv=8fc11347d531ce91
+FpVOLE semi            send=12667f4a8c24576e recv=442541d8a389a400
+IKNP mali              send=032eb31e4b9f214f recv=6ff8516854c619d2
+SoftSpoken<2> mali     send=e0ab2ce21f8e5c56 recv=dbfc48a5c0e597c9
+SoftSpoken<8> mali     send=e0ab2ce21f8e5c56 recv=affb94c320892478
+Ferret(b11) mali       send=e86246afb2ba0dd6 recv=079a54d2e6942179
+SilentFerret(b11) mali send=e86246afb2ba0dd6 recv=079a54d2e6942179
+F2kVOLE mali           send=c9fd036c322875f6 recv=facbefbc7c8a9469
+FpVOLE mali            send=2dbe9980335f9314 recv=262a40619ac6dae2
 ```
 
 ## Usage

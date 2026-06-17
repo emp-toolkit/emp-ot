@@ -32,5 +32,4 @@ add_test_case_with_run(test_choice_seed)
 
 # Wire-equivalence / trace harnesses (self-checking via verify_rcot / digest diff).
 add_test_case_with_run(trace_equiv)
-add_test_case_with_run(trace_ferret_equiv)
 add_test_case_with_run(trace_hash)

@@ -32,6 +32,11 @@ using namespace std;
 template <typename Body>
 static void measure(int party, int port, const string& name,
                     bool send_first, Body&& body) {
+    // Start every protocol from the same deterministic seed state, so its
+    // trace hash is independent of which protocols ran before it. The table
+    // is order-independent: a protocol can be added or reordered without
+    // disturbing the others' digests. (No-op effect outside EMP_TEST_MODE.)
+    reset_test_seed_counter();
     NetIO io(party == ALICE ? nullptr : "127.0.0.1", port);
     io.enable_fs(send_first);
     body(&io);
@@ -120,6 +125,22 @@ int main(int argc, char** argv) {
     const int64_t svole_len = 1 << 16;
 #endif
 
+    // Ferret and SilentFerret send byte-identical traffic only over a WHOLE
+    // number of SilentFerret rounds: with a partial tail, SilentFerret
+    // over-ships that round's corrections (a bounded effect, not a divergence).
+    // Run both at a whole-rounds length so their rows match exactly -- the
+    // table then *guards* the Ferret == SilentFerret communication equivalence
+    // (a refactor that breaks it shows the two rows diverging). One round is
+    // SilentFerret::cots_per_round() == (t - refill_trees) << tree_depth.
+    const int64_t ferret_cpr =
+        (tuning::ferret_b11.t - tuning::ferret_b11.refill_trees)
+        << tuning::ferret_b11.tree_depth;
+#ifdef NDEBUG
+    const int64_t ferret_len = ferret_cpr * 2;   // 2 rounds → exercises rollover
+#else
+    const int64_t ferret_len = ferret_cpr;       // 1 round (smaller for CI)
+#endif
+
     // FS send_first conventions per protocol family:
     //   RCOT extensions: is_ot_sender() = (party == ALICE).
     //   F2kVOLE: is_delta_holder() = (party == BOB).
@@ -161,10 +182,17 @@ int main(int argc, char** argv) {
                 }, mali);
         });
         measure(party, port, "Ferret(b11) " + mode, rcot_sf, [&](NetIO* io){
-            run_rcot(io, party, rcot_len,
+            run_rcot(io, party, ferret_len,
                 [&](IOChannel* x, bool m) {
                     return std::unique_ptr<Ferret>(
                         new Ferret(party, x, m, tuning::ferret_b11));
+                }, mali);
+        });
+        measure(party, port, "SilentFerret(b11) " + mode, rcot_sf, [&](NetIO* io){
+            run_rcot(io, party, ferret_len,
+                [&](IOChannel* x, bool m) {
+                    return std::unique_ptr<SilentFerret>(
+                        new SilentFerret(party, x, m, tuning::ferret_b11));
                 }, mali);
         });
         measure(party, port, "F2kVOLE " + mode, f2k_sf, [&](NetIO* io){
