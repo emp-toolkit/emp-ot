@@ -24,13 +24,11 @@
 
 State-of-the-art OT implementations on top of [emp-tool](https://github.com/emp-toolkit/emp-tool):
 four base OTs (`CO`, `PVW`, `CSW`, `PVWKyber`), IKNP and
-SoftSpoken OT extensions (semi-honest + malicious), and Ferret silent
-COT extension. All hash functions used for OT are instantiated with
+SoftSpoken OT extensions (semi-honest + malicious), and the Ferret and
+SilentFerret silent COT extensions. All hash functions used for OT are
+instantiated with
 [MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/main/emp-tool/crypto/mitccrh.h)
 for optimal concrete security.
-
-> **Heads up — AI-assisted drafts, not yet audited.** `PVWKyber` is not
-> yet auditted.
 
 ## Requirements
 
@@ -318,6 +316,35 @@ open, amortizing that over the whole stream — e.g. emp-zk's per-AND-gate
 COT draw is ~20× faster this way than calling `rcot(_, 1)` in a loop.
 `next_n` is mutually exclusive with `run()`/`rcot()` on the same
 instance (both touch the same leftover buffer).
+
+### SilentFerret
+
+`SilentFerret` is a drop-in `Ferret` subclass that **front-loads** all of
+its wire traffic. Where `Ferret` interleaves the MPCOT/LPN correction
+messages (and, in malicious mode, the chi-fold check) with production,
+`SilentFerret` concentrates every byte — and every malicious check — into
+`begin()`, leaving `next()` / `next_n()` **completely wire-free** for both
+roles. Over a whole number of rounds the two send byte-identical traffic;
+`SilentFerret` only changes *when* it is sent (this equivalence is pinned by
+the `trace_hash` baseline above).
+
+Prepay a known number of COTs up front, then draw them with no communication
+during the online phase:
+
+```cpp
+SilentFerret ote(party, &io, /*malicious=*/true);  // default param; n_threads = 1
+ote.begin(n_ots);                  // ALL correction traffic + checks happen here
+BlockVec buf(ote.chunk_size());
+for (int i = 0; i < n_chunks; ++i)
+    ote.next(buf.data());          // wire-free: no bytes either way
+ote.end();
+```
+
+The no-arg `begin()` prepays a single round (`K = 1`); rollover past it is
+live. The constructor's last argument `n_threads` sizes the `begin()`-time
+expansion pool (`<= 1` runs serially), parallelizing the bursty setup. The
+trade is a heavier, bursty `begin()` for a silent online phase — useful when
+the interactive section of a protocol should move no OT bytes.
 
 ## Performance
 
