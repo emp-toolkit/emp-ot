@@ -26,7 +26,7 @@ void run_one(const char *name, T *ot, NetIO *io, int party, int64_t length) {
 int main(int argc, char **argv) {
 	int port, party;
 	parse_party_and_port(argv, &party, &port);
-	NetIO *io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+	NetIO *io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
 
 	// Base OTs are the security-parameter-fixed bootstrap (128 of them),
 	// so the bench length is the same in debug and release builds.

@@ -321,45 +321,60 @@ instance (both touch the same leftover buffer).
 
 ## Performance
 
-AWS `c8a.2xlarge` (AMD EPYC 9R45, Zen 5, 8 vCPU), Ubuntu 22.04, GCC
-11.4, OpenSSL 3.0.2, `-march=native`.
+Two AWS `m8a.xlarge` (AMD EPYC, Zen 5, 4 vCPU each), us-east-1 same AZ,
+Ubuntu 22.04, GCC 11.4, OpenSSL 3.0.2, `-march=native`. **The two parties
+run on separate instances over the AWS private network** (~0.4 ms RTT) —
+real inter-instance TCP, not loopback. Each party therefore gets a full
+4-vCPU box, and the network is in the measured path.
 
 ### Base OTs
 
-One batch of 128 base OTs.
+One batch of 128 base OTs (slower party's wall-clock, median of 3 runs;
+send/recv bytes are deterministic).
 
 | Protocol     | Time   |  Send B |  Recv B | Security                                     |
 |--------------|-------:|--------:|--------:|----------------------------------------------|
-| `CO`       | 6.2 ms |   4,165 |   8,832 | semi-honest                                  |
-| `CSW`      | 9.3 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
+| `CO`       |  12 ms |   4,165 |   8,832 | semi-honest                                  |
+| `CSW`      | 9.6 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `PVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `PVWKyber` | 7.3 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
+| `PVWKyber` | 9.9 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
 
 ### OT extensions (RCOT throughput)
 
-Length 2²⁵ OTs (~33M). Both `MOT/s` (million RCOTs per second; median
-of 5 runs, slower of the two parties per run) and `bits/RCOT` (total
-wire bytes, both directions) include the one-time base-OT bootstrap
-amortised over the bench length.
+Length 2²⁵ OTs (~33M), each party on its own instance over the private
+network, **single-threaded** (one thread per party — `SilentFerret`'s
+`begin()` expansion pool is disabled so every protocol is measured the same
+way). `MOT/s` is the median of 5 runs, the slower of the two parties per run;
+`bits/RCOT` (total wire bytes, both directions — deterministic) includes the
+one-time base-OT bootstrap amortised over the length. With a
+real network in the path the comm-heavy extensions become **bandwidth-bound**
+(so `IKNP` semi and malicious collapse to the same rate) while `Ferret`'s
+tiny footprint stays **compute-bound** — hence the wide MOT/s spread.
 
 | Protocol         | Mode      | bits/RCOT | MOT/s |
 |------------------|-----------|----------:|------:|
-| `IKNP`           | semi      |       127 |   227 |
-| `IKNP`           | malicious |       127 |    85 |
-| `SoftSpoken<2>`  | semi      |        63 |   136 |
-| `SoftSpoken<2>`  | malicious |        63 |   125 |
-| `SoftSpoken<4>`  | semi      |        31 |   146 |
-| `SoftSpoken<4>`  | malicious |        31 |   135 |
-| `SoftSpoken<8>`  | semi      |        15 |    57 |
-| `SoftSpoken<8>`  | malicious |        15 |    55 |
-| `Ferret`         | semi      |      0.27 |    83 |
-| `Ferret`         | malicious |      0.27 |    78 |
+| `IKNP`           | semi      |       127 |    39 |
+| `IKNP`           | malicious |       127 |    39 |
+| `SoftSpoken<2>`  | semi      |        63 |    77 |
+| `SoftSpoken<2>`  | malicious |        63 |    77 |
+| `SoftSpoken<4>`  | semi      |        31 |   153 |
+| `SoftSpoken<4>`  | malicious |        31 |   153 |
+| `SoftSpoken<8>`  | semi      |        15 |    67 |
+| `SoftSpoken<8>`  | malicious |        15 |    66 |
+| `Ferret`         | semi      |      0.27 |   111 |
+| `Ferret`         | malicious |      0.27 |   101 |
+| `SilentFerret`   | semi      |      0.34 |    88 |
+| `SilentFerret`   | malicious |      0.34 |    75 |
 
 `IKNP` and `SoftSpoken<k>` traffic is one-direction: 127 bits/RCOT
 for `IKNP`, `128/k − 1` bits/RCOT for `SoftSpoken<k>`. `Ferret`'s
 0.27 bits/RCOT at 2²⁵ is ~0.20 bits/RCOT of steady-state per-round
 MPCOT/LPN traffic plus ~0.07 bits/RCOT of one-time bootstrap; the
-bootstrap fraction shrinks linearly with bench length.
+bootstrap fraction shrinks linearly with bench length. `SilentFerret`
+keeps the same sub-bit footprint (0.34 bits/RCOT — a touch more on the
+receiver side, since it prepays every round's corrections up front in
+`begin()`); it trades a little throughput for moving all wire traffic
+to `begin()`, leaving `next()` completely wire-free.
 
 `COT`, `ROT`, `OT` flavors layer one MITCCRH pass (and, for
 chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.

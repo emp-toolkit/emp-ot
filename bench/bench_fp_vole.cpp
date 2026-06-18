@@ -1,6 +1,7 @@
 #include "emp-ot/emp-ot.h"
 #include "emp-ot/svole/fp_vole.h"
 #include "emp-tool/emp-tool.h"
+#include "bench/bench.h"
 #if defined(__linux__)
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -91,7 +92,7 @@ void bench_oneshot(NetIO *io, int svole_party) {
 int main(int argc, char **argv) {
   parse_party_and_port(argv, &party, &port);
 
-  NetIO *io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+  NetIO *io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
 
   std::cout << std::endl
             << "------------ VOLE Fp (streaming) ------------" << std::endl

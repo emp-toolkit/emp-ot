@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
     else           length = (int64_t{1} << atoi(argv[3])) + 101;
 
     parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+    NetIO* io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
 
     auto run = [&](const char* name, IKNP* ot) {
         uint64_t ds = 0, dr = 0;

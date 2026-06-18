@@ -1,7 +1,11 @@
 # Performance benchmarks: BUILD-ONLY. Built alongside the tests but NOT
 # registered as ctest cases (perf-noisy, long-running). Run manually, e.g.
-#   ./run ./build/bench_ferret      # two-party via the run script
+#   ./run ./build/bench_ferret      # two-party, loopback via the run script
 #   ./build/bench_lpn               # single-process
+# Networked (two boxes): ALICE listens, BOB connects via EMP_BENCH_HOST --
+#   A$ ./build/bench_ot_extension 1 12345
+#   B$ EMP_BENCH_HOST=<A's address> ./build/bench_ot_extension 2 12345
+#   (EMP_BENCH_HOST unset => loopback, the default single-box behaviour)
 # Timing helpers live in bench/bench.h; these emit throughput only (no asserts).
 function(add_bench name)
     add_executable(${name} ${name}.cpp)

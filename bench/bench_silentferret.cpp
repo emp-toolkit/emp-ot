@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
     const int64_t length = 1LL << length_log;
 
     parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+    NetIO* io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
 
     const int n_threads = 4;
     cout << "# bench_silentferret: length=" << length

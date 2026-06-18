@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
     const int64_t length = 1LL << length_log;
 
     parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+    NetIO* io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
 
     cout << "# bench_ferret: length=" << length << endl;
     bench_one(io, party, length, /*malicious=*/false, "b11", tuning::ferret_b11);

@@ -1,16 +1,19 @@
 // Cross-protocol OT-extension RCOT throughput bench. Reports MOT/s and
-// B/RCOT for IKNP / SoftSpoken<k> / Ferret. Two-party via `run`.
+// B/RCOT for IKNP / SoftSpoken<k> / Ferret / SilentFerret. Two-party via
+// `run` (loopback) or networked via EMP_BENCH_HOST (see bench/CMakeLists.txt).
 //
-// Streaming-only: each row drives begin → next loop into a
-// reusable chunk_size()-sized scratch buffer and discards the generated
-// blocks. This keeps memory flat regardless of how many OTs the row
-// runs, so the length default sits at 2^25 (~33M OTs) without paying
-// length × 16 B of heap. The first row of each protocol absorbs the
+// Each row drives a begin → next loop into a reusable chunk_size()-sized
+// scratch buffer and discards the generated blocks. This keeps memory flat
+// regardless of how many OTs the row runs, so the length default sits at 2^25
+// (~33M OTs) without paying length × 16 B of heap. SilentFerret is the one
+// exception to pure streaming: it prepays every round in begin(eff_len) (all
+// correction traffic up front) and then draws wire-free -- its defining mode. The first row of each protocol absorbs the
 // base-OT bootstrap (set_delta hasn't fired and the streaming begin
 // triggers it lazily) inside the timed window; this is intentional —
 // the reported B/RCOT for a protocol includes its one-time bootstrap
 // amortised over the bench length.
 #include "bench/bench.h"
+#include <type_traits>
 using namespace std;
 
 template <typename T>
@@ -23,17 +26,17 @@ void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) 
     io->sync();
     uint64_t s0 = io->send_counter, r0 = io->recv_counter;
     auto start = clock_start();
-    if (party == ALICE) {
+    (void)party;  // both roles run the same begin/next/end loop
+    // SilentFerret's defining mode: prepay every round up front (all the
+    // correction traffic lands in begin()), then draw wire-free. The other
+    // extensions stream round-by-round via the no-arg begin().
+    if constexpr (std::is_same_v<T, SilentFerret>)
+        ot->begin(eff_len);
+    else
         ot->begin();
-        for (int64_t i = 0; i < n_chunks; ++i)
-            ot->next(buf.data());
-        ot->end();
-    } else {
-        ot->begin();
-        for (int64_t i = 0; i < n_chunks; ++i)
-            ot->next(buf.data());
-        ot->end();
-    }
+    for (int64_t i = 0; i < n_chunks; ++i)
+        ot->next(buf.data());
+    ot->end();
     io->flush();
     long long us = time_from(start);
     uint64_t ds = io->send_counter - s0;
@@ -74,7 +77,7 @@ int main(int argc, char** argv) {
     else           length = int64_t{1} << atoi(argv[3]);
 
     parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+    NetIO* io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
 
     cout << "# bench_ot_extension: length=" << length << "  (RCOT throughput, streaming API)" << endl;
 
@@ -104,6 +107,23 @@ int main(int argc, char** argv) {
     {
         Ferret* ot = new Ferret(party, io, /*malicious=*/true);
         run_row(ot, io, party, length, "Ferret mali");
+        delete ot;
+    }
+
+    // SilentFerret (semi + mali). n_threads=1 so it is single-threaded like
+    // every other row here (the begin() expansion pool stays disabled) -- an
+    // apples-to-apples throughput comparison. Default LPN param (ferret_b13)
+    // matches Ferret; prepays all rounds in begin(), then draws wire-free.
+    {
+        SilentFerret* ot = new SilentFerret(party, io, /*malicious=*/false,
+                                            tuning::ferret_b13, nullptr, /*n_threads=*/1);
+        run_row(ot, io, party, length, "SilentFerret semi");
+        delete ot;
+    }
+    {
+        SilentFerret* ot = new SilentFerret(party, io, /*malicious=*/true,
+                                            tuning::ferret_b13, nullptr, /*n_threads=*/1);
+        run_row(ot, io, party, length, "SilentFerret mali");
         delete ot;
     }
 
