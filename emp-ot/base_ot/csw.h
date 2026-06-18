@@ -4,6 +4,8 @@
 #include <memory>
 #include <vector>
 #include "emp-ot/ot.h"
+#include "emp-ot/base_ot/csw_base_ot.h"
+#include "emp-ot/base_ot/sfrot_check.h"
 namespace emp {
 
 /*
@@ -33,7 +35,7 @@ namespace emp {
  * `length` must be ≥ 80 (≈ 2σ for σ = 40); the sender-input extraction
  * argument needs ℓ > 2σ 
  */
-class CSW : public OT { public:
+class CSW : public CSWBaseOT { public:
 	// UC-secure under CDH in the random oracle model.
 	bool is_malicious_secure() const override { return true; }
 
@@ -44,15 +46,24 @@ class CSW : public OT { public:
 	CSW(IOChannel * io_) {this->io = io_;}
 
 private:
+	// Per-instance state stashed by *_core for the deferred *_check (the
+	// extension calls core in begin() and check at the end of end()). For
+	// the standalone send/recv (= core+check back-to-back, inherited from
+	// CSWBaseOT) these just bridge the two halves within one call.
+	int64_t length_ = 0;
+	std::vector<block> p0_, p1_;        // sender pads p_{i,0}, p_{i,1}
+	std::vector<block> p_bi_;           // receiver chosen pads p_{i,b_i}
+	std::vector<uint8_t> b_copy_;       // receiver choices, copied: the caller's
+	                                    // b[] need not outlive the deferred check
+
 	// ===== Random oracles. Each uses a distinct domain string and binds
-	// sid; all four are independent and session-bound. =====
+	// sid; all are independent and session-bound. =====
 	//
-	// H_1 (to-curve) and H_4 (aggregate) are called inline at their two
-	// send/recv sites via RO directly; their domain strings live here so
-	// both sides stay byte-identical. H_2 (pad) and H_3 (short) keep a
-	// helper each — more call sites, and pad has a multi-field order.
+	// H_1 (to-curve) is called inline at its send/recv sites via RO
+	// directly. H_2 (pad) keeps a helper — more call sites, and pad has a
+	// multi-field order. The challenge–prove–response oracles (formerly the
+	// H_3/H_4 helpers here) now live in the shared sfrot_check.h.
 	static constexpr char kDomToCurve[] = "emp-ot:csw-base-ot:to-curve";
-	static constexpr char kDomAgg[]     = "emp-ot:csw-base-ot:agg";
 
 	// H_2(sid, i, P) → block. P is a curve point (the DH share ρ).
 	block H_pad(int64_t i, Point & P) {
@@ -60,18 +71,15 @@ private:
 		           .absorb((uint64_t)i).absorb(P).squeeze_block();
 	}
 
-	// H_3(sid, x) → block. x is a single block (used both for hashing
-	// individual p_{i,b} and for the Π = H_3(sid, otans) proof).
-	block H_short(const block & x) {
-		return RO("emp-ot:csw-base-ot:short", sid.value())
-		           .absorb(x).squeeze_block();
-	}
-
 public:
 	// ----- Sender side. Plays the OT sender role (S in the paper). -----
-	void send(const block * data0, const block * data1, int64_t length) override {
+	// Messy core only: Round 1 recv + Round 2 core bytes (z, {c}). Stashes
+	// p0_/p1_ for the deferred check and does NOT flush — the core bytes stay
+	// buffered so an extension can bundle them with its first message.
+	void send_core(const block * data0, const block * data1, int64_t length) override {
 		assert(length >= 80 &&
 		       "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
+		length_ = length;
 
 		// Round 1 (R→S): receive seed, {B_i}.
 		block seed;
@@ -87,55 +95,51 @@ public:
 		Point z = G.mul_gen(r);
 		Point T_r_neg = T.mul(r).inv();                // -(T^r), reused per OT
 
-		// Per-OT pads p_{i,0}, p_{i,1} and h0_i = H_3(sid, p_{i,0}).
-		std::vector<block> p0(length);
-		std::vector<block> p1(length);
-		std::vector<block> h0(length);
+		// Per-OT pads p_{i,0}, p_{i,1} (the random seed-OT outputs).
+		p0_.resize(length);
+		p1_.resize(length);
 		for (int64_t i = 0; i < length; ++i) {
 			Point rho0 = B[i].mul(r);                  // ρ_{i,0} = B_i^r
 			Point rho1 = rho0.add(T_r_neg);            // ρ_{i,1} = B_i^r · (T^r)^{-1}
-			p0[i] = H_pad(i, rho0);
-			p1[i] = H_pad(i, rho1);
-			h0[i] = H_short(p0[i]);
+			p0_[i] = H_pad(i, rho0);
+			p1_[i] = H_pad(i, rho1);
 		}
 
-		// Aggregate otans = H_4(sid, h0_1, …, h0_ℓ) and proof Π = H_3(sid, otans).
-		block otans = RO(kDomAgg, sid.value()).absorb(h0.data(), (size_t)length * sizeof(block)).squeeze_block();
-		block proof = H_short(otans);
-
-		// Per-OT challenge χ_i = H_3(sid, p_{i,0}) ⊕ H_3(sid, p_{i,1});
-		// chosen-input ciphertexts c_{i,b} = p_{i,b} ⊕ data_{i,b}.
-		std::vector<block> chi(length);
+		// Chosen-input ciphertexts c_{i,b} = p_{i,b} ⊕ data_{i,b}.
 		std::vector<block> c0(length);
 		std::vector<block> c1(length);
 		for (int64_t i = 0; i < length; ++i) {
-			block h1 = H_short(p1[i]);
-			chi[i] = h0[i] ^ h1;
-			c0[i] = p0[i] ^ data0[i];
-			c1[i] = p1[i] ^ data1[i];
+			c0[i] = p0_[i] ^ data0[i];
+			c1[i] = p1_[i] ^ data1[i];
 		}
 
-		// Round 2 (S→R): send (z, {χ_i}, Π, {c_{i,0}, c_{i,1}}).
+		// Round 2 (S→R): core bytes (z, {c_{i,0}, c_{i,1}}), buffered (no flush).
 		io->send_pt(&z);
-		io->send_block(chi.data(), length);
-		io->send_block(&proof, 1);
 		io->send_block(c0.data(), length);
 		io->send_block(c1.data(), length);
+	}
 
-		// Round 3 (R→S): receive otans' and verify against otans.
-		block otans_prime;
-		io->recv_block(&otans_prime, 1);
-		if (!cmpBlock(&otans, &otans_prime, 1))
-			error("CSW::send: otans verification failed (receiver misbehavior)");
+	// Deferred Round-2-tail + Round-3 check ({χ_i}, Π; recv otans' and verify),
+	// over the pads stashed by send_core. Aborts on mismatch.
+	void send_check() override {
+		sfrot_check_send(io, sid.value(), p0_.data(), p1_.data(), length_);
 	}
 
 	// ----- Receiver side. Plays the OT receiver role (R in the paper). -----
-	void recv(block * data, const bool * b, int64_t length) override {
+	// Messy core only: Round 1 send, Round 2 recv + decrypt. Stashes the chosen
+	// pads p_bi_ and a copy of b for the deferred check, and decrypts the
+	// outputs (local — the deferred check, not the decrypt, is what gates
+	// acceptance; the extension's own check + this base check both run before
+	// any output is consumed). Does NOT flush.
+	void recv_core(block * data, const bool * b, int64_t length) override {
 		assert(length >= 80 && "CSW: length must be ≥ 80");
+		length_ = length;
+		b_copy_.resize(length);
+		for (int64_t i = 0; i < length; ++i) b_copy_[i] = b[i] ? 1 : 0;
 
 		// Receiver params: seed ← {0,1}^κ; T = H_1(sid, seed).
 		// Round 1 (R→S): send seed, {B_i}.
-		block seed; 
+		block seed;
 		PRG prg;
 		prg.random_block(&seed, 1);
 		Point T = RO(kDomToCurve, sid.value()).absorb(seed).squeeze_point(G);
@@ -153,52 +157,38 @@ public:
 		}
 
 
-		// Round 2 (S→R): recv (z, {χ_i}, Π, {c_{i,0}, c_{i,1}}).
-		// α_i·z, p_bi[i], H_short(p_bi[i]) depend only on (z, alpha), so
-		// compute them right after recv'ing z and while the bulk
-		// chi/proof/c0/c1 payload is still in flight. The XOR with chi[i]
-		// that produces otresp[i] runs after chi is in hand.
+		// Round 2 (S→R): recv core bytes (z, {c_{i,0}, c_{i,1}}). The pads
+		// p_bi[i] depend only on (z, alpha), so compute them right after
+		// recv'ing z while the bulk c0/c1 payload is still in flight (the
+		// EC exp is the cost; the check's hash of p_bi runs later).
 		Point z;
 		io->recv_pt(&G, &z);
 
-		std::vector<block> p_bi(length);   // saved for decryption after Π verification
-		std::vector<block> h_bi(length);   // H_short(p_bi[i]); xored with chi[i] later
+		p_bi_.resize(length);              // chosen pads; used by the check and decryption
 		for (int64_t i = 0; i < length; ++i) {
 			Point z_alpha = z.mul(alpha[i]);
-			p_bi[i] = H_pad(i, z_alpha);
-			h_bi[i] = H_short(p_bi[i]);
+			p_bi_[i] = H_pad(i, z_alpha);
 		}
 
-		std::vector<block> chi(length);
-		block proof;
 		std::vector<block> c0(length);
 		std::vector<block> c1(length);
-		io->recv_block(chi.data(), length);
-		io->recv_block(&proof, 1);
 		io->recv_block(c0.data(), length);
 		io->recv_block(c1.data(), length);
 
-		// Per-OT response: otresp_i = H_3(sid, p_{i,b_i}) ⊕ (b_i · χ_i).
-		std::vector<block> otresp(length);
-		for (int64_t i = 0; i < length; ++i)
-			otresp[i] = b[i] ? (h_bi[i] ^ chi[i]) : h_bi[i];
-
-		// Aggregate otans' and verify Π. Aborts on mismatch — covers
-		// both honest abort (sender malformed χ_i) and the
-		// selective-failure-detected case from the paper.
-		block otans_prime = RO(kDomAgg, sid.value()).absorb(otresp.data(), (size_t)length * sizeof(block)).squeeze_block();
-		block proof_check = H_short(otans_prime);
-		if (!cmpBlock(&proof, &proof_check, 1))
-			error("CSW::recv: proof verification failed (sender misbehavior or selective-failure attack)");
-
-		// Decrypt outputs.
+		// Decrypt outputs from the chosen pad.
 		for (int64_t i = 0; i < length; ++i) {
 			block c = b[i] ? c1[i] : c0[i];
-			data[i] = c ^ p_bi[i];
+			data[i] = c ^ p_bi_[i];
 		}
+	}
 
-		// Round 3 (R→S): send otans'.
-		io->send_block(&otans_prime, 1);
+	// Deferred challenge–prove–response check (recvs {χ_i}, Π; verifies against
+	// the stashed chosen pads; sends otans' as Round 3). Aborts on a malformed
+	// challenge — covers honest abort and the selective-failure-detected case.
+	// The trailing flush pushes otans' (and the bundled buffer) to the sender.
+	void recv_check() override {
+		sfrot_check_recv(io, sid.value(), p_bi_.data(),
+		                 reinterpret_cast<const bool*>(b_copy_.data()), length_);
 		io->flush();
 	}
 };

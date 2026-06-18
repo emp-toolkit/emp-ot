@@ -15,6 +15,13 @@ public:
 	// Security level of the OT protocol.
 	virtual bool is_malicious_secure() const { return false; }
 
+	// True iff this is a "CSW-like" base OT that exposes the messy-core +
+	// deferred extraction-check split (see CSWBaseOT). An OT extension uses
+	// this to overlap the base OT's last two flows with its own first message
+	// (3-round result); a default (false) base OT gets the blocking path.
+	// Static capability trait, mirroring is_malicious_secure().
+	virtual bool supports_deferred_check() const { return false; }
+
 	// Per-session domain separator, default the zero id. Extensions forward a
 	// derived child sid to their base OT (see OTExtension); callers may set a
 	// session-unique value before first use, but are not required to. The

@@ -3,6 +3,7 @@
 
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/ot.h"
+#include "emp-ot/base_ot/csw_base_ot.h"
 
 namespace emp {
 
@@ -50,7 +51,7 @@ namespace emp {
  * shape (FIPS 203 §5.5; ML-KEM-512 failure rate ≈ 2^{-139} per coeff).
  * Wrong-branch hiding follows from DMLWE on the (V_b - V_β) shift.
  */
-class PVWKyber : public OT {
+class PVWKyber : public CSWBaseOT {
 public:
     // Messy-mode PVW over Module-LWE: receiver-secure under DMLWE
     // against a malicious sender; sender statistically secure against
@@ -60,14 +61,27 @@ public:
 
     // sid is the inherited OT::sid (default zero_block); set via OT::set_sid
     // before first use. It seeds the CRS expansion and output-key derivation.
+    // io is the inherited OT::io (set in the ctor, like CSW).
     explicit PVWKyber(IOChannel* io_);
     ~PVWKyber() override = default;
 
-    void send(const block* data0, const block* data1, int64_t length) override;
-    void recv(block* data, const bool* b, int64_t length) override;
+    // CSWBaseOT split: *_core delivers the messy core (and stashes the per-OT
+    // pads) without flushing; *_check runs the deferred F_SF-rOT extraction
+    // check over the stashed pads. The complete send/recv (= core+check) are
+    // inherited from CSWBaseOT.
+    void send_core(const block* data0, const block* data1, int64_t length) override;
+    void recv_core(block* data, const bool* b, int64_t length) override;
+    void send_check() override;
+    void recv_check() override;
 
 private:
-    IOChannel* io;
+    // Per-instance state stashed by *_core for the deferred *_check.
+    int64_t length_ = 0;
+    default_init_vector<block> p0_, p1_;   // sender pads K_{i,0}, K_{i,1}
+    default_init_vector<block> p_b_;       // receiver chosen pads K_{i,b_i}
+    std::vector<uint8_t> b_copy_;          // receiver choices, copied (the
+                                           // caller's b[] need not outlive the
+                                           // deferred check)
 };
 
 }  // namespace emp

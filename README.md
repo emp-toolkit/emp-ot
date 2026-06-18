@@ -136,23 +136,23 @@ means a refactor broke the equivalence, not just one protocol's format.
 
 ```
 CO                     send=cb1241385e1fa266 recv=1527f501eb006b21
-CSW                    send=5e28a037597ce72d recv=17a67a58030cf7de
+CSW                    send=9f713474307b6bef recv=223f31baeb44267d
 PVW                    send=fb1f9d384ef04ffe recv=b64a168b41ee1583
-PVWKyber               send=776a2bea95c8fc2d recv=4826e520ff44ed50
-IKNP semi              send=032eb31e4b9f214f recv=26864c1c34271817
-SoftSpoken<2> semi     send=e0ab2ce21f8e5c56 recv=50920aecaca2d449
-SoftSpoken<8> semi     send=e0ab2ce21f8e5c56 recv=b80ed1915ced45fe
-Ferret(b11) semi       send=6f8df98fdfcb1c2e recv=ee131dbd917f8475
-SilentFerret(b11) semi send=6f8df98fdfcb1c2e recv=ee131dbd917f8475
-F2kVOLE semi           send=1f989cd8128eeb79 recv=8fc11347d531ce91
-FpVOLE semi            send=12667f4a8c24576e recv=442541d8a389a400
-IKNP mali              send=032eb31e4b9f214f recv=6ff8516854c619d2
-SoftSpoken<2> mali     send=e0ab2ce21f8e5c56 recv=dbfc48a5c0e597c9
-SoftSpoken<8> mali     send=e0ab2ce21f8e5c56 recv=affb94c320892478
-Ferret(b11) mali       send=e86246afb2ba0dd6 recv=079a54d2e6942179
-SilentFerret(b11) mali send=e86246afb2ba0dd6 recv=079a54d2e6942179
-F2kVOLE mali           send=c9fd036c322875f6 recv=facbefbc7c8a9469
-FpVOLE mali            send=2dbe9980335f9314 recv=262a40619ac6dae2
+PVWKyber               send=07594864b631b0c5 recv=4a58e856ecca07be
+IKNP semi              send=86e8b983c8d94b52 recv=356ed16464da939e
+SoftSpoken<2> semi     send=a68cae132c81937b recv=68c283a18fbe3260
+SoftSpoken<8> semi     send=a68cae132c81937b recv=bbfe17cba524e658
+Ferret(b11) semi       send=d34d028893e1c381 recv=ff4d708e0d3e10ab
+SilentFerret(b11) semi send=d34d028893e1c381 recv=ff4d708e0d3e10ab
+F2kVOLE semi           send=803c95c701a28917 recv=ded2e867aa512643
+FpVOLE semi            send=a4542d2accf6a37d recv=64284c447cd40386
+IKNP mali              send=86e8b983c8d94b52 recv=407f8129b0560674
+SoftSpoken<2> mali     send=a68cae132c81937b recv=4163eb51f573dea9
+SoftSpoken<8> mali     send=a68cae132c81937b recv=01c693ab2d69ad70
+Ferret(b11) mali       send=718c719155039ea3 recv=c53770674b0d8bfa
+SilentFerret(b11) mali send=718c719155039ea3 recv=c53770674b0d8bfa
+F2kVOLE mali           send=9b19bae6bbfa35eb recv=4430fbb61f5e79d4
+FpVOLE mali            send=612f33f1b5ba8273 recv=dd149a3730c384e6
 ```
 
 ## Usage

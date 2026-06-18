@@ -1,6 +1,7 @@
 #include "emp-ot/base_ot/pvw_kyber.h"
 #include "emp-ot/base_ot/pvw_kyber/params.hpp"
 #include "emp-ot/base_ot/pvw_kyber/crs.hpp"
+#include "emp-ot/base_ot/sfrot_check.h"   // shared F_SF-rOT extraction check
 
 // PVW's "Encode" / "Decode" map directly to Kyber's poly_frommsg /
 // poly_tomsg (32 B ↔ R_q element with bit_i × ⌊(q+1)/2⌋ embedding;
@@ -56,12 +57,24 @@ inline void sample_polyvec_eta1(polyvec* p, const uint8_t seed[kSymBytes],
     }
 }
 
+// Same, under CBD_eta2 — used for the encryption error e1 (= err1), which in
+// ML-KEM-512 / Kyber indcpa_enc is sampled with eta2 (only s, e, r use eta1).
+// Sampling err1 with eta1 would inflate the s^T·e1 decryption-noise term above
+// the claimed ≈ 2^{-139} failure rate without improving security.
+inline void sample_polyvec_eta2(polyvec* p, const uint8_t seed[kSymBytes],
+                                uint8_t base) {
+    for (int j = 0; j < kK; ++j) {
+        poly_getnoise_eta2(&p->vec[j], seed, (uint8_t)(base + j));
+    }
+}
+
 }  // anonymous namespace
 
-PVWKyber::PVWKyber(IOChannel* io_) : io(io_) {}
+PVWKyber::PVWKyber(IOChannel* io_) { this->io = io_; }
 
-void PVWKyber::send(const block* data0, const block* data1, int64_t length) {
-    if (length <= 0) return;
+void PVWKyber::send_core(const block* data0, const block* data1, int64_t length) {
+    if (length <= 0) { length_ = 0; return; }
+    length_ = length;
 
     uint8_t session_seed[kSymBytes];
     sid_to_session_seed(sid.value(), session_seed);
@@ -84,6 +97,11 @@ void PVWKyber::send(const block* data0, const block* data1, int64_t length) {
     // Per-OT sender output: (u_0, v_0, u_1, v_1, c_0, c_1).
     default_init_vector<uint8_t> send_buf((size_t)length * kSendBytesPerOT);
 
+    // Both per-instance pads, cached (as members) for the deferred extraction
+    // check in send_check().
+    p0_.resize((size_t)length);
+    p1_.resize((size_t)length);
+
     // PRG keyed from system entropy at construction; seeds per-OT
     // randomness for m_β and the noise terms.
     PRG prg;
@@ -104,9 +122,9 @@ void PVWKyber::send(const block* data0, const block* data1, int64_t length) {
 
             polyvec rho, err1;
             poly err2;
-            sample_polyvec_eta1(&rho,  noise_seed, /*base=*/0);
-            sample_polyvec_eta1(&err1, noise_seed, /*base=*/kK);
-            poly_getnoise_eta2(&err2, noise_seed, (uint8_t)(2 * kK));
+            sample_polyvec_eta1(&rho,  noise_seed, /*base=*/0);    // r  ~ eta1
+            sample_polyvec_eta2(&err1, noise_seed, /*base=*/kK);   // e1 ~ eta2 (ML-KEM-512)
+            poly_getnoise_eta2(&err2, noise_seed, (uint8_t)(2 * kK)); // e2 ~ eta2
             polyvec_ntt(&rho);
 
             // u_β = A^T · ρ (NTT-domain accumulate per row), then invNTT
@@ -141,17 +159,30 @@ void PVWKyber::send(const block* data0, const block* data1, int64_t length) {
 
             // Chosen-input mask: c_β = K_β ⊕ data_β[i].
             const block K = derive_output_key(sid.value(), i, beta, m);
+            (beta == 0 ? p0_ : p1_)[i] = K;   // cache pad for the deferred check
             const block masked = K ^ (beta == 0 ? data0[i] : data1[i]);
             std::memcpy(out_ptr, &masked, sizeof(block));
             out_ptr += sizeof(block);
         }
     }
 
+    // Round 2 (S→R): core bytes, buffered (no flush) so an extension can
+    // bundle them with its first message.
     io->send_data(send_buf.data(), (size_t)length * kSendBytesPerOT);
 }
 
-void PVWKyber::recv(block* data, const bool* b, int64_t length) {
-    if (length <= 0) return;
+// Deferred Round-3 check over both stashed pads: sends the challenge/proof and
+// verifies the receiver's response, aborting on mismatch. This is what makes
+// PVW-Kyber a simulation-extractable F_SF-rOT.
+void PVWKyber::send_check() {
+    sfrot_check_send(io, sid.value(), p0_.data(), p1_.data(), length_);
+}
+
+void PVWKyber::recv_core(block* data, const bool* b, int64_t length) {
+    if (length <= 0) { length_ = 0; return; }
+    length_ = length;
+    b_copy_.resize((size_t)length);
+    for (int64_t i = 0; i < length; ++i) b_copy_[i] = b[i] ? 1 : 0;
 
     uint8_t session_seed[kSymBytes];
     sid_to_session_seed(sid.value(), session_seed);
@@ -204,6 +235,9 @@ void PVWKyber::recv(block* data, const bool* b, int64_t length) {
     default_init_vector<uint8_t> recv_buf((size_t)length * kSendBytesPerOT);
     io->recv_data(recv_buf.data(), (size_t)length * kSendBytesPerOT);
 
+    // Chosen pads, cached (as a member) for the deferred extraction check.
+    p_b_.resize((size_t)length);
+
     for (int64_t i = 0; i < length; ++i) {
         const int chosen = b[i] ? 1 : 0;
         const uint8_t* branch_ptr = recv_buf.data()
@@ -231,8 +265,19 @@ void PVWKyber::recv(block* data, const bool* b, int64_t length) {
         poly_tomsg(m_b, &v);
 
         const block K = derive_output_key(sid.value(), i, chosen, m_b);
+        p_b_[i] = K;                // cache chosen pad for the deferred check
         data[i] = K ^ c;
     }
+}
+
+// Deferred Round-3 check over the stashed chosen pads: recvs the challenge/
+// proof, verifies, sends the response, and aborts on a malformed challenge
+// (selective-failure detection). The trailing flush pushes the response (and
+// any bundled buffer) so the sender's verify can complete.
+void PVWKyber::recv_check() {
+    sfrot_check_recv(io, sid.value(), p_b_.data(),
+                     reinterpret_cast<const bool*>(b_copy_.data()), length_);
+    io->flush();
 }
 
 }  // namespace emp

@@ -48,7 +48,15 @@ void IKNP::send_begin_() {
 		// the OT-sender convention shared across IKNP / SoftSpoken /
 		// Ferret.
 		block k0[128];
-		base_ot->recv(k0 + 1, delta_bool + 1, 127);
+		if (csw_base_) {
+			// CSW-like base: messy core now (buffered, no flush); the
+			// extraction check is deferred to send_end_ so the base round-2
+			// bytes bundle with the extension's first message (3-round overlap).
+			csw_base_->recv_core(k0 + 1, delta_bool + 1, 127);
+			base_check_pending_ = true;
+		} else {
+			base_ot->recv(k0 + 1, delta_bool + 1, 127);
+		}
 		for (int64_t i = 1; i < 128; ++i)
 			G0[i].reseed(&k0[i]);
 		if (malicious && !io->fs_enabled())
@@ -79,6 +87,13 @@ void IKNP::send_end_() {
 		check_q = check_q ^ tmp;
 		if (!cmpBlock(&check_q, &t, 1))
 			error("OT Extension check failed");
+	}
+	// Deferred base-OT extraction check, AFTER the extension's own check so the
+	// base challenge bundles into the receiver→sender run and otans' is the one
+	// closing flow. Sender plays the base RECEIVER → recv_check (sends otans').
+	if (base_check_pending_) {
+		csw_base_->recv_check();
+		base_check_pending_ = false;
 	}
 }
 
@@ -140,7 +155,14 @@ void IKNP::recv_begin_() {
 		block k0[128], k1[128];
 		this->prg.random_block(k0, 128);
 		this->prg.random_block(k1, 128);
-		base_ot->send(k0 + 1, k1 + 1, 127);   // base_ot->send flushes internally
+		if (csw_base_) {
+			// CSW-like base: messy core now (buffered, no flush); the
+			// extraction check is deferred to recv_end_.
+			csw_base_->send_core(k0 + 1, k1 + 1, 127);
+			base_check_pending_ = true;
+		} else {
+			base_ot->send(k0 + 1, k1 + 1, 127);   // base_ot->send flushes internally
+		}
 		for (int64_t i = 1; i < 128; ++i) {
 			G0[i].reseed(&k0[i]);
 			G1[i].reseed(&k1[i]);
@@ -162,6 +184,15 @@ void IKNP::recv_end_() {
 		recv_next_(scratch.data());
 		io->send_block(&check_x, 1);
 		io->send_block(&check_t, 1);
+	}
+	// Deferred base-OT extraction check, AFTER the (check_x, check_t) send so
+	// the base challenge (chi, proof) bundles into the same receiver→sender run.
+	// Receiver plays the base SENDER → send_check (sends chi/proof, then its
+	// recv otans' flushes the whole bundle and verifies). otans' is the one
+	// closing sender→receiver flow → 3 rounds.
+	if (base_check_pending_) {
+		csw_base_->send_check();
+		base_check_pending_ = false;
 	}
 	// Recv-side rcot is send-only over its lifetime — the last
 	// recv_next_ batch (and the malicious tail above) sit in

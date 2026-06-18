@@ -116,8 +116,17 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_send_() {
     }
 
     BlockVec received(total);
-    base_ot->recv(received.data(),
-                  reinterpret_cast<bool*>(choices.data()), total);
+    if (csw_base_) {
+        // CSW-like base: messy core now (buffered, no flush); the extraction
+        // check is deferred to send_end_ so the base round-2 bytes bundle with
+        // the extension's first message (3-round overlap).
+        csw_base_->recv_core(received.data(),
+                             reinterpret_cast<bool*>(choices.data()), total);
+        base_check_pending_ = true;
+    } else {
+        base_ot->recv(received.data(),
+                      reinterpret_cast<bool*>(choices.data()), total);
+    }
 
     // Reconstruct each sub-VOLE's punctured GGM tree under path =
     // bit_reverse(α_i); cggm::eval_receiver then fills leaves[x] for
@@ -175,7 +184,14 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
             K1[i * k + j] = K1_buf[j];
         }
     }
-    base_ot->send(K0.data(), K1.data(), total);
+    if (csw_base_) {
+        // CSW-like base: messy core now (buffered, no flush); the extraction
+        // check is deferred to recv_end_.
+        csw_base_->send_core(K0.data(), K1.data(), total);
+        base_check_pending_ = true;
+    } else {
+        base_ot->send(K0.data(), K1.data(), total);
+    }
 
     if (malicious) pprf_check_send();
 
@@ -403,6 +419,12 @@ void SoftSpoken<k, kChunkBlocks>::send_end_() {
         if (!cmpBlock(&lhs, &t, 1))
             error("SoftSpoken subspace VOLE check failed");
     }
+    // Deferred base-OT extraction check, AFTER the subspace check so otans' is
+    // the one closing flow. OT-sender plays the base RECEIVER → recv_check.
+    if (base_check_pending_) {
+        csw_base_->recv_check();
+        base_check_pending_ = false;
+    }
 }
 
 template <int k, int kChunkBlocks>
@@ -490,6 +512,13 @@ void SoftSpoken<k, kChunkBlocks>::recv_end_() {
         recv_chunk_pipeline(scratch, /*bs=*/1);
         this->io->send_block(&check_x_, 1);
         this->io->send_block(&check_t_, 1);
+    }
+    // Deferred base-OT extraction check, AFTER the (check_x, check_t) send so
+    // the base challenge bundles into the same receiver→sender run. OT-receiver
+    // plays the base SENDER → send_check (its recv otans' flushes the bundle).
+    if (base_check_pending_) {
+        csw_base_->send_check();
+        base_check_pending_ = false;
     }
     // Flush any d_buf bytes still buffered in NetIO so the peer's
     // matching recv_next_ can complete.
