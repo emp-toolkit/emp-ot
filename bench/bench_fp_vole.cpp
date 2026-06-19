@@ -90,20 +90,20 @@ void bench_oneshot(NetIO *io, int svole_party) {
 }
 
 int main(int argc, char **argv) {
-  parse_party_and_port(argv, &party, &port);
+  party = parse_party(argv);
+  port = peer_port();
 
-  NetIO *io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
+  auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
   std::cout << std::endl
             << "------------ VOLE Fp (streaming) ------------" << std::endl
             << std::endl;
-  bench_streaming(io, party);
+  bench_streaming(io.get(), party);
 
   std::cout << std::endl
             << "------------ VOLE Fp (one-shot) ------------" << std::endl
             << std::endl;
-  bench_oneshot(io, party);
+  bench_oneshot(io.get(), party);
 
-  delete io;
   return 0;
 }

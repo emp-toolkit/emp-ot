@@ -51,34 +51,34 @@ static void check_one(NetIO* io, int party, const char* tag,
 
 int main(int argc, char** argv) {
     int port, party;
-    parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+    party = parse_party(argv);
+    port = peer_port();
+    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
     // Fixed seed; we want this->set_choice_seed-driven determinism,
     // not test-mode determinism. The seed itself can be anything.
     block seed = makeBlock(0x1234567890abcdefULL, 0xfedcba0987654321ULL);
 
-    check_one(io, party, "IKNP semi", seed, [&]{
-        return std::make_unique<IKNP>(party, io, /*malicious=*/false);
+    check_one(io.get(), party, "IKNP semi", seed, [&]{
+        return std::make_unique<IKNP>(party, io.get(), /*malicious=*/false);
     });
-    check_one(io, party, "IKNP mali", seed, [&]{
-        return std::make_unique<IKNP>(party, io, /*malicious=*/true);
-    });
-
-    check_one(io, party, "SoftSpoken<8> semi", seed, [&]{
-        return std::make_unique<SoftSpoken<8>>(party, io, /*malicious=*/false);
-    });
-    check_one(io, party, "SoftSpoken<8> mali", seed, [&]{
-        return std::make_unique<SoftSpoken<8>>(party, io, /*malicious=*/true);
+    check_one(io.get(), party, "IKNP mali", seed, [&]{
+        return std::make_unique<IKNP>(party, io.get(), /*malicious=*/true);
     });
 
-    check_one(io, party, "Ferret(b13) semi", seed, [&]{
-        return std::make_unique<Ferret>(party, io, /*malicious=*/false);
+    check_one(io.get(), party, "SoftSpoken<8> semi", seed, [&]{
+        return std::make_unique<SoftSpoken<8>>(party, io.get(), /*malicious=*/false);
     });
-    check_one(io, party, "Ferret(b13) mali", seed, [&]{
-        return std::make_unique<Ferret>(party, io, /*malicious=*/true);
+    check_one(io.get(), party, "SoftSpoken<8> mali", seed, [&]{
+        return std::make_unique<SoftSpoken<8>>(party, io.get(), /*malicious=*/true);
     });
 
-    delete io;
+    check_one(io.get(), party, "Ferret(b13) semi", seed, [&]{
+        return std::make_unique<Ferret>(party, io.get(), /*malicious=*/false);
+    });
+    check_one(io.get(), party, "Ferret(b13) mali", seed, [&]{
+        return std::make_unique<Ferret>(party, io.get(), /*malicious=*/true);
+    });
+
     return 0;
 }

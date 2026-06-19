@@ -244,44 +244,44 @@ static void verify_comm_batched_vs_ferret(NetIO* io, int party,
 
 int main(int argc, char** argv) {
     int port, party;
-    parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+    party = parse_party(argv);
+    port = peer_port();
+    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
     const int n_threads = 4;
     cout << "# test_silentferret: threads=" << n_threads << endl;
 
-    verify_silent(io, party, /*malicious=*/false, tuning::ferret_b11, n_threads);
-    verify_silent(io, party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
-    verify_silent(io, party, /*malicious=*/false, tuning::ferret_b13, n_threads);
-    verify_silent(io, party, /*malicious=*/true,  tuning::ferret_b13, n_threads);
+    verify_silent(io.get(), party, /*malicious=*/false, tuning::ferret_b11, n_threads);
+    verify_silent(io.get(), party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
+    verify_silent(io.get(), party, /*malicious=*/false, tuning::ferret_b13, n_threads);
+    verify_silent(io.get(), party, /*malicious=*/true,  tuning::ferret_b13, n_threads);
 
-    verify_parallel(io, party, /*malicious=*/false, tuning::ferret_b11, n_threads);
-    verify_parallel(io, party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
-    verify_parallel(io, party, /*malicious=*/false, tuning::ferret_b13, n_threads);
-    verify_parallel(io, party, /*malicious=*/true,  tuning::ferret_b13, n_threads);
+    verify_parallel(io.get(), party, /*malicious=*/false, tuning::ferret_b11, n_threads);
+    verify_parallel(io.get(), party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
+    verify_parallel(io.get(), party, /*malicious=*/false, tuning::ferret_b13, n_threads);
+    verify_parallel(io.get(), party, /*malicious=*/true,  tuning::ferret_b13, n_threads);
 
-    verify_next_n(io, party, /*malicious=*/false, tuning::ferret_b11);
-    verify_next_n(io, party, /*malicious=*/true,  tuning::ferret_b11);
-    verify_next_n(io, party, /*malicious=*/false, tuning::ferret_b13);
-    verify_next_n(io, party, /*malicious=*/true,  tuning::ferret_b13);
+    verify_next_n(io.get(), party, /*malicious=*/false, tuning::ferret_b11);
+    verify_next_n(io.get(), party, /*malicious=*/true,  tuning::ferret_b11);
+    verify_next_n(io.get(), party, /*malicious=*/false, tuning::ferret_b13);
+    verify_next_n(io.get(), party, /*malicious=*/true,  tuning::ferret_b13);
 
     // Multi-round consume is param-independent; exercise it on the smaller
     // params so the K>=4-round output buffer stays light (b13 rounds are ~15M
     // COTs each — too large to materialize several of here).
-    verify_prepaid(io, party, /*malicious=*/false, tuning::ferret_b10, n_threads);
-    verify_prepaid(io, party, /*malicious=*/true,  tuning::ferret_b10, n_threads);
-    verify_prepaid(io, party, /*malicious=*/false, tuning::ferret_b11, n_threads);
-    verify_prepaid(io, party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
+    verify_prepaid(io.get(), party, /*malicious=*/false, tuning::ferret_b10, n_threads);
+    verify_prepaid(io.get(), party, /*malicious=*/true,  tuning::ferret_b10, n_threads);
+    verify_prepaid(io.get(), party, /*malicious=*/false, tuning::ferret_b11, n_threads);
+    verify_prepaid(io.get(), party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
 
     // Differential: no-arg SilentFerret moves byte-for-byte the same as Ferret.
-    verify_comm_matches_ferret(io, party, tuning::ferret_b10);
-    verify_comm_matches_ferret(io, party, tuning::ferret_b11);
+    verify_comm_matches_ferret(io.get(), party, tuning::ferret_b10);
+    verify_comm_matches_ferret(io.get(), party, tuning::ferret_b11);
 
     // Batched (2 batches x 2 rounds) vs Ferret (4 rounds): identical corrections,
     // exactly (rounds - batches) fewer checks, and a valid 2-batch-chained RCOT.
-    verify_comm_batched_vs_ferret(io, party, tuning::ferret_b10);
-    verify_comm_batched_vs_ferret(io, party, tuning::ferret_b11);
+    verify_comm_batched_vs_ferret(io.get(), party, tuning::ferret_b10);
+    verify_comm_batched_vs_ferret(io.get(), party, tuning::ferret_b11);
 
-    delete io;
     return 0;
 }

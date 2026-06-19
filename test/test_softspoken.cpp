@@ -22,14 +22,14 @@ int main(int argc, char** argv) {
     int length, port, party;
     length = (1 << 12) + 101;
 
-    parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+    party = parse_party(argv);
+    port = peer_port();
+    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
     cout << "# test_softspoken: length=" << length << endl;
-    run_k<2>(io, party, length);
-    run_k<4>(io, party, length);
-    run_k<8>(io, party, length);
+    run_k<2>(io.get(), party, length);
+    run_k<4>(io.get(), party, length);
+    run_k<8>(io.get(), party, length);
 
-    delete io;
     return 0;
 }

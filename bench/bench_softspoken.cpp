@@ -33,17 +33,17 @@ int main(int argc, char** argv) {
 #else
     constexpr int default_length_log = 12;
 #endif
-    if (argc <= 3) length = (1 << default_length_log) + 101;
-    else           length = (1 << atoi(argv[3])) + 101;
+    if (argc <= 2) length = (1 << default_length_log) + 101;
+    else           length = (1 << atoi(argv[2])) + 101;
 
-    parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
+    party = parse_party(argv);
+    port = peer_port();
+    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
     cout << "# bench_softspoken: length=" << length << endl;
-    run_k<2>(io, party, length);
-    run_k<4>(io, party, length);
-    run_k<8>(io, party, length);
+    run_k<2>(io.get(), party, length);
+    run_k<4>(io.get(), party, length);
+    run_k<8>(io.get(), party, length);
 
-    delete io;
     return 0;
 }

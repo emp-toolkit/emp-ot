@@ -1,2 +1,4 @@
 #!/bin/bash
-(sleep 0.05; $1 1 12345 ${@:2}) &  $1 2 12345 ${@:2}
+# Port travels via EMP_PORT (read by peer_port()); only the party id is positional.
+export EMP_PORT=$(( (RANDOM % 30000) + 20000 ))
+(sleep 0.05; $1 1 ${@:2}) &  $1 2 ${@:2}

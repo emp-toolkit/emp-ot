@@ -37,13 +37,13 @@ static void measure(int party, int port, const string& name,
     // is order-independent: a protocol can be added or reordered without
     // disturbing the others' digests. (No-op effect outside EMP_TEST_MODE.)
     reset_test_seed_counter();
-    NetIO io(party == ALICE ? nullptr : "127.0.0.1", port);
-    io.enable_fs(send_first);
-    body(&io);
-    io.flush();
+    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
+    io->enable_fs(send_first);
+    body(io.get());
+    io->flush();
     if (party == ALICE) {
         // First 8 B per direction — enough to spot any change, keeps the table tight.
-        block sd = io.get_send_digest(), rd = io.get_recv_digest();
+        block sd = io->get_send_digest(), rd = io->get_recv_digest();
         cout << left << setw(22) << name
              << " send=" << to_hex(&sd, 8)
              << " recv=" << to_hex(&rd, 8) << "\n";
@@ -97,11 +97,12 @@ static void run_base_ot(NetIO* io, int party, int64_t length) {
 
 int main(int argc, char** argv) {
     int port, party;
-    if (argc < 3) {
+    if (argc < 2) {
         cerr << "usage: trace_hash <party 1|2> <port>\n";
         return 1;
     }
-    parse_party_and_port(argv, &party, &port);
+    party = parse_party(argv);
+    port = peer_port();
     if (!is_test_mode())
         cerr << "trace_hash: EMP_TEST_MODE not set; hashes "
                 "will be non-deterministic\n";

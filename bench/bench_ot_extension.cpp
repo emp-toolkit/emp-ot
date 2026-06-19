@@ -1,6 +1,6 @@
 // Cross-protocol OT-extension RCOT throughput bench. Reports MOT/s and
 // B/RCOT for IKNP / SoftSpoken<k> / Ferret / SilentFerret. Two-party via
-// `run` (loopback) or networked via EMP_BENCH_HOST (see bench/CMakeLists.txt).
+// `run` (loopback) or networked via EMP_PEER_IP (see bench/CMakeLists.txt).
 //
 // Each row drives a begin → next loop into a reusable chunk_size()-sized
 // scratch buffer and discards the generated blocks. This keeps memory flat
@@ -73,40 +73,41 @@ int main(int argc, char** argv) {
 #else
     constexpr int default_length_log = 12;
 #endif
-    if (argc <= 3) length = int64_t{1} << default_length_log;
-    else           length = int64_t{1} << atoi(argv[3]);
+    if (argc <= 2) length = int64_t{1} << default_length_log;
+    else           length = int64_t{1} << atoi(argv[2]);
 
-    parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
+    party = parse_party(argv);
+    port = peer_port();
+    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
     cout << "# bench_ot_extension: length=" << length << "  (RCOT throughput, streaming API)" << endl;
 
     // IKNP
     {
-        IKNP* iknp = new IKNP(party, io, /*malicious=*/false);
-        run_row(iknp, io, party, length, "IKNP semi");
+        IKNP* iknp = new IKNP(party, io.get(), /*malicious=*/false);
+        run_row(iknp, io.get(), party, length, "IKNP semi");
         delete iknp;
     }
     {
-        IKNP* iknp = new IKNP(party, io, /*malicious=*/true);
-        run_row(iknp, io, party, length, "IKNP mali");
+        IKNP* iknp = new IKNP(party, io.get(), /*malicious=*/true);
+        run_row(iknp, io.get(), party, length, "IKNP mali");
         delete iknp;
     }
 
     // SoftSpoken<k>, k ∈ {2, 4, 8}, semi + mali.
-    run_softspoken_k<2>(io, party, length);
-    run_softspoken_k<4>(io, party, length);
-    run_softspoken_k<8>(io, party, length);
+    run_softspoken_k<2>(io.get(), party, length);
+    run_softspoken_k<4>(io.get(), party, length);
+    run_softspoken_k<8>(io.get(), party, length);
 
     // Ferret (semi + mali).
     {
-        Ferret* ot = new Ferret(party, io, /*malicious=*/false);
-        run_row(ot, io, party, length, "Ferret semi");
+        Ferret* ot = new Ferret(party, io.get(), /*malicious=*/false);
+        run_row(ot, io.get(), party, length, "Ferret semi");
         delete ot;
     }
     {
-        Ferret* ot = new Ferret(party, io, /*malicious=*/true);
-        run_row(ot, io, party, length, "Ferret mali");
+        Ferret* ot = new Ferret(party, io.get(), /*malicious=*/true);
+        run_row(ot, io.get(), party, length, "Ferret mali");
         delete ot;
     }
 
@@ -115,18 +116,17 @@ int main(int argc, char** argv) {
     // apples-to-apples throughput comparison. Default LPN param (ferret_b13)
     // matches Ferret; prepays all rounds in begin(), then draws wire-free.
     {
-        SilentFerret* ot = new SilentFerret(party, io, /*malicious=*/false,
+        SilentFerret* ot = new SilentFerret(party, io.get(), /*malicious=*/false,
                                             tuning::ferret_b13, nullptr, /*n_threads=*/1);
-        run_row(ot, io, party, length, "SilentFerret semi");
+        run_row(ot, io.get(), party, length, "SilentFerret semi");
         delete ot;
     }
     {
-        SilentFerret* ot = new SilentFerret(party, io, /*malicious=*/true,
+        SilentFerret* ot = new SilentFerret(party, io.get(), /*malicious=*/true,
                                             tuning::ferret_b13, nullptr, /*n_threads=*/1);
-        run_row(ot, io, party, length, "SilentFerret mali");
+        run_row(ot, io.get(), party, length, "SilentFerret mali");
         delete ot;
     }
 
-    delete io;
     return 0;
 }

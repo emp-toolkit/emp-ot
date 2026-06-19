@@ -160,7 +160,8 @@ FpVOLE mali            send=612f33f1b5ba8273 recv=dd149a3730c384e6
 #include <emp-ot/emp-ot.h>         // OTs
 using namespace emp;
 
-NetIO io(party == ALICE ? nullptr : "127.0.0.1", port);
+int party = parse_party(argv);   // argv[1]; port/IP come from $EMP_PORT / $EMP_PEER_IP
+NetIO io(party == ALICE ? nullptr : peer_ip(), peer_port());
 ```
 
 ### Interfaces

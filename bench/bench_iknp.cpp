@@ -13,15 +13,16 @@ int main(int argc, char** argv) {
 #else
     constexpr int default_length_log = 12;
 #endif
-    if (argc <= 3) length = (int64_t{1} << default_length_log) + 101;
-    else           length = (int64_t{1} << atoi(argv[3])) + 101;
+    if (argc <= 2) length = (int64_t{1} << default_length_log) + 101;
+    else           length = (int64_t{1} << atoi(argv[2])) + 101;
 
-    parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
+    party = parse_party(argv);
+    port = peer_port();
+    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
     auto run = [&](const char* name, IKNP* ot) {
         uint64_t ds = 0, dr = 0;
-        double us = time_rcot<IKNP>(ot, io, party, length, &ds, &dr);
+        double us = time_rcot<IKNP>(ot, io.get(), party, length, &ds, &dr);
         cout << name << " RCOT\t"
              << double(length) / us << " MOTps  "
              << "send=" << double(ds) / length << " B/COT  "
@@ -31,16 +32,15 @@ int main(int argc, char** argv) {
     cout << "# bench_iknp: length=" << length << endl;
 
     {
-        IKNP* ot = new IKNP(party, io, /*malicious=*/false);
+        IKNP* ot = new IKNP(party, io.get(), /*malicious=*/false);
         run("IKNP semi", ot);
         delete ot;
     }
     {
-        IKNP* ot = new IKNP(party, io, /*malicious=*/true);
+        IKNP* ot = new IKNP(party, io.get(), /*malicious=*/true);
         run("IKNP mali", ot);
         delete ot;
     }
 
-    delete io;
     return 0;
 }

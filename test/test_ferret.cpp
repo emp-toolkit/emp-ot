@@ -25,17 +25,17 @@ int main(int argc, char** argv) {
     constexpr int length_log = 14;
     const int64_t length = 1LL << length_log;
 
-    parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+    party = parse_party(argv);
+    port = peer_port();
+    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
     cout << "# test_ferret: length=" << length << endl;
-    test_one(io, party, length, /*malicious=*/false, "b11", tuning::ferret_b11);
-    test_one(io, party, length, /*malicious=*/true,  "b11", tuning::ferret_b11);
-    test_one(io, party, length, /*malicious=*/false, "b12", tuning::ferret_b12);
-    test_one(io, party, length, /*malicious=*/true,  "b12", tuning::ferret_b12);
-    test_one(io, party, length, /*malicious=*/false, "b13", tuning::ferret_b13);
-    test_one(io, party, length, /*malicious=*/true,  "b13", tuning::ferret_b13);
+    test_one(io.get(), party, length, /*malicious=*/false, "b11", tuning::ferret_b11);
+    test_one(io.get(), party, length, /*malicious=*/true,  "b11", tuning::ferret_b11);
+    test_one(io.get(), party, length, /*malicious=*/false, "b12", tuning::ferret_b12);
+    test_one(io.get(), party, length, /*malicious=*/true,  "b12", tuning::ferret_b12);
+    test_one(io.get(), party, length, /*malicious=*/false, "b13", tuning::ferret_b13);
+    test_one(io.get(), party, length, /*malicious=*/true,  "b13", tuning::ferret_b13);
 
-    delete io;
     return 0;
 }

@@ -29,26 +29,26 @@ int main(int argc, char** argv) {
 #else
     constexpr int default_length_log = 14;
 #endif
-    if (argc <= 3) length_log = default_length_log;
-    else           length_log = atoi(argv[3]);
+    if (argc <= 2) length_log = default_length_log;
+    else           length_log = atoi(argv[2]);
     if (length_log > 30) {
         cerr << "Large test size! comment me if you want to run this size" << endl;
         return 1;
     }
     const int64_t length = 1LL << length_log;
 
-    parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : bench_peer_host(), port);
+    party = parse_party(argv);
+    port = peer_port();
+    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
     const int n_threads = 4;
     cout << "# bench_silentferret: length=" << length
          << " threads=" << n_threads << endl;
 
-    bench_one(io, party, length, /*malicious=*/false, "b11", tuning::ferret_b11, n_threads);
-    bench_one(io, party, length, /*malicious=*/true,  "b11", tuning::ferret_b11, n_threads);
-    bench_one(io, party, length, /*malicious=*/false, "b13", tuning::ferret_b13, n_threads);
-    bench_one(io, party, length, /*malicious=*/true,  "b13", tuning::ferret_b13, n_threads);
+    bench_one(io.get(), party, length, /*malicious=*/false, "b11", tuning::ferret_b11, n_threads);
+    bench_one(io.get(), party, length, /*malicious=*/true,  "b11", tuning::ferret_b11, n_threads);
+    bench_one(io.get(), party, length, /*malicious=*/false, "b13", tuning::ferret_b13, n_threads);
+    bench_one(io.get(), party, length, /*malicious=*/true,  "b13", tuning::ferret_b13, n_threads);
 
-    delete io;
     return 0;
 }

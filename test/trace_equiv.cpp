@@ -27,31 +27,32 @@ using namespace std;
 
 int main(int argc, char** argv) {
     int port, party;
-    if (argc < 3) {
+    if (argc < 2) {
         cerr << "usage: trace_equiv <party 1|2> <port> [prefix] [length_log]\n";
         return 1;
     }
-    parse_party_and_port(argv, &party, &port);
+    party = parse_party(argv);
+    port = peer_port();
     // Default prefix lands in /tmp so ctest invocations (which don't
     // pass one) succeed without polluting the source tree. Manual
     // refactor-verification runs should pass an explicit prefix so
     // before/after diffs find each other.
-    const string prefix = (argc > 3) ? argv[3] : "/tmp/trace_equiv";
+    const string prefix = (argc > 2) ? argv[2] : "/tmp/trace_equiv";
 #ifdef NDEBUG
     const int default_length_log = 16;
 #else
     const int default_length_log = 10;
 #endif
-    const int length_log = (argc > 4) ? atoi(argv[4]) : default_length_log;
+    const int length_log = (argc > 3) ? atoi(argv[3]) : default_length_log;
     const int64_t length = (1LL << length_log) + 101;
 
     if (!is_test_mode()) {
         cerr << "trace_equiv: EMP_TEST_MODE not set; traces will be non-deterministic\n";
     }
 
-    NetIO* under = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+    auto under = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
     const string party_tag = (party == ALICE) ? "alice" : "bob";
-    TraceIO* io = new TraceIO(under, prefix + "." + party_tag);
+    TraceIO* io = new TraceIO(under.get(), prefix + "." + party_tag);
 
     // Protocol bytes go through TraceIO; verify_rcot's verification
     // round-trip uses the underlying NetIO directly so the trace files
@@ -62,7 +63,7 @@ int main(int argc, char** argv) {
     iknp->rcot(b, length);
     io->flush();
     long long us = time_from(t0);
-    verify_rcot(iknp, under, party, b, length);
+    verify_rcot(iknp, under.get(), party, b, length);
     cout << "trace_equiv " << party_tag
          << " IKNP semi RCOT length=" << length
          << "  " << double(length) / us << " MOTps" << endl;
@@ -70,6 +71,5 @@ int main(int argc, char** argv) {
     delete[] b;
     delete iknp;
     delete io;
-    delete under;
     return 0;
 }

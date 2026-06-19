@@ -108,20 +108,20 @@ void test_oneshot(NetIO *io, int svole_party) {
 }
 
 int main(int argc, char **argv) {
-  parse_party_and_port(argv, &party, &port);
+  party = parse_party(argv);
+  port = peer_port();
 
-  NetIO *io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+  auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
   std::cout << std::endl
             << "------------ VOLE Fp (streaming) ------------" << std::endl
             << std::endl;
-  test_streaming(io, party);
+  test_streaming(io.get(), party);
 
   std::cout << std::endl
             << "------------ VOLE Fp (one-shot) ------------" << std::endl
             << std::endl;
-  test_oneshot(io, party);
+  test_oneshot(io.get(), party);
 
-  delete io;
   return 0;
 }

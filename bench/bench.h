@@ -8,18 +8,11 @@
 // verification round-trip, and benches never silently double as tests.
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/emp-ot.h"
-#include <cstdlib>   // std::getenv
 using namespace emp;
 
-// Peer address for the connecting party (BOB / party 2). A networked two-box
-// run exports EMP_BENCH_HOST=<ALICE's address>; unset falls back to loopback --
-// the default single-box `run`-script setup. ALICE (party 1) listens and
-// ignores this. So no bench hardcodes an IP: localhost by default, the peer's
-// address when EMP_BENCH_HOST is set.
-inline const char* bench_peer_host() {
-    const char* h = std::getenv("EMP_BENCH_HOST");
-    return (h != nullptr && *h != '\0') ? h : "127.0.0.1";
-}
+// The connecting party (BOB / party 2) dials emp-tool's peer_ip() ($EMP_PEER_IP,
+// default loopback); ALICE (party 1) listens and ignores it. So no bench
+// hardcodes an IP.
 
 // `bytes_sent_out` / `bytes_recv_out`: optional out-params receiving the wire
 // bytes accrued by the timed protocol call only.

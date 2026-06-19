@@ -8,26 +8,26 @@ int main(int argc, char** argv) {
     int port, party;
     constexpr int64_t length = (int64_t{1} << 14) + 101;
 
-    parse_party_and_port(argv, &party, &port);
-    NetIO* io = new NetIO(party == ALICE ? nullptr : "127.0.0.1", port);
+    party = parse_party(argv);
+    port = peer_port();
+    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
     auto run = [&](const char* name, IKNP* ot) {
         cout << name << " RCOT\t";
-        check_rcot<IKNP>(ot, io, party, length);
+        check_rcot<IKNP>(ot, io.get(), party, length);
         cout << endl;
     };
 
     {
-        IKNP* ot = new IKNP(party, io, /*malicious=*/false);
+        IKNP* ot = new IKNP(party, io.get(), /*malicious=*/false);
         run("IKNP semi", ot);
         delete ot;
     }
     {
-        IKNP* ot = new IKNP(party, io, /*malicious=*/true);
+        IKNP* ot = new IKNP(party, io.get(), /*malicious=*/true);
         run("IKNP mali", ot);
         delete ot;
     }
 
-    delete io;
     return 0;
 }
