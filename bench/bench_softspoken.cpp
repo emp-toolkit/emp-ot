@@ -27,14 +27,15 @@ void run_k(NetIO* io, int party, int64_t length) {
 }
 
 int main(int argc, char** argv) {
-    int length, port, party;
+    int port, party;
+    int64_t length;
 #ifdef NDEBUG
     constexpr int default_length_log = 24;
 #else
     constexpr int default_length_log = 12;
 #endif
-    if (argc <= 2) length = (1 << default_length_log) + 101;
-    else           length = (1 << atoi(argv[2])) + 101;
+    if (argc <= 2) length = (int64_t{1} << default_length_log) + 101;
+    else           length = (int64_t{1} << atoi(argv[2])) + 101;
 
     party = parse_party(argv);
     port = peer_port();

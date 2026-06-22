@@ -215,23 +215,21 @@ public:
 
   int party;
   IOChannel *io;
-  Cope *cope;
+  std::unique_ptr<Cope> cope;
   __uint128_t Delta;
 
   // SENDER (ALICE = Δ-holder)
   Base_svole(int party, IOChannel *io, block sid, __uint128_t Delta)
       : party(party), io(io), Delta(Delta) {
-    cope = new Cope(party, io, MERSENNE_PRIME_EXP, sid);
+    cope = std::make_unique<Cope>(party, io, MERSENNE_PRIME_EXP, sid);
     cope->initialize(Delta);
   }
 
   // RECEIVER (BOB)
   Base_svole(int party, IOChannel *io, block sid) : party(party), io(io) {
-    cope = new Cope(party, io, MERSENNE_PRIME_EXP, sid);
+    cope = std::make_unique<Cope>(party, io, MERSENNE_PRIME_EXP, sid);
     cope->initialize();
   }
-
-  ~Base_svole() { delete cope; }
 
   // Sender produces (val=0, mac=cope_mac) pairs.
   void triple_gen_send(AV *share, int64_t size) {

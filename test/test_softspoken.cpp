@@ -19,8 +19,8 @@ void run_k(NetIO* io, int party, int64_t length) {
 }
 
 int main(int argc, char** argv) {
-    int length, port, party;
-    length = (1 << 12) + 101;
+    int port, party;
+    int64_t length = (int64_t{1} << 12) + 101;
 
     party = parse_party(argv);
     port = peer_port();
