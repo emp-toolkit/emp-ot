@@ -5,6 +5,7 @@
 #include "emp-ot/common/lpn.h"
 #include <algorithm>
 #include <cassert>
+#include <thread>
 #include <vector>
 
 namespace emp {
@@ -158,19 +159,67 @@ void SilentFerret::end() {
 
 void SilentFerret::next(block *out) {
 	assert_in_session_();
-	if (local_tree_ == round_capacity()) {
-		if (consume_round_ + 1 < n_rounds_) {
-			// Wire-free roll into the next prepaid round.
-			roll_base_(abs_round_base_ + (uint64_t)consume_round_);
-			consume_round_++;
-			local_tree_ = 0;
-		} else {
-			// Prepaid budget exhausted: ship the next batch (live comm).
-			end();
-			begin(batch_n_ots_);
-		}
-	}
+	ensure_tree_available_();
 	process_one_tree_(reinterpret_cast<AuthValueFerret *>(out));
+}
+
+void SilentFerret::next_chunks_parallel(block *out, int64_t n_chunks,
+                                        int n_threads) {
+	assert_in_session_();
+	if (n_chunks <= 0) return;
+	const int T = (n_threads < 0) ? n_threads_ : n_threads;
+	if (T <= 1) {
+		const int64_t chunk = chunk_size();
+		for (int64_t i = 0; i < n_chunks; ++i)
+			next(out + i * chunk);
+		return;
+	}
+
+	const int64_t chunk = chunk_size();
+	int64_t done = 0;
+	// The online thread count is caller-selected and may differ from the
+	// begin-time pool size, so this path uses short-lived workers per slice.
+	// The intended bulk draws split whole chunk ranges, which keeps that setup
+	// cost bounded by useful work.
+	std::vector<std::thread> ths;
+	ths.reserve((size_t)T);
+	while (done < n_chunks) {
+		ensure_tree_available_();
+		const int64_t avail = round_capacity() - local_tree_;
+		const int64_t take = std::min<int64_t>(avail, n_chunks - done);
+		const int64_t base_tree = local_tree_;
+
+		ths.clear();
+		const int64_t per = (take + T - 1) / T;
+		for (int t = 0; t < T; ++t) {
+			const int64_t tree_begin = base_tree + t * per;
+			if (tree_begin >= base_tree + take) break;
+			const int64_t count =
+			    std::min<int64_t>(per, base_tree + take - tree_begin);
+			block *dst = out + (done + (tree_begin - base_tree)) * chunk;
+			ths.emplace_back([this, dst, tree_begin, count]() {
+				produce_range(dst, tree_begin, count);
+			});
+		}
+		for (auto& th : ths) th.join();
+
+		local_tree_ += take;
+		done += take;
+	}
+}
+
+void SilentFerret::ensure_tree_available_() {
+	if (local_tree_ != round_capacity()) return;
+	if (consume_round_ + 1 < n_rounds_) {
+		// Wire-free roll into the next prepaid round.
+		roll_base_(abs_round_base_ + (uint64_t)consume_round_);
+		consume_round_++;
+		local_tree_ = 0;
+	} else {
+		// Prepaid budget exhausted: ship the next batch (live comm).
+		end();
+		begin(batch_n_ots_);
+	}
 }
 
 // Produce the single tree at the cursor (no rollover — next() handles that).

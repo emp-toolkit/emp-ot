@@ -154,6 +154,35 @@ static void verify_prepaid(NetIO* io, int party, bool malicious,
          << (malicious ? "mali" : "semi") << ")" << endl;
 }
 
+// Threaded cursor fill across a prepaid round boundary. This is the emp-zk
+// buffer-fill shape: one call fills a chunk-multiple buffer in stream order,
+// while SilentFerret owns the rolling base transitions.
+static void verify_parallel_rollover(NetIO* io, int party, bool malicious,
+                                     const PrimalLPNParameter& param,
+                                     int n_threads) {
+    SilentFerret ot(party, io, malicious, param, nullptr, n_threads);
+    const int64_t chunk = ot.chunk_size();
+    const int64_t cpr   = ot.cots_per_round();
+    const int64_t n_ots = cpr + 7 * chunk;          // crosses into round 1
+    const int64_t n_chunks = n_ots / chunk;
+    std::vector<block> buf(n_ots);
+
+    io->sync();
+    ot.begin(n_ots);                                // K=2, all traffic here
+    const uint64_t s0 = io->send_counter, r0 = io->recv_counter;
+    ot.next_chunks_parallel(buf.data(), n_chunks, n_threads);
+    if (io->send_counter != s0 || io->recv_counter != r0)
+        error("next_chunks_parallel performed wire I/O");
+    ot.end();
+    if (io->send_counter != s0 || io->recv_counter != r0)
+        error("next_chunks_parallel end performed wire I/O");
+
+    verify_rcot(&ot, io, party, buf.data(), n_ots);
+    cout << "  parallel rollover ok (" << n_threads << " threads, "
+         << n_ots << " COTs, " << (malicious ? "mali" : "semi") << ")"
+         << endl;
+}
+
 // Strongest equivalence test: at a WHOLE number of rounds, plain Ferret and the
 // no-arg (K=1-per-round) SilentFerret move the EXACT same number of bytes in each
 // direction. SilentFerret only *reschedules* Ferret's traffic — all corrections
@@ -273,6 +302,11 @@ int main(int argc, char** argv) {
     verify_prepaid(io.get(), party, /*malicious=*/true,  tuning::ferret_b10, n_threads);
     verify_prepaid(io.get(), party, /*malicious=*/false, tuning::ferret_b11, n_threads);
     verify_prepaid(io.get(), party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
+
+    verify_parallel_rollover(io.get(), party, /*malicious=*/false, tuning::ferret_b10, n_threads);
+    verify_parallel_rollover(io.get(), party, /*malicious=*/true,  tuning::ferret_b10, n_threads);
+    verify_parallel_rollover(io.get(), party, /*malicious=*/false, tuning::ferret_b11, n_threads);
+    verify_parallel_rollover(io.get(), party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
 
     // Differential: no-arg SilentFerret moves byte-for-byte the same as Ferret.
     verify_comm_matches_ferret(io.get(), party, tuning::ferret_b10);

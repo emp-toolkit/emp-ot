@@ -67,12 +67,25 @@ public:
 	// drawn with NO wire I/O. All correction traffic and all K malicious
 	// checks happen here. K = ceil(n_ots / cots_per_round()). After this,
 	// produce up to prepared_capacity() COTs via next() / next_n() / run()
-	// (sequential, auto-rolls rounds wire-free) or produce_range() (one
-	// round at a time, concurrent within the round); then end().
+	// (sequential, auto-rolls rounds wire-free), next_chunks_parallel()
+	// (cursor-ordered, auto-rolls, internally threaded), or produce_range()
+	// (one round at a time, concurrent within the round); then end().
 	void begin(int64_t n_ots);
 
 	void next(block *out) override;
 	void end() override;
+
+	// Cursor-ordered bulk draw with the same auto-rollover semantics as
+	// next(). Produces `n_chunks * chunk_size()` COTs into `out`, splitting
+	// each current-round slice across up to `n_threads` caller-visible worker
+	// threads. Pass n_threads < 0 to use the constructor's n_threads. The call
+	// itself mutates the stream cursor; do not call it concurrently with
+	// next()/next_n()/produce_range() on the same instance.
+	//
+	// This intentionally works in whole chunks only. Buffering sub-chunk tails
+	// remains the base next_n() contract; consumers that want threaded filling
+	// should size their COT buffer to a chunk multiple.
+	void next_chunks_parallel(block *out, int64_t n_chunks, int n_threads = -1);
 
 	// User-visible COTs per round and across the whole prepaid batch.
 	int64_t cots_per_round() const;        // round_capacity() * chunk_size()
@@ -143,6 +156,10 @@ private:
 
 	// begin()/end() core (the K-round prepay and the batch teardown).
 	void begin_batch_(int64_t n_ots);
+
+	// If the cursor has consumed the current round, roll to the next prepaid
+	// round or live-reprepay exactly as next() does.
+	void ensure_tree_available_();
 
 	// Produce `n` consecutive trees [local_begin, local_begin + n) of
 	// absolute round `abs_round` into `out` (out + m*chunk = tree
