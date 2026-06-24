@@ -6,7 +6,7 @@
 #include "emp-ot/base_ot/co.h"
 #include "emp-ot/base_ot/pvw.h"
 #include "emp-ot/base_ot/csw.h"
-#include "emp-ot/base_ot/pvw_kyber.h"
+#include "emp-ot/base_ot/bmm.h"
 #include "emp-ot/ot_extension/iknp.h"
 
 #include "emp-ot/ot_extension/ferret/ferret.h"

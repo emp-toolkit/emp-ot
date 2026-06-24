@@ -1,28 +1,31 @@
-#ifndef EMP_OT_PVW_KYBER_CRS_HPP__
-#define EMP_OT_PVW_KYBER_CRS_HPP__
+#ifndef EMP_OT_MLKEM_CRS_HPP__
+#define EMP_OT_MLKEM_CRS_HPP__
 
-// Common reference string (CRS) for the PVW-Kyber base OT.
+// Common reference string (CRS) / public-parameter expansion for the
+// ML-KEM-512 base OTs.
 //
 // Inputs:  32-byte session_seed (shared by sender and receiver, e.g.
-//          carried via the OT class's `block sid`).
-// Outputs: A (resp. A^T) — a polyvec[K] sampled uniformly from R_q^{KxK}
-//          V_b for b in {0,1} — a polyvec sampled uniformly from R_q^K
+//          derived from the OT class's `block sid`).
+// Outputs: A (resp. A^T) — a polyvec[K] sampled uniformly from R_q^{KxK}.
+//          This is the shared matrix of the Regev/Kyber PKE; both parties
+//          derive it identically, so it plays the role of a public-coin CRS.
 //
-// All three are derived from session_seed via SHAKE-256 with one-byte
-// domain-separation tags 0x01 (A), 0x02 (V_0), 0x03 (V_1). Within each
-// uniform-sampling routine we reuse Kyber's own kyber_shake128_absorb
-// + shake128_squeezeblocks + rejection-sampling pattern (mirroring
-// indcpa.c::gen_matrix, which we don't lift).
+// A is derived from session_seed via SHAKE-256 with a one-byte
+// domain-separation tag 0x01. The uniform-sampling routine reuses Kyber's
+// own kyber_shake128_absorb + shake128_squeezeblocks + rejection-sampling
+// pattern (mirroring indcpa.c::gen_matrix, which we don't lift). The same
+// rejection sampler backs hash-to-R_q^k (the Ĥ oracle of the BMM OT), so it
+// is exposed via crs_detail::poly_uniform_from_seed.
 //
 // Outputs are in *coefficient* domain (not NTT). Callers apply
 // polyvec_ntt before doing polyvec_basemul_acc_montgomery, and they
 // only NTT once per CRS expansion.
 
-#include "emp-ot/base_ot/pvw_kyber/params.hpp"
+#include "emp-ot/base_ot/mlkem/params.hpp"
 #include <cstdint>
 #include <cstring>
 
-namespace emp { namespace pvw_kyber {
+namespace emp { namespace mlkem {
 
 namespace crs_detail {
 
@@ -42,7 +45,8 @@ inline int rej_uniform(int16_t *r, int n, const uint8_t *buf, int buflen) {
 }
 
 // One uniform polynomial in R_q from (seed, x, y). Matches the per-cell
-// shape Kyber uses in gen_matrix.
+// shape Kyber uses in gen_matrix. Used both for the CRS matrix A and for
+// the hash-to-R_q^k oracle Ĥ of the BMM OT.
 inline void poly_uniform_from_seed(poly *p,
                                    const uint8_t seed[kSymBytes],
                                    uint8_t x, uint8_t y) {
@@ -78,8 +82,8 @@ inline void poly_uniform_from_seed(poly *p,
 
 // Derive a sub-seed from session_seed via SHAKE-256(session_seed || tag).
 inline void derive_subseed(uint8_t out[kSymBytes],
-                            const uint8_t session_seed[kSymBytes],
-                            uint8_t tag) {
+                           const uint8_t session_seed[kSymBytes],
+                           uint8_t tag) {
     uint8_t input[kSymBytes + 1];
     std::memcpy(input, session_seed, kSymBytes);
     input[kSymBytes] = tag;
@@ -92,8 +96,8 @@ inline void derive_subseed(uint8_t out[kSymBytes],
 // (i, j) coordinate before calling the per-cell sampler — matches
 // Kyber's gen_matrix flag.
 inline void crs_expand_matrix(polyvec a[kK],
-                               const uint8_t session_seed[kSymBytes],
-                               bool transposed) {
+                              const uint8_t session_seed[kSymBytes],
+                              bool transposed) {
     uint8_t seed_A[kSymBytes];
     crs_detail::derive_subseed(seed_A, session_seed, 0x01);
     for (int i = 0; i < kK; ++i) {
@@ -105,19 +109,6 @@ inline void crs_expand_matrix(polyvec a[kK],
     }
 }
 
-// Expand V_b from session_seed (b ∈ {0, 1}; tag = 0x02 for b=0, 0x03
-// for b=1). Both parties run this for both b's.
-inline void crs_expand_v(polyvec *V_b,
-                          const uint8_t session_seed[kSymBytes],
-                          int b) {
-    uint8_t seed_V[kSymBytes];
-    crs_detail::derive_subseed(seed_V, session_seed, (uint8_t)(0x02 + b));
-    for (int j = 0; j < kK; ++j) {
-        crs_detail::poly_uniform_from_seed(&V_b->vec[j], seed_V,
-                                            (uint8_t)j, (uint8_t)0);
-    }
-}
+}}  // namespace emp::mlkem
 
-}}  // namespace emp::pvw_kyber
-
-#endif  // EMP_OT_PVW_KYBER_CRS_HPP__
+#endif  // EMP_OT_MLKEM_CRS_HPP__

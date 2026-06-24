@@ -1,5 +1,5 @@
 // Base-OT throughput bench. Sweeps the base-OT protocols CO / PVW / CSW /
-// PVWKyber and, for each, reports one line: "<name>: <time> us  from
+// BMM and, for each, reports one line: "<name>: <time> us  from
 // sender=<B>  from receiver=<B>". Both numbers are sent data — bytes that
 // travelled over the wire — labelled by which role emitted them. Both parties
 // print the same numbers (each resolves "its sent / its recv" against its
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
 		run_one("PVW", &pvw, io.get(), party, length);
 	}
 	{
-		// CSW / PVWKy take a sid via set_sid(); without it they default to
+		// CSW / BMM take a sid via set_sid(); without it they default to
 		// zero_block. The bench sets a deterministic test sid so cross-party
 		// transcripts match exactly.
 		block sid = makeBlock(0xCAFEBABE12345678ULL, 0xDEADBEEFFACEFEEDULL);
@@ -54,9 +54,9 @@ int main(int argc, char **argv) {
 	}
 	{
 		block sid = makeBlock(0xCAFEBABE12345678ULL, 0x0BADC0DE0DEFACE0ULL);
-		PVWKyber pvw_kyber(io.get());
-		pvw_kyber.set_sid(sid);
-		run_one("PVWKy", &pvw_kyber, io.get(), party, length);
+		BMM bmm(io.get());
+		bmm.set_sid(sid);
+		run_one("BMM", &bmm, io.get(), party, length);
 	}
 
 	return 0;

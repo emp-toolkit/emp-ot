@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <memory>
 #include "emp-ot/ot.h"
-#include "emp-ot/base_ot/csw_base_ot.h"
+#include "emp-ot/base_ot/csw.h"
 #include "emp-ot/common/streaming_extension.h"
 
 namespace emp {
@@ -37,13 +37,13 @@ public:
     // typedefs); each subclass picks its own default and can be
     // overridden by passing a concrete OT into the subclass ctor.
     std::unique_ptr<OT> base_ot;
-    // Non-null iff base_ot is "CSW-like" (supports the messy-core + deferred
-    // extraction-check split, see CSWBaseOT). Set once in the ctor. When set,
-    // the subclass bootstrap calls *_core in begin() (buffering the base
-    // round-2 bytes) and the deferred *_check at the tail of end(), overlapping
-    // the base OT's last two flows with the extension's first message
-    // (3-round result). nullptr → blocking path (base_ot->send/recv).
-    CSWBaseOT* csw_base_ = nullptr;
+    // Non-null iff base_ot is CSW (the only base OT exposing the messy-core +
+    // deferred extraction-check split). Set once in the ctor. When set, the
+    // subclass bootstrap calls *_core in begin() (buffering the base round-2
+    // bytes) and the deferred *_check at the tail of end(), overlapping the
+    // base OT's last two flows with the extension's first message (3-round
+    // result). nullptr → blocking path (base_ot->send/recv).
+    CSW* csw_base_ = nullptr;
     // One-shot: set true when the bootstrap runs *_core, cleared when end()
     // runs the deferred *_check. Keyed off this (not setup_done / malicious) so
     // multi-session callers run the base check exactly once, in the first end().
@@ -131,10 +131,10 @@ protected:
         this->io = io_;
         if (malicious_ && !base_ot->is_malicious_secure())
             error("OT extension malicious mode requires a malicious-secure base OT");
-        // Detect a CSW-like base OT for the deferred-check overlap (the trait
-        // guarantees the static_cast is valid — no RTTI needed).
+        // Detect a CSW base OT for the deferred-check overlap (CSW is the only
+        // OT setting this trait, so the static_cast is sound — no RTTI needed).
         if (base_ot->supports_deferred_check())
-            csw_base_ = static_cast<CSWBaseOT*>(base_ot.get());
+            csw_base_ = static_cast<CSW*>(base_ot.get());
         if (is_ot_sender()) {
             // Random Δ with bit 0 = 1 (LSB-encoded choice convention
             // shared across IKNP / SoftSpoken / Ferret). Reusing

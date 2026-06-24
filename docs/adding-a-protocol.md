@@ -321,7 +321,7 @@ do_begin/do_next/do_end pattern with five private helpers.
 
 Base OTs subclass `OT` (or `RandomCOT` if you want native RCOT
 output). The four existing ones (`CO`, `CSW`, `PVW`,
-`PVWKyber`) all subclass `OT` and provide:
+`BMM`) all subclass `OT` and provide:
 
 ```cpp
 class MyBaseOT : public OT {

@@ -8,7 +8,7 @@ this file first, then load only the subdocs relevant to your task.
 emp-ot is the OT layer of the EMP toolkit, on top of emp-tool. It
 ships three families of protocols:
 
-- **Base OTs** (chosen-input): `OTCO`, `OTCSW`, `OTPVW`, `OTPVWKyber`.
+- **Base OTs** (chosen-input): `OTCO`, `OTCSW`, `OTPVW`, `OTBMM`.
 - **OT extensions** (RandomCOT): `IKNP`, `SoftSpokenOT<k, kChunkBlocks>`,
   `Ferret`.
 - **sVOLE extensions** (authenticated linear correlations):

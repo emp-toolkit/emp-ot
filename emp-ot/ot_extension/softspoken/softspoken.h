@@ -61,7 +61,7 @@ public:
     static constexpr int Q = 1 << k;
 
     // Default base OT is CSW (CDH-based "Blazing Fast" OT, malicious-secure).
-    // Pass another (PVW / PVWKyber) via the fourth ctor arg.
+    // Pass another (PVW / BMM) via the fourth ctor arg.
     explicit SoftSpoken(int party, IOChannel* io_,
                           bool malicious = true,
                           std::unique_ptr<OT> base_ot = nullptr);

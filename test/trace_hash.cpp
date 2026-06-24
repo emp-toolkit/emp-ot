@@ -157,7 +157,7 @@ int main(int argc, char** argv) {
     measure(party, port, "CO",       base_sf, [&](NetIO* io){ run_base_ot<CO>      (io, party, base_len); });
     measure(party, port, "CSW",      base_sf, [&](NetIO* io){ run_base_ot<CSW>     (io, party, base_len); });
     measure(party, port, "PVW",      base_sf, [&](NetIO* io){ run_base_ot<PVW>     (io, party, base_len); });
-    measure(party, port, "PVWKyber", base_sf, [&](NetIO* io){ run_base_ot<PVWKyber>(io, party, base_len); });
+    measure(party, port, "BMM",      base_sf, [&](NetIO* io){ run_base_ot<BMM>     (io, party, base_len); });
 
     for (bool mali : {false, true}) {
         const string mode = mali ? "mali" : "semi";

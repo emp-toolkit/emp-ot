@@ -1,5 +1,5 @@
 // Base-OT correctness test. Sweeps the base-OT protocols CO / PVW / CSW /
-// PVWKyber and, for each, runs the protocol and asserts the receiver's
+// BMM and, for each, runs the protocol and asserts the receiver's
 // outputs via check_ot (which calls error() on mismatch). Correctness-only;
 // throughput lives in bench/bench_base_ot.cpp. Two-party via the `run` script
 // (loopback 127.0.0.1).
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
 		run_one("PVW", &pvw, io.get(), party, length);
 	}
 	{
-		// CSW / PVWKy take a sid via set_sid(); without it they default to
+		// CSW / BMM take a sid via set_sid(); without it they default to
 		// zero_block. The test sets a deterministic sid so the cross-party
 		// transcripts match exactly.
 		block sid = makeBlock(0xCAFEBABE12345678ULL, 0xDEADBEEFFACEFEEDULL);
@@ -45,9 +45,9 @@ int main(int argc, char **argv) {
 	}
 	{
 		block sid = makeBlock(0xCAFEBABE12345678ULL, 0x0BADC0DE0DEFACE0ULL);
-		PVWKyber pvw_kyber(io.get());
-		pvw_kyber.set_sid(sid);
-		run_one("PVWKy", &pvw_kyber, io.get(), party, length);
+		BMM bmm(io.get());
+		bmm.set_sid(sid);
+		run_one("BMM", &bmm, io.get(), party, length);
 	}
 	cout << "\n";
 

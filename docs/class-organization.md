@@ -23,7 +23,8 @@ emp-ot/
 │   ├── co.h                     CO         (Chou-Orlandi)
 │   ├── csw.h                    CSW        (CSW "blazing-fast")
 │   ├── pvw.h                    PVW        (Peikert-Vaikuntanathan-Waters)
-│   └── pvw_kyber.h              PVWKyber   (PVW over Kyber, post-quantum)
+│   ├── bmm.h                    BMM        (Badrinarayanan-Masny-Mukherjee, post-quantum)
+│   └── mlkem/                   shared ML-KEM-512 algebra + bmm.cpp impl
 │
 ├── ot_extension/          RandomCOT extensions
 │   ├── ot_extension.h           OTExtension base

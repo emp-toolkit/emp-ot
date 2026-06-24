@@ -17,13 +17,13 @@
 >   fused into AES generation at k=8 (eight leaves' Davies-Meyer
 >   outputs folded through three halving levels in-register;
 >   cross-platform via emp-tool's AesLane abstraction over VAES-512 /
->   VAES-256 / AES-NI / NEON), post-quantum `PVWKyber` base OT,
+>   VAES-256 / AES-NI / NEON), post-quantum `BMM` base OT,
 >   reorganized base OTs and extensions, the wire-equivalence framework
 >   from emp-tool 1.0 — but the API is not yet frozen and headers may
 >   move between alphas. Requires emp-tool ≥ 1.0.0-alpha.
 
 State-of-the-art OT implementations on top of [emp-tool](https://github.com/emp-toolkit/emp-tool):
-four base OTs (`CO`, `PVW`, `CSW`, `PVWKyber`), IKNP and
+four base OTs (`CO`, `PVW`, `CSW`, `BMM`), IKNP and
 SoftSpoken OT extensions (semi-honest + malicious), and the Ferret and
 SilentFerret silent COT extensions. All hash functions used for OT are
 instantiated with
@@ -35,7 +35,7 @@ for optimal concrete security.
 - CMake ≥ 3.21
 - A C++17 compiler (Clang ≥ 12, GCC ≥ 9, AppleClang 14+)
 - [emp-tool](https://github.com/emp-toolkit/emp-tool) ≥ 1.0
-- OpenSSL ≥ 3.0. `PVWKyber`'s SHAKE shim uses `EVP_DigestSqueeze` on
+- OpenSSL ≥ 3.0. `BMM`'s ML-KEM SHAKE shim uses `EVP_DigestSqueeze` on
   ≥ 3.3 (one-shot squeeze) and falls back to a re-init / re-absorb
   loop on 3.0.x — same answers, slightly slower CRS expansion. No
   build-time configuration needed; the version is detected from
@@ -136,7 +136,7 @@ means a refactor broke the equivalence, not just one protocol's format.
 CO                     send=cb1241385e1fa266 recv=1527f501eb006b21
 CSW                    send=9f713474307b6bef recv=223f31baeb44267d
 PVW                    send=fb1f9d384ef04ffe recv=b64a168b41ee1583
-PVWKyber               send=07594864b631b0c5 recv=4a58e856ecca07be
+BMM                    send=379b0d7445cc2c2f recv=75a5c9dbb9c4d521
 IKNP semi              send=86e8b983c8d94b52 recv=356ed16464da939e
 SoftSpoken<2> semi     send=a68cae132c81937b recv=68c283a18fbe3260
 SoftSpoken<8> semi     send=a68cae132c81937b recv=bbfe17cba524e658
@@ -181,7 +181,7 @@ call a lower-level method on a higher-level object.
 
 Concrete classes attach as follows:
 
-- **Base OTs** (`OT` only): `CO`, `PVW`, `CSW`, `PVWKyber`.
+- **Base OTs** (`OT` only): `CO`, `PVW`, `CSW`, `BMM`.
 - **OT extensions** (`OTExtension`, so all of the above): `IKNP`,
   `SoftSpoken<k>`, `Ferret`.
 
@@ -193,7 +193,7 @@ flavor.
 
 ### Base OTs
 
-The four base OTs (`CO`, `PVW`, `CSW`, `PVWKyber`) implement
+The four base OTs (`CO`, `PVW`, `CSW`, `BMM`) implement
 only the `OT` interface — chosen-input 1-out-of-2.
 
 ```cpp
@@ -207,7 +207,7 @@ else                ot.recv(mc, c, length);    // mc[i] = m_{c[i]}
 ```
 
 All four implement the same `OT` interface. `CO` is semi-honest;
-`CSW`, `PVW`, `PVWKyber` are malicious-secure.
+`CSW`, `PVW`, `BMM` are malicious-secure.
 
 ### OT extensions
 
@@ -365,7 +365,7 @@ send/recv bytes are deterministic).
 | `CO`       |  12 ms |   4,165 |   8,832 | semi-honest                                  |
 | `CSW`      | 9.6 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `PVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `PVWKyber` | 9.9 ms | 200,704 |  98,304 | malicious-secure, post-quantum (ML-KEM-512)  |
+| `BMM`      | ≈10 ms | 200,704 | 102,400 | malicious-secure, post-quantum (ML-KEM-512)  |
 
 ### OT extensions (RCOT throughput)
 
