@@ -117,7 +117,7 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_send_() {
 
     BlockVec received(total);
     if (csw_base_) {
-        // CSW-like base: messy core now (buffered, no flush); the extraction
+        // CSW base: messy core now (buffered, no flush); the extraction
         // check is deferred to send_end_ so the base round-2 bytes bundle with
         // the extension's first message (3-round overlap).
         csw_base_->recv_core(received.data(),
@@ -185,7 +185,7 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
         }
     }
     if (csw_base_) {
-        // CSW-like base: messy core now (buffered, no flush); the extraction
+        // CSW base: messy core now (buffered, no flush); the extraction
         // check is deferred to recv_end_.
         csw_base_->send_core(K0.data(), K1.data(), total);
         base_check_pending_ = true;

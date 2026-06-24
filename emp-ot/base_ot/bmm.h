@@ -40,7 +40,7 @@ namespace emp {
  *   - out-key H : (μ) → {0,1}^128         (the delivered block pad)
  *
  *   Recv (choice b):
- *     (pk_b=t_b, sk_b=x_b) ← Gen ; ĉ_b, c_b ← {0,1}^κ ;
+ *     (pk_b=t_b, sk_b=x_b) ← Gen ; ĉ_b, c_b ← {0,1}^λ ;
  *     r := t_b − Ĥ_b(ĉ_b) ;  c_{1−b} := ĉ_b ⊕ H_b(r, c_b) ;
  *     send (r, c_0, c_1).
  *   Send:
