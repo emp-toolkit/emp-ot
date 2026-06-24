@@ -27,10 +27,17 @@ namespace emp {
  * The OT-string space is the PKE message; for a base OT we encrypt a random
  * 256-bit μ and use K = H(sid,i,β,μ) as the pad (c = K ⊕ data, KEM-style).
  *
+ * Symmetric security parameter λ = 256 (the {0,1}^λ correlation-breaker
+ * strings and the H_β outputs): the malicious-receiver argument tolerates a
+ * receiver that induces up to q² candidate keys from q random-oracle queries,
+ * and λ = 256 keeps the q²/2^λ birthday/guessing terms ≤ 2^{-128} (for
+ * q ≈ 2^64). λ governs the symmetric side only — the lattice stays at
+ * ML-KEM-512, and the delivered OT message is a 128-bit block.
+ *
  * Random oracles (all bind sid and the instance index i):
- *   - H_β   : R_q^K × {0,1}^κ → {0,1}^κ   (correlation breaker)
- *   - Ĥ_β   : {0,1}^κ → R_q^K             (hash to public-key space)
- *   - out-key H : (μ) → {0,1}^κ
+ *   - H_β   : R_q^K × {0,1}^λ → {0,1}^λ   (correlation breaker, λ=256)
+ *   - Ĥ_β   : {0,1}^λ → R_q^K             (hash to public-key space)
+ *   - out-key H : (μ) → {0,1}^128         (the delivered block pad)
  *
  *   Recv (choice b):
  *     (pk_b=t_b, sk_b=x_b) ← Gen ; ĉ_b, c_b ← {0,1}^κ ;
@@ -45,8 +52,8 @@ namespace emp {
  *     μ_b := Dec(sk_b, ct_b) ; data[i] := H(sid,i,b,μ_b) ⊕ mask_b.
  *
  * Wire bytes per OT (Kyber IND-CPA compression du=10, dv=4 at K=2; r is
- * a uniform R_q^K element, uncompressible):
- *   recv → send  :  800 B  =  768 B (r)  +  2 × 16 B (c_β)
+ * a uniform R_q^K element, uncompressible; c_β are λ=256-bit):
+ *   recv → send  :  832 B  =  768 B (r)  +  2 × 32 B (c_β)
  *   send → recv  : 1568 B  =  2 × (640 B u_β + 128 B v_β + 16 B mask_β)
  *
  * This is a 2-round protocol with no third-flow extraction check (the

@@ -18,10 +18,27 @@ using namespace mlkem;
 
 namespace {
 
+// Symmetric security parameter λ = 256 bits. The correlation-breaker strings
+// c_0, c_1, ĉ_β and the H_β oracle outputs live in {0,1}^λ; with λ=256 the
+// multi-user birthday/guessing terms q²/2^λ stay ≤ 2^{-128} against a malicious
+// receiver making q ≈ 2^64 random-oracle queries (the q² candidate keys it can
+// induce is what the malicious-receiver proof must rule out). λ is the SYMMETRIC
+// parameter only — the lattice stays at ML-KEM-512, and the delivered OT message
+// is a 128-bit `block` (the base-OT → 128-bit-extension contract).
+constexpr int kLambdaBytes = 32;            // λ = 256 bits
+
+// 256-bit field for the correlation breaker.
+struct lam_t { uint8_t v[kLambdaBytes]; };
+inline lam_t lam_xor(const lam_t& a, const lam_t& b) {
+    lam_t r;
+    for (int i = 0; i < kLambdaBytes; ++i) r.v[i] = a.v[i] ^ b.v[i];
+    return r;
+}
+
 // Per-OT wire sizes.
-//   recv → send : r (uncompressed uniform R_q^K) + c_0 + c_1.
+//   recv → send : r (uncompressed uniform R_q^K) + c_0 + c_1 (λ-bit each).
 //   send → recv : per branch (compressed u_β, compressed v_β, mask_β).
-constexpr int kRecvBytesPerOT     = kPolyVecBytes + 2 * (int)sizeof(block);   // 800
+constexpr int kRecvBytesPerOT     = kPolyVecBytes + 2 * kLambdaBytes;          // 832
 constexpr int kSendBytesPerBranch = kPolyVecCompBytes + kPolyCompBytes + (int)sizeof(block); // 784
 constexpr int kSendBytesPerOT     = 2 * kSendBytesPerBranch;                  // 1568
 
@@ -50,23 +67,23 @@ inline void sample_polyvec_eta2(polyvec* p, const uint8_t seed[kSymBytes],
         poly_getnoise_eta2(&p->vec[j], seed, (uint8_t)(base + j));
 }
 
-// Ĥ_β : {0,1}^κ → R_q^K, the hash into the public-key space. Realized as a
+// Ĥ_β : {0,1}^λ → R_q^K, the hash into the public-key space. Realized as a
 // uniform polyvec rejection-sampled from a SHAKE-256 seed over
 // (sid, i, β, ĉ). Coefficient domain, in [0, q). Both parties compute the
 // same vector for the same inputs, so the r ± Ĥ_β cancellation is exact mod q.
 inline void hash_to_polyvec(polyvec* out, block sid, int64_t i, int beta,
-                            const block& c_hat) {
+                            const lam_t& c_hat) {
     // Leading 0x02 tag domain-separates Ĥ from the matrix-A CRS expansion
     // (which uses tag 0x01 in crs_expand_matrix) — explicit so the split
     // survives refactors, not just the distinct SHAKE-256 input structure.
-    uint8_t in[1 + sizeof(block) + sizeof(uint64_t) + 1 + sizeof(block)];
+    uint8_t in[1 + sizeof(block) + sizeof(uint64_t) + 1 + kLambdaBytes];
     size_t off = 0;
     in[off++] = 0x02;
     std::memcpy(in + off, &sid, sizeof(block));         off += sizeof(block);
     uint64_t ii = (uint64_t)i;
     std::memcpy(in + off, &ii, sizeof(uint64_t));       off += sizeof(uint64_t);
     in[off++] = (uint8_t)beta;
-    std::memcpy(in + off, &c_hat, sizeof(block));       off += sizeof(block);
+    std::memcpy(in + off, c_hat.v, kLambdaBytes);       off += kLambdaBytes;
 
     uint8_t seed[kSymBytes];
     shake256(seed, kSymBytes, in, off);
@@ -74,21 +91,24 @@ inline void hash_to_polyvec(polyvec* out, block sid, int64_t i, int beta,
         crs_detail::poly_uniform_from_seed(&out->vec[j], seed, (uint8_t)j, 0);
 }
 
-// H_β : R_q^K × {0,1}^κ → {0,1}^κ, the correlation-breaker oracle. `r_bytes`
-// are r's on-the-wire serialization (kPolyVecBytes), hashed verbatim so both
-// parties absorb identical bytes.
-inline block h_correlation(block sid, int64_t i, int beta,
-                           const uint8_t* r_bytes, const block& c) {
-    return RO("emp-ot:bmm:cb", sid)
-               .absorb((uint64_t)i)
-               .absorb((uint64_t)beta)
-               .absorb(r_bytes, kPolyVecBytes)
-               .absorb(c)
-               .squeeze_block();
+// H_β : R_q^K × {0,1}^λ → {0,1}^λ, the correlation-breaker oracle (λ=256-bit
+// output). `r_bytes` are r's on-the-wire serialization (kPolyVecBytes), hashed
+// verbatim so both parties absorb identical bytes.
+inline lam_t h_correlation(block sid, int64_t i, int beta,
+                           const uint8_t* r_bytes, const lam_t& c) {
+    lam_t out;
+    RO("emp-ot:bmm:cb", sid)
+        .absorb((uint64_t)i)
+        .absorb((uint64_t)beta)
+        .absorb(r_bytes, kPolyVecBytes)
+        .absorb(c.v, kLambdaBytes)
+        .squeeze_digest(out.v);
+    return out;
 }
 
-// Output pad K = H(sid, i, β, μ) truncated to 128 bits. Per-(i,β) domain
-// separation defeats MRR21-style batching attacks.
+// Output pad K = H(sid, i, β, μ), 128 bits — the delivered OT message width
+// (a `block`, feeding a 128-bit extension). Per-(i,β) domain separation defeats
+// MRR21-style batching attacks.
 inline block out_key(block sid, int64_t i, int beta, const uint8_t m[kSymBytes]) {
     return RO("emp-ot:bmm:out-key", sid)
                .absorb((uint64_t)i)
@@ -140,10 +160,10 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
         polyvec_add(&t, &t, &e);
         polyvec_reduce(&t);
 
-        // ĉ_b, c_b ← {0,1}^κ ; r = t − Ĥ_b(ĉ_b) ; c_{1−b} = ĉ_b ⊕ H_b(r, c_b).
-        block c_hat_b, c_b;
-        prg.random_block(&c_hat_b, 1);
-        prg.random_block(&c_b, 1);
+        // ĉ_b, c_b ← {0,1}^λ ; r = t − Ĥ_b(ĉ_b) ; c_{1−b} = ĉ_b ⊕ H_b(r, c_b).
+        lam_t c_hat_b, c_b;
+        prg.random_data_unaligned(c_hat_b.v, kLambdaBytes);
+        prg.random_data_unaligned(c_b.v,     kLambdaBytes);
 
         polyvec Hhat;
         hash_to_polyvec(&Hhat, sid.value(), i, bb, c_hat_b);
@@ -155,12 +175,12 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
         uint8_t* out = send_buf.data() + (size_t)i * kRecvBytesPerOT;
         polyvec_tobytes(out, &r);
 
-        const block h        = h_correlation(sid.value(), i, bb, out, c_b);
-        const block c_other  = c_hat_b ^ h;            // c_{1−b}
-        const block c0       = (bb == 0) ? c_b : c_other;
-        const block c1       = (bb == 0) ? c_other : c_b;
-        std::memcpy(out + kPolyVecBytes,                  &c0, sizeof(block));
-        std::memcpy(out + kPolyVecBytes + sizeof(block),  &c1, sizeof(block));
+        const lam_t h        = h_correlation(sid.value(), i, bb, out, c_b);
+        const lam_t c_other  = lam_xor(c_hat_b, h);    // c_{1−b}
+        const lam_t c0       = (bb == 0) ? c_b : c_other;
+        const lam_t c1       = (bb == 0) ? c_other : c_b;
+        std::memcpy(out + kPolyVecBytes,                c0.v, kLambdaBytes);
+        std::memcpy(out + kPolyVecBytes + kLambdaBytes, c1.v, kLambdaBytes);
     }
 
     io->send_data(send_buf.data(), (size_t)length * kRecvBytesPerOT);
@@ -220,17 +240,17 @@ void BMM::send(const block* data0, const block* data1, int64_t length) {
     for (int64_t i = 0; i < length; ++i) {
         const uint8_t* in      = recv_buf.data() + (size_t)i * kRecvBytesPerOT;
         const uint8_t* r_bytes = in;
-        block c0, c1;
-        std::memcpy(&c0, in + kPolyVecBytes,                 sizeof(block));
-        std::memcpy(&c1, in + kPolyVecBytes + sizeof(block), sizeof(block));
+        lam_t c0, c1;
+        std::memcpy(c0.v, in + kPolyVecBytes,                kLambdaBytes);
+        std::memcpy(c1.v, in + kPolyVecBytes + kLambdaBytes, kLambdaBytes);
 
         polyvec r;
         polyvec_frombytes(&r, r_bytes);   // coefficient domain, [0, q)
 
         // ĉ_0 = c_1 ⊕ H_0(r,c_0) ; ĉ_1 = c_0 ⊕ H_1(r,c_1).
-        const block c_hat[2] = {
-            c1 ^ h_correlation(sid.value(), i, 0, r_bytes, c0),
-            c0 ^ h_correlation(sid.value(), i, 1, r_bytes, c1)
+        const lam_t c_hat[2] = {
+            lam_xor(c1, h_correlation(sid.value(), i, 0, r_bytes, c0)),
+            lam_xor(c0, h_correlation(sid.value(), i, 1, r_bytes, c1))
         };
 
         uint8_t* out = send_buf.data() + (size_t)i * kSendBytesPerOT;

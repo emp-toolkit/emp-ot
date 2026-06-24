@@ -136,7 +136,7 @@ means a refactor broke the equivalence, not just one protocol's format.
 CO                     send=cb1241385e1fa266 recv=1527f501eb006b21
 CSW                    send=9f713474307b6bef recv=223f31baeb44267d
 PVW                    send=fb1f9d384ef04ffe recv=b64a168b41ee1583
-BMM                    send=379b0d7445cc2c2f recv=75a5c9dbb9c4d521
+BMM                    send=dd6005127adc3c90 recv=1c7da28077d38345
 IKNP semi              send=86e8b983c8d94b52 recv=356ed16464da939e
 SoftSpoken<2> semi     send=a68cae132c81937b recv=68c283a18fbe3260
 SoftSpoken<8> semi     send=a68cae132c81937b recv=bbfe17cba524e658
@@ -365,7 +365,7 @@ send/recv bytes are deterministic).
 | `CO`       |  12 ms |   4,165 |   8,832 | semi-honest                                  |
 | `CSW`      | 9.6 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `PVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `BMM`      | ≈10 ms | 200,704 | 102,400 | malicious-secure, post-quantum (ML-KEM-512)  |
+| `BMM`      | ≈10 ms | 200,704 | 106,496 | malicious-secure, post-quantum (ML-KEM-512)  |
 
 ### OT extensions (RCOT throughput)
 
