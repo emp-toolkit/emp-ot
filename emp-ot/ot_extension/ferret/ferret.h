@@ -30,7 +30,7 @@ template <typename AuthValue, int d> class Lpn;
 // Wire-format traits:
 //   kHasSecretSum=false  — receiver α-fills via the cGGM
 //                          LSB-clear closure (XOR of all leaves
-//                          XOR lsb_only_mask).
+//                          XOR bit0_mask).
 //   kClearLeafLSB=true   — cGGM build/eval mask the per-leaf LSB.
 //   kChiFoldFlavor=F2kPacked
 //                        — Δ-XOR on chi-check region + Galois pack.

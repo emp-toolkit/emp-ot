@@ -60,12 +60,6 @@ enum class ChiFoldFlavor {
                // Mpsvole (F_2k + F_p).
 };
 
-// Bit-0-set mask. Used in the F2kPacked α-fill path: reconstructed
-// leaf carries the choice bit at bit 0. Mirror of the value baked
-// into cggm::detail::kCggmLsbClearMask. Lives at file scope so both
-// sides of the gadget agree.
-inline constexpr block lsb_only_mask = makeBlock(0LL, 1LL);
-
 // Domain separators for the round-final consistency-check commitments,
 // at file scope so the sender and receiver hash byte-identical inputs.
 inline constexpr char kDomCheckPacked[] = "emp-ot:mpcot:check-f2kpacked";
@@ -404,7 +398,7 @@ public:
   //   2. Recv c[] (and, when kHasSecretSum, secret_sum:F).
   //   3. K_recv[j] = base_i[j] XOR c[j].
   //   4. cGGM eval.
-  //   5. α-fill (F2kPacked: XOR closure + lsb_only_mask;
+  //   5. α-fill (F2kPacked: XOR closure + bit0_mask;
   //              FTyped: triple_yz − secret_sum − Σ_{j≠α} mac).
   //   6. Malicious: chi seed, expand_chi, chi_alpha + VW.
   // Returns the punctured leaf's storage index = bit_reverse(α), which
@@ -436,11 +430,11 @@ public:
           tree_depth, alpha, K_recv.data(), leaves_block_view);
       // F2kPacked α-fill: eval_receiver leaves leaves[α] = zero_block;
       // XOR-sum of all LSB-cleared leaves equals the sender's LSB-
-      // cleared α-leaf; OR in lsb_only_mask to recover the carrier bit.
+      // cleared α-leaf; OR in bit0_mask to recover the carrier bit.
       block nodes_sum = zero_block;
       for (int64_t k = 0; k < leave_n; ++k)
         nodes_sum = nodes_sum ^ leaves_block_view[k];
-      leaves_block_view[rev] = nodes_sum ^ lsb_only_mask;
+      leaves_block_view[rev] = nodes_sum ^ bit0_mask;
       (void)secret_sum;
       (void)triple_yz_i;
     } else {
@@ -559,7 +553,7 @@ public:
         tree_depth, alpha, kr, lv);
     block nodes_sum = zero_block;
     for (int64_t k = 0; k < leave_n; ++k) nodes_sum = nodes_sum ^ lv[k];
-    lv[rev] = nodes_sum ^ lsb_only_mask;
+    lv[rev] = nodes_sum ^ bit0_mask;
     return rev;
   }
 
