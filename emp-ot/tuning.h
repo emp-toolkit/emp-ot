@@ -1,7 +1,6 @@
 #ifndef EMP_OT_TUNING_H__
 #define EMP_OT_TUNING_H__
 
-#include <cstdint>
 #include "emp-tool/emp-tool.h"
 
 // Single source of truth for emp-ot's tunable performance parameters
@@ -115,25 +114,10 @@ inline constexpr PrimalLPNParameter ferret_b10 = PrimalLPNParameter( 850, 16, 10
 // ===== LPN encoder (LpnF2) =====
 // XOR positions per LPN output (the "d" of LPN(n, k, d)).
 inline constexpr int lpn_d = 10;
-// LpnF2::compute_slice batch size (outputs per AES-PRG inner batch)
-// and the table size above which Lpn's gather prefetch pays. Both are
-// per-platform, swept like the cggm tiles:
-//   x86 (swept on Zen 5, 1 MiB private L2): 64 independent accumulator
-//   chains beat 32 at every table size, and prefetching the next
-//   outputs' gather targets pays once the pre table falls out of L2
-//   (crossover ~2 MiB) -- below that the out-of-order window already
-//   covers the latency and the prefetches are pure overhead.
-//   aarch64 (swept on Apple M4, large shared L2): both changes REGRESS
-//   at production table sizes -- the big L2 keeps the table
-//   cache-resident and the wider batch thrashes -- so ARM keeps the
-//   original settings (M=32, prefetch never).
-#ifdef __x86_64__
-inline constexpr int     lpn_batch_m = 64;
-inline constexpr int64_t lpn_prefetch_min_table_bytes = 2ll << 20;
-#else
-inline constexpr int     lpn_batch_m = 32;
-inline constexpr int64_t lpn_prefetch_min_table_bytes = INT64_MAX;
-#endif
+// LpnF2::compute_slice batch size: outputs produced per AES-PRG
+// inner batch. Larger = more in-flight kk loads pipelined, but
+// pushes kk farther from the load-queue sweet spot.
+inline constexpr int lpn_batch_m = 32;
 
 }  // namespace tuning
 }  // namespace emp
