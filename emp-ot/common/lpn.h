@@ -34,6 +34,7 @@ namespace emp {
 template <typename AuthValue, int d = tuning::lpn_d>
 class Lpn { private:
     int mask;
+    bool prefetch_;   // table larger than L2 -> gather prefetch pays (see compute_block)
     PRG prg_;
 
     // Fold one block of M output positions starting at i, drawing the
@@ -41,7 +42,18 @@ class Lpn { private:
     // output (advancing `prg` by ceil(M*d/4) blocks), then accumulates
     // pre[idx[j]] into out[i+m]. Inserts a partial-reduce every
     // kLpnSafeAddsPerReduce adds and a final-reduce per output.
-    template <int M>
+    //
+    // At production table sizes `pre` lives beyond L2 (e.g. ferret_b13:
+    // 2^19 blocks = 8 MiB), so the d random gathers per output are
+    // latency-bound; all M*d indices sit in tmp[] before the fold
+    // starts, so each output's fold can prefetch the targets of the
+    // output kLpnPrefetchAhead positions ahead. Measured on Zen 5, the
+    // prefetch pays only once the table exceeds L2 (crossover ~2 MiB);
+    // below that the out-of-order core already covers the latency and
+    // the extra instructions are pure overhead — hence the Prefetch
+    // template split, selected per instance from the table size.
+    static constexpr int kLpnPrefetchAhead = 4;
+    template <int M, bool Prefetch>
     void compute_block(PRG & prg, AuthValue * __restrict out,
                        const AuthValue * __restrict pre, int64_t i) const {
         constexpr int kNeededBlocks = (M * d + 3) / 4;
@@ -51,14 +63,28 @@ class Lpn { private:
         const int lmask = mask;
         constexpr int kStep = (AuthValue::kLpnSafeAddsPerReduce < d)
                               ? AuthValue::kLpnSafeAddsPerReduce : d;
+        constexpr int kPf = kLpnPrefetchAhead;
+        if constexpr (Prefetch) {
+            const int pf_head = (M < kPf) ? M : kPf;
+            for (int m = 0; m < pf_head; ++m)
+                for (int j = 0; j < d; ++j)
+                    __builtin_prefetch(pre + (r[(size_t)m * d + j] & lmask), 0, 3);
+        }
         for (int m = 0; m < M; ++m) {
+            if constexpr (Prefetch) {
+                if (m + kPf < M) {
+                    const uint32_t* rp = r + (size_t)(m + kPf) * d;
+                    for (int j = 0; j < d; ++j)
+                        __builtin_prefetch(pre + (rp[j] & lmask), 0, 3);
+                }
+            }
+            const uint32_t* rm = r + (size_t)m * d;
             AuthValue acc = out[i+m];
             int j = 0;
             while (j < d) {
                 const int batch_end = std::min(j + kStep, d);
                 for (; j < batch_end; ++j) {
-                    const int idx = (int)((*r) & lmask);
-                    ++r;
+                    const int idx = (int)(rm[j] & lmask);
                     AuthValue::auth_add_into(acc, pre[idx]);
                 }
                 if (j < d) AuthValue::auth_partial_reduce(acc);
@@ -68,8 +94,23 @@ class Lpn { private:
         }
     }
 
+    // Dispatch a whole slice at one Prefetch setting (chosen per instance
+    // in the constructor from the table size).
+    template <bool Prefetch>
+    void compute_slice_(PRG & prg, AuthValue *out, const AuthValue *pre,
+                        int64_t length) const {
+        constexpr int M = tuning::lpn_batch_m;
+        int64_t j = 0;
+        for (; j + M <= length; j += M) compute_block<M, Prefetch>(prg, out, pre, j);
+        for (; j + 4 <= length; j += 4) compute_block<4, Prefetch>(prg, out, pre, j);
+        for (; j < length; ++j)         compute_block<1, Prefetch>(prg, out, pre, j);
+    }
+
 public:
-    explicit Lpn(int k_) : mask(k_ - 1) {}
+    explicit Lpn(int k_)
+        : mask(k_ - 1),
+          prefetch_((int64_t)k_ * (int64_t)sizeof(AuthValue) >
+                    tuning::lpn_prefetch_min_table_bytes) {}
     void reseed(block seed) { prg_.reseed(&seed); }
 
     // The instance's PRG key (= reseed() seed). A caller can build a PRG
@@ -97,11 +138,8 @@ public:
     // M-batched first (tuning::lpn_batch_m), then 4-batched, then tail.
     void compute_slice(PRG & prg, AuthValue *out, const AuthValue *pre,
                        int64_t length) const {
-        constexpr int M = tuning::lpn_batch_m;
-        int64_t j = 0;
-        for (; j + M <= length; j += M) compute_block<M>(prg, out, pre, j);
-        for (; j + 4 <= length; j += 4) compute_block<4>(prg, out, pre, j);
-        for (; j < length; ++j)         compute_block<1>(prg, out, pre, j);
+        if (prefetch_) compute_slice_<true>(prg, out, pre, length);
+        else           compute_slice_<false>(prg, out, pre, length);
     }
 
     // Back-compat: fold a chunk using the instance's own advancing PRG.
