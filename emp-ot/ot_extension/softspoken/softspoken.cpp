@@ -88,6 +88,35 @@ SoftSpoken<k, kChunkBlocks>::SoftSpoken(int party, IOChannel* io_, bool maliciou
                   base_ot ? std::move(base_ot)
                           : std::unique_ptr<OT>(new SoftSpokenBaseOT(io_))) {}
 
+// Clone ctor (see softspoken.h clone_lane). A FRESH object via the CloneInit
+// base ctor (no base OT, no Δ sample; all mutable streaming/COT state at its
+// default), then copy the parent's SHARED, checked material. The leaves are
+// frozen after the parent's bootstrap pprf_check rewrote them in place, so this
+// is a read-only snapshot; value-copying them decouples the clone's lifetime
+// from the parent for those fields (the caller still owns new_io).
+template <int k, int kChunkBlocks>
+SoftSpoken<k, kChunkBlocks>::SoftSpoken(OTExtension::CloneInit ci,
+                              const SoftSpoken& parent,
+                              IOChannel* new_io, uint16_t lane_salt)
+    : OTExtension(ci, parent.party, new_io, parent.malicious) {
+    assert(parent.setup_done && "clone_lane: parent not bootstrapped");
+    assert(lane_salt != 0 && "clone_lane: lane_salt must be nonzero (0 = parent)");
+    leaves_recv_ = parent.leaves_recv_;   // populated on the OT-sender role
+    leaves_send_ = parent.leaves_send_;   // populated on the OT-receiver role
+    for (int i = 0; i < n; ++i) alphas_[i] = parent.alphas_[i];
+    this->Delta = parent.Delta;
+    std::memcpy(this->delta_bool, parent.delta_bool, sizeof(this->delta_bool));
+    this->sid = parent.sid;               // frozen post-bootstrap; unused on a clone
+    this->setup_done = true;              // clone skips bootstrap
+    lane_salt_ = lane_salt;
+    // Own malicious-check FS transcript on this lane's channel, guarded (mirrors
+    // bootstrap_*_ softspoken.cpp:148/199) so an already-FS-enabled channel is
+    // idempotent, not a double-enable abort. send_first matches the role, so
+    // both ends of the lane agree.
+    if (this->malicious && !new_io->fs_enabled())
+        new_io->enable_fs(this->is_ot_sender());
+}
+
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::bootstrap_send_() {
     // Δ = α_0 + α_1·X + … + α_{n-1}·X^{n-1} over F_{2^k}: α_i is the
@@ -441,9 +470,11 @@ void SoftSpoken<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
     block* d_bufs = d_bufs_chunk_.data();
 
     // One session AES key, scheduled once per chunk and shared across every
-    // sub-VOLE's butterfly (the session is constant within a chunk).
+    // sub-VOLE's butterfly (the session is constant within a chunk). The HIGH 64
+    // bits carry lane_salt_ (0 for a non-clone => byte-identical to pre-lane),
+    // so each lane is an independent keystream domain over the shared leaves.
     AES_KEY session_K;
-    AES_set_encrypt_key(makeBlock(0LL, (int64_t)cur_send_session_), &session_K);
+    AES_set_encrypt_key(makeBlock((uint64_t)lane_salt_, (uint64_t)cur_send_session_), &session_K);
 
     // Compute every sub-VOLE's contribution to this chunk's w_planes.
     for (int i = 0; i < n; ++i) {
@@ -546,9 +577,10 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
     block u_temp[kChunkBlocks];        // sub-VOLE i ≥ 1
 
     // One session AES key, scheduled once per chunk and shared across every
-    // sub-VOLE's butterfly (the session is constant within a chunk).
+    // sub-VOLE's butterfly (the session is constant within a chunk). HIGH 64 bits
+    // = lane_salt_ (0 for a non-clone => byte-identical to pre-lane).
     AES_KEY session_K;
-    AES_set_encrypt_key(makeBlock(0LL, (int64_t)cur_recv_session_), &session_K);
+    AES_set_encrypt_key(makeBlock((uint64_t)lane_salt_, (uint64_t)cur_recv_session_), &session_K);
 
     // Sub-VOLE 0 produces u_canonical (no d_buf for i=0).
     {

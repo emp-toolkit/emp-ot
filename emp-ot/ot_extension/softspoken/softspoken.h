@@ -67,6 +67,26 @@ public:
                           std::unique_ptr<OT> base_ot = nullptr);
     ~SoftSpoken() override = default;
 
+    // Spawn a lane: a clone that SHARES this (already-bootstrapped) instance's
+    // checked VOLE material (leaves, alphas, Δ) but runs an INDEPENDENT COT
+    // extension on `new_io`, domain-separated by `lane_salt`. Lets L lanes
+    // extend DISJOINT output ranges concurrently on L channels (one COT
+    // instance's compute/transfer then fills more cores; see
+    // docs/design/softspoken_lanes.md + threading_model.md).
+    //
+    // `lane_salt` MUST be nonzero and distinct per lane (0 is reserved for this
+    // parent). It salts the per-chunk session AES key's HIGH 64 bits, so each
+    // lane is an independent keystream domain over the shared leaves; a
+    // duplicate/zero salt silently reuses a lane's COTs, so the caller must
+    // allocate salts as a dense index (salt = lane index) from one source of
+    // truth. For cross-peer choice consistency the caller must ALSO make the
+    // [0,length) partition and salt a pure function of the lane index (never of
+    // peer identity). This parent, and every `new_io`, must outlive the clone.
+    std::unique_ptr<SoftSpoken> clone_lane(IOChannel* new_io, uint16_t lane_salt) const {
+        return std::unique_ptr<SoftSpoken>(
+            new SoftSpoken(OTExtension::CloneInit{}, *this, new_io, lane_salt));
+    }
+
     static constexpr int kChunkBlocks_value = kChunkBlocks;
     static constexpr int kChunkOTs          = kChunkBlocks * 128;
     int64_t chunk_size() const override { return kChunkOTs; }
@@ -86,7 +106,19 @@ public:
     void end() override;
 
 private:
+    // Clone ctor (used by clone_lane): construct a FRESH object — leaving all
+    // mutable base-class state at its default — then copy the parent's shared
+    // checked material. Never copy-construct a clone (that would alias the
+    // parent's leftover_/mitccrh/prg). Defined in softspoken.cpp.
+    SoftSpoken(OTExtension::CloneInit, const SoftSpoken& parent,
+               IOChannel* new_io, uint16_t lane_salt);
+
     uint64_t session_ = 0;
+    // Per-chunk session AES key's HIGH 64 bits (lane domain separator). 0 for
+    // every non-clone instance -> makeBlock(0, session) is byte-identical to the
+    // pre-lane code; the `= 0` in-class initializer is load-bearing for that
+    // (the normal ctor's init list does not set it). Clones get a nonzero salt.
+    uint16_t lane_salt_ = 0;
 
     // COT-Sender (= VOLE-Receiver / PPRF-Receiver) state.
     int alphas_[n] = {0};

@@ -119,6 +119,26 @@ public:
     }
 
 protected:
+    // Tag for the clone-lane ctor below (disambiguates from the normal ctor).
+    struct CloneInit {};
+
+    // Clone-lane base ctor: build a lane that SHARES an already-bootstrapped
+    // parent's checked material but runs an INDEPENDENT extension on `io_`.
+    // Allocates NO base OT and samples NO Δ — the subclass clone ctor copies the
+    // parent's leaves/alphas/Δ and flips setup_done. Constructing a FRESH object
+    // (never copy-constructing a clone) is precisely what leaves every mutable
+    // streaming/COT field at its clean in-class default — StreamingExtension's
+    // in_session_/leftover_, COT's mitccrh/prg — so concurrent lanes share no
+    // mutable state and touch disjoint scratch. base_ot / csw_base_ /
+    // base_check_pending_ default to null/null/false, so the deferred base-OT
+    // extraction check is the PARENT's sole responsibility, run once on its io.
+    // choice_prg is bootstrap-only (dead after setup_done), so its value is
+    // irrelevant on a clone. See SoftSpoken::clone_lane.
+    OTExtension(CloneInit, int party_, IOChannel* io_, bool malicious_)
+        : StreamingExtension<block>(party_, malicious_) {
+        this->io = io_;
+    }
+
     // Shared ctor used by every concrete extension. Stores the base_ot
     // (subclasses always pass non-null — their per-extension typedef
     // picks the default), runs the malicious-secure cross-check, and
