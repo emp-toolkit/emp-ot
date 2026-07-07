@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>emp-ot — OT interfaces &amp; extension</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --ink:#1b2027; --muted:#5b6573;
+  --accent:#3a4fb8; --line:#e4e8ef; --code-bg:#0f1424; --code-ink:#e7ebf6;
+  --note:#1d4ed8; --warn:#c2410c; --audit:#7c3aed; --ok:#0a7d4d; --api:#0e7490;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+header.site{position:sticky;top:0;z-index:50;background:#10142a;color:#fff;
+  padding:.6rem 1.1rem;display:flex;flex-wrap:wrap;gap:.4rem 1.1rem;align-items:center;
+  box-shadow:0 1px 0 rgba(255,255,255,.06)}
+header.site .brand{font-weight:700;letter-spacing:.2px}
+header.site .brand span{color:#9fb0ff}
+header.site nav{display:flex;flex-wrap:wrap;gap:.1rem .2rem;margin-left:auto;font-size:.82rem}
+header.site nav a{color:#c9d2ff;padding:.2rem .5rem;border-radius:6px}
+header.site nav a.cur{background:#2b3566;color:#fff}
+header.site nav a:hover{background:#222a52;text-decoration:none}
+main{max-width:64rem;margin:0 auto;padding:2rem 1.2rem 5rem}
+h1{font-size:2rem;line-height:1.18;margin:.2rem 0 .4rem}
+h2{font-size:1.4rem;margin:2.8rem 0 .7rem;padding-top:.5rem;border-top:2px solid var(--line)}
+h3{font-size:1.12rem;margin:1.6rem 0 .5rem;color:#26314f}
+p{margin:.6rem 0}
+code{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.86em}
+p code,li code,td code{background:#eef1f7;padding:.06em .36em;border-radius:5px;color:#293150}
+code.ref{background:#e7ecfb;color:#2a3a86;white-space:nowrap}
+pre{background:var(--code-bg);color:var(--code-ink);padding:.85rem 1rem;border-radius:9px;
+  overflow:auto;font-size:.82rem;line-height:1.5;margin:.7rem 0;border:1px solid #1d2540}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.lead{font-size:1.1rem;color:#39414f;max-width:52rem}
+.meta{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:.9rem 1.1rem;margin:1.1rem 0 1.6rem;font-size:.9rem;color:var(--muted)}
+.meta b{color:var(--ink)}
+.meta table{border-collapse:collapse;width:100%}
+.meta td{padding:.18rem .4rem;vertical-align:top}
+.meta td:first-child{color:var(--ink);font-weight:600;white-space:nowrap;width:9.5rem}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(8.3rem,1fr));gap:.7rem;margin:1.4rem 0}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.8rem .9rem}
+.stat .n{font-size:1.5rem;font-weight:800;color:#23306a;line-height:1.1}
+.stat .l{font-size:.74rem;color:var(--muted);margin-top:.15rem;letter-spacing:.02em}
+.toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem 1.2rem;margin:1.4rem 0}
+.toc h2{border:0;margin:0 0 .5rem;font-size:1rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0}
+.toc ol{margin:0;padding-left:1.2rem;columns:2;column-gap:2rem}
+.toc li{margin:.18rem 0;break-inside:avoid}.toc a{color:#2c3550}
+.callout{border-left:4px solid var(--note);background:#fff;border-radius:0 8px 8px 0;
+  padding:.7rem .95rem;margin:.9rem 0;box-shadow:0 1px 2px rgba(20,30,60,.05)}
+.callout .lbl{font-weight:700;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;display:block;margin-bottom:.25rem}
+.callout p{margin:.35rem 0}.callout p:first-of-type{margin-top:0}.callout p:last-child{margin-bottom:0}
+.c-note{border-color:var(--note)} .c-note .lbl{color:var(--note)}
+.c-warn{border-color:var(--warn);background:#fff8f4} .c-warn .lbl{color:var(--warn)}
+.c-audit{border-color:var(--audit);background:#faf7ff} .c-audit .lbl{color:var(--audit)}
+.c-ok{border-color:var(--ok);background:#f3fbf6} .c-ok .lbl{color:var(--ok)}
+table.grid{border-collapse:collapse;width:100%;margin:.9rem 0;font-size:.89rem}
+table.grid th,table.grid td{border:1px solid var(--line);padding:.45rem .6rem;text-align:left;vertical-align:top}
+table.grid th{background:#eef1f8;font-weight:600}
+table.grid tr:nth-child(even) td{background:#fafbfd}
+ul,ol{margin:.5rem 0;padding-left:1.4rem}li{margin:.28rem 0}
+.stack{margin:1rem 0;display:flex;flex-direction:column-reverse;gap:.35rem}
+.layer{display:flex;align-items:center;gap:.7rem;background:var(--panel);border:1px solid var(--line);
+  border-left:5px solid var(--tier,#3a4fb8);border-radius:8px;padding:.5rem .8rem}
+.layer .lv{font-size:.7rem;font-weight:800;color:#8893ad;width:2.2rem;flex:none}
+.layer .nm{font-weight:700;width:11rem;flex:none;color:#26314f}
+.layer .md{font-size:.82rem;color:var(--muted)}
+.t-sub{--tier:#0e7490}.t-root{--tier:#c2410c}.t-ctx{--tier:#7c3aed}.t-val{--tier:#2563eb}.t-front{--tier:#0a7d4d}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem 1.1rem}
+.pane h3{margin-top:0}
+.reportcards{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1rem 0}
+.rc{display:block;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:1rem 1.1rem;transition:box-shadow .15s,transform .15s}
+.rc:hover{box-shadow:0 6px 18px rgba(20,30,60,.10);transform:translateY(-2px);text-decoration:none}
+.rc .num{font-size:.7rem;font-weight:700;letter-spacing:.1em;color:#7c8aa8;text-transform:uppercase}
+.rc h3{margin:.2rem 0 .35rem;color:#1b2027}
+.rc p{margin:0;color:var(--muted);font-size:.86rem}
+.tag{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.05em;padding:.12rem .5rem;border-radius:20px;background:#e7ecfb;color:#2a3a86;vertical-align:middle}
+.sev{display:inline-block;font-size:.68rem;font-weight:800;letter-spacing:.04em;padding:.08rem .45rem;border-radius:5px;text-transform:uppercase}
+.sev-high{background:#fde2d6;color:#9a2c08}.sev-med{background:#fdeccd;color:#8a5a05}.sev-low{background:#e3ecfb;color:#274a8c}
+.vt{display:inline-block;font-size:.66rem;font-weight:800;letter-spacing:.05em;padding:.08rem .4rem;border-radius:5px}
+.vt-c{background:#d7f0e2;color:#0a6b41}.vt-u{background:#efe6fb;color:#5e2ea6}
+footer{max-width:64rem;margin:0 auto;padding:1.5rem 1.2rem 3rem;color:var(--muted);font-size:.82rem;border-top:1px solid var(--line)}
+@media (max-width:680px){.toc ol{columns:1}.split,.reportcards{grid-template-columns:1fr}.layer .nm{width:auto}}
+@media print{header.site{position:static}pre{white-space:pre-wrap}}
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="brand">emp-ot <span>· implementation audit</span></div>
+  <nav>
+    <a href="00-overview.html">Overview</a>
+    <a href="01-base-ot.html">1 · Base OT</a>
+    <a class="cur" href="02-ot-extension.html">2 · OT extension</a>
+    <a href="03-silent.html">3 · Silent</a>
+    <a href="04-svole.html">4 · sVOLE</a>
+  </nav>
+</header>
+<main>
+
+<h1>emp-ot — OT interfaces &amp; extension</h1>
+<p class="lead">The interface spine every OT protocol plugs into — the abstract
+<code>OT → COT → RandomCOT</code> hierarchy, the <code>OTIdeal</code> test double, the shared
+<code>StreamingExtension</code> lifecycle, and the two RandomCOT backends that ride on it: <b>IKNP</b>
+(classic matrix OT-extension, KOS-hardened) and <b>SoftSpoken</b> (small-field subspace-VOLE with a cGGM
+puncturable PRF and a recursive butterfly VOLE fold). Plus the wire-trace-hash regression methodology, the
+malicious-security check machinery, and the <code>clone_lane</code> lane-parallel COT extension. Everything
+here is a <b>substrate contract</b>: the base classes trust their subclasses, and cryptographic enforcement
+lives in the concrete protocols.</p>
+
+<div class="meta">
+<table>
+<tr><td>Report</td><td>2 of the emp-ot audit — OT interfaces &amp; the IKNP / SoftSpoken extensions</td></tr>
+<tr><td>Source tree</td><td><code>/Users/wangxiao/Documents/emp-ot</code> · working tree on <code>main</code> · HEAD <code class="ref">481cc1d</code> (clone_lane)</td></tr>
+<tr><td>Files in scope</td><td><code>emp-ot/{ot.h,ideal.h,emp-ot.h}</code> · <code>emp-ot/common/streaming_extension.h</code> · <code>emp-ot/ot_extension/{ot_extension.h,iknp.h,iknp.cpp}</code> · <code>emp-ot/ot_extension/softspoken/{softspoken.h,softspoken.cpp,sfvole_butterfly.h}</code> · <code>test/{test.h,trace_hash.cpp,trace_equiv.cpp,test_iknp.cpp,test_softspoken*.cpp,test_choice_seed.cpp}</code> · <code>docs/{streaming-api,wire-trace-hashes,class-organization}.md</code></td></tr>
+<tr><td>Trust model</td><td><b>Bifurcated.</b> <code>OT/COT/RandomCOT</code> are abstract contracts with no self-enforcement — <code>is_malicious_secure()</code>/<code>supports_deferred_check()</code> are declarative capability flags the base trusts. The streaming layer enforces only an API-liveness tripwire. Actual malicious security (chi-fold, PPRF, base-OT extraction checks) lives in the concrete subclasses.</td></tr>
+<tr><td>Failure model</td><td><b>Two postures.</b> Wire-facing cheat detection aborts via always-on <code>error()</code> → <code>_Exit(1)</code> (live under <code>NDEBUG</code>); API-misuse preconditions are <code>assert()</code> (compiled out under <code>NDEBUG</code>). See the risk register.</td></tr>
+<tr><td>Method</td><td>Full read of every in-scope header + its tests; <code>file:line</code> references verified against the live tree at <code class="ref">481cc1d</code>. Historical performance claims and the README hash baseline were <b>not</b> re-run in this pass and are flagged UNVERIFIED.</td></tr>
+</table>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="n">3</div><div class="l">interface levels (OT/COT/RCOT)</div></div>
+  <div class="stat"><div class="n">2</div><div class="l">backends on this page (IKNP · SoftSpoken)</div></div>
+  <div class="stat"><div class="n">2</div><div class="l">non-virtual streaming entries (run · next_n)</div></div>
+  <div class="stat"><div class="n">3</div><div class="l">SoftSpoken k values {2,4,8}</div></div>
+  <div class="stat"><div class="n">2⁻¹²⁸</div><div class="l">chi-fold / PPRF check soundness</div></div>
+  <div class="stat"><div class="n">16</div><div class="l">bits of lane_salt domain space</div></div>
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+<li><a href="#stack">Role in the OT stack &amp; the two-layer trust model</a></li>
+<li><a href="#interfaces">OT / COT / RandomCOT interface hierarchy</a></li>
+<li><a href="#ideal">ideal.h — the OTIdeal test double</a></li>
+<li><a href="#umbrella">emp-ot.h — umbrella header</a></li>
+<li><a href="#streaming">StreamingExtension&lt;Element&gt; lifecycle contract</a></li>
+<li><a href="#otext">OTExtension base — Δ, choice PRG, trust gate</a></li>
+<li><a href="#iknp">IKNP — flow, wire format, KOS chi-fold</a></li>
+<li><a href="#softspoken">SoftSpoken — parameters, bootstrap, cGGM</a></li>
+<li><a href="#sfvole">SoftSpoken — the subfield-VOLE butterfly</a></li>
+<li><a href="#ss-checks">SoftSpoken — COT pipeline &amp; malicious checks</a></li>
+<li><a href="#clone">clone_lane — lane-parallel COT</a></li>
+<li><a href="#trace">Wire-trace-hash methodology</a></li>
+<li><a href="#coverage">Test coverage &amp; gaps</a></li>
+<li><a href="#risk">Auditor risk register</a></li>
+</ol>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="stack">1 · Role in the OT stack &amp; the two-layer trust model</h2>
+<p>This subsystem is the interface/streaming skeleton every concrete OT, OT-extension and sVOLE protocol in
+emp-ot plugs into. <code class="ref">emp-ot/ot.h</code> defines the abstract <code>OT → COT → RandomCOT</code>
+hierarchy; <code class="ref">emp-ot/ideal.h</code> a deterministic test double; <code class="ref">emp-ot/emp-ot.h</code>
+a pure aggregator; and <code class="ref">emp-ot/common/streaming_extension.h</code> the shared
+<code>begin/next/end/run/next_n</code> lifecycle that both the RCOT family (<code>OTExtension</code> →
+IKNP/SoftSpoken/Ferret, <code>Element=block</code>) and the sVOLE family (<code>Svole&lt;AuthValue&gt;</code>)
+inherit.</p>
+
+<div class="stack">
+  <div class="layer t-front"><span class="lv">RCOT</span><span class="nm">RandomCOT</span><span class="md">adds the standard 1-bit-per-COT correction on top of a raw <code>rcot()</code> (LSB-of-output convention) so a chosen-correlation COT composes on a random-OT base (<code class="ref">ot.h:132-162</code>)</span></div>
+  <div class="layer t-ctx"><span class="lv">COT</span><span class="nm">COT</span><span class="md">generic chosen-input <code>send</code>/<code>recv</code> as a MITCCRH Davies–Meyer wrapper over a subclass <code>send_cot</code>/<code>recv_cot</code> (<code class="ref">ot.h:39-126</code>)</span></div>
+  <div class="layer t-root"><span class="lv">OT</span><span class="nm">OT</span><span class="md">abstract 1-of-2 chosen-input OT; <code>is_malicious_secure()</code>/<code>supports_deferred_check()</code> are declarative flags, not enforced (<code class="ref">ot.h:9-33</code>)</span></div>
+  <div class="layer t-sub"><span class="lv">SE</span><span class="nm">StreamingExtension&lt;E&gt;</span><span class="md">the 4-pure-virtual chunk lifecycle + non-virtual <code>run</code>/<code>next_n</code>; a session tripwire + an always-on destructor guard, but <b>no</b> crypto (<code class="ref">common/streaming_extension.h</code>)</span></div>
+</div>
+
+<div class="callout c-note"><span class="lbl">The trust model is split, and the split matters</span>
+<p><code>OT/COT/RandomCOT</code> are abstract contracts with <b>no cryptographic enforcement of their own</b>:
+<code>is_malicious_secure()</code> and <code>supports_deferred_check()</code> are plain overridable booleans a
+subclass declares truthfully; the base class trusts the subclass (<code class="ref">ot.h:16,23</code>). The
+streaming layer enforces only a liveness/API-misuse contract (no double-<code>begin</code>, no
+<code>next</code> without <code>begin</code>, no destruction mid-session) and carries no cryptographic check
+itself. The real active-security machinery — chi-fold correlation checks, PPRF consistency, base-OT
+cross-checks — lives entirely in the concrete subclasses covered in §7–§10.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="interfaces">2 · OT / COT / RandomCOT interface hierarchy</h2>
+<p><span class="tag">emp-ot/ot.h</span></p>
+
+<h3>OT — the abstract chosen-input contract (<code class="ref">ot.h:9-33</code>)</h3>
+<p>Pure virtuals <code>send(data0,data1,length)</code> and <code>recv(data,b,length)</code>;
+<code>is_malicious_secure()</code> and <code>supports_deferred_check()</code> both default <code>false</code>
+with no runtime verification that a subclass's claim is true (<code class="ref">ot.h:16,23</code>).
+<code>set_sid(SessionID)</code> is <b>non-pure with a default setter that just stores the id</b>
+(<code class="ref">ot.h:29</code>); the comment states callers "are not required to" set it before first use,
+so a caller that forgets domain separation silently runs with the default <code>zero_block</code> sid — a
+design choice, not enforced here (contrast <code>OTExtension::set_sid</code>, which asserts
+<code>!setup_done</code>, <code class="ref">ot_extension.h:102-106</code>).</p>
+
+<h3>COT — chosen-input over a correlated primitive (<code class="ref">ot.h:39-126</code>)</h3>
+<p>COT implements the generic chosen-input <code>send</code>/<code>recv</code> as a wrapper over a
+subclass-provided correlated primitive (<code>send_cot</code>/<code>recv_cot</code>, pure virtual,
+<code class="ref">ot.h:42-43</code>). It draws COT outputs, re-randomizes a fresh per-call seed
+<code>s</code> (<code>prg.random_block</code> + <code>io-&gt;send_block(&amp;s,1)</code> on the sender,
+<code class="ref">ot.h:48-50</code>; <code>io-&gt;recv_block</code> on the receiver,
+<code class="ref">ot.h:69</code>), seeds a <code>MITCCRH&lt;ot_bsize&gt;</code> via <code>setS(s)</code>, and
+Davies–Meyer AES-hashes <code>data[i]</code> / <code>data[i]^Delta</code> in tiles of
+<code>ot_bsize = 8</code> (<code>tuning::cot_chosen_input_tile</code>) before XOR-ing in the chosen messages
+and shipping 2 blocks/OT (<code class="ref">ot.h:57-62</code>). The receiver's <code>recv</code> hashes its own
+COT output under the same fresh <code>S</code> and selects <code>res[2*j + r[i+j]]</code> — correctness
+depends on both parties deriving the identical <code>s</code> (one <code>send_block</code>/<code>recv_block</code>
+round trip) and seeding MITCCRH identically.</p>
+
+<div class="callout c-warn"><span class="lbl">MITCCRH ReuseShift defaults to 3 — 8 gids share one key schedule</span>
+<p><code class="ref">ot.h:123</code> instantiates <code>MITCCRH&lt;ot_bsize&gt;</code> supplying <b>only</b> the
+<code>BatchSize</code> template argument (<code>ot_bsize = 8</code>), so <code>ReuseShift</code> takes its
+default value <b>3</b> from <code class="ref">emp-tool/runtime/crypto/mitccrh.h:24</code>. The key schedule is
+bucketed by <code>gid &gt;&gt; ReuseShift</code>, so <b>8 consecutive gids hash under one AES key schedule</b>,
+which the MITCCRH header documents as reducing the multi-instance ideal-cipher bound by 3 bits (125-bit at
+κ=128) relative to a fresh key per OT (<code>ReuseShift=0</code>). A deliberate throughput/security trade baked
+into the chosen-input wrapper, unparameterized at the COT layer.</p></div>
+
+<h3>RandomCOT — the ROT-to-COT derandomization (<code class="ref">ot.h:132-162</code>)</h3>
+<p>RandomCOT exposes a single role-implicit <code>rcot(data,num)</code> (<code class="ref">ot.h:138</code>) that
+concrete extensions implement by forwarding to <code>StreamingExtension::run</code>. Its
+<code>send_cot</code>/<code>recv_cot</code> (<code class="ref">ot.h:140-161</code>) add the standard 1-bit
+correction on top of the raw <code>rcot()</code> output: the sender XORs <code>Delta</code> into the positions
+the receiver flags over a wire-received byte vector, and the receiver computes
+<code>bo[i] = b[i] ^ getLSB(data[i])</code> and ships that correction back over <code>io-&gt;send_bool</code>.
+This is the textbook COT-from-ROT construction and rests on the LSB-of-output convention
+(<code>LSB(K)=0</code>, <code>LSB(M)=b</code>, <code>LSB(Δ)=1</code>). It costs <b>one bool per OT beyond the
+RCOT layer's own traffic</b> for every COT consumer.</p>
+
+<div class="callout c-ok"><span class="lbl">Peer-supplied choice bytes are sanitized before the table index</span>
+<p>The sender's <code>data[i] ^= Delta &amp; tab[bo[i]]</code> indexes a 2-element <code>tab</code> with
+attacker-controlled wire bytes (<code class="ref">ot.h:146-151</code>). This is <b>safe</b>: <code>bo</code>
+is filled by <code>IOChannel::recv_bool</code>, which bit-unpacks via <code>bits_to_bools</code> whose every
+path forces the byte to 0/1 (scalar tail <code>&amp; 1</code>; SIMD <code>min_epu8(v,1)</code>). So
+<code>bo[i] ∈ {0,1}</code> for any wire input and <code>tab[bo[i]]</code> never reads out of bounds. The
+<code>reinterpret_cast&lt;bool*&gt;</code> over the <code>unsigned char</code> vector at that boundary is a
+deliberate workaround for <code>std::vector&lt;bool&gt;</code> lacking <code>.data()</code>.</p></div>
+
+<p>There is <b>no abort/error path inside <code>ot.h</code> itself</b>: none of <code>send</code>/<code>recv</code>/
+<code>send_rot</code>/<code>recv_rot</code> call <code>error()</code> or throw; length is <code>int64_t</code>
+with no bounds/overflow check — this layer trusts the caller for lengths and array bounds, and any failure is
+either a silent logic bug or is caught downstream in the IO layer.</p>
+
+<!-- ===================================================================== -->
+<h2 id="ideal">3 · ideal.h — the OTIdeal test double</h2>
+<p><span class="tag">emp-ot/ideal.h</span></p>
+<p><code>OTIdeal</code> (<code class="ref">ideal.h:6-26</code>) is a <code>COT</code> subclass that fills
+<code>data</code> from a plain PRG stream — explicitly and only a mock. Its ctor reseeds the PRG with the
+public constant <code>zero_block</code> "so both parties' OTIdeal PRGs agree without exchanging anything"
+(<code class="ref">ideal.h:9-13</code>): both parties compute the identical deterministic stream with no
+interaction, which is <b>zero cryptographic security</b>, and the header documents it as "not for production."
+The header carries <b>no compile-time or runtime guard</b> preventing production instantiation.</p>
+
+<div class="callout c-warn"><span class="lbl">OTIdeal has two live correctness bugs, not just a security caveat</span>
+<p><b>(a) Only the first block is filled.</b> Both <code>send_cot</code> and <code>recv_cot</code> call
+<code>prg.random_block(data)</code> with no length argument (<code class="ref">ideal.h:17,21</code>). The
+signature is <code>random_block(block*, int64_t nblocks = 1)</code> (<code class="ref">emp-tool/runtime/crypto/prg.h:186</code>),
+so for any <code>length &gt; 1</code> only <code>data[0]</code> is written; <code>data[1..length-1]</code> is
+whatever uninitialized memory the caller's buffer held, and it differs between the two parties — the mock's COT
+correlation (and the COT chosen-input wrapper built on it) is silently broken past the first block.
+<b>(b) Truncating loop + uninitialized Δ.</b> <code>recv_cot</code> iterates
+<code>for(int i=0; i&lt;length; ++i)</code> — an <code>int</code> over an <code>int64_t</code> length, the one
+surviving 32-bit truncation in a length path (<code class="ref">ideal.h:22</code>). And the ctor sets
+<code>Delta</code> only when <code>delta != nullptr</code> (<code class="ref">ideal.h:12</code>); with the
+default <code>delta = nullptr</code>, <code>COT::Delta</code> has no initializer
+(<code class="ref">ot.h:40</code>), so each independently-constructed <code>OTIdeal</code> carries its own
+uninitialized <code>Delta</code>, used inconsistently by the send-side wrapper vs the receiver correction.</p></div>
+
+<div class="callout c-audit"><span class="lbl">Dead API surface</span>
+<p><code>OTIdeal</code> has <b>zero instantiations</b> anywhere in emp-ot's <code>test/</code> or <code>bench/</code>
+trees, nor in the four downstream repos (emp-zk, emp-ag, emp-sh2pc, emp-agmpc) — grep finds no <code>OTIdeal</code>
+callers. Yet it is exported through the umbrella <code class="ref">emp-ot.h:5</code>. It implements only
+<code>send_cot</code>/<code>recv_cot</code> and does not mirror the <code>rcot</code>/<code>begin</code>/
+<code>next</code>/<code>end</code>/<code>chunk_size</code> interface that IKNP/SoftSpoken/Ferret actually
+expose downstream — so its correctness is verified by <b>nothing in CI</b>, which is how the two bugs above
+survive.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="umbrella">4 · emp-ot.h — umbrella header</h2>
+<p><span class="tag">emp-ot/emp-ot.h</span></p>
+<p>A pure <code>#include</code> aggregator: <code>ot.h</code>, <code>ideal.h</code>, four base OTs
+(co/pvw/csw/bmm), iknp, ferret + silent_ferret, softspoken, and both sVOLE flavors (f2k_vole, fp_vole). It
+defines no symbols and carries no behavior to audit beyond include order (no circular-include risk observed).
+Because it pulls in every concrete protocol, a consumer that includes only <code>&lt;emp-ot/emp-ot.h&gt;</code>
+compiles against the full suite; there is <b>no lighter interfaces-only umbrella</b> — a consumer wanting just
+<code>ot.h</code> + <code>ideal.h</code> (e.g. a mock-only unit test that avoids pulling in base-OT / Ferret
+machinery) must include those headers directly.</p>
+
+<!-- ===================================================================== -->
+<h2 id="streaming">5 · StreamingExtension&lt;Element&gt; — the shared lifecycle contract</h2>
+<p><span class="tag">emp-ot/common/streaming_extension.h</span></p>
+<p>The template defines the 4-pure-virtual contract <code>chunk_size()</code> / <code>begin()</code> /
+<code>next()</code> / <code>end()</code> (<code class="ref">streaming_extension.h:57,65-67</code>) that every
+concrete subclass implements, plus two non-virtual public entry points:</p>
+<ul>
+<li><b><code>run(data,num)</code></b> (<code class="ref">streaming_extension.h:73-93</code>) — a one-shot draw
+that first drains a leftover buffer from a previous <code>run()</code>, loops <code>next()</code> into whole
+chunks, and for a non-chunk-aligned tail produces one more chunk into <code>leftover_</code>, copies out the
+requested prefix, and stashes the suffix for the next call. Repeated <code>run(...)</code> calls therefore
+amortize the chunk cost rather than always rounding up to <code>chunk_size()</code>.</li>
+<li><b><code>next_n(dst,n)</code></b> (<code class="ref">streaming_extension.h:110-131</code>) — the
+incremental-draw counterpart for a caller that owns an open session (external <code>begin()</code> once): it
+drains leftover, writes whole chunks directly into <code>dst</code> with no intermediate copy, and buffers only
+a sub-chunk remainder. Per <code>docs/streaming-api.md</code> this exists because per-call
+<code>begin</code>/<code>end</code> round-end work (refill trees + malicious chi-fold) was previously paid every
+<code>chunk_size()</code> elements instead of once per session — a documented ~20× slowdown in emp-zk before
+this API existed. <b>That 20× figure is a doc claim, not reproduced from code in this pass (UNVERIFIED).</b></li>
+</ul>
+
+<div class="callout c-warn"><span class="lbl">The session tripwire is opt-in per subclass — not base-enforced</span>
+<p><code>enter_session_</code> / <code>exit_session_</code> / <code>assert_in_session_</code>
+(<code class="ref">streaming_extension.h:148-161</code>) are protected helpers that <b>subclasses must call
+themselves</b> from their <code>begin</code>/<code>next</code>/<code>end</code> overrides — there is no NVI
+dispatch layer, so the base class does not manage the flag automatically. A subclass author who forgets
+<code>enter_session_()</code> at the top of <code>begin()</code> silently disables the double-begin /
+next-without-begin protection for that subclass. The current subclasses (IKNP/SoftSpoken/Ferret/Svole) do call
+them, confirming this is discipline, not enforcement. The three tripwire checks are also plain
+<code>assert()</code> — compiled out under <code>NDEBUG</code>. And <code>run()</code> vs manual
+<code>begin/next_n/end</code> mixing is documented as mutually exclusive per instance
+(<code>streaming-api.md:170-173</code>) but <b>nothing in code enforces it</b>: both share one
+<code>leftover_</code> buffer, so mixing them yields silent draw-ordering corruption rather than a crash (see
+risk #9).</p></div>
+
+<div class="callout c-ok"><span class="lbl">The one always-on safety check</span>
+<p>The destructor calls <code>error()</code> <b>unconditionally</b> (not gated by <code>NDEBUG</code>) if the
+object is destructed while <code>in_session_</code> is true (<code class="ref">streaming_extension.h:133-139</code>),
+converting a resource-lifetime bug (destroying while the peer expects more data) into a guaranteed abort rather
+than a silent wire desync. Because <code>end()</code> must virtual-dispatch on a still-alive concrete subclass,
+the base cannot call <code>end()</code> in its own destructor — so the contract is "caller must
+<code>end()</code> before the object goes out of scope," enforced by post-hoc detection, not prevention.
+<code>enter_session_()</code> also resets <code>leftover_count_ = 0</code> on every <code>begin()</code> so a
+fresh session never serves a stale tail.</p></div>
+
+<p><code>kSenderSendsOnExtend</code> (<code class="ref">streaming_extension.h:47-55</code>, static constexpr,
+default <code>false</code>) is a per-chunk traffic-direction hint for callers multiplexing a streaming extension
+with a fixed-direction protocol on one socket. It is a <b>static constexpr shadowed per-subclass, not a
+virtual</b>: read through a <code>StreamingExtension&lt;block&gt;*</code> it is invisible (always the base's
+<code>false</code>); through a <code>Ferret*</code> it is actively wrong for a <code>SilentFerret</code> object
+(which shadows it back to <code>false</code>); through a <code>RandomCOT*</code> it <b>does not compile at
+all</b> (not in RandomCOT's inheritance chain). It is read safely in exactly one place — a concrete
+<code>OTExtension</code>-typed alias in emp-ag2pc's triple pool — so the trait is real but its only observable
+in-repo property is the shadowing trap.</p>
+
+<!-- ===================================================================== -->
+<h2 id="otext">6 · OTExtension base — Δ, choice PRG, trust gate</h2>
+<p><span class="tag">emp-ot/ot_extension/ot_extension.h</span></p>
+<p><code>OTExtension</code> derives from both <code>RandomCOT</code> and <code>StreamingExtension&lt;block&gt;</code>;
+each instance is single-role, fixed by <code>party</code> at construction (<code>party == ALICE</code> is the OT
+sender). Concrete backends implement only <code>begin</code>/<code>next</code>/<code>end</code>;
+<code>rcot(data,num)</code> forwards to <code>StreamingExtension::run</code>
+(<code class="ref">ot_extension.h:117-119</code>).</p>
+<ul>
+<li><b>Trust gate.</b> The shared ctor enforces <code>if (malicious_ &amp;&amp; !base_ot-&gt;is_malicious_secure()) error(...)</code>
+(<code class="ref">ot_extension.h:152-153</code>) — the <b>only</b> place a malicious extension requires a
+malicious-secure base OT. This is a precondition, not the security mechanism (see §7/§10).</li>
+<li><b>Δ.</b> The sender samples 128 random bits with bit 0 pinned <code>true</code> (the LSB choice
+invariant), stored as both a <code>Delta</code> block and a <code>delta_bool[128]</code> mirror
+(<code class="ref">ot_extension.h:163-166</code>). <code>set_delta</code> asserts sender role, pre-bootstrap,
+and <code>bits[0]==true</code> (<code class="ref">ot_extension.h:77-79</code>). The whole LSB choice
+convention and the RCOT correction of §2 depend on this invariant.</li>
+<li><b>Choice.</b> The receiver's choice material comes from a single <code>choice_prg</code> (default-seeded
+from urandom); <code>set_choice_seed</code> reseeds it, asserting receiver role and pre-bootstrap
+(<code class="ref">ot_extension.h:91-95</code>). All three backends derive choice bits from this one PRG.</li>
+<li><b>CSW detection.</b> If <code>base_ot-&gt;supports_deferred_check()</code> the ctor static_casts it to
+<code>CSW*</code> (<code class="ref">ot_extension.h:154-157</code>), enabling the messy-core-now /
+extraction-check-deferred overlap; otherwise the blocking <code>base_ot-&gt;send/recv</code> path runs.
+<code>base_check_pending_</code> tracks that the deferred check runs exactly once in the first
+<code>end()</code>.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="iknp">7 · IKNP — flow, wire format, KOS chi-fold</h2>
+<p><span class="tag">emp-ot/ot_extension/iknp.h</span> <span class="tag">iknp.cpp</span></p>
+<p>The classic Ishai–Kilian–Nisan–Petrank matrix OT-extension (CRYPTO'03; ALSZ 2013/552), KOS-hardened for
+malicious security (2015/546). <code>chunk_size() = block_size = tuning::iknp_chunk_ots = 2048</code> OTs;
+each <code>next()</code> emits exactly 2048 blocks (16 IKNP rows of 128).</p>
+
+<h3>Wire format &amp; the bit-0 encoding</h3>
+<p>Bootstrap plays 127 base OTs (row 0 is skipped — both sides know it is zero) and reseeds per-row PRGs
+(<code class="ref">iknp.cpp:42-68,149-179</code>). Per chunk, the receiver draws <code>r</code> from
+<code>choice_prg</code>, computes <code>u_i = G0_i ⊕ G1_i ⊕ r</code> for rows 1..127 and sends them, pins
+<code>t[0]=r</code>, and transposes via <code>sse_trans_n128</code> (<code class="ref">iknp.cpp:209-228</code>);
+the sender receives each <code>u_i</code>, sets <code>t</code> row <code>i</code> and XORs <code>u_i</code>
+when <code>delta_bool[i]</code>, forcing row 0 to zero (<code class="ref">iknp.cpp:111-126</code>). After the
+transpose, <code>bit_0(M_k)=choice_k</code> and <code>bit_0(K_k)=0</code>, so <code>Q ⊕ T = r·Δ</code> holds at
+bit 0 with zero post-processing and the RandomCOT LSB correction lines up. <b>Row 0 is excluded from both wire
+and FS transcript on both sides</b>, saving 1/128 bandwidth and keeping digests aligned
+(<code class="ref">iknp.cpp:107-110</code>).</p>
+
+<h3>The malicious check (corrected)</h3>
+<p>Malicious mode enables Fiat–Shamir at bootstrap (<code>io-&gt;enable_fs(send_first = is_ot_sender())</code>,
+<code class="ref">iknp.cpp:62-63</code>); the u-matrix bytes are auto-absorbed by <code>recv_data</code>/
+<code>send_data</code>. The check is <b>not a single chi</b>: per chunk, <code>combine_send</code>/
+<code>combine_recv</code> snapshot the evolving FS digest via <code>io-&gt;get_digest()</code>
+<b>after</b> the chunk's u-matrix bytes have crossed and been absorbed (correct commitment-before-challenge
+ordering, <code class="ref">iknp.cpp:134,237</code>), seed a PRG, draw <code>block_size/128 = 16</code>
+independent χ coefficients, pack each 128-block group into one <code>F_{2^128}</code> element via
+<code>GaloisFieldPacking</code>, and fold <code>χ_i·Q_i</code> (sender) or <code>χ_i·T_i</code> and
+<code>χ_i·R_i</code> (receiver, <code>R_i = r[i]</code>) with <code>vector_inn_prdt_sum_no_red</code> + a
+final <code>reduce</code>. So the check is a <b>random linear combination of 16 fresh χ per chunk, accumulated
+across every chunk of the session</b>. The final compare is
+<code>check_q ⊕ (check_x·Δ) == check_t</code> (<code class="ref">iknp.cpp:83-89</code>); mismatch →
+<code>error("OT Extension check failed")</code>. Soundness is ~2⁻¹²⁸ statistical.</p>
+
+<div class="callout c-note"><span class="lbl">The sacrificial chunk masks the revealed check values, at a cost</span>
+<p><code>send_end_</code>/<code>recv_end_</code> run one extra full <code>block_size=2048</code>-OT chunk
+before opening <code>(check_x, check_t)</code>, so the revealed values do not determine any user-visible OT
+(<code class="ref">iknp.cpp:70-98,181-201</code>). Only ~128 of those 2048 OTs are semantically needed; the
+rest are folded harmlessly into the linear check but still cost a full chunk of compute and bandwidth
+(<code class="ref">iknp.cpp:76-79</code>) — a documented efficiency wart, not a correctness/security issue.
+Semi-honest mode runs none of this: no FS, no chi-fold, no sacrificial chunk.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="softspoken">8 · SoftSpoken — parameters, bootstrap, cGGM</h2>
+<p><span class="tag">emp-ot/ot_extension/softspoken/softspoken.h</span> <span class="tag">softspoken.cpp</span></p>
+<p>Roy's Crypto'22 (2022/192) small-field subspace-VOLE extension, templated on <code>k</code> with
+<code>n = 128/k</code> sub-VOLEs and <code>Q = 2^k</code> leaves per sub-VOLE. A <code>static_assert</code>
+requires <code>k ∈ {1..8}</code> and <code>128 % k == 0</code>, but only <b>{2,4,8}</b> are instantiated (plus a
+<code>k=8</code> 580-block Ferret-bootstrap variant); <code>k=1</code> is unreachable and the sfvole butterflies
+<code>static_assert(k &gt;= 2)</code> (<code class="ref">softspoken.cpp:677-681</code>,
+<code class="ref">sfvole_butterfly.h:301</code>). Chunk sizes: <code>kChunkBlocks = 64</code> for k=2/4, 128
+for k=8; the plane buffer is sized for L1/L2 residency (<code>tuning.h:79-92</code>).</p>
+<ul>
+<li><b>OT-sender = VOLE/PPRF receiver</b> (<code>bootstrap_send_</code>,
+<code class="ref">softspoken.cpp:120-179</code>): slices Δ into <code>α_i</code> (k-bit field elements),
+drives cGGM <code>eval_receiver</code> with a bit-reversed path so the storage index equals the field element
+and <code>leaves[α_i]</code> stays pinned <code>zero_block</code> (the punctured slot). 128 base OTs consumed.</li>
+<li><b>OT-receiver = VOLE/PPRF sender</b> (<code>bootstrap_recv_</code>,
+<code class="ref">softspoken.cpp:181-230</code>): builds <code>n</code> Half-Tree cGGM trees, each with a
+<b>fresh</b> <code>(Δ_tree, root)</code> drawn from <code>choice_prg</code>, shipping per-level
+<code>K0[h]/K1[h]=K0[h]⊕Δ_tree</code> via base OT.</li>
+</ul>
+<div class="callout c-note"><span class="lbl">Choice determinism is load-bearing</span>
+<p>Drawing <b>both</b> <code>Δ_tree</code> and <code>root</code> from <code>choice_prg</code>
+(<code class="ref">softspoken.cpp:191,202</code>) makes the receiver's choice-bit stream a pure function of the
+choice seed — required for <code>set_choice_seed</code> determinism and cross-peer / cross-run consistency
+(<code>test_choice_seed</code>). The receiver reconstructs all leaves except the punctured <code>α</code> slot,
+whose pseudorandomness rests on never learning <code>Δ_tree</code>. <code>session_</code> increments per
+<code>begin()</code>, giving a fresh AES key domain; the per-chunk PRG offset advances so the keystream across
+a session's chunks equals one bulk PRG invocation.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="sfvole">9 · SoftSpoken — the subfield-VOLE butterfly</h2>
+<p><span class="tag">emp-ot/ot_extension/softspoken/sfvole_butterfly.h</span></p>
+<p>The butterfly kernel computes <code>r_x = AES_K(b0+j ⊕ leaves[x]) ⊕ (b0+j ⊕ leaves[x])</code> (Davies–Meyer
+under the session key), <code>u = ⊕_x r_x</code>, and the <code>k</code> VOLE planes
+(<code class="ref">sfvole_butterfly.h:22-34</code>). Kernel selection is compile-time: <code>k=8</code> uses an
+"oct" kernel fusing rounds 0+1+2 then <code>butterfly_halve&lt;k-3&gt;</code>; <code>k=2/4</code> use a "quad"
+kernel fusing rounds 0+1 (<code>k=2</code> cannot use oct, <code>Q=4&lt;8</code>). Lane width auto-selects
+<code>AesLane&lt;4&gt;</code> (VAES-512) / <code>&lt;2&gt;</code> (VAES-256) / <code>&lt;1&gt;</code>
+(AES-NI/NEON) with <code>static_assert(T % L::N == 0)</code>; the scalar lane is an always-available fallback,
+so no intrinsic path lacks one.</p>
+
+<div class="callout c-ok"><span class="lbl">The punctured leaf's bogus output never reaches an output plane</span>
+<p>Security-critical and verified: the receiver substitution reads <code>tweaks[0] = leaves[α] = zero_block</code>
+(the punctured slot), producing a bogus <code>r_0</code>. Tracing the fold, <code>r_0</code> is excluded from
+every <code>w_b</code> plane update and lands only in the <code>A[·][0]</code> accumulator, which
+<code>butterfly_halve</code> keeps as the even/left operand while <code>v_acc</code> takes only odd
+<code>R</code> operands — so <code>r_0</code> ends as <code>u = A[0]</code>, which the receiver
+<b>discards</b>, and never flows into any <code>w_b</code> output plane
+(<code class="ref">sfvole_butterfly.h:389-404,436,477</code>). The plane-major output layout is exactly what
+<code>sse_trans_n128</code> consumes, so no gather scratch is needed. One acknowledged inefficiency: sub-VOLE 0
+plane 0 is folded then overwritten by the LSB pin (§10) — kept to avoid splitting the sfvole API.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="ss-checks">10 · SoftSpoken — COT pipeline &amp; malicious checks</h2>
+<p><span class="tag">softspoken.cpp</span></p>
+<h3>Per-chunk COT pipeline &amp; LSB pinning</h3>
+<p>The receiver batches all <code>n-1</code> sub-VOLE differences <code>d_i = u_canonical ⊕ u_temp</code> into
+one <code>io-&gt;send_block</code>, pins plane 0 of sub-VOLE 0 to <code>u_canonical</code> so
+<code>bit_0(out)</code> carries the choice, and transposes (<code class="ref">softspoken.cpp:564-625</code>).
+The sender receives the batched <code>d_bufs</code>, XORs <code>d_i</code> into <code>w</code>-plane
+<code>b</code> for each set bit of <code>α_i</code> (derandomization), memsets the mirror LSB pin, and
+transposes (<code class="ref">softspoken.cpp:464-526</code>). The COT relation <code>V ⊕ W = u_canonical·Δ</code>
+holds at full block level with <code>LSB(K)=0</code>, <code>LSB(M)=u_canonical bit</code>; the RandomCOT wrapper
+adds the 1-bit correction.</p>
+
+<h3>PPRF consistency check (<code class="ref">softspoken.cpp:261-345</code>)</h3>
+<p>Each leaf is expanded by <code>aes_ctr_fill_dm&lt;3&gt;</code> under a fixed key
+<code>check_K</code> keyed on <code>kPPRFCheckSessionHigh = 0x70505246434B5F00</code> in the high 64 bits;
+<code>exp[0]</code> overwrites the real leaf, <code>exp[1:2]</code> is the 2λ check material. The PPRF-sender
+computes <code>t̂_i</code> and one rolling SHA-256 over all <code>(i,y)</code> and sends
+<code>t̂</code> + digest; the PPRF-receiver reconstructs <b>only</b> <code>s'_{α_i}</code> (skipping
+<code>y == α_i</code>), rehashes, and aborts on mismatch →
+<code>error("SoftSpoken PPRF check failed")</code>.</p>
+<div class="callout c-ok"><span class="lbl">The check never reveals the punctured leaf</span>
+<p>The receiver's reconstruction recovers only the check material <code>s'_{α_i}</code> (PRG′₀), never the real
+leaf PRG′₁, so <code>leaves[α_i]</code> stays <code>zero_block</code> after the check
+(<code class="ref">softspoken.cpp:322-336</code>). One global rolling digest binds all trees together to catch
+cross-tree swaps. The check key's high-64 domain (<code>0x70505246434B5F00</code>) is provably disjoint from
+every per-chunk session key domain (whose high 64 bits are a 16-bit <code>lane_salt</code>, max
+<code>0xFFFF</code>), so the two 128-bit AES key domains never collide regardless of the low bits
+(<code class="ref">softspoken.cpp:262,270,477</code>).</p></div>
+
+<h3>Subspace-VOLE chi-fold (<code class="ref">softspoken.cpp:639-675</code>)</h3>
+<p>An IKNP-shape identity <code>Q_i ⊕ T_i = R_i·Δ</code> with <code>R_i = u_canonical[i]</code>: per-chunk
+<code>d_bufs</code> are FS-absorbed, the χ seed is <code>io-&gt;get_digest()</code> (again after commitment),
+the fold accumulates <code>χ_i·{Q,T,R}_i</code>, and <code>end()</code> runs one sacrificial
+<code>bs=1</code> chunk before opening <code>(check_x, check_t)</code>; the sender aborts on
+<code>check_q ⊕ x·Δ != t</code> → <code>error("SoftSpoken subspace VOLE check failed")</code>. FS enablement
+mirrors IKNP and is guarded by <code>!fs_enabled()</code> so Ferret's nesting is a no-op.</p>
+
+<div class="callout c-warn"><span class="lbl">Malicious security is a precondition PLUS three runtime aborts (corrected)</span>
+<p>It would be wrong to say the chi-fold and PPRF checks are the sole active-security mechanisms. Malicious
+security combines (i) the config gate requiring a malicious-secure base OT (<code class="ref">ot_extension.h:152-153</code>)
+with three runtime abort checks all firing via the live-under-<code>NDEBUG</code> <code>error()</code>:
+(ii) the extension chi-fold (IKNP <code class="ref">iknp.cpp:88-89</code>; SoftSpoken subspace
+<code class="ref">softspoken.cpp:448-449</code>), (iii) the SoftSpoken PPRF check
+(<code class="ref">softspoken.cpp:343-344</code>), and (iv) the <b>deferred CSW base-OT extraction check</b>
+(<code>send/recv_check</code>, driven from the extension end phase, <code class="ref">iknp.cpp:95,194</code> /
+<code class="ref">softspoken.cpp:454,551</code>), which is a distinct check against base-OT selective failure,
+not part of the chi-fold.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="clone">11 · clone_lane — lane-parallel COT (commit 481cc1d)</h2>
+<p><span class="tag">softspoken.h</span> <span class="tag">softspoken.cpp</span> <span class="tag">ot_extension.h</span></p>
+<p><code>clone_lane(new_io, lane_salt)</code> builds a fresh <code>SoftSpoken</code> via the
+<code>CloneInit</code> base ctor — allocating <b>no</b> base OT, sampling <b>no</b> Δ, leaving all mutable
+streaming/COT state (<code>in_session_</code>, <code>leftover_</code>, mitccrh, prg) at in-class defaults — then
+value-copies the parent's <em>checked</em> <code>leaves_recv_</code>/<code>leaves_send_</code>,
+<code>alphas_</code>, Δ, <code>delta_bool</code>, sid, and flips <code>setup_done = true</code>
+(<code class="ref">softspoken.cpp:97-118</code>, <code class="ref">ot_extension.h:137-140</code>). A clone
+<b>must</b> be constructed fresh, never copy-constructed — a genuine copy-construct would alias the parent's
+<code>leftover_</code>/prg, which the header explicitly forbids (<code class="ref">softspoken.h:109-114</code>).
+Domain separation rides in the high 64 bits of the per-chunk AES session key
+<code>makeBlock(lane_salt, session)</code>; the parent uses salt 0 (byte-identical to pre-lane code).</p>
+
+<div class="callout c-warn"><span class="lbl">lane_salt is the sole domain separator, guarded only by a debug assert</span>
+<p><code>clone_lane</code>'s security-critical contract — <code>lane_salt</code> nonzero and distinct per lane —
+is the <b>only</b> thing separating concurrent lanes that share one Δ and one PPRF leaf set. It is enforced by a
+single <code>assert(lane_salt != 0)</code> that vanishes under <code>NDEBUG</code>
+(<code class="ref">softspoken.cpp:103</code>), and <b>nothing checks for duplicate nonzero salts</b>. A zero or
+duplicate salt makes <code>makeBlock(lane_salt, session)</code> identical across two lanes that share the same
+leaves and session counters (both start at 0), so the lanes silently emit <b>byte-identical COT streams</b> —
+Δ/choice reuse with no runtime detection and no wire-level failure — and the salt is only 16 bits (≤65535
+lanes). Each lane's own subspace-VOLE check still passes independently; there is no cross-lane detection.</p></div>
+
+<div class="callout c-audit"><span class="lbl">Lanes skip the PPRF and base-OT checks — they inherit the parent's</span>
+<p>A lane clone runs its own per-lane subspace-VOLE check on its own channel but skips the PPRF consistency and
+deferred base-OT extraction checks entirely (<code>base_ot</code>/<code>csw_base_</code>/
+<code>base_check_pending_</code> null/false, <code>setup_done</code> forced true). All lanes' malicious
+security therefore <b>transitively depends on the one PPRF check the parent ran at bootstrap</b> over the shared
+frozen leaves — correct only because the leaves are frozen post-check and value-copied, an invariant guaranteed
+only by the <code>clone_lane</code> "parent already bootstrapped" assert (<code class="ref">softspoken.cpp:102</code>).
+Note the base-OT extraction check is deferred to the parent's first <code>end()</code>
+(<code class="ref">softspoken.cpp:451-456</code>), so the <code>setup_done</code> assert guarantees only that the
+PPRF check ran. Parent and every <code>new_io</code> must outlive the clone.</p></div>
+
+<div class="callout c-warn"><span class="lbl">set_sid on a lane clone is a null deref under NDEBUG</span>
+<p><code>OTExtension::set_sid</code> asserts <code>!setup_done</code> then unconditionally dereferences
+<code>base_ot</code> (<code class="ref">ot_extension.h:102-106</code>). A lane clone has
+<code>base_ot == nullptr</code> and <code>setup_done == true</code>, so under <code>NDEBUG</code> (assert
+elided) calling <code>set_sid</code> on a lane is a null-pointer dereference instead of a diagnostic. A member
+of the broader assert-erasure family below.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="trace">12 · Wire-trace-hash methodology</h2>
+<p><span class="tag">docs/wire-trace-hashes.md</span> <span class="tag">test/trace_hash.cpp</span> <span class="tag">test/trace_equiv.cpp</span></p>
+<p><code>trace_hash.cpp</code> is a <b>non-cryptographic regression tool</b>: for each protocol it resets a
+deterministic seed counter, opens a fresh NetIO with Fiat–Shamir enabled, runs the protocol, and prints the
+first 8 bytes of <code>io-&gt;get_send_digest()</code>/<code>get_recv_digest()</code>
+(<code class="ref">trace_hash.cpp:39-49</code>) — pinning exactly the bytes that crossed the wire, from ALICE's
+view only (ALICE's send digest equals BOB's recv digest). Determinism is entirely contingent on
+<code>EMP_TEST_MODE=1</code> — without it every run differs and the tool only prints a stderr warning, it does
+not abort. Coverage is 18 rows: 4 base OTs, 6 RCOT extensions × {semi, mali}, 2 sVOLE flavors × {semi, mali}.</p>
+<div class="callout c-note"><span class="lbl">What the hash table does and does not pin</span>
+<p><b>Cross-protocol invariant:</b> the Ferret/SilentFerret length is chosen as a whole multiple of one
+SilentFerret round so the two rows are asserted wire-identical by design; a divergence signals a broken
+equivalence. <b>Release-only baseline:</b> the RCOT length is <code>(1&lt;&lt;22)+101</code> in Release (to
+trigger Ferret's per-round rollover and exercise the chi-fold path) vs <code>(1&lt;&lt;18)+101</code> in Debug,
+so Release and Debug hashes are not interchangeable. <b>Documented blind spots</b>
+(<code>wire-trace-hashes.md:107-121</code>): memory-only refactors, non-determinism outside test mode,
+per-OS/arch entropy, and receiver-side abort paths (a hash captures bytes only up to the abort, so a
+malicious-check failure mid-protocol is invisible by construction). <b>Notable gap:</b> the table omits
+<code>SoftSpoken&lt;4&gt;</code> (present in the bench k∈{2,4,8} sweep), so a wire regression specific to k=4
+would not be caught. <b>UNVERIFIED:</b> this pass ran no build, so the README baseline table was not regenerated
+against HEAD.</p></div>
+<p><code>trace_equiv.cpp</code> is the byte-level companion: it wraps a real NetIO in <code>TraceIO</code> to dump
+every wire byte to disk per direction per party, but is <b>hardcoded to IKNP semi-honest RCOT only</b> — so
+localizing a hash divergence in SoftSpoken/Ferret/sVOLE requires ad hoc instrumentation. Its correctness check
+(<code>verify_rcot</code>) deliberately runs over the raw NetIO, bypassing <code>TraceIO</code>, so the
+verification round-trip's own bytes do not pollute the trace files.</p>
+
+<!-- ===================================================================== -->
+<h2 id="coverage">13 · Test coverage &amp; gaps</h2>
+<p><span class="tag">test/test.h</span> and the <code>test_*.cpp</code> drivers.</p>
+<table class="grid">
+<tr><th>Helper / path</th><th>Exercises</th><th>Status</th></tr>
+<tr><td><code>check_rcot</code> (test.h:118) → IKNP/SoftSpoken/Ferret</td><td>the <code>rcot()</code> one-shot path via <code>run()</code></td><td>Used (test_iknp/softspoken/ferret). Covers begin/next/end only <b>indirectly</b></td></tr>
+<tr><td><code>check_ot</code> (test.h:14-37)</td><td><code>OT::send</code>/<code>recv</code> chosen-input</td><td>Base OTs only; COT's own MITCCRH wrapper never driven this way</td></tr>
+<tr><td><code>check_cot</code>, <code>check_rot</code> (test.h:40-82)</td><td><code>send_cot/recv_cot</code>, <code>send_rot/recv_rot</code></td><td><b>Zero call sites</b> — those wire paths are entirely untested</td></tr>
+<tr><td><code>check_rcot_streaming</code> (test.h:118-128)</td><td><code>begin()/next()/end()</code> directly + <code>verify_rcot</code></td><td><b>Zero call sites</b> — the streaming contract is never directly correctness-tested</td></tr>
+<tr><td><code>next_n</code></td><td>incremental buffered draw</td><td>No in-repo test/bench; only downstream emp-zk exercises it (cross-repo dependency)</td></tr>
+<tr><td><code>test_softspoken_lanes.cpp</code></td><td>clone_lane assembled RCOT + domain-separation assertion</td><td>Salt collision / zero-salt reuse (the documented footgun) is <b>not</b> tested</td></tr>
+</table>
+<div class="callout c-warn"><span class="lbl">The abort paths are the least-tested surface</span>
+<p>Every test is honest-execution correctness only. <b>No negative/adversarial test</b> feeds a tampered
+u-matrix, forged <code>d_buf</code>, or corrupted PPRF material to confirm the abort branches actually fire —
+the chi-fold, PPRF and base-OT check <code>error()</code> paths are unexercised by CI. There is also <b>no test
+with a non-CSW (blocking-path) base OT</b>, so the <code>base_ot-&gt;send/recv</code> branch and the trust-gate
+<code>error()</code> are untested. Benches (<code>bench.h</code>) do drive <code>begin/next/end</code> directly,
+but bench code explicitly does not verify correctness — the streaming lifecycle is throughput-tested but
+correctness-tested nowhere in this repo.</p></div>
+<div class="callout c-audit"><span class="lbl">Documentation drift</span>
+<p><code>softspoken.h</code> and <code>test_softspoken_lanes.cpp</code> cite
+<code>docs/design/softspoken_lanes.md</code> and <code>threading_model.md</code>, which <b>do not exist in this
+repo</b> (they live only in downstream emp-ag) — the authoritative spec for an upstream API dangles into a
+consumer repo, against the codebase's own no-downstream-refs convention. <code>softspoken.cpp:353</code>
+additionally names symbols (<code>sfvole_*_compute_chunk</code>, <code>rcot_next</code>) that are not the actual
+function names (the real kernels are <code>sfvole_sender/receiver_butterfly</code> and
+<code>send/recv_chunk_pipeline</code>).</p></div>
+
+<div class="callout c-ok"><span class="lbl">What is solid</span>
+<p>ISA-tier consumption is complete: emp-ot reaches <code>sse_trans_n128</code> through emp-tool's
+tier-dispatching <code>transpose.hpp</code> (every tier uses unaligned loads, so 16-byte-aligned buffers
+suffice), and the sfvole kernels have an always-available scalar lane. Hot-path memory discipline is good —
+per-chunk state is stack or reused members and <code>BlockVec</code> skips the resize zero-fill. Buffer reuse is
+correctly guarded against stale-serve/double-consume: <code>enter_session_</code> zeroes the leftover count,
+<code>run</code>/<code>next_n</code> drain before extending, SoftSpoken scratch grows monotonically and is fully
+overwritten each chunk, and SilentFerret snapshots a pristine <code>base0_</code> to protect its consistency
+region from the finalize's in-place Δ-XOR.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="risk">14 · Auditor risk register</h2>
+<p>Severity is auditor-assigned; the verdict tag records whether this pass confirmed the item in the live tree
+(CONFIRMED) or relied on a doc/historical claim not re-run here (UNVERIFIED).</p>
+<table class="grid">
+<tr><th>#</th><th>Sev</th><th>Verdict</th><th>Item</th><th>Where</th></tr>
+<tr><td>1</td><td><span class="sev sev-high">high</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>lane_salt</code> is the sole domain separator across concurrent lanes sharing one Δ + PPRF leaf set; guarded only by an <code>NDEBUG</code>-erased assert, no duplicate-salt check, 16-bit space — a zero/dup salt silently yields byte-identical COT streams</td><td><code class="ref">softspoken.cpp:103</code>, <code class="ref">softspoken.h:78-121</code></td></tr>
+<tr><td>2</td><td><span class="sev sev-high">high</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>OTIdeal::send_cot/recv_cot</code> call <code>random_block(data)</code> with default <code>nblocks=1</code>: for <code>length&gt;1</code> only <code>data[0]</code> is filled, the rest uninitialized and party-divergent — the mock's COT correlation is silently broken</td><td><code class="ref">ideal.h:17,21</code>, <code class="ref">prg.h:186</code></td></tr>
+<tr><td>3</td><td><span class="sev sev-high">high</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>check_cot</code>/<code>check_rot</code> have zero call sites — <code>send_cot/recv_cot</code> and <code>send_rot/recv_rot</code> wire paths are entirely untested by CI</td><td><code class="ref">test/test.h:40-82</code>, <code class="ref">ot.h:42-116</code></td></tr>
+<tr><td>4</td><td><span class="sev sev-high">high</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>check_rcot_streaming</code> has zero call sites — the <code>begin/next/end</code> lifecycle central to this subsystem is never directly correctness-tested, only indirectly through <code>run()</code></td><td><code class="ref">test/test.h:118-128</code></td></tr>
+<tr><td>5</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>Base OTs run with <code>sid = zero_block</code> unless an outer caller invokes <code>set_sid</code>; no assert requires it, and the ctor never sets it — multi-session deployments get no sid-based RO domain separation (rests on fresh per-run randomness)</td><td><code class="ref">ot.h:26-29</code>, <code class="ref">ot_extension.h:102</code></td></tr>
+<tr><td>6</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>COT's chosen-input wrapper instantiates <code>MITCCRH</code> with default <code>ReuseShift=3</code>: 8 gids share one AES key schedule, −3 bits on the multi-instance bound</td><td><code class="ref">ot.h:122-123</code>, <code class="ref">mitccrh.h:24</code></td></tr>
+<tr><td>7</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>OTIdeal</code> reseeds with public <code>zero_block</code> → zero security; documented test-only but no compile-time/runtime guard blocks production use</td><td><code class="ref">ideal.h:9-13</code></td></tr>
+<tr><td>8</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>Assert-erasure family: <code>set_delta</code> role/pre-bootstrap/<code>bits[0]</code>, CSW <code>len≥80</code>, <code>produce_range</code>, <code>clone_lane</code> unbootstrapped, and the streaming tripwires are all <code>assert()</code> (die under <code>NDEBUG</code>) while cheat detection uses always-on <code>error()</code> — inconsistent posture; includes a receiver null <code>gadget_send_</code> deref</td><td><code class="ref">ot_extension.h:76</code>, <code class="ref">streaming_extension.h:148</code>, <code class="ref">csw.h:105</code>, <code class="ref">ferret.cpp:75</code></td></tr>
+<tr><td>9</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>run()</code> vs <code>begin/next_n</code> mutual exclusion is doc-prose only; every chosen-input verb funnels into <code>rcot→run→begin</code>, so calling a classic OT method on an instance with a long-lived session double-enters the session — caught only by a debug assert, else silent draw-ordering corruption</td><td><code class="ref">streaming_extension.h:163-177</code>, <code class="ref">ot.h:45-116</code></td></tr>
+<tr><td>10</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>The session tripwire is opt-in per subclass — the base never calls the helpers, so a subclass that forgets loses double-begin protection with no base-level detection</td><td><code class="ref">streaming_extension.h:148-161</code></td></tr>
+<tr><td>11</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>Flush semantics are an unwritten contract (docs never mention flush); <code>ot.h</code> is internally asymmetric — <code>send_rot</code> flushes after the seed, <code>send</code> does not — and downstream emp-ag compensates by flushing after every draw</td><td><code class="ref">ot.h:89</code>, <code class="ref">iknp.cpp:200</code></td></tr>
+<tr><td>12</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>SoftSpoken lane clones skip the PPRF and deferred base-OT extraction checks — all lanes' malicious security transitively depends on the one bootstrap PPRF check the parent ran over the frozen leaves</td><td><code class="ref">ot_extension.h:132-140</code>, <code class="ref">softspoken.cpp:97-110</code></td></tr>
+<tr><td>13</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>Stale doc refs: <code>docs/design/softspoken_lanes.md</code> + <code>threading_model.md</code> don't exist in-repo (only downstream); <code>softspoken.cpp:353</code> names nonexistent symbols — downstream-ref convention violation</td><td><code class="ref">softspoken.h:70-88</code>, <code class="ref">softspoken.cpp:353</code></td></tr>
+<tr><td>14</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>The Δ LSB=1 invariant is enforced only by the <code>set_delta</code> assert + ctor pin; the whole LSB choice convention and the RCOT correction depend on it, with no runtime enforcement of the output convention itself</td><td><code class="ref">ot_extension.h:79,165</code>, <code class="ref">ot.h:150</code></td></tr>
+<tr><td>15</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>OTIdeal is dead API (zero callers in emp-ot + 4 downstream repos) yet exported via the umbrella, and no longer mirrors the RandomCOT/streaming interface downstream code programs against</td><td><code class="ref">emp-ot.h:5</code>, <code class="ref">ideal.h:1-28</code></td></tr>
+<tr><td>16</td><td><span class="sev sev-low">low</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>set_sid</code> on a lane clone dereferences a null <code>base_ot</code> under <code>NDEBUG</code> (the <code>assert(!setup_done)</code> guard vanishes; clones carry <code>base_ot=nullptr, setup_done=true</code>)</td><td><code class="ref">ot_extension.h:102-106,137-140</code></td></tr>
+<tr><td>17</td><td><span class="sev sev-low">low</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>OTIdeal::recv_cot</code> iterates <code>int i</code> over an <code>int64_t</code> length (32-bit truncation); default <code>delta=nullptr</code> leaves <code>Delta</code> uninitialized and party-inconsistent</td><td><code class="ref">ideal.h:12,22</code></td></tr>
+<tr><td>18</td><td><span class="sev sev-low">low</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>kSenderSendsOnExtend</code> is a shadowed static constexpr, not a virtual: invisible via <code>StreamingExtension&lt;block&gt;*</code>, wrong via <code>Ferret*</code> for a SilentFerret object, and a hard compile error via <code>RandomCOT*</code></td><td><code class="ref">streaming_extension.h:47-55</code>, <code class="ref">ferret.h:139</code></td></tr>
+<tr><td>19</td><td><span class="sev sev-low">low</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>The LSB-of-output convention is documented only briefly inline (<code>ot.h:128-131</code>) plus <code>test.h</code>; no runtime assertion enforces it, so a violating subclass fails silently until <code>verify_rcot</code> in a test that happens to run</td><td><code class="ref">ot.h:128-131</code>, <code class="ref">test/test.h:84-87</code></td></tr>
+<tr><td>20</td><td><span class="sev sev-low">low</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>No negative/adversarial test triggers any abort path (tampered u-matrix / <code>d_buf</code> / PPRF material); no test with a non-CSW blocking-path base OT — the check and trust-gate <code>error()</code> branches are unexercised by CI</td><td>test tree (<code class="ref">test/test_iknp.cpp</code>, <code class="ref">test/test_softspoken.cpp</code>)</td></tr>
+<tr><td>21</td><td><span class="sev sev-low">low</span></td><td><span class="vt vt-u">UNVERIFIED</span></td><td>The README wire-trace-hash baseline was not regenerated this pass (no build); <code>next_n</code> has no in-repo coverage (cross-repo emp-zk dependency); the ~20× historical <code>next_n</code> speedup is a doc claim not reproduced from code</td><td><code>docs/wire-trace-hashes.md</code>, <code>docs/streaming-api.md</code></td></tr>
+</table>
+
+<div class="callout c-ok"><span class="lbl">Correctness baseline for honest execution</span>
+<p>Within honest execution the correctness story is strong: <code>test_iknp</code> / <code>test_softspoken</code>
+drive semi + malicious RCOT at non-chunk-multiple lengths (exercising the leftover drainer) and check the COT
+relation under a shared Δ via <code>verify_rcot</code>; <code>test_softspoken_lanes</code> validates assembled
+lane RCOT with each lane running its own subspace check plus a distinct-salt keystream assertion;
+<code>test_choice_seed</code> confirms <code>set_choice_seed</code> determinism across runs. The chi-fold /
+PPRF / base-OT check identities and the punctured-leaf isolation were confirmed by reading against Roy'22 and
+KOS. The residual audit surface is entirely the untested paths: the direct streaming lifecycle
+(<code>check_rcot_streaming</code>), the COT/ROT wrappers (<code>check_cot</code>/<code>check_rot</code>), every
+malicious abort branch, and the two <code>OTIdeal</code> correctness bugs that no test would catch.</p></div>
+
+</main>
+<footer>
+emp-ot implementation audit · OT interfaces &amp; extension (IKNP, SoftSpoken) · working tree on
+<code>main</code> at <code>481cc1d</code>.
+Reports: <a href="00-overview.html">Overview</a> · <a href="01-base-ot.html">Base OT</a> ·
+<a href="02-ot-extension.html">OT extension</a> · <a href="03-silent.html">Silent</a> ·
+<a href="04-svole.html">sVOLE</a>.
+</footer>
+</body>
+</html>

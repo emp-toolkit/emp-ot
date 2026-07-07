@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>emp-ot — silent OT: cGGM · MPCOT · LPN · Ferret</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --ink:#1b2027; --muted:#5b6573;
+  --accent:#3a4fb8; --line:#e4e8ef; --code-bg:#0f1424; --code-ink:#e7ebf6;
+  --note:#1d4ed8; --warn:#c2410c; --audit:#7c3aed; --ok:#0a7d4d; --api:#0e7490;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+header.site{position:sticky;top:0;z-index:50;background:#10142a;color:#fff;
+  padding:.6rem 1.1rem;display:flex;flex-wrap:wrap;gap:.4rem 1.1rem;align-items:center;
+  box-shadow:0 1px 0 rgba(255,255,255,.06)}
+header.site .brand{font-weight:700;letter-spacing:.2px}
+header.site .brand span{color:#9fb0ff}
+header.site nav{display:flex;flex-wrap:wrap;gap:.1rem .2rem;margin-left:auto;font-size:.82rem}
+header.site nav a{color:#c9d2ff;padding:.2rem .5rem;border-radius:6px}
+header.site nav a.cur{background:#2b3566;color:#fff}
+header.site nav a:hover{background:#222a52;text-decoration:none}
+main{max-width:64rem;margin:0 auto;padding:2rem 1.2rem 5rem}
+h1{font-size:2rem;line-height:1.18;margin:.2rem 0 .4rem}
+h2{font-size:1.4rem;margin:2.8rem 0 .7rem;padding-top:.5rem;border-top:2px solid var(--line)}
+h3{font-size:1.12rem;margin:1.6rem 0 .5rem;color:#26314f}
+p{margin:.6rem 0}
+code{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.86em}
+p code,li code,td code{background:#eef1f7;padding:.06em .36em;border-radius:5px;color:#293150}
+code.ref{background:#e7ecfb;color:#2a3a86;white-space:nowrap}
+pre{background:var(--code-bg);color:var(--code-ink);padding:.85rem 1rem;border-radius:9px;
+  overflow:auto;font-size:.82rem;line-height:1.5;margin:.7rem 0;border:1px solid #1d2540}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.lead{font-size:1.1rem;color:#39414f;max-width:52rem}
+.meta{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:.9rem 1.1rem;margin:1.1rem 0 1.6rem;font-size:.9rem;color:var(--muted)}
+.meta b{color:var(--ink)}
+.meta table{border-collapse:collapse;width:100%}
+.meta td{padding:.18rem .4rem;vertical-align:top}
+.meta td:first-child{color:var(--ink);font-weight:600;white-space:nowrap;width:9.5rem}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(8.3rem,1fr));gap:.7rem;margin:1.4rem 0}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.8rem .9rem}
+.stat .n{font-size:1.5rem;font-weight:800;color:#23306a;line-height:1.1}
+.stat .l{font-size:.74rem;color:var(--muted);margin-top:.15rem;letter-spacing:.02em}
+.toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem 1.2rem;margin:1.4rem 0}
+.toc h2{border:0;margin:0 0 .5rem;font-size:1rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0}
+.toc ol{margin:0;padding-left:1.2rem;columns:2;column-gap:2rem}
+.toc li{margin:.18rem 0;break-inside:avoid}.toc a{color:#2c3550}
+.callout{border-left:4px solid var(--note);background:#fff;border-radius:0 8px 8px 0;
+  padding:.7rem .95rem;margin:.9rem 0;box-shadow:0 1px 2px rgba(20,30,60,.05)}
+.callout .lbl{font-weight:700;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;display:block;margin-bottom:.25rem}
+.callout p{margin:.35rem 0}.callout p:first-of-type{margin-top:0}.callout p:last-child{margin-bottom:0}
+.c-note{border-color:var(--note)} .c-note .lbl{color:var(--note)}
+.c-warn{border-color:var(--warn);background:#fff8f4} .c-warn .lbl{color:var(--warn)}
+.c-audit{border-color:var(--audit);background:#faf7ff} .c-audit .lbl{color:var(--audit)}
+.c-ok{border-color:var(--ok);background:#f3fbf6} .c-ok .lbl{color:var(--ok)}
+table.grid{border-collapse:collapse;width:100%;margin:.9rem 0;font-size:.89rem}
+table.grid th,table.grid td{border:1px solid var(--line);padding:.45rem .6rem;text-align:left;vertical-align:top}
+table.grid th{background:#eef1f8;font-weight:600}
+table.grid tr:nth-child(even) td{background:#fafbfd}
+ul,ol{margin:.5rem 0;padding-left:1.4rem}li{margin:.28rem 0}
+.stack{margin:1rem 0;display:flex;flex-direction:column-reverse;gap:.35rem}
+.layer{display:flex;align-items:center;gap:.7rem;background:var(--panel);border:1px solid var(--line);
+  border-left:5px solid var(--tier,#3a4fb8);border-radius:8px;padding:.5rem .8rem}
+.layer .lv{font-size:.7rem;font-weight:800;color:#8893ad;width:2.2rem;flex:none}
+.layer .nm{font-weight:700;width:11rem;flex:none;color:#26314f}
+.layer .md{font-size:.82rem;color:var(--muted)}
+.t-sub{--tier:#0e7490}.t-root{--tier:#c2410c}.t-ctx{--tier:#7c3aed}.t-val{--tier:#2563eb}.t-front{--tier:#0a7d4d}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem 1.1rem}
+.pane h3{margin-top:0}
+.reportcards{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1rem 0}
+.rc{display:block;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:1rem 1.1rem;transition:box-shadow .15s,transform .15s}
+.rc:hover{box-shadow:0 6px 18px rgba(20,30,60,.10);transform:translateY(-2px);text-decoration:none}
+.rc .num{font-size:.7rem;font-weight:700;letter-spacing:.1em;color:#7c8aa8;text-transform:uppercase}
+.rc h3{margin:.2rem 0 .35rem;color:#1b2027}
+.rc p{margin:0;color:var(--muted);font-size:.86rem}
+.tag{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.05em;padding:.12rem .5rem;border-radius:20px;background:#e7ecfb;color:#2a3a86;vertical-align:middle}
+.vt{display:inline-block;font-size:.66rem;font-weight:800;letter-spacing:.05em;padding:.08rem .4rem;border-radius:5px}
+.vt-c{background:#d7f0e2;color:#0a6b41}.vt-u{background:#efe6fb;color:#5e2ea6}
+footer{max-width:64rem;margin:0 auto;padding:1.5rem 1.2rem 3rem;color:var(--muted);font-size:.82rem;border-top:1px solid var(--line)}
+@media (max-width:680px){.toc ol{columns:1}.split,.reportcards{grid-template-columns:1fr}.layer .nm{width:auto}}
+@media print{header.site{position:static}pre{white-space:pre-wrap}}
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="brand">emp-ot <span>· implementation audit</span></div>
+  <nav>
+    <a href="00-overview.html">Overview</a>
+    <a href="01-base-ot.html">1 · Base OT</a>
+    <a href="02-ot-extension.html">2 · OT extension</a>
+    <a class="cur" href="03-silent.html">3 · Silent</a>
+    <a href="04-svole.html">4 · sVOLE</a>
+  </nav>
+</header>
+<main>
+
+<h1>emp-ot — silent OT: cGGM, MPCOT, LPN, Ferret</h1>
+<p class="lead">The low-communication RCOT stack: the Half-Tree correlated-GGM (cGGM) puncturable-PRF tree,
+the <code>MultiPointGadget</code> that turns a batch of trees into a multi-point COT, the primal-LPN
+linear-code amplifier and its security-class parameter sets, and the two consumers — <b>Ferret</b>
+(streaming rollover) and <b>SilentFerret</b> (begin-time prepay, wire-free consume incl.
+<code>next_chunks_parallel</code>). Malicious integrity rests entirely on a per-round Fiat-Shamir
+chi-fold consistency check with a fail-closed <code>error()</code> abort.</p>
+
+<div class="meta">
+<table>
+<tr><td>Report</td><td>3 of 4 — Silent OT (<code>emp-ot/common/</code> + <code>emp-ot/ot_extension/ferret/</code>)</td></tr>
+<tr><td>Source tree</td><td><code>/Users/wangxiao/Documents/emp-ot</code> · working tree on <code>main</code> (head <code class="ref">481cc1d</code>)</td></tr>
+<tr><td>Files in scope</td><td><code>emp-ot/common/{cggm,mp_gadget,lpn,streaming_extension}.h</code> · <code>emp-ot/tuning.h</code> · <code>emp-ot/ot_extension/ferret/{ferret,silent_ferret}.{h,cpp}</code></td></tr>
+<tr><td>Papers</td><td>Ferret (ePrint <b>2020/924</b>, App. C consistency check) · Half-Tree cGGM (ePrint <b>2022/1431</b>, Fig. 3) · CCRH = emp-tool <code>H(x)=π(σ(x))⊕σ(x)</code> (ePrint 2019/074, Thm 4.3)</td></tr>
+<tr><td>Trust model</td><td><b>Dual</b>, dispatched by a <code>malicious</code> flag. Semi-honest ships/checks nothing; malicious rests on (a) a malicious-secure base OT (refused at construction otherwise) and (b) the round-final chi-fold check. Both abort via emp-tool <code>error()</code> → fail-closed <code>_Exit</code>.</td></tr>
+<tr><td>Method</td><td>Full read of every listed header + <code>ferret.cpp</code>/<code>silent_ferret.cpp</code> and the <code>test/</code> Ferret/SilentFerret/sVOLE tests; every <code>file:line</code> re-verified against the live tree. REFUTED ledger items are shown corrected, not asserted.</td></tr>
+</table>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="n">3+1</div><div class="l">header components (cggm · mp_gadget · lpn · tuning)</div></div>
+  <div class="stat"><div class="n">4</div><div class="l">LPN param sets (b10..b13)</div></div>
+  <div class="stat"><div class="n">d=10</div><div class="l">XOR positions / LPN output</div></div>
+  <div class="stat"><div class="n">128</div><div class="l">check COTs = one F(2¹²⁸)</div></div>
+  <div class="stat"><div class="n">10–13</div><div class="l">tree_depth range</div></div>
+  <div class="stat"><div class="n">15.56M</div><div class="l">COTs / round at b13</div></div>
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+<li><a href="#stack">Role in the stack &amp; the silent-OT loop</a></li>
+<li><a href="#cggm">cGGM — Half-Tree correlated GGM tree</a></li>
+<li><a href="#mpgadget">MultiPointGadget — roles &amp; AuthValue contract</a></li>
+<li><a href="#check">Malicious chi-fold check — flavors &amp; abort</a></li>
+<li><a href="#lpn">Primal-LPN amplifier</a></li>
+<li><a href="#params">LPN parameter values &amp; the 128-bit claim</a></li>
+<li><a href="#ferret">Ferret — lifecycle, bootstrap, wire format</a></li>
+<li><a href="#silent">SilentFerret — prepay &amp; wire-free consume</a></li>
+<li><a href="#threading">Threading &amp; next_chunks_parallel</a></li>
+<li><a href="#tuning">Tuned constants: LOCAL / AGREEMENT / SECURITY</a></li>
+<li><a href="#tests">Test coverage &amp; gaps</a></li>
+<li><a href="#risk">Auditor risk register</a></li>
+</ol>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="stack">1 · Role in the stack &amp; the silent-OT loop</h2>
+<p>Ferret is emp-ot's low-communication RCOT extension: it produces F₂ Δ-correlated random COTs (LSB
+choice-encoding, the convention shared with IKNP/SoftSpoken) by iterating a
+<b>bootstrap → MPCOT → primal-LPN</b> loop. Each round consumes <code>M</code> base COTs, builds <code>t</code>
+punctured cGGM trees of <code>2^tree_depth</code> leaves, LPN-folds them (d=10 XORs/output) into a large
+batch of pseudorandom COTs, and spends the round's last <code>refill_trees</code> trees regenerating the
+next round's <code>M</code> bases — self-bootstrapping.</p>
+
+<div class="stack">
+  <div class="layer t-sub"><span class="lv">S0</span><span class="nm">base OT</span><span class="md">CSW / BMM malicious-secure base (Report 1). Bootstraps the first round's M COTs; refused unless <code>is_malicious_secure()</code> in malicious mode</span></div>
+  <div class="layer t-sub"><span class="lv">S1</span><span class="nm">cggm.h</span><span class="md">Half-Tree correlated GGM tree: <code>build_sender</code> / <code>eval_receiver</code>, split (bit-reversed) leaf layout, per-level Δ correlation</span></div>
+  <div class="layer t-ctx"><span class="lv">S2</span><span class="nm">mp_gadget.h</span><span class="md"><code>MultiPointGadget{Sender,Receiver}&lt;AuthValue&gt;</code> — batch of trees → multi-point COT/VOLE; hosts the chi-fold check</span></div>
+  <div class="layer t-val"><span class="lv">S3</span><span class="nm">lpn.h</span><span class="md"><code>Lpn&lt;AuthValue, d=10&gt;</code> primal-LPN amplifier: d sparse XORs/adds into a size-k public table</span></div>
+  <div class="layer t-front"><span class="lv">S4</span><span class="nm">ferret / silent_ferret</span><span class="md">the two consumers: streaming rollover (Ferret) and begin-time prepay + wire-free consume (SilentFerret)</span></div>
+</div>
+
+<p>The same three primitives also carry sVOLE over F<sub>2ᵏ</sub> / F<sub>p</sub> (Report 4): the gadget is
+generic over an <code>AuthValue</code> carrier that supplies the field ops, chi-fold, and wire-format traits.
+This report covers the Ferret <code>AuthValueFerret</code> shape (F₂, packed check, no per-tree secret sum)
+and the shared primitive layer; the typed sVOLE carriers appear where they change the contract.</p>
+
+<div class="callout c-note"><span class="lbl">Where malicious security lives</span>
+<p>The whole loop's integrity reduces to <b>one</b> per-round check: a random linear combination of the
+multi-point outputs (the "chi-fold"), seeded from the running Fiat-Shamir transcript digest and verified via
+a random-oracle commitment (Ferret App. C). Everything else — cGGM correctness, LPN folding, refill — is
+covered <em>by that check</em> because the refill trees share the round's accumulator (§7). Semi-honest mode
+elides it entirely (§4).</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="cggm">2 · cGGM — Half-Tree correlated GGM tree</h2>
+<p><span class="tag">emp-ot/common/cggm.h</span></p>
+<p>The header banner (<code class="ref">cggm.h:8-14</code>) documents the Half-Tree construction: at every
+non-leaf <code>left = H(parent)</code>, <code>right = parent ⊕ left</code>, root children <code>(k, Δ⊕k)</code>,
+so the <b>leveled correlation Δ = XOR of all nodes on level i</b> holds for every <code>i ∈ [1,d]</code>. That
+correlation is what the sender's per-level corrections exploit; <code>H</code> is emp-tool's CCRH.</p>
+
+<h3>Split (bit-reversed) leaf layout</h3>
+<p>Leaves are stored in a bit-reversed "split" layout (<code class="ref">cggm.h:25-38</code>): each level
+writes all left children into the lower half in place and all right children into the upper half, so path
+<code>p</code>'s leaf lands at <code>bit_reverse(p, d)</code>. <code>expand_level</code>
+(<code class="ref">cggm.h:66-111</code>) documents the tile invariant that makes the in-place left-write
+safe — <code>CCRH::H</code> reads the parent tile up front, left writes only touch already-consumed inputs,
+right writes land strictly above unread parents.</p>
+
+<pre><code>build_sender:  level 1 → leaves[0]=k, leaves[1]=Δ⊕k, K0[0]=leaves[0]
+               levels 2..d-1 never clear LSBs (intermediate nodes feed the next AES level)
+               level d optionally clears LSBs (ClearLeafLSB)
+               emits only the left-side sum K^0_i into K0[i-1];  K^1_i = K^0_i ⊕ Δ is sender-derivable
+eval_receiver: zero all Q=2^d leaves, walk levels tracking pos = split-index of the on-path node,
+               place alpha_bar-side child from K_recv, recover sibling = sum_pre ⊕ junk ⊕ K_recv[i-1]
+               → on return leaves[bit_reverse(alpha,d)] = zero_block (the puncture); all else correct</code></pre>
+
+<p>The <code>ClearLSB</code>/<code>ClearLeafLSB</code> path threads the COT LSB-choice convention into the tree
+write via <code>kCggmLsbClearMask = makeBlock(0xFF..FF, 0xFF..FE)</code>
+(<code class="ref">cggm.h:63-64</code>), applied to <em>both</em> the written leaf and the accumulated sum so
+<code>K0</code> stays consistent on both sides. <b>Both parties must set the same
+<code>ClearLeafLSB</code></b> or <code>K0</code>/<code>K_recv</code> desync (<code class="ref">cggm.h:172-175</code>).
+The <code>Tile</code> template parameter is LOCAL-only — it changes batching of <code>CCRH::H</code>, not the
+computed leaves or wire bytes (<code class="ref">cggm.h:42-54</code>).</p>
+
+<div class="callout c-audit"><span class="lbl">Receiver privacy = never learning Δ (stated, unenforced)</span>
+<p>cGGM receiver privacy rests on the receiver never learning Δ, which makes the punctured leaf
+<code>leaves[α]</code> pseudorandom (<code class="ref">cggm.h:16-20</code>). <code>eval_receiver</code> takes no Δ
+and only the sender holds <code>cggm_delta</code> (<code class="ref">mp_gadget.h:103-105</code>) — but this is a
+<b>documented invariant with no runtime check</b>: any path that leaked Δ to the receiver would let it
+reconstruct the hole via the same LSB-clear closure the α-fill uses. Structurally maintained, unverified in
+code.</p></div>
+
+<div class="callout c-note"><span class="lbl">d=0 is a latent precondition — but the true floor is d=2, not d=10</span>
+<p><code>build_sender</code> writes <code>leaves[0]</code>/<code>leaves[1]</code>/<code>K0[0]</code>
+unconditionally before any depth guard (<code class="ref">cggm.h:146-163</code>), so <code>d=0</code> would
+produce two leaves for a nominally one-leaf tree. It is never triggered — but <em>not</em> because
+"tree_depth ≥ 10": that bound holds only for Ferret's MPCOT (<code>ferret_b10..b13</code>). SoftSpoken calls
+<code>cggm::build_sender</code> directly with <code>k ∈ {2,4,8}</code>
+(<code class="ref">softspoken.cpp:209</code>), so the real cross-call floor is <b>d=2</b> — still never 0,
+just not for the stated reason.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="mpgadget">3 · MultiPointGadget — roles &amp; the AuthValue contract</h2>
+<p><span class="tag">emp-ot/common/mp_gadget.h</span></p>
+<p>One template class <code>MultiPointGadget{Sender,Receiver}&lt;AuthValue&gt;</code> subsumes three shapes
+(<code class="ref">mp_gadget.h:12-44</code>): Ferret MPCOT (<code>AuthValueFerret</code>, no secret sum,
+<code>F2kPacked</code> check, <code>kClearLeafLSB=true</code>), and Mpsvole over F<sub>2ᵏ</sub> / F<sub>p</sub>
+(val+mac pair, per-tree <code>secret_sum</code> on the wire, <code>FTyped</code> check,
+<code>kClearLeafLSB=false</code>). The carrier supplies field ops, <code>auth_from_block</code>,
+<code>expand_chi</code>, <code>accumulate_VW</code>, and the wire-format traits; a wrong <code>run_end</code>
+variant trips a <code>static_assert</code> (<code class="ref">mp_gadget.h:272-273,335-336</code>).</p>
+
+<h3>Per-tree flow</h3>
+<ul>
+<li><b>Sender</b> <code>run_next_tree</code> (<code class="ref">mp_gadget.h:148-183</code>): draw a fresh cGGM
+root seed from <code>prg</code>, build the tree, ship <code>c[j] = base_i[j] ⊕ K0[j]</code> over
+<code>tree_depth</code> blocks; if <code>kHasSecretSum</code> also ship <code>secret_sum</code>; flush; then in
+malicious mode snapshot <code>chi_seed = io->get_digest()</code>, expand chi, fold VW.</li>
+<li><b>Receiver</b> <code>run_next_tree</code> (<code class="ref">mp_gadget.h:406-466</code>): derive α as the
+MSB-first NOT-of-LSB of the base COTs (<code>α_j = !getLSB(base_i[j])</code>), receive <code>c[]</code>, set
+<code>K_recv = base ⊕ c</code>, run <code>eval_receiver</code>, α-fill the punctured slot. The
+<code>F2kPacked</code> α-fill is <code>leaves[rev] = XOR(all leaves) ⊕ bit0_mask</code> — the LSB-clear closure
+recovers the sender's cleared α-leaf and re-injects the carrier bit (<code class="ref">mp_gadget.h:425-437</code>);
+the <code>FTyped</code> α-fill instead solves <code>leaves[rev].mac = triple_yz − (secret_sum + Σ_{j≠α} mac)</code>.</li>
+</ul>
+
+<div class="callout c-ok"><span class="lbl">Verified — Ferret's low-communication property</span>
+<p><code>AuthValueFerret</code> sets <code>kHasSecretSum=false</code> (<code class="ref">ferret.h:49</code>): the
+receiver never receives a per-tree secret sum (the <code>recv_data</code> is guarded by
+<code>if constexpr (kHasSecretSum)</code>, <code class="ref">mp_gadget.h:420</code>). The only per-tree send is
+the <code>tree_depth</code>-block correction <code>c[]</code>, and the hole is reconstructed locally as
+<code>XOR(all LSB-cleared leaves) ⊕ bit0_mask</code> — this is the source of Ferret's small communication.</p></div>
+
+<div class="callout c-warn"><span class="lbl">The α = getLSB(base) precondition is unchecked</span>
+<p>The gadget reads α <em>purely</em> from <code>getLSB(base_i[j])</code>
+(<code class="ref">mp_gadget.h:408-411,546-549</code>) and the sender's correction is <code>base ⊕ K0</code>, so
+correctness depends on the outer extension delivering base COTs whose bit-0 LSB equals the receiver's choice
+bit. Ferret satisfies this by design (the <code>RandomCOT</code> contract, <code class="ref">ot.h:128-131</code>),
+but the gadget itself performs <b>zero runtime verification</b> of the precondition.</p></div>
+
+<h3>Decoupled prepare_all / produce_tree (SilentFerret path)</h3>
+<p>A second path (<code class="ref">mp_gadget.h:185-267,468-537</code>) expands/evaluates all trees in one
+batched flush, remembering per-tree cGGM root seeds (sender, reproducible) or received corrections (receiver,
+retained by caller). The comment claims the socket sends and per-tree <code>get_digest()</code> snapshots stay
+on the owning thread in tree order, so the malicious transcript is bit-identical to the interleaved path; only
+compute (cGGM + VW) moves to the pool. That equivalence is a correctness-critical claim — see §8/§9.</p>
+
+<!-- ===================================================================== -->
+<h2 id="check">4 · Malicious chi-fold check — flavors &amp; abort</h2>
+<p><span class="tag">emp-ot/common/mp_gadget.h</span></p>
+<p>Chi seeds are pulled from the running FS transcript via <code>io->get_digest()</code> <b>after</b> the tree's
+corrections were sent/received (<code class="ref">mp_gadget.h:177-182,458</code>), so both parties derive
+identical chi with no extra wire traffic and the check binds to the sent messages —
+<code>get_digest = H(d_AB ‖ d_BA)</code> over the FS transcripts that <code>send_data</code>/<code>recv_data</code>
+already fed the corrections into (<code class="ref">io_channel.h:157-168</code>). This "chi after corrections"
+ordering is exactly what makes App. C sound.</p>
+
+<table class="grid">
+<tr><th>Flavor</th><th>Receiver sends</th><th>Sender replies</th><th>Abort</th></tr>
+<tr><td><code>F2kPacked</code> (Ferret)</td><td><code>bool x_prime[128]</code> from chi_alpha⊕pre_cot LSBs (<code class="ref">563-594</code>)</td><td>2-block RO digest over Δ-XOR'd + Galois-packed check region (<code class="ref">272-289</code>)</td><td><code>error("…consistency check fails")</code> on <code>cmpBlock</code> mismatch (<code class="ref">592-593</code>)</td></tr>
+<tr><td><code>F2kPacked</code> batched (SilentFerret)</td><td>one round-trip over a single 128-COT mask after K rounds folded (<code class="ref">596-637</code>)</td><td><code>fold_round_check</code> XORs each round's VW/phi, no I/O; K=1 byte-identical to <code>run_end_packed</code> (<code class="ref">291-328</code>)</td><td><code>error()</code> in <code>finalize_batched_packed_receiver</code> (<code class="ref">635-636</code>)</td></tr>
+<tr><td><code>FTyped</code> (sVOLE)</td><td><code>x_star = Σ chi_alpha·val + triple.val</code> (<code class="ref">643-666</code>)</td><td><code>vb = δ·x_star + triple.mac + Σ VW</code>; commits <code>h = RO(kDomCheckTyped, sid)</code> (<code class="ref">335-347</code>)</td><td><code>error("…chi-fold check failed")</code> (<code class="ref">664-665</code>)</td></tr>
+</table>
+
+<div class="callout c-note"><span class="lbl">Abort authority is receiver-only</span>
+<p>Every <code>error()</code>-based abort is on the <b>no-Δ receiver</b> side; the sender only
+<code>squeeze_digest</code>s and <code>send_data</code>s its digest and never receives or compares one
+(<code class="ref">mp_gadget.h:286-288,325-326,345</code>). This matches the paper's one-sided check: the
+receiver reveals its chi-fold opening (<code>x_prime</code>/<code>x_star</code>) unconditionally before learning
+the sender's response, and the argument that this leaks nothing about α is inherited from Ferret, not
+re-derived here.</p></div>
+
+<div class="callout c-note"><span class="lbl">The check binds to fresh session secret, not just sid</span>
+<p>The RO domain-separates on <code>kDomCheckPacked</code>/<code>kDomCheckTyped</code> plus the per-session
+<code>sid</code> — but it also <b>absorbs the session-fresh secret consistency value <code>r1</code>/<code>vb</code></b>
+(<code class="ref">mp_gadget.h:283-286,341-344</code>), where <code>r1</code> folds this session's VW and packed
+COTs. So reusing a <code>sid</code> across sessions does <em>not</em> make the commitment replayable — each
+session's <code>r1</code> differs and the verifier recomputes and equality-checks it. <code>sid</code> provides
+domain separation only; nothing enforces <code>sid</code> uniqueness (default <code>zero_block</code>,
+<code class="ref">ot.h:29-32</code>), and that is harmless for the check's soundness. Ferret still sets
+<code>gadget.sid = sid.value()</code> before <code>run_begin</code> (<code class="ref">ferret.cpp:176-180</code>).</p></div>
+
+<div class="callout c-warn"><span class="lbl">Semi-honest mode ships and checks nothing — by design</span>
+<p>Every check method early-returns on <code>!is_malicious</code>
+(<code class="ref">mp_gadget.h:275,338,566,646</code>). In semi-honest mode a malicious sender can hand
+inconsistent cGGM trees and go <b>undetected</b>; the only detector — the receiver's
+<code>error()</code> — sits inside the guarded methods. Soundness in that mode is only against a semi-honest
+adversary. A <code>static_assert</code> (<code class="ref">mp_gadget.h:51-52</code>) pins
+<code>Hash::DIGEST_SIZE == 2·sizeof(block)</code> so the packed 2-block digest buffer cannot silently overflow.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="lpn">5 · Primal-LPN amplifier</h2>
+<p><span class="tag">emp-ot/common/lpn.h</span></p>
+<p><code>Lpn&lt;AuthValue, d=10&gt;</code> (<code class="ref">lpn.h:34-112</code>) folds <code>d=10</code>
+pseudo-random indices <code>idx = r &amp; (k-1)</code> into <code>pre[idx]</code> per output via
+<code>AuthValue::auth_add_into</code> — the implicit d-regular sparse code, n outputs each a XOR/sum of d
+columns of a k-wide table. Randomness is a sequential PRG keyed by <code>reseed(seed)</code>; Ferret derives
+that seed as <code>RO("emp-ot:ferret:lpn-seed", sid).squeeze_block()</code> <b>locally on both parties with no
+wire exchange</b> (<code class="ref">ferret.cpp:29-31,182-185</code>) — the LPN matrix is public, so this is
+safe by design.</p>
+
+<div class="callout c-warn"><span class="lbl">k must be a power of two (caller-enforced only)</span>
+<p><code>idx = r &amp; (k-1)</code> is uniform on <code>[0,k)</code> with no rejection <em>only</em> because
+<code>k</code> is a power of two; the ctor's <code>mask(k_-1)</code> has no assert
+(<code class="ref">lpn.h:20-22,72</code>). The sole enforcement is <code>PrimalLPNParameter</code> deriving
+<code>k = 1&lt;&lt;logk</code> (<code class="ref">tuning.h:37</code>) — purely structural.</p></div>
+
+<h3>Reduction cadence &amp; parallel slicing</h3>
+<p>For non-F₂ fields the fold does <code>kStep = min(kLpnSafeAddsPerReduce, d)</code> adds between partial
+reduces, then a final reduce per output (<code class="ref">lpn.h:44-68</code>). For F₂ (Ferret, F2k)
+<code>kLpnSafeAddsPerReduce = INT_MAX</code> (XOR has no carry → all d adds in one batch); for Mersenne
+F<sub>p</sub> it is <b>5</b> (<code class="ref">fp_vole.h:78</code>). <code>blocks_per_chunk(length)</code>
+(<code class="ref">lpn.h:84-92</code>) gives the exact PRG-block consumption of a chunk deterministically in
+<code>(length, d)</code>, so a seek'd, caller-owned PRG lets <code>compute_slice</code> be sliced across
+threads order-independently (<code class="ref">lpn.h:98-105</code>). The M=32 batched / 4-batched / scalar-tail
+split is pure scheduling — all three produce identical outputs, so parties may differ in batch width freely.</p>
+
+<div class="callout c-warn"><span class="lbl">Fp reduce cadence vs d=10 — unchecked, untested</span>
+<p><code>fp_vole.h:74-78</code> notes mod-p adds overflow <code>uint64_t</code> after ~8 unreduced
+accumulations, hence the <code>5+5</code> split at <code>kLpnSafeAddsPerReduce=5</code>. No
+<code>static_assert</code> ties 5 to <code>d=10</code>, and <code>test_fp_vole.cpp</code> references neither the
+constant nor overflow — a too-large value would silently overflow the accumulator before reduce. It is a
+correctness invariant tied to the carrier type, exercised at exactly one field size.</p></div>
+
+<div class="callout c-note"><span class="lbl">Type-pun smell in compute_block (bounded, not a live bug)</span>
+<p><code>compute_block</code> type-puns the PRG buffer from <code>block[]</code> to <code>uint32_t*</code> via a
+C-style cast (<code class="ref">lpn.h:50</code>), leaning on <code>__m128i</code>'s <code>may_alias</code> in one
+direction only — a strict-aliasing smell. The exact-count bookkeeping (<code class="ref">lpn.h:47</code> vs
+<code class="ref">lpn.h:84-92</code>) is consistent. The index cap is <b>k ≤ 2³⁰</b> (not 2³¹ — <code>mask</code>
+and <code>k_</code> are <code>int</code>, and 2³¹ overflows a signed <code>int</code>), well clear of the
+deployed <code>logk=19</code> (<code class="ref">tuning.h:109</code>).</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="params">6 · LPN parameter values &amp; the 128-bit claim</h2>
+<p><span class="tag">emp-ot/tuning.h</span></p>
+<p><code>PrimalLPNParameter</code> (<code class="ref">tuning.h:27-40</code>) is a constexpr bundle: given
+<code>(t, logk, tree_depth)</code> it precomputes <code>k = 1&lt;&lt;logk</code>,
+<code>M = k + t·tree_depth + 128</code>, and <code>refill_trees = ceil(M / 2^tree_depth)</code>. The
+<code>+128</code> is <code>kConsistCheckCotNum</code> folded in (<code class="ref">tuning.h:20-22</code>).</p>
+
+<table class="grid">
+<tr><th>Set</th><th>(t, logk, tree_depth)</th><th>k</th><th>M</th><th>refill</th><th>N = t·2ᵈ</th></tr>
+<tr><td><code>ferret_b13</code> (default)</td><td>(1900, 19, 13)</td><td>524,288</td><td>549,116</td><td>68</td><td>15,564,800</td></tr>
+<tr><td><code>ferret_b12</code></td><td>(1520, 18, 12)</td><td>262,144</td><td>280,512</td><td>69</td><td>6,225,920</td></tr>
+<tr><td><code>ferret_b11</code></td><td>(1170, 17, 11)</td><td>131,072</td><td>144,070</td><td>71</td><td>2,396,160</td></tr>
+<tr><td><code>ferret_b10</code></td><td>(850, 16, 10)</td><td>65,536</td><td>74,164</td><td>73</td><td>870,400</td></tr>
+</table>
+<p>All four <code>M</code>/<code>refill</code>/<code>N</code> values were recomputed from
+<code class="ref">tuning.h:109-112</code> and match every in-tree comment exactly. The user-visible budget per
+round is <code>t − refill_trees</code> = 1832 / 1451 / 1099 / 777 trees respectively — the round spends its last
+<code>refill_trees</code> trees seeding the next round's <code>M</code> bases (<code class="ref">ferret.cpp:98</code>).</p>
+
+<div class="callout c-audit"><span class="lbl">The 128-bit claim is an external, non-reproducible assertion</span>
+<p><code class="ref">tuning.h:103-108</code> asserts each set gives ~128-bit security against published
+regular-LPN attacks (Gauss / SD-ISD / BJMM / hybrid / esser / agb2) "per the lpnestimator," with the hybrid
+attack binding and each <code>t</code> the largest the <code>(logk, tree_depth)</code> pair admits at the
+128-bit floor. <b>No estimator, script, or attack-cost table is vendored anywhere in the repo</b> — a whole-tree
+scan for <code>lpnestimator</code>/<code>SD-ISD</code>/<code>BJMM</code> and a <code>git ls-files</code> for
+<code>.py</code>/<code>.sage</code>/<code>.sh</code> turn up only this comment. The security claim on
+<code>t/logk/tree_depth</code> is a constexpr-encoded external result that cannot be reproduced from the
+codebase alone. These are SECURITY-class parameters (<code class="ref">docs/performance-tuning.md:20-25,121</code>:
+"do not touch").</p></div>
+
+<div class="callout c-note"><span class="lbl">A numeric coupling between two files</span>
+<p><code>ferret_b10.M ≈ 74,164</code> drives two things: it is the tiered-bootstrap inner param
+(<code class="ref">ferret.cpp:156-167</code>), and <code>softspoken_ferret_bootstrap_chunk_blocks = 580</code>
+(= 74,240 OTs/chunk) is sized to fit <code>b10.M</code> in one SoftSpoken chunk
+(<code class="ref">tuning.h:88-92</code>). Changing <code>b10</code> without re-deriving 580 would silently
+over- or under-produce in the bootstrap chunk — a cross-file coupling with no compile-time link.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="ferret">7 · Ferret — lifecycle, bootstrap, wire format</h2>
+<p><span class="tag">emp-ot/ot_extension/ferret/ferret.{h,cpp}</span></p>
+<p><code>Ferret</code> (<code class="ref">ferret.h:107</code>) is an <code>OTExtension → StreamingExtension&lt;block&gt;</code>
+RCOT backend; default param is <code>ferret_b13</code>, default base OT is CSW
+(<code class="ref">ferret.h:20,114</code>). Two ping-pong buffers <code>carry_curr_</code>/<code>carry_next_</code>
+carry the round; slots <code>[0,M)</code> hold the base COTs, laid out as
+<code>[0,128)</code> check COTs, <code>[128,128+k)</code> LPN-secret pre-COTs, and
+<code>[128+k, M)</code> cGGM-correction COTs (tree <code>i</code> at <code>128+k+i·tree_depth</code>)
+(<code class="ref">ferret.cpp:193-196</code>, <code class="ref">silent_ferret.cpp:254</code>).</p>
+
+<pre><code>begin() : enter_session → bootstrap_ (lazy, once) → swap curr/next → tree_idx=0 → inner_run_begin_
+next()  : if tree_idx == t-refill_trees  → end(); begin()   (transparent auto-rollover)
+          process_one_tree_: build cGGM · ship c[] · (mali) VW-accumulate ; LPN compute_slice ; tree_idx++
+end()   : run_refill_ (last refill_trees trees → carry_next_) → inner_run_end_ (chi-fold check) → exit_session_</code></pre>
+
+<div class="callout c-ok"><span class="lbl">Verified — the refill trees are covered by the same check</span>
+<p><code>run_refill_</code> writes the refill trees into <code>carry_next_</code>, which <code>begin()</code>'s
+swap makes the next round's base COTs (<code class="ref">ferret.cpp:219-228,87</code>). Both user trees and
+refill trees call the same <code>gadget-&gt;run_next_tree</code>, accumulating into the shared
+<code>consist_check_VW[tree_idx]</code> array sized <code>tree_n = param.t</code>; <code>run_end_packed</code>
+folds over <em>all</em> slots. So a cheating sender cannot corrupt the material that bootstraps the next round
+without failing this round's chi-fold check.</p></div>
+
+<h3>Bootstrap &amp; base-OT trust enforcement</h3>
+<p><code>bootstrap_</code> (<code class="ref">ferret.cpp:131-169</code>) is idempotent and enables the FS
+transcript before either path. Tiered: if <code>param.M &gt; 2·b10.M</code> a nested <code>Ferret(b10)</code>
+supplies the M bases (b10 itself drops to SoftSpoken since its M≈74k is below threshold — at most one nesting
+level); otherwise <code>SoftSpoken&lt;8&gt;</code> with a 580-block chunk directly. The receiver's choice
+randomness flows end-to-end: the top-level receiver forwards a sub-seed from its <code>choice_prg</code> to the
+inner source's <code>set_choice_seed</code> (<code class="ref">ferret.cpp:148-152</code>), so the inner base-COT
+LSBs become the MPCOT α positions.</p>
+
+<div class="callout c-ok"><span class="lbl">Verified — malicious mode refuses a non-malicious base OT</span>
+<p>The shared <code>OTExtension</code> ctor runs <code>if (malicious_ &amp;&amp; !base_ot-&gt;is_malicious_secure())
+error("…requires a malicious-secure base OT")</code> (<code class="ref">ot_extension.h:152-153</code>) — a
+runtime abort at construction, not an NDEBUG-elidable assert. Ferret defaults <code>malicious=true</code> with
+a CSW base (<code>is_malicious_secure()==true</code>, <code class="ref">csw.h:51</code>); a plain OT base
+(<code>false</code>, <code class="ref">ot.h:16</code>) hits the abort. The nested b10 / SoftSpoken re-run the
+same check on the moved base.</p></div>
+
+<div class="callout c-warn"><span class="lbl">bootstrap_ leaves csw_base_ dangling</span>
+<p>The <code>OTExtension</code> ctor caches <code>csw_base_ = static_cast&lt;CSW*&gt;(base_ot.get())</code>
+(<code class="ref">ot_extension.h:156</code>). <code>bootstrap_</code> <code>std::move</code>s
+<code>base_ot</code> into a nested b10/SoftSpoken instance local to the function, destroyed when it returns
+(<code class="ref">ferret.cpp:156-157</code>) — leaving <code>csw_base_</code> aliasing a freed/moved-out CSW
+for the rest of the Ferret's life. It is never dereferenced today (Ferret uses the nested instance's deferred
+check), but <code>set_sid</code>'s <code>!setup_done</code> guard is <b>assert-only</b> — a release-build
+post-bootstrap <code>set_sid</code> dereferences the now-null <code>base_ot</code>
+(<code class="ref">ot_extension.h:102,156</code>). A latent use-after-free / null-deref keyed on
+<code>csw_base_ != nullptr</code>.</p></div>
+
+<div class="callout c-warn"><span class="lbl">LPN arity is hardcoded, not read from tuning::lpn_d</span>
+<p><code>ferret.cpp:41</code> and <code>ferret.h:174</code> both pin the literal
+<code>Lpn&lt;AuthValueFerret, 10&gt;</code>. <code>tuning::lpn_d = 10</code> (<code class="ref">tuning.h:116</code>)
+is only reachable via <code>lpn.h:34</code>'s default template arg, and no Ferret/svole call site omits the
+third arg — so retuning <code>tuning::lpn_d</code> alone is a <b>no-op</b> for Ferret and would desync it from
+any code that does read the constant. They coincide at 10 today; low severity, sharp edge.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="silent">8 · SilentFerret — prepay &amp; wire-free consume</h2>
+<p><span class="tag">emp-ot/ot_extension/ferret/silent_ferret.{h,cpp}</span></p>
+<p><code>SilentFerret</code> subclasses Ferret and moves <b>all</b> wire traffic into <code>begin()</code>:
+<code>begin_batch_</code> (<code class="ref">silent_ferret.cpp:57-148</code>) prepays
+<code>K = ceil(n_ots / cots_per_round())</code> rounds — shipping every round's corrections and running one
+batched malicious check up front — then repositions the consumer at round 0 so
+<code>next()</code>/<code>produce_range()</code>/<code>next_chunks_parallel()</code> emit COTs with zero I/O. A
+global tree counter <code>G = abs_round·t + local_tree</code> keys both re-derivation streams: the LPN fold at
+<code>G·bpc_</code> and the seed PRG seeked to <code>G</code> (<code class="ref">silent_ferret.cpp:261-270</code>,
+<code class="ref">silent_ferret.h:120-127</code>), so it is order-independent — <code>produce_range</code> from
+disjoint threads is bit-identical to serial <code>next()</code>.</p>
+
+<ul>
+<li><b>Sender re-derivation</b>: <code>cggm_seed_key_ = gadget_send_-&gt;prg.seed()</code> captured once
+(<code class="ref">silent_ferret.cpp:78-81</code>); tree g's root seed =
+<code>PRG(cggm_seed_key_).seek(abs_round·t + local)</code>. No corrections stored.</li>
+<li><b>Receiver re-derivation</b>: cannot re-derive corrections, so it stores them in <code>c_rounds_</code>
+(<code>K·t·tree_depth</code> blocks, <code class="ref">silent_ferret.cpp:94-95,121-124</code>);
+<code>produce_tree</code> re-evaluates from <code>base_i</code> + stored <code>c_i</code> with no I/O.</li>
+<li><b>Batched check</b>: <code>acc_vw_</code>/<code>acc_phi_</code> accumulate each round's XOR-folded VW/phi
+with no I/O (<code class="ref">mp_gadget.h:301-306,600-607</code>); one <code>finalize</code> round-trip masked
+by round-0's pristine 128 check COTs <code>base0_</code>, snapshotted before any check mutates the region and
+restored afterward (<code class="ref">silent_ferret.cpp:91-92,137-141,145</code>).</li>
+</ul>
+
+<div class="callout c-warn"><span class="lbl">Batched multi-round check soundness rests on FS append-only ordering</span>
+<p>The batched check folds K rounds' VW into one F(2¹²⁸) accumulator and runs a single round-trip; its
+soundness reduces to Ferret App. C over <code>m = K·t</code> <b>only if the FS transcript stayed append-only in
+(round,tree) order across the prepay loop</b> (<code class="ref">silent_ferret.cpp:133-136</code>,
+<code class="ref">mp_gadget.h:314,613</code>). This holds because one global Δ (<code class="ref">ferret.cpp:49,77</code>)
+lets a single mask cover all rounds and each round's chi is sampled post-commitment via
+<code>get_digest()</code> on the owner thread. High-severity design dependency: the reduction is only as good as
+that ordering discipline.</p></div>
+
+<div class="callout c-warn"><span class="lbl">Counter reuse across begin() repeats chi/LPN streams</span>
+<p><code>end()</code> is the <b>only</b> writer of <code>abs_round_</code> (advancing it by
+<code>n_rounds_</code>, <code class="ref">silent_ferret.cpp:156</code>); <code>begin()</code> reads it into
+<code>abs_round_base_</code> (<code class="ref">silent_ferret.cpp:87</code>). Since both the LPN and cGGM-seed
+PRGs fork from <code>G = abs_round·t + local</code>, a <code>begin()</code> reusing a non-advanced
+<code>abs_round_</code> repeats those pseudorandom streams. A skipped-<code>end()</code>/double-<code>begin</code>
+is caught by <code>enter_session_</code>'s tripwire assert (<code class="ref">streaming_extension.h:149</code>) —
+so reuse is silently reachable <b>only under NDEBUG</b>. <code>end()</code> also rolls any unconsumed prepaid
+rounds forward to <code>base_K</code> so a following <code>begin()</code> continues the base chain without
+counter reuse (<code class="ref">silent_ferret.cpp:150-158</code>).</p></div>
+
+<div class="callout c-audit"><span class="lbl">The prepare_all bit-identity invariant is unchecked</span>
+<p>The claim that the decoupled <code>prepare_all</code>/<code>produce_tree</code> path yields a malicious
+transcript bit-identical to serial <code>run_next_tree</code> rests entirely on the discipline that all socket
+sends and per-tree <code>get_digest()</code> FS snapshots stay on the owning thread in tree order while only
+pure compute is pooled (<code class="ref">mp_gadget.h:196-198,235-240,499-506</code>). No lambda touches
+<code>io</code>; <code>cggm.h</code> has no I/O; but it is <b>structurally maintained, not runtime-asserted</b>,
+and no pooled test verifies transcript identity (<code>trace_hash</code> runs single-threaded; the pooled check
+only proves mutual consistency, not equality to the serial path).</p></div>
+
+<div class="callout c-warn"><span class="lbl">gadget_send_-&gt;prg must never advance after key capture</span>
+<p>Sender correctness depends on <code>gadget_send_-&gt;prg</code> never advancing after
+<code>cggm_seed_key_</code> is captured — it must use <code>prepare_all</code>/<code>produce_tree</code>, never
+<code>run_next_tree</code> (<code class="ref">silent_ferret.cpp:71-81</code>). SilentFerret overrides
+<code>process_one_tree_</code> to use <code>produce_trees_</code>, and <code>prepare_all</code>/<code>produce_tree</code>
+take explicit seed params rather than drawing from the PRG. If any path called <code>Ferret::run_next_tree</code>
+on the sender gadget, the re-derived seeds would diverge from the prepaid ones and produce silently wrong COTs.
+A load-bearing invariant with no runtime guard.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="threading">9 · Threading &amp; next_chunks_parallel</h2>
+<p><span class="tag">emp-ot/ot_extension/ferret/silent_ferret.cpp</span> <span class="tag">emp-ot/common/mp_gadget.h</span></p>
+<p><code>next_chunks_parallel</code> (<code class="ref">silent_ferret.cpp:166-209</code>) is a cursor-ordered
+bulk draw with <code>next()</code>'s auto-rollover: each current-round slice is split across up to <code>T</code>
+short-lived worker threads calling the const, disjoint-range <code>produce_range</code>; the cursor
+(<code>local_tree_</code>) advances only on the main thread after <code>join()</code>. Begin-time expansion is
+similarly parallel — <code>prepare_all</code> pools the cGGM expand + VW inner-product a batch at a time
+(<code>batch_ = n_threads·8</code>) while keeping every send and <code>get_digest()</code> on the owning thread.</p>
+
+<div class="callout c-ok"><span class="lbl">Verified — parallelism is soundly structured against races</span>
+<p><code>prepare_all</code> keeps all socket I/O and FS snapshots serial in tree order and farms out only pure
+compute over disjoint per-task scratch (<code>s·leave_n</code> / <code>s·tree_depth</code> strides);
+<code>produce_trees_</code>/<code>produce_tree</code> are const with caller-supplied <code>kr</code>/<code>k0</code>
+scratch and thread-forked PRGs seeked to <code>G0·bpc_</code>/<code>G0</code>; <code>next_chunks_parallel</code>
+joins each wave before mutating cursor state (<code class="ref">silent_ferret.cpp:186-208</code>,
+<code class="ref">mp_gadget.h:222-253,499-524</code>). The only concurrency artifact is benign begin-time false
+sharing on adjacent <code>consist_check_VW[i]</code> slots.</p></div>
+
+<div class="callout c-warn"><span class="lbl">Mixing produce_range with the cursor duplicates COTs</span>
+<p><code>produce_range</code> is const and does <b>not</b> advance <code>local_tree_</code>; the cursor path
+(<code>next</code>/<code>next_n</code>/<code>next_chunks_parallel</code>) does. Because
+<code>produce_trees_</code> is deterministic in <code>(abs_round, local)</code>, calling
+<code>produce_range</code> then <code>next()</code> in the same prepaid round re-emits the same trees =
+duplicate COTs. The hazard is documented (<code class="ref">silent_ferret.h:104-109</code>) but unenforced at
+runtime — the only nearby assert (<code class="ref">silent_ferret.cpp:235-237</code>) is a range-bounds check,
+compiled out under NDEBUG, and does not even detect in-bounds mixing.</p></div>
+
+<div class="callout c-warn"><span class="lbl">Auto-rollover past the prepaid budget does live I/O inside a "wire-free" draw</span>
+<p><code>ensure_tree_available_</code> (<code class="ref">silent_ferret.cpp:211-223</code>), reached from both
+<code>next()</code> and <code>next_chunks_parallel</code>, rolls wire-free into the next prepaid round if one
+exists — else it performs a full live <code>end(); begin(batch_n_ots_)</code> with blocking correction
+exchange, inside a draw the header markets as wire-free. If the two peers' cumulative draw counts diverge (one
+draws past <code>prepared_capacity()</code>, the other does not), one side blocks in the reprepay's round-trip
+while the other never enters it — a <b>silent distributed hang</b>, not an error, with no runtime cross-check of
+draw totals.</p></div>
+
+<p>Streaming semantics come from <code>StreamingExtension</code>: <code>run()</code>/<code>next_n()</code> drain
+a leftover buffer so non-chunk-multiple draws don't pay a fresh chunk;
+<code>enter_session_</code> resets leftover on <code>begin()</code> so no stale tail crosses a session; a
+destruction in-session calls <code>error()</code> always-on (<code class="ref">streaming_extension.h:133-139,152-153</code>).
+<code>kMaxTreeDepth=32</code> caps the stack scratch in <code>produce_trees_</code>, asserted against
+<code>param.tree_depth</code> in the ctor (production max is 13).</p>
+
+<!-- ===================================================================== -->
+<h2 id="tuning">10 · Tuned constants: LOCAL / AGREEMENT / SECURITY</h2>
+<p><span class="tag">emp-ot/tuning.h</span> <span class="tag">docs/performance-tuning.md</span></p>
+<p><code>performance-tuning.md</code> classifies every <code>tuning.h</code> constant as <b>LOCAL</b>
+(schedule/layout only, per-machine free), <b>AGREEMENT</b> (shapes the transcript, both parties must match), or
+<b>SECURITY</b> (part of a proof, never tuned) — the boundary is a correctness/security line
+(<code class="ref">docs/performance-tuning.md:16-25</code>).</p>
+<table class="grid">
+<tr><th>Class</th><th>Examples</th><th>Party mismatch</th></tr>
+<tr><td><b>LOCAL</b></td><td>cGGM <code>Tile</code> (32 x86 / 4 aarch64), <code>lpn_batch_m=32</code></td><td>Harmless — compute scheduling only, every wire byte identical</td></tr>
+<tr><td><b>AGREEMENT</b></td><td><code>softspoken_chunk_blocks</code>, <code>softspoken_ferret_bootstrap_chunk_blocks=580</code></td><td>Desync — baked into the wire chunking / type</td></tr>
+<tr><td><b>SECURITY</b></td><td><code>ferret_b10..b13</code>, <code>kConsistCheckCotNum=128</code></td><td>Breaks the proof — an autotuner must be physically unable to touch these</td></tr>
+</table>
+
+<div class="callout c-note"><span class="lbl">The reverted LPN tuning (7efb923 ← 0b61590)</span>
+<p>Commit <code class="ref">7efb923</code> fully reverts the per-platform <code>lpn_batch_m</code> 32→64 +
+size-gated gather-prefetch change: current <code>lpn.h</code> has no prefetch code and <code>tuning.h</code> has
+a single unconditional <code>lpn_batch_m = 32</code> (<code class="ref">tuning.h:120</code>). The documented
+reason (<code class="ref">docs/performance-tuning.md:26-75</code>): the same change was +9.8% on Zen 5 but a
+regression on Apple M4 and −4.1% on Granite Rapids at the production 8 MiB table, and <b>no queryable machine
+quantity (cache size) separates the Zen5/Granite behaviors</b> — so neither a fixed constant nor a runtime
+formula is safe, and defaults must be safe on un-swept hardware. The Zen-5 recipe is parked for a future
+"make tune."</p></div>
+
+<div class="callout c-ok"><span class="lbl">Verified neutral — bit0_mask de-dup (37e2576)</span>
+<p>Commit <code class="ref">37e2576</code> drops the local <code>lsb_only_mask = makeBlock(0LL,1LL)</code> in
+favor of emp-tool's <code>bit0_mask = makeBlock(0,1)</code> (<code class="ref">block.hpp:57</code>) —
+byte-identical, and the exact bitwise complement of <code>kCggmLsbClearMask</code> (…FE). A pure rename/de-dup
+with no functional change. Any future autotuner is required to enumerate only a registry of LOCAL knobs and emit
+<code>tuning_local.h</code> with provenance; a value inside the noise band is not emitted — a plan, not yet
+implemented code.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="tests">11 · Test coverage &amp; gaps</h2>
+<p>There are <b>no direct unit tests</b> for <code>cggm.h</code>, <code>lpn.h</code>, or <code>mp_gadget.h</code>
+(a grep of <code>test/</code> finds no <code>cggm</code>/<code>Lpn</code>/<code>MultiPointGadget</code>/
+<code>build_sender</code>/<code>eval_receiver</code>/<code>compute_slice</code> references). Coverage is entirely
+indirect through the outer extensions.</p>
+<table class="grid">
+<tr><th>Test</th><th>What it proves</th><th>Gap</th></tr>
+<tr><td><code>test_ferret.cpp</code></td><td><code>check_rcot</code> for {b11,b12,b13}×{semi,mali} at length 2¹⁴; full correlation via <code>verify_rcot</code> (<code class="ref">test.h:89-105</code>)</td><td>b10 not correctness-tested (only an internal bootstrap tier); no cheating-sender injection → the four abort branches never fire</td></tr>
+<tr><td><code>test_silentferret.cpp</code></td><td>Zero-bytes-after-begin (silent property); <code>produce_range</code> threaded == single-call byte-identical; drain/whole/sub-chunk-tail; K≥4 prepaid rounds; threaded rollover</td><td>No test forces the LIVE-reprepay branch of <code>ensure_tree_available_</code> in isolation</td></tr>
+<tr><td>differential (silentferret vs ferret)</td><td><code>verify_comm_matches_ferret</code>: byte-for-byte identical counts at whole rounds; <code>verify_comm_batched_vs_ferret</code>: batched path saves exactly (rounds − batches) checks worth of bytes</td><td>Pins wire behavior, not the abort path</td></tr>
+<tr><td><code>test_f2k_vole</code> / <code>test_fp_vole</code></td><td>FTyped path on honest transcripts</td><td>No negative test forces the FTyped mismatch branch; nothing pins the Fp reduce cadence against overflow</td></tr>
+<tr><td>bench_cggm / bench_lpn / bench_silentferret</td><td>Timing only</td><td>Assert neither cGGM correlation nor LPN output correctness</td></tr>
+</table>
+<div class="callout c-audit"><span class="lbl">Coverage-gap summary for an auditor</span>
+<p>(a) <b>No adversarial / cheating test proves any of the four <code>error()</code> abort branches fire</b> — a
+passing run proves the check does not false-positive, not that it catches a real deviation. (b) No direct test
+of cGGM puncture correctness at the header level. (c) No test pins <code>lpn.h</code>'s Fp reduction cadence
+(<code>kLpnSafeAddsPerReduce=5</code>) against accumulator overflow. (d) The <code>prepare_all</code>
+bit-identical-transcript equivalence is validated only indirectly by <code>test_silentferret</code> passing;
+<code>trace_equiv.cpp</code>/<code>trace_hash.cpp</code> cover byte-wire equivalence but name no gadget directly
+and run single-threaded.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="risk">12 · Auditor risk register</h2>
+<p>Severity is this auditor's judgement; the verdict tag records whether the underlying fact was re-verified in
+the live tree (<b>CONFIRMED</b>) or rests on a stated-but-unenforced invariant not exercised here
+(<b>UNVERIFIED</b>). Items shown corrected were tagged REFUTED in the input ledger and are stated in their
+corrected form.</p>
+<table class="grid">
+<tr><th>#</th><th>Sev</th><th>Verdict</th><th>Item</th><th>Where</th></tr>
+<tr><td>1</td><td>high</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Batched multi-round check soundness reduces to App. C over m=K·t <em>only if</em> the FS transcript stayed append-only in (round,tree) order across the prepay loop — an ordering discipline, not a runtime check</td><td><code class="ref">silent_ferret.cpp:133</code>, <code class="ref">mp_gadget.h:314,613</code></td></tr>
+<tr><td>2</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>prepare_all</code>/<code>produce_tree</code> "bit-identical malicious transcript" rests on keeping sends + <code>get_digest()</code> serial on the owning thread; correctness-critical, not runtime-asserted, no pooled transcript-identity test</td><td><code class="ref">mp_gadget.h:196-198,235-240,499-506</code></td></tr>
+<tr><td>3</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>SilentFerret counter reuse: a <code>begin()</code> reusing a non-advanced <code>abs_round_</code> repeats chi/LPN streams; skipped-<code>end()</code>/double-<code>begin</code> caught only by an NDEBUG-elidable assert</td><td><code class="ref">silent_ferret.cpp:150,87</code></td></tr>
+<tr><td>4</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Mixing <code>produce_range</code> with the cursor in one prepaid round → duplicate COTs; documented, unenforced (nearby assert is a bounds check, NDEBUG-off, doesn't detect mixing)</td><td><code class="ref">silent_ferret.h:104</code>, <code class="ref">silent_ferret.cpp:235</code></td></tr>
+<tr><td>5</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Auto-rollover past the prepaid budget does a full live <code>end()+begin()</code> inside a "wire-free" draw; peer draw-count divergence → silent distributed hang, no cross-check</td><td><code class="ref">silent_ferret.cpp:211</code>, <code class="ref">silent_ferret.h:73</code></td></tr>
+<tr><td>6</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>gadget_send_-&gt;prg</code> must never advance after <code>cggm_seed_key_</code> capture; any <code>run_next_tree</code> on the sender gadget silently desyncs re-derived seeds — load-bearing, unguarded</td><td><code class="ref">silent_ferret.cpp:71,78</code></td></tr>
+<tr><td>7</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Ferret <code>bootstrap_</code> moves <code>base_ot</code> into a nested instance, leaving <code>csw_base_</code> dangling; NDEBUG post-bootstrap <code>set_sid</code> null-derefs the moved-out base — latent UAF</td><td><code class="ref">ferret.cpp:156</code>, <code class="ref">ot_extension.h:102,156</code></td></tr>
+<tr><td>8</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>cGGM α = <code>getLSB(base_i[j])</code> read with no verification that the outer extension delivered base COTs whose LSB is the choice bit</td><td><code class="ref">mp_gadget.h:408-411,546-549</code></td></tr>
+<tr><td>9</td><td>med</td><td><span class="vt vt-u">UNVERIFIED</span></td><td>cGGM receiver privacy rests on never learning Δ (punctured leaf pseudorandom); a stated invariant with no in-code enforcement — any Δ leak breaks it</td><td><code class="ref">cggm.h:16-20</code>, <code class="ref">mp_gadget.h:103-105</code></td></tr>
+<tr><td>10</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Fp LPN reduce cadence <code>kLpnSafeAddsPerReduce=5</code> vs d=10 has no static bound check and no overflow test; per-carrier constant, exercised at one field size</td><td><code class="ref">lpn.h:52-65</code>, <code class="ref">fp_vole.h:78</code></td></tr>
+<tr><td>11</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>128-bit LPN security is an external <code>lpnestimator</code> assertion; no estimator/script/cost-table vendored anywhere in the repo — not reproducible from the code</td><td><code class="ref">tuning.h:102-112</code>, <code class="ref">docs/performance-tuning.md:121</code></td></tr>
+<tr><td>12</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>emp-zk multiplexes SilentFerret + Svole + PolyProof over one IOChannel/FS transcript; sound only because the consume path is wire-free + single-threaded, but the sharing contract is never stated in emp-ot's streaming-API docs</td><td><code class="ref">docs/streaming-api.md:259-283</code>, <code class="ref">silent_ferret.h:10-28</code></td></tr>
+<tr><td>13</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Semi-honest mode elides the entire chi-fold check; a malicious sender's inconsistent trees go undetected — by design, sound only against a semi-honest sender</td><td><code class="ref">mp_gadget.h:275,566</code></td></tr>
+<tr><td>14</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Ferret LPN arity is the literal <code>Lpn&lt;…,10&gt;</code>, not <code>tuning::lpn_d</code>; retuning the constant alone is a no-op for Ferret</td><td><code class="ref">ferret.cpp:41</code>, <code class="ref">tuning.h:116</code></td></tr>
+<tr><td>15</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>k</code> must be a power of two for the rejection-free <code>idx = r &amp; (k-1)</code>; enforced only by callers pinning <code>k=1&lt;&lt;logk</code>, no assert in <code>Lpn</code></td><td><code class="ref">lpn.h:20-22,72</code>, <code class="ref">tuning.h:37</code></td></tr>
+<tr><td>16</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>softspoken_ferret_bootstrap_chunk_blocks=580</code> is numerically coupled to <code>ferret_b10.M≈74,164</code> across two files; changing b10 without re-deriving 580 over/under-produces</td><td><code class="ref">tuning.h:88-92,112</code>, <code class="ref">ferret.cpp:160-167</code></td></tr>
+<tr><td>17</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>Lpn::compute_block</code> type-puns the PRG buffer <code>block[]→uint32_t*</code> (may_alias one-directional smell); bookkeeping consistent, index cap is k≤2³⁰ (int-limited) vs deployed 2¹⁹</td><td><code class="ref">lpn.h:50,84</code></td></tr>
+<tr><td>18</td><td>info</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Not a risk: reusing <code>sid</code> does <em>not</em> make the check replayable — the RO absorbs the session-fresh secret <code>r1</code>/<code>vb</code>, so sid provides domain separation only (default <code>zero_block</code>, uniqueness unenforced but unnecessary)</td><td><code class="ref">mp_gadget.h:283-286,341-344</code></td></tr>
+</table>
+
+<div class="callout c-ok"><span class="lbl">Correctness baseline &amp; the one structural strength</span>
+<p>Ferret/SilentFerret RCOT correctness is cross-checked against a full <code>verify_rcot</code> correlation
+reconstruction at {b11,b12,b13}, the silent property (zero bytes after begin) is asserted, threaded
+<code>produce_range</code> is proven byte-identical to serial <code>next()</code>, and two differential tests pin
+SilentFerret's wire behavior to Ferret exactly. The refill-tree design is genuinely strong: because refill and
+user trees share one <code>consist_check_VW</code> accumulator, a single round-final chi-fold covers the material
+that bootstraps the next round. The residual audit surface is uniform: <b>every abort branch is untested by a
+negative case</b> (#13 and the four <code>error()</code> paths), the batched-check and prepare_all equivalences
+rest on unasserted ordering discipline (#1, #2), and the headline 128-bit number is an out-of-repo estimator
+result (#11).</p></div>
+
+</main>
+<footer>
+emp-ot implementation audit · Silent OT (cGGM · MPCOT · LPN · Ferret / SilentFerret) · working tree on
+<code>main</code> (head <code>481cc1d</code>). Reports:
+<a href="00-overview.html">Overview</a> ·
+<a href="01-base-ot.html">Base OT</a> ·
+<a href="02-ot-extension.html">OT extension</a> ·
+<a href="03-silent.html">Silent</a> ·
+<a href="04-svole.html">sVOLE</a>.
+</footer>
+</body>
+</html>

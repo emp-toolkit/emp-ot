@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>emp-ot — repository overview</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --ink:#1b2027; --muted:#5b6573;
+  --accent:#3a4fb8; --line:#e4e8ef; --code-bg:#0f1424; --code-ink:#e7ebf6;
+  --note:#1d4ed8; --warn:#c2410c; --audit:#7c3aed; --ok:#0a7d4d; --api:#0e7490;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+header.site{position:sticky;top:0;z-index:50;background:#10142a;color:#fff;
+  padding:.6rem 1.1rem;display:flex;flex-wrap:wrap;gap:.4rem 1.1rem;align-items:center;
+  box-shadow:0 1px 0 rgba(255,255,255,.06)}
+header.site .brand{font-weight:700;letter-spacing:.2px}
+header.site .brand span{color:#9fb0ff}
+header.site nav{display:flex;flex-wrap:wrap;gap:.1rem .2rem;margin-left:auto;font-size:.82rem}
+header.site nav a{color:#c9d2ff;padding:.2rem .5rem;border-radius:6px}
+header.site nav a.cur{background:#2b3566;color:#fff}
+header.site nav a:hover{background:#222a52;text-decoration:none}
+main{max-width:64rem;margin:0 auto;padding:2rem 1.2rem 5rem}
+h1{font-size:2rem;line-height:1.18;margin:.2rem 0 .4rem}
+h2{font-size:1.4rem;margin:2.8rem 0 .7rem;padding-top:.5rem;border-top:2px solid var(--line)}
+h3{font-size:1.12rem;margin:1.6rem 0 .5rem;color:#26314f}
+p{margin:.6rem 0}
+code{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.86em}
+p code,li code,td code{background:#eef1f7;padding:.06em .36em;border-radius:5px;color:#293150}
+code.ref{background:#e7ecfb;color:#2a3a86;white-space:nowrap}
+pre{background:var(--code-bg);color:var(--code-ink);padding:.85rem 1rem;border-radius:9px;
+  overflow:auto;font-size:.82rem;line-height:1.5;margin:.7rem 0;border:1px solid #1d2540}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.lead{font-size:1.1rem;color:#39414f;max-width:52rem}
+.meta{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:.9rem 1.1rem;margin:1.1rem 0 1.6rem;font-size:.9rem;color:var(--muted)}
+.meta b{color:var(--ink)}
+.meta table{border-collapse:collapse;width:100%}
+.meta td{padding:.18rem .4rem;vertical-align:top}
+.meta td:first-child{color:var(--ink);font-weight:600;white-space:nowrap;width:9.5rem}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(8.3rem,1fr));gap:.7rem;margin:1.4rem 0}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.8rem .9rem}
+.stat .n{font-size:1.5rem;font-weight:800;color:#23306a;line-height:1.1}
+.stat .l{font-size:.74rem;color:var(--muted);margin-top:.15rem;letter-spacing:.02em}
+.toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem 1.2rem;margin:1.4rem 0}
+.toc h2{border:0;margin:0 0 .5rem;font-size:1rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:0}
+.toc ol{margin:0;padding-left:1.2rem;columns:2;column-gap:2rem}
+.toc li{margin:.18rem 0;break-inside:avoid}.toc a{color:#2c3550}
+.callout{border-left:4px solid var(--note);background:#fff;border-radius:0 8px 8px 0;
+  padding:.7rem .95rem;margin:.9rem 0;box-shadow:0 1px 2px rgba(20,30,60,.05)}
+.callout .lbl{font-weight:700;font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;display:block;margin-bottom:.25rem}
+.callout p{margin:.35rem 0}.callout p:first-of-type{margin-top:0}.callout p:last-child{margin-bottom:0}
+.c-note{border-color:var(--note)} .c-note .lbl{color:var(--note)}
+.c-warn{border-color:var(--warn);background:#fff8f4} .c-warn .lbl{color:var(--warn)}
+.c-audit{border-color:var(--audit);background:#faf7ff} .c-audit .lbl{color:var(--audit)}
+.c-ok{border-color:var(--ok);background:#f3fbf6} .c-ok .lbl{color:var(--ok)}
+table.grid{border-collapse:collapse;width:100%;margin:.9rem 0;font-size:.89rem}
+table.grid th,table.grid td{border:1px solid var(--line);padding:.45rem .6rem;text-align:left;vertical-align:top}
+table.grid th{background:#eef1f8;font-weight:600}
+table.grid tr:nth-child(even) td{background:#fafbfd}
+ul,ol{margin:.5rem 0;padding-left:1.4rem}li{margin:.28rem 0}
+.stack{margin:1rem 0;display:flex;flex-direction:column-reverse;gap:.35rem}
+.layer{display:flex;align-items:center;gap:.7rem;background:var(--panel);border:1px solid var(--line);
+  border-left:5px solid var(--tier,#3a4fb8);border-radius:8px;padding:.5rem .8rem}
+.layer .lv{font-size:.7rem;font-weight:800;color:#8893ad;width:2.2rem;flex:none}
+.layer .nm{font-weight:700;width:11rem;flex:none;color:#26314f}
+.layer .md{font-size:.82rem;color:var(--muted)}
+.t-sub{--tier:#0e7490}.t-root{--tier:#c2410c}.t-ctx{--tier:#7c3aed}.t-val{--tier:#2563eb}.t-front{--tier:#0a7d4d}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem 1.1rem}
+.pane h3{margin-top:0}
+.reportcards{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin:1rem 0}
+.rc{display:block;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:1rem 1.1rem;transition:box-shadow .15s,transform .15s}
+.rc:hover{box-shadow:0 6px 18px rgba(20,30,60,.10);transform:translateY(-2px);text-decoration:none}
+.rc .num{font-size:.7rem;font-weight:700;letter-spacing:.1em;color:#7c8aa8;text-transform:uppercase}
+.rc h3{margin:.2rem 0 .35rem;color:#1b2027}
+.rc p{margin:0;color:var(--muted);font-size:.86rem}
+.tag{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.05em;padding:.12rem .5rem;border-radius:20px;background:#e7ecfb;color:#2a3a86;vertical-align:middle}
+.sev{display:inline-block;font-size:.7rem;font-weight:800;letter-spacing:.03em;padding:.08rem .45rem;border-radius:6px;text-transform:uppercase}
+.sev-high{background:#fde8df;color:#a3320a}.sev-med{background:#fdf3d6;color:#8a6410}.sev-low{background:#e4ede7;color:#3f6b52}
+.vtag{display:inline-block;font-size:.68rem;font-weight:800;letter-spacing:.04em;padding:.08rem .45rem;border-radius:6px}
+.v-conf{background:#dff3e8;color:#0a7d4d}.v-unv{background:#eceef3;color:#5b6573}
+footer{max-width:64rem;margin:0 auto;padding:1.5rem 1.2rem 3rem;color:var(--muted);font-size:.82rem;border-top:1px solid var(--line)}
+@media (max-width:680px){.toc ol{columns:1}.split,.reportcards{grid-template-columns:1fr}.layer .nm{width:auto}}
+@media print{header.site{position:static}pre{white-space:pre-wrap}}
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="brand">emp-ot <span>· implementation audit</span></div>
+  <nav>
+    <a class="cur" href="00-overview.html">Overview</a>
+    <a href="01-base-ot.html">1 · Base OT</a>
+    <a href="02-ot-extension.html">2 · OT extension</a>
+    <a href="03-silent.html">3 · Silent</a>
+    <a href="04-svole.html">4 · sVOLE</a>
+  </nav>
+</header>
+<main>
+
+<h1>emp-ot — repository overview</h1>
+<p class="lead">emp-ot is the <b>oblivious-transfer layer of the emp-toolkit</b>: four base OTs
+(<code>CO</code> / <code>PVW</code> / <code>CSW</code> / <code>BMM</code>) that bootstrap two OT-extension
+families — a <b>Random-COT</b> family (IKNP, SoftSpoken, Ferret, SilentFerret, element = <code>block</code>)
+and a <b>subfield-VOLE</b> family (F2k and F<sub>p</sub>, element = an authenticated <code>AuthValue</code>) —
+all wired to a <b>single streaming <code>begin/next/end</code> skeleton</b> and one abstract
+<code>OT → COT → RandomCOT</code> hierarchy. It is a primitive library, not a standalone protocol: its outputs
+(correlated OTs, VOLE correlations) are consumed by downstream 2PC / MPC / ZK backends, and per-protocol
+malicious security lives in the concrete consistency checks documented in the four detailed reports below.</p>
+
+<div class="meta">
+<table>
+<tr><td>Report</td><td>High-level overview — the on-ramp to the four detailed sub-reports below</td></tr>
+<tr><td>Source tree</td><td><code>/Users/wangxiao/Documents/emp-ot</code> · <code>HEAD @ 481cc1d</code> (branch <code>main</code>, the 1.0 development line)</td></tr>
+<tr><td>License</td><td>see repo <code>LICENSE</code>; vendored pq-crystals Kyber under its own dual CC0-1.0 / Apache-2.0 terms</td></tr>
+<tr><td>Versioning</td><td><b>Stable:</b> tag <code>0.3.0</code> / branch <code>v0.3.x</code> (backported fixes). <b>This tree:</b> pre-alpha — CMake reads <code>1.0.0</code> but the API is <b>not frozen</b> (headers/names may still move between alphas). Requires <code>emp-tool ≥ 1.0</code>.</td></tr>
+<tr><td>Namespace</td><td><code>emp</code> (single namespace; every public class lives here)</td></tr>
+<tr><td>Layering</td><td>base OTs → shared silent primitives (<code>common/</code>) + streaming skeleton → the two extension families; <code>emp-ot/emp-ot.h</code> is the umbrella. All <code>file:line</code> references in these reports are against this tree.</td></tr>
+</table>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="n">33</div><div class="l">first-party headers (~5.0K LOC)</div></div>
+  <div class="stat"><div class="n">11</div><div class="l">compiled TUs (5 .cpp + 6 kyber .c)</div></div>
+  <div class="stat"><div class="n">2</div><div class="l">extension families (RCOT · sVOLE)</div></div>
+  <div class="stat"><div class="n">4</div><div class="l">base OTs</div></div>
+  <div class="stat"><div class="n">6</div><div class="l">extension protocols (4 RCOT + 2 sVOLE)</div></div>
+  <div class="stat"><div class="n">11</div><div class="l">test binaries (+2 trace harnesses)</div></div>
+  <div class="stat"><div class="n">5</div><div class="l">design docs</div></div>
+  <div class="stat"><div class="n">18</div><div class="l">wire-trace baseline rows</div></div>
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+<li><a href="#what">What emp-ot is</a></li>
+<li><a href="#arch">Architecture — two families, one skeleton</a></li>
+<li><a href="#map">Module map</a></li>
+<li><a href="#stream">The streaming / consume model</a></li>
+<li><a href="#worlds">Base-OT vs extension crypto worlds</a></li>
+<li><a href="#build">Build &amp; requirements</a></li>
+<li><a href="#docs">Docs &amp; tests</a></li>
+<li><a href="#ecosystem">Ecosystem &amp; downstream position</a></li>
+<li><a href="#security">Security posture at a glance</a></li>
+<li><a href="#reports">The four detailed reports</a></li>
+<li><a href="#caveats">Repository caveats</a></li>
+<li><a href="#risk">Auditor risk register</a></li>
+</ol>
+</div>
+
+<div class="callout c-audit"><span class="lbl">How this audit was produced</span>
+<p>Seven subsystem deep-readers (interfaces/streaming, base-classic, base-PQ, IKNP/SoftSpoken, silent-core,
+Ferret, sVOLE) read every header and its tests; three independent design critics attacked the merged findings.
+<b>114 merged claims were adversarially verified</b> — <b>96 confirmed, 17 refuted, 1 unverified</b>. Every
+security-class claim (abort paths, trust flags, delta invariants, domain separation) was verified through
+<b>two independent lenses</b>. Refuted claims were dropped or corrected in place; the full ledger, the refresh
+anchor for future re-audits, is <code>audit-report/claims.md</code>.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="what">1 · What emp-ot is</h2>
+<p>Mechanically the repo is small and almost entirely header-driven: <b>33 first-party headers (~5,051 lines)</b>
+plus <b>11 compiled translation units</b> — five emp bodies (<code>ot_extension/iknp.cpp</code>,
+<code>ferret/ferret.cpp</code>, <code>ferret/silent_ferret.cpp</code>, <code>softspoken/softspoken.cpp</code>,
+<code>base_ot/mlkem/bmm.cpp</code>) plus six verbatim pq-crystals Kyber C sources (<code>poly / polyvec / ntt /
+reduce / cbd / verify</code>). Everything else — the abstract OT hierarchy, all four base OTs, the streaming
+skeleton, the silent primitives, and both extension families' logic — is consumed inline from headers. The
+static library <code>emp-ot::emp-ot</code> bundles only the five emp bodies and the Kyber core.</p>
+<p>Conceptually it is <b>one abstract interface tower with two concrete protocol families hanging off it</b>:</p>
+<ul>
+<li><b>The interface tower</b> — <code>emp-ot/ot.h</code> defines <code>OT → COT → RandomCOT</code>: a chosen-input
+1-of-2 OT built generically on top of a correlated-OT primitive via a Davies–Meyer <code>MITCCRH</code> hash
+(<code>ot.h:45-116</code>), with two declarative capability flags a subclass overrides truthfully
+(<code>is_malicious_secure()</code>, <code>supports_deferred_check()</code>). <code>emp-ot/ideal.h</code> is a
+deterministic test double with no security. <code>emp-ot/emp-ot.h</code> is a pure aggregator.</li>
+<li><b>The base OTs</b> — <code>emp-ot/base_ot/</code>: the group- and lattice-based 1-of-2 OTs that bootstrap the
+extensions (CO, PVW, CSW over EC; BMM over ML-KEM-512). CSW is the default base wired into every extension.</li>
+<li><b>The shared silent core + streaming skeleton</b> — <code>emp-ot/common/</code>: the cGGM Half-Tree
+puncturable PRF (<code>cggm.h</code>), the <code>MultiPointGadget</code> that carries the malicious chi-fold
+check (<code>mp_gadget.h</code>), the primal-LPN amplifier (<code>lpn.h</code>), and the
+<code>StreamingExtension&lt;Element&gt;</code> lifecycle template (<code>streaming_extension.h</code>) both
+families inherit.</li>
+<li><b>The two extension families</b> — <code>emp-ot/ot_extension/</code> (RCOT: <code>OTExtension</code> base
+→ IKNP / SoftSpoken / Ferret / SilentFerret, <code>Element = block</code>) and <code>emp-ot/svole/</code>
+(one generic <code>Svole&lt;AuthValue&gt;</code> → F2k and F<sub>p</sub>, <code>Element = AuthValue</code>).</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="arch">2 · Architecture — two families over one streaming skeleton</h2>
+<p>The defining structural fact of emp-ot is that <b>the RCOT family and the sVOLE family are the same machine
+instantiated on two carriers</b>. Both inherit <code>StreamingExtension&lt;Element&gt;</code> — RCOT with
+<code>Element = block</code>, sVOLE with <code>Element = AuthValue</code> (a <code>{val, mac}</code> struct
+carrying its own field ops and chi-fold). Both compose a base-OT bootstrap, a cGGM
+<code>MultiPointGadget</code>, and an LPN amplifier; they differ only in the carrier's field arithmetic and
+wire format. The stack below reads bottom-up.</p>
+
+<div class="stack">
+  <div class="layer t-sub"><span class="lv">L1</span><span class="nm">ot.h · ideal.h</span><span class="md">the abstract <code>OT → COT → RandomCOT</code> tower (chosen-input over correlated-OT via <code>MITCCRH</code>) + the deterministic <code>OTIdeal</code> test double + <code>tuning.h</code> parameter bundle</span></div>
+  <div class="layer t-root"><span class="lv">L2</span><span class="nm">base_ot/</span><span class="md">CO (semi-honest), PVW &amp; CSW (malicious, EC), BMM (malicious/PQ, ML-KEM-512 + vendored Kyber) — the bootstrap OTs</span></div>
+  <div class="layer t-ctx"><span class="lv">L3</span><span class="nm">common/ (skeleton)</span><span class="md"><code>streaming_extension.h</code> — the <code>begin/next/end</code> + <code>run</code>/<code>next_n</code> lifecycle template both families inherit; session tripwire (no double-begin / no next-without-begin / no destruct-in-session)</span></div>
+  <div class="layer t-ctx"><span class="lv">L4</span><span class="nm">common/ (silent core)</span><span class="md"><code>cggm.h</code> Half-Tree PPRF · <code>mp_gadget.h</code> <code>MultiPointGadget</code> (hosts the App.-C chi-fold check) · <code>lpn.h</code> primal-LPN amplifier — shared by Ferret <em>and</em> sVOLE</span></div>
+  <div class="layer t-val"><span class="lv">L5a</span><span class="nm">ot_extension/ (RCOT)</span><span class="md"><code>OTExtension</code> base (owns the CSW base + Δ) → IKNP (KOS check) · SoftSpoken (subspace-VOLE, <code>sfvole_butterfly.h</code>) · Ferret · SilentFerret — <code>Element = block</code></span></div>
+  <div class="layer t-front"><span class="lv">L5b</span><span class="nm">svole/ (sVOLE)</span><span class="md">generic <code>Svole&lt;AuthValue&gt;</code> → F2k (<code>f2k_vole.h</code>, GF(2¹²⁸)) · F<sub>p</sub> (<code>fp_vole.h</code>, GF(2⁶¹−1) + COPE base, <code>fp_base_svole.h</code>) — <code>Element = AuthValue</code></span></div>
+  <div class="layer t-sub"><span class="lv">L6</span><span class="nm">emp-ot.h</span><span class="md">the umbrella over the tower, all four base OTs, both extension families</span></div>
+</div>
+
+<div class="callout c-note"><span class="lbl">The load-bearing invariant an auditor should internalize first</span>
+<p>Trust at the interface tower is <b>declarative, not enforced</b>: <code>is_malicious_secure()</code> and
+<code>supports_deferred_check()</code> are capability flags the base class trusts each subclass to answer
+truthfully (<code>ot.h:16,23</code>). The streaming layer enforces only a <em>liveness</em> contract (the session
+tripwire), carrying no cryptographic check itself. All real malicious-security enforcement — the chi-fold
+consistency checks, the base-OT cross-checks, the PPRF-consistency checks — lives in the concrete subclasses the
+four detailed reports cover. Reading a trust flag is not reading a proof.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="map">3 · Module map</h2>
+<table class="grid">
+<tr><th>Directory · header</th><th>~LOC</th><th>Role</th><th>Report</th></tr>
+<tr><td><code>emp-ot/{ot,ideal,emp-ot,tuning}.h</code></td><td>338</td><td>Abstract <code>OT/COT/RandomCOT</code> tower, deterministic <code>OTIdeal</code> double, umbrella aggregator, tuning/parameter constants</td><td>all</td></tr>
+<tr><td><code>emp-ot/base_ot/</code> (co · pvw · csw · bmm + mlkem/)</td><td>1,135</td><td>Four base OTs: CO (Simplest OT), PVW (framework OT), CSW (Blazing-Fast F<sub>SF</sub>-rOT), BMM (PQ UC OT over ML-KEM-512) + vendored pq-crystals Kyber + the OpenSSL-EVP SHAKE/CRS shim</td><td><a href="01-base-ot.html">Report 1</a></td></tr>
+<tr><td><code>emp-ot/common/</code> (cggm · mp_gadget · lpn · streaming_extension)</td><td>1,205</td><td>Half-Tree cGGM PPRF, <code>MultiPointGadget</code> (multi-point COT/VOLE + malicious chi-fold), primal-LPN amplifier, the shared streaming skeleton</td><td><a href="02-ot-extension.html">Report 2</a> · <a href="03-silent.html">Report 3</a></td></tr>
+<tr><td><code>emp-ot/ot_extension/</code> (ot_extension · iknp · softspoken/ · ferret/)</td><td>1,302</td><td><code>OTExtension</code> base (CSW base + Δ), IKNP (KOS), SoftSpoken (subspace-VOLE + butterfly), Ferret &amp; SilentFerret silent COT</td><td><a href="02-ot-extension.html">Report 2</a> · <a href="03-silent.html">Report 3</a></td></tr>
+<tr><td><code>emp-ot/svole/</code> (svole · f2k_vole · fp_vole · fp_base_svole · fp_utility)</td><td>1,071</td><td>Generic <code>Svole&lt;AuthValue&gt;</code> subfield-VOLE over F2k and F<sub>p</sub> (Mersenne GF(2⁶¹−1)); COPE base sVOLE for the F<sub>p</sub> path</td><td><a href="04-svole.html">Report 4</a></td></tr>
+<tr><td><code>emp-ot/base_ot/mlkem/kyber/</code> (verbatim)</td><td>210</td><td>Byte-identical pq-crystals Kyber arithmetic (poly/polyvec/ntt/reduce/cbd/verify) — the compiled-in lattice core for BMM</td><td><a href="01-base-ot.html">Report 1</a></td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="stream">4 · The streaming / consume model</h2>
+<p>Every extension instance is a <b>single-role streaming producer</b> (the party is fixed at construction).
+The base <code>StreamingExtension&lt;Element&gt;</code> exposes four subclass virtuals —
+<code>chunk_size()</code>, <code>begin()</code>, <code>next(out)</code>, <code>end()</code> — plus two
+non-virtual convenience draws the base provides on top (<code>streaming_extension.h:40-131</code>):</p>
+<pre><code>run(data, num)     // one-shot: opens+closes a session per call, draining a per-instance leftover buffer
+next_n(dst, n)     // buffered incremental draw *within* a caller-owned begin()…end() session</code></pre>
+<p>Three access styles, one lifecycle: a fixed-size batch (<code>begin → next* → end</code>), an
+arbitrary-size incremental draw (<code>begin → next_n → end</code>, refilling a chunk internally), or the
+library-owned one-shot <code>run</code>. The single leftover buffer lets non-chunk-multiple requests avoid
+paying a fresh chunk per call, and amortizes the round-end work (refill trees + malicious check) over a whole
+session rather than per draw. Both the RCOT family (via <code>rcot(data, num)</code> on <code>RandomCOT</code>)
+and the sVOLE family plug into exactly this template.</p>
+<div class="callout c-warn"><span class="lbl">The tripwire is liveness, not correctness — and mostly debug-only</span>
+<p>The session tripwire has one <b>always-on</b> guard: destructing mid-session calls <code>error()</code>
+(<code>streaming_extension.h:133-139</code>), because a missed <code>end()</code> desynchronizes the
+Fiat–Shamir transcript. But <code>enter_session_</code> / <code>exit_session_</code> /
+<code>assert_in_session_</code> are plain <code>assert</code>s (<code>streaming_extension.h:148-161</code>) —
+elided under <code>NDEBUG</code>. So double-begin, next-without-begin, and the <code>run()</code>-vs-<code>next_n()</code>
+mutual-exclusion contract (a shared <code>leftover_</code> per instance) are enforced only in debug builds; in a
+release build these degrade to silent draw-ordering corruption. This assert-only posture recurs across the
+subsystem and is the through-line of the risk register.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="worlds">5 · Base-OT vs extension crypto worlds</h2>
+<p>As with emp-tool, it helps to keep two distinct cryptographic regimes apart when reading the code: the
+<b>public-key base OTs</b> (a handful of group / lattice operations that bootstrap a session) and the
+<b>symmetric-crypto extensions</b> (millions of correlated outputs from AES/PRG/hash over <code>block</code>s).
+They meet only at the <code>OTExtension</code> constructor, which owns a base OT and consumes a few hundred of
+its outputs to seed the rest.</p>
+<div class="split">
+  <div class="pane">
+    <h3><span class="tag">base_ot/</span> public-key base OTs</h3>
+    <p>Group-based (CO / PVW / CSW over OpenSSL P-256, with typed length-framed random-oracle hashing and full
+    on-curve point validation in <code>Point::from_bin</code>) and lattice-based (BMM over ML-KEM-512 module-LWE,
+    with the vendored Kyber arithmetic byte-identical to pq-crystals). These produce the small seed of base OTs
+    an extension bootstraps from. CSW is the default; CO/PVW/BMM are live only in the standalone base-OT
+    test/bench.</p>
+    <p><b>Report:</b> <a href="01-base-ot.html">1 (Base OT)</a></p>
+  </div>
+  <div class="pane">
+    <h3><span class="tag">ot_extension/ · svole/</span> symmetric extensions</h3>
+    <p>Millions of correlated OTs / VOLE correlations amplified from that seed using emp-tool's raw-block crypto
+    (CCRH/MITCCRH, PRG, AES, GF(2¹²⁸) f2k) — the Half-Tree cGGM PPRF, the multi-point gadget, and the primal-LPN
+    code. Malicious security here is a chi-fold consistency check seeded from the Fiat–Shamir transcript, not a
+    number-theoretic argument. This is the hot path; the base OT is a one-time cost.</p>
+    <p><b>Reports:</b> <a href="02-ot-extension.html">2 (OT extension)</a> · <a href="03-silent.html">3 (Silent)</a> · <a href="04-svole.html">4 (sVOLE)</a></p>
+  </div>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="build">6 · Build &amp; requirements</h2>
+<table class="grid">
+<tr><th>Requirement</th><th>Detail</th></tr>
+<tr><td>CMake</td><td>≥ 3.21; out-of-source build enforced (in-source configure is a <code>FATAL_ERROR</code>)</td></tr>
+<tr><td>Compiler</td><td>README states a C++17 floor, but the target exports <code>PUBLIC cxx_std_20</code> (<code>CMakeLists.txt</code>) because it tracks emp-tool's C++20 public contract transitively; <code>CXX + C</code> languages (the C is Kyber)</td></tr>
+<tr><td>emp-tool</td><td><code>find_package(emp-tool 1.0 REQUIRED)</code>; consumed through its installed / build-tree CMake package</td></tr>
+<tr><td>OpenSSL</td><td>≥ 3.0. BMM's ML-KEM SHAKE shim uses <code>EVP_DigestSqueeze</code> on ≥ 3.3 (one-shot squeeze) and falls back to a re-init / re-absorb loop on 3.0.x — <em>claimed</em> same answers, slower CRS expansion; version detected from <code>OPENSSL_VERSION_NUMBER</code>, no build flag</td></tr>
+<tr><td>Threads</td><td>pthreads (SilentFerret's parallel wire-free consume pools pure compute)</td></tr>
+<tr><td>ISA</td><td>inherits emp-tool's compile-time SIMD tiers (NEON on this arm64 host, <code>-march=armv8-a+crypto+crc</code>; GFNI/AVX only under <code>-march=native</code> on x86_64) — no runtime CPUID fallback</td></tr>
+</table>
+<h3>CMake options</h3>
+<table class="grid">
+<tr><th>Option</th><th>Default</th><th>Effect</th></tr>
+<tr><td><code>CMAKE_BUILD_TYPE</code></td><td>Release (forced if unset)</td><td>Release = <code>-O3 -DNDEBUG -funroll-loops</code>; note that <code>NDEBUG</code> elides the assert-based misuse guards discussed throughout</td></tr>
+<tr><td><code>EMP_OT_BUILD_TESTS</code></td><td><code>PROJECT_IS_TOP_LEVEL</code></td><td>builds the 11 test binaries + 2 trace harnesses and registers ctest (loopback via the <code>run</code> script)</td></tr>
+<tr><td><code>EMP_OT_INSTALL</code></td><td><code>PROJECT_IS_TOP_LEVEL</code></td><td>install / export rules; headers to <code>${INCLUDEDIR}/emp-ot/</code></td></tr>
+<tr><td><code>KYBER_K</code> (internal)</td><td><code>2</code></td><td>set per-source on the Kyber <code>.c</code> files only (namespace <code>pqcrystals_kyber512_ref_*</code>), scoped so ML-KEM-512 parameters don't leak into the C++ TUs</td></tr>
+</table>
+<div class="callout c-note"><span class="lbl">Benchmarks build separately; networked mode is env-driven</span>
+<p>The <code>bench/</code> tree (10 <code>bench_*</code> binaries) is build-only, not ctest-registered. Both tests
+and benches run two local parties over <code>127.0.0.1</code> by default; a networked run is selected purely by
+environment (<code>EMP_PEER_IP</code> — ALICE listens, BOB connects — and <code>EMP_PORT</code>, default 12345),
+with no hardcoded IP.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="docs">7 · Docs &amp; tests</h2>
+<p><b>Five design docs</b> under <code>docs/</code> are the best companion to this audit:</p>
+<table class="grid">
+<tr><td><code>class-organization.md</code></td><td>the interface tower + family layout</td><td><code>streaming-api.md</code></td><td>the <code>begin/next/end</code> + <code>run</code>/<code>next_n</code> lifecycle</td></tr>
+<tr><td><code>adding-a-protocol.md</code></td><td>the <code>AuthValue</code> carrier contract (val-first ABI)</td><td><code>performance-tuning.md</code></td><td>LPN parameter classes, sweep case study, autotune plan</td></tr>
+<tr><td><code>wire-trace-hashes.md</code></td><td>the regression discipline (see below)</td><td></td><td></td></tr>
+</table>
+<p>The <code>test/</code> directory holds <b>11 test binaries</b> (one per protocol/primitive:
+<code>test_base_ot</code>, <code>test_iknp</code>, <code>test_softspoken</code>, <code>test_softspoken_lanes</code>,
+<code>test_ferret</code>, <code>test_silentferret</code>, <code>test_f2k_vole</code>, <code>test_fp_vole</code>,
+<code>test_choice_seed</code>) plus two order-independent wire harnesses (<code>trace_equiv</code>,
+<code>trace_hash</code>). <b>10 throughput benchmarks</b> build on demand.</p>
+<div class="callout c-note"><span class="lbl">The wire-trace-hash discipline — a regression guard, not a security property</span>
+<p><code>trace_hash.cpp</code> pins the observed wire bytes of each protocol as a Fiat–Shamir transcript digest
+(first 16 hex of each direction's SHA-256, ALICE's view). The 18-row baseline table in <code>README.md</code>
+is the human-maintained source of truth: a changed hash means a wire-format change — <em>fine if intentional,
+but flag it in the commit</em>. Ferret(b11) and SilentFerret(b11) rows are <b>wire-identical by design</b>
+(SilentFerret changes only <em>when</em> correction traffic is sent) and must stay equal. This pass
+independently re-ran <code>EMP_TEST_MODE=1 ./run ./build/trace_hash</code> against a clean HEAD in Release: all
+18 rows match the README baseline byte-for-byte — no drift. Two caveats an auditor should note: the table is
+<b>Release-only</b> (the RCOT length is <code>(1&lt;&lt;22)+101</code> under NDEBUG vs <code>(1&lt;&lt;18)+101</code>
+in Debug, <code>trace_hash.cpp:121-127</code>, so a Debug run will not match), and it <b>omits SoftSpoken&lt;4&gt;</b>
+(only <code>&lt;2&gt;</code> and <code>&lt;8&gt;</code> are traced, though the bench sweeps <code>k∈{2,4,8}</code>),
+so a wire regression specific to the <code>k=4</code> code path escapes this guard.</p></div>
+<div class="callout c-warn"><span class="lbl">Build clean, tests network-gated in this sandbox</span>
+<p>Both emp-tool and emp-ot build cleanly at <code>-O3 -DNDEBUG -Wall -Werror=switch</code> with <b>zero compiler
+warnings</b> (Apple clang 21, arm64/NEON). All 11 ctest entries could <b>not</b> be executed here: each spawns two
+local parties over <code>127.0.0.1</code> and the sandbox denies socket <code>bind</code> (<code>Operation not
+permitted</code>), so they are reported <b>skipped</b>, not failing. No fast subset is runnable without
+loopback. This is an environment limitation, not a code defect.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="ecosystem">8 · Ecosystem &amp; downstream position</h2>
+<p>emp-ot sits directly on emp-tool (block/crypto kernels, IOChannel) and feeds the correlated randomness that
+the higher protocol libraries consume. Its outputs are a hot-path dependency, so its wire formats and the
+<code>AuthValue</code> memory layout are effectively cross-repo ABI.</p>
+<table class="grid">
+<tr><th>Direction</th><th>What it is</th><th>Coupling to emp-ot</th></tr>
+<tr><td><b>emp-tool</b> (upstream)</td><td>the shared substrate</td><td>emp-ot builds on <code>block</code>, CCRH/MITCCRH, PRG, GF(2¹²⁸) f2k, AES, and the NetIO/IOChannel — including the shared <code>bit0_mask</code> adopted in <code>37e2576</code></td></tr>
+<tr><td><b>emp-zk</b> (downstream)</td><td>VOLE-based zero-knowledge</td><td>consumes the F2k and F<sub>p</sub> sVOLE correlations; <code>ostriple.h</code> reinterpret-casts <code>__uint128_t*</code> to <code>AuthValueFp*</code> on every <code>next_n</code> draw, so the val-first storage layout is a load-bearing ABI contract (§9, Report 4)</td></tr>
+<tr><td><b>emp-ag</b> (downstream)</td><td>authenticated/malicious MPC</td><td>drives COT lanes — the <code>clone_lane</code> extension (<code>481cc1d</code>) spawns independent SoftSpoken COT lanes over separate channels for its <code>EMP_AG_LONG_LIVED_COT</code> mode</td></tr>
+<tr><td><b>emp-sh2pc / 2PC</b> (downstream)</td><td>garbled-circuit 2PC</td><td>consumes chosen-input OT via the <code>OT/COT</code> tower</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="security">9 · Security posture at a glance</h2>
+<p>emp-ot's job is to produce correct correlated randomness fast; the trust model is <b>per-protocol</b>, not
+uniform. The table below is the first thing an auditor should internalize — which protocol enforces malicious
+security by what mechanism.</p>
+<table class="grid">
+<tr><th>Protocol</th><th>Family</th><th>Malicious-secure?</th><th>Enforcement mechanism</th></tr>
+<tr><td><code>CO</code></td><td>base OT</td><td><b>No</b> (semi-honest; base-class default <code>false</code>, <code>co.h</code>)</td><td>none — Simplest OT (eprint 2015/267) over P-256</td></tr>
+<tr><td><code>PVW</code></td><td>base OT</td><td>Yes (<code>pvw.h:28</code>)</td><td>messy-mode framework OT; receiver-secure under DDH, sender statistically secure</td></tr>
+<tr><td><code>CSW</code></td><td>base OT</td><td>Yes (<code>csw.h:51</code>)</td><td>3-message UC OT under CDH in the observable-RO model; challenge–prove–response hash check via <code>error()</code>; sole OT with <code>supports_deferred_check()=true</code> (<code>csw.h:59</code>)</td></tr>
+<tr><td><code>BMM</code></td><td>base OT (PQ)</td><td>Yes (<code>bmm.h:68</code>)</td><td>tight UC in programmable ROM under decisional MLWE; a RO correlation-breaker (λ=256, <code>d5aed11</code>) — <b>no runtime abort</b>, tightness is purely in the algebra</td></tr>
+<tr><td><code>IKNP</code></td><td>RCOT ext</td><td>selectable</td><td>malicious mode enables a KOS-style streaming Fiat–Shamir chi-fold (<code>Q⊕x·Δ==t</code>) + one sacrificial 128-OT chunk; requires a malicious base (enforced)</td></tr>
+<tr><td><code>SoftSpoken&lt;k&gt;</code></td><td>RCOT ext</td><td>selectable</td><td>PPRF-consistency check at bootstrap + per-session subspace-VOLE chi-fold; malicious mode requires a malicious base</td></tr>
+<tr><td><code>Ferret</code></td><td>RCOT ext (silent)</td><td>selectable</td><td>per-round App.-C chi-fold over the <code>t</code> cGGM trees (128 dedicated check-COTs, one F(2¹²⁸) element, hash-compare → <code>error()</code>, <code>mp_gadget.h:592-593</code>); requires a malicious base</td></tr>
+<tr><td><code>SilentFerret</code></td><td>RCOT ext (silent)</td><td>selectable</td><td>same checks as Ferret, prepaid up-front in <code>begin()</code>; wire-transcript-identical to <code>K</code> serial Ferret rollovers</td></tr>
+<tr><td><code>F2kVOLE</code></td><td>sVOLE</td><td>selectable (default true)</td><td>FTyped chi-fold inside each <code>MultiPointGadget</code> round binding the sparse vector to Δ (RO commitment → <code>error()</code>)</td></tr>
+<tr><td><code>FpVOLE</code></td><td>sVOLE</td><td>selectable (default true)</td><td>FTyped chi-fold + a COPE chi-fold in the F<sub>p</sub> base sVOLE (<code>fp_base_svole.h</code>)</td></tr>
+</table>
+<div class="callout c-warn"><span class="lbl">The abort paths are real but never exercised negatively</span>
+<p>Every malicious check above aborts via emp-tool's <code>error()</code> (process termination), not a
+recoverable status. But <b>no test anywhere in the repository drives a deviating party or a malformed message</b>:
+the <code>malicious=true</code> runs are two <em>honest</em> parties, so the chi-fold / PPRF / CSW / BMM abort
+branches execute-and-pass, never trigger. A repo-wide search for corrupt/tamper/malform/off-curve/bit-flip
+fault injection returns zero hits. CI proves honest-execution correctness only — it does <b>not</b> prove any
+check catches a cheater (risk-register #1). Combined with the <code>NDEBUG</code>-elided misuse asserts, this is
+the dominant residual audit surface.</p></div>
+<div class="callout c-note"><span class="lbl">Wire format is raw native-endian throughout</span>
+<p>Blocks, uint64 counters absorbed into ROs, whole <code>F</code> structs sent via
+<code>send_data(&amp;x, sizeof(F))</code>, and memcpy'd uint64 indices into SHAKE inputs are all raw host-order
+bytes with no canonicalization (<code>mp_gadget.h:654</code>, <code>bmm.cpp:82</code>). Consistent with the wider
+emp stack, but cross-endian peers silently compute divergent transcripts (and fail the malicious checks, or
+worse in semi-honest mode). No <code>static_assert</code> guards it at this layer.</p></div>
+
+<!-- ===================================================================== -->
+<h2 id="reports">10 · The four detailed reports</h2>
+<p>This overview is the on-ramp; each report below is a full implementation walkthrough with <code>file:line</code>
+references and a per-report risk register.</p>
+<div class="reportcards">
+  <a class="rc" href="01-base-ot.html"><div class="num">Report 1 · base OT</div><h3>Base OTs (classic + PQ)</h3><p>CO / PVW / CSW over P-256 and BMM over ML-KEM-512: the group- and lattice-based bootstrap OTs, the CSW messy-core + deferred-check split, the typed length-framed RO and point validation, and the vendored-vs-reimplemented Kyber / SHAKE boundary.</p></a>
+  <a class="rc" href="02-ot-extension.html"><div class="num">Report 2 · OT extension</div><h3>IKNP · SoftSpoken · interfaces</h3><p>The <code>OT/COT/RandomCOT</code> tower and streaming skeleton, IKNP's KOS check, SoftSpoken's subspace-VOLE butterfly and <code>clone_lane</code> COT lanes, the Δ-LSB convention, and the test-coverage gaps in the chosen-input and streaming verbs.</p></a>
+  <a class="rc" href="03-silent.html"><div class="num">Report 3 · silent</div><h3>Ferret · SilentFerret · silent core</h3><p>The Half-Tree cGGM PPRF, the multi-point gadget and its App.-C chi-fold, primal-LPN amplification, Ferret's self-bootstrapping rollover, and SilentFerret's prepaid wire-free reschedule (and its PRG-reuse / rollover hazards).</p></a>
+  <a class="rc" href="04-svole.html"><div class="num">Report 4 · sVOLE</div><h3>Subfield VOLE (F2k · F<sub>p</sub>)</h3><p>The generic <code>Svole&lt;AuthValue&gt;</code>, the F2k GF(2¹²⁸) and F<sub>p</sub> Mersenne carriers, the COPE base sVOLE, the Δ / set_delta invariants, and the val-first <code>AuthValue</code> ABI that downstream emp-zk reinterpret-casts.</p></a>
+</div>
+
+<!-- ===================================================================== -->
+<h2 id="caveats">11 · Repository caveats an auditor will notice</h2>
+<ul>
+<li><b>Stray log files at the repo root.</b> <code>p2.log</code> / <code>p3.log</code> are committed party-2/party-3
+run logs; <code>todo.txt</code>, <code>AGENTS.md</code>, and <code>CLAUDE.md</code> are working notes, not part of
+the library.</li>
+<li><b>Pre-alpha API.</b> CMake reads <code>1.0.0</code> but names and headers may still move before the first
+tagged alpha; anything pinned to a release should track <code>v0.3.x</code> instead.</li>
+<li><b>The C++17 README floor understates the real requirement.</b> The target exports
+<code>PUBLIC cxx_std_20</code> because it follows emp-tool's C++20 contract transitively; a C++17-only consumer
+will not compile against the installed package.</li>
+<li><b>Two nesting levels of <code>emp-ot/</code>.</b> The source path is
+<code>emp-ot/emp-ot/…</code> (repo dir then include dir), so a repo-relative anchor such as
+<code>emp-ot/base_ot/csw.h</code> resolves under the inner tree; test files, by contrast, live at
+<code>test/</code>, not <code>emp-ot/test/</code>.</li>
+<li><b>The reorganization is recent.</b> CSW was de-layered and <code>PVWKyber</code> retired in favor of BMM
+(<code>8c6d4d6</code>); the SoftSpoken <code>clone_lane</code> lanes and the wire-equivalence framework landed
+in the last handful of commits — read against <code>HEAD @ 481cc1d</code>, not the <code>0.3.x</code> line.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="risk">12 · Auditor risk register</h2>
+<p>This is the consolidated cross-report register — the highest-value confirmed items from all four detailed
+reports plus the overview-level cross-cutting risks. Each links to the report that develops it. Severity and
+verdict are as merged and adversarially verified.</p>
+<table class="grid">
+<tr><th>#</th><th>Sev</th><th>Verdict</th><th>Risk / design item</th><th>Where</th><th>Report</th></tr>
+<tr><td>1</td><td><span class="sev sev-high">high</span></td><td><span class="vtag v-conf">confirmed</span></td><td>No test anywhere drives an adversarial party or malformed message — every malicious chi-fold / PPRF / CSW / BMM / COPE abort path is honest-execution-only, so no check is proven to catch a cheater</td><td><code class="ref">emp-ot/common/mp_gadget.h:592-593</code>, <code>test/*</code></td><td>Overview · all</td></tr>
+<tr><td>2</td><td><span class="sev sev-high">high</span></td><td><span class="vtag v-conf">confirmed</span></td><td>The F<sub>p</sub> path never asserts <code>set_delta</code> before <code>begin()</code>, so a caller who forgets it runs the whole sVOLE with Δ=0 (default) — trivially forgeable MACs</td><td><code class="ref">emp-ot/svole/fp_vole.h:105</code>, <code class="ref">svole.h:131-136</code></td><td><a href="04-svole.html">4</a></td></tr>
+<tr><td>3</td><td><span class="sev sev-high">high</span></td><td><span class="vtag v-conf">confirmed</span></td><td><code>clone_lane</code>'s security-critical <code>lane_salt</code> (the sole domain separator between lanes sharing one Δ / PPRF leaf set) is enforced only by an NDEBUG-elidable assert, and nothing checks for duplicate salts — a zero/duplicate salt makes two lanes emit byte-identical COT streams (Δ/choice reuse), over a 16-bit salt space</td><td><code class="ref">emp-ot/ot_extension/softspoken/softspoken.cpp:103</code>, <code class="ref">softspoken.h:78,85,121</code></td><td><a href="02-ot-extension.html">2</a></td></tr>
+<tr><td>4</td><td><span class="sev sev-high">high</span></td><td><span class="vtag v-conf">confirmed</span></td><td><code>check_cot</code> / <code>check_rot</code> (test.h), which would exercise the COT chosen-input and ROT wire paths, have zero call sites in any test or bench — those code paths are entirely unverified by CI</td><td><code class="ref">test/test.h:40-82</code>, <code class="ref">emp-ot/ot.h:42-116</code></td><td><a href="02-ot-extension.html">2</a></td></tr>
+<tr><td>5</td><td><span class="sev sev-high">high</span></td><td><span class="vtag v-conf">confirmed</span></td><td><code>check_rcot_streaming</code> (the direct <code>begin/next/end</code> correctness driver) has zero call sites — the streaming contract central to the library is verified only indirectly via <code>run()</code>'s internal loop, never directly</td><td><code class="ref">test/test.h:118-128</code></td><td><a href="02-ot-extension.html">2</a></td></tr>
+<tr><td>6</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td>CSW's <code>length ≥ 80</code> precondition (the σ=40 sender-extraction bound) is enforced only by <code>assert()</code> — elided under NDEBUG, so a release caller passing <code>length&lt;80</code> silently weakens security with no abort</td><td><code class="ref">emp-ot/base_ot/csw.h:105,182</code></td><td><a href="01-base-ot.html">1</a></td></tr>
+<tr><td>7</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td>The SHAKE-128/256 surface and the <code>gen_matrix</code> rejection sampler are reimplemented on OpenSSL EVP rather than lifted from pq-crystals — the primary non-upstream code needing independent audit against FIPS 202 / the Kyber spec (the <code>kyber/</code> arithmetic stays verbatim)</td><td><code class="ref">emp-ot/base_ot/mlkem/symmetric.h:104-198</code>, <code class="ref">crs.hpp:35-92</code></td><td><a href="01-base-ot.html">1</a></td></tr>
+<tr><td>8</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td>On OpenSSL &lt;3.3 the SHAKE squeeze falls back to an O(n²) re-init/re-absorb loop; byte-identity with <code>EVP_DigestSqueeze</code> (and cross-version interop) is untested in-tree</td><td><code class="ref">emp-ot/base_ot/mlkem/symmetric.h:60-62,128-150</code></td><td><a href="01-base-ot.html">1</a></td></tr>
+<tr><td>9</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td>A single CSW instance is stateful across the core/check split (per-instance members overwritten each core call), so it is not safe for concurrent or interleaved OT batches</td><td><code class="ref">emp-ot/base_ot/csw.h:72,104,181</code></td><td><a href="01-base-ot.html">1</a></td></tr>
+<tr><td>10</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td>The <code>run()</code> vs <code>begin/next_n</code> mutual exclusion is doc-prose only — they share one <code>leftover_</code> buffer with no assert against mixing, and every chosen-input verb funnels into <code>run()</code>, so calling a classic OT method on an instance holding a long-lived session double-enters and is caught only by a debug assert</td><td><code class="ref">emp-ot/common/streaming_extension.h:163-177</code></td><td><a href="02-ot-extension.html">2</a></td></tr>
+<tr><td>11</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td>The Δ LSB-must-be-1 invariant (the whole LSB choice convention + RCOT correction depend on it) is enforced only at <code>set_delta</code> by an NDEBUG-elidable assert; F2k's <code>on_set_delta</code> likewise silently accepts an even Δ in release</td><td><code class="ref">emp-ot/ot_extension/ot_extension.h:79</code>, <code class="ref">emp-ot/svole/f2k_vole.h:93-100</code></td><td><a href="02-ot-extension.html">2</a> · <a href="04-svole.html">4</a></td></tr>
+<tr><td>12</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td>SilentFerret's <code>abs_round_</code> advances only in <code>end()</code>; a <code>begin()</code> reusing a non-advanced round repeats the LPN and cGGM-seed PRG streams — reachable silently only under NDEBUG (the double-begin assert is elided)</td><td><code class="ref">emp-ot/ot_extension/ferret/silent_ferret.cpp:87,150</code></td><td><a href="03-silent.html">3</a></td></tr>
+<tr><td>13</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td>Mixing <code>produce_range</code> with the cursor in one prepaid SilentFerret round yields duplicate COTs (<code>produce_range</code> is const and doesn't advance the cursor); documented but unenforced — the nearby assert is only a bounds check, compiled out under NDEBUG</td><td><code class="ref">emp-ot/ot_extension/ferret/silent_ferret.h:104</code>, <code class="ref">silent_ferret.cpp:235</code></td><td><a href="03-silent.html">3</a></td></tr>
+<tr><td>14</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td>SilentFerret's <code>next()</code> auto-rollover past the prepaid budget silently performs a live <code>end()+begin()</code> with wire I/O inside a draw the header markets as wire-free; if the two peers' cumulative draw counts diverge, one side blocks in the reprepay while the other never enters it — a silent distributed hang, no draw-total cross-check</td><td><code class="ref">emp-ot/ot_extension/ferret/silent_ferret.cpp:211</code></td><td><a href="03-silent.html">3</a></td></tr>
+<tr><td>15</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td><code>AuthValueFp</code> is a plain 8-byte-aligned <code>{uint64_t val; uint64_t mac;}</code> yet <code>auth_add_into</code>/<code>auth_partial_reduce</code> reinterpret it to <code>block*</code> with aligned <code>__m128i</code> semantics — formal UB that works by allocation accident and can fault under a compiler placing the stack local at an 8-mod-16 offset</td><td><code class="ref">emp-ot/svole/fp_vole.h:83-96,25-31</code></td><td><a href="04-svole.html">4</a></td></tr>
+<tr><td>16</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td>The val-first <code>AuthValue</code> storage layout is a load-bearing cross-repo ABI (downstream emp-zk reinterpret-casts <code>__uint128_t*</code> to <code>AuthValueFp*</code>) documented only in comments, with no <code>static_assert</code> on <code>sizeof</code>/<code>offsetof</code> — reordering silently corrupts downstream accessors with no compile-time guard</td><td><code class="ref">emp-ot/svole/f2k_vole.h:26-31</code>, <code class="ref">fp_vole.h:28-31</code></td><td><a href="04-svole.html">4</a></td></tr>
+<tr><td>17</td><td><span class="sev sev-med">med</span></td><td><span class="vtag v-conf">confirmed</span></td><td><code>Ferret::bootstrap_</code> moves <code>base_ot</code> into a temporary nested instance destroyed on return, leaving the cached <code>csw_base_</code> pointer dangling for the Ferret's lifetime; never dereferenced today only by the assert-only <code>set_sid</code> guard — a future code path keyed on <code>csw_base_ != nullptr</code> is a use-after-free</td><td><code class="ref">emp-ot/ot_extension/ferret/ferret.cpp:156-157</code>, <code class="ref">ot_extension.h:46,102,156</code></td><td><a href="03-silent.html">3</a></td></tr>
+<tr><td>18</td><td><span class="sev sev-low">low</span></td><td><span class="vtag v-conf">confirmed</span></td><td>Wire format is raw native-endian throughout (blocks, uint64 RO absorptions, whole-<code>F</code> sends, SHAKE index inputs) with no canonicalization — cross-endian peers silently diverge; consistent with the emp stack but unguarded at this layer</td><td><code class="ref">emp-ot/common/mp_gadget.h:654</code>, <code class="ref">base_ot/mlkem/bmm.cpp:82</code></td><td>Overview</td></tr>
+<tr><td>19</td><td><span class="sev sev-low">low</span></td><td><span class="vtag v-conf">confirmed</span></td><td><code>trace_hash</code>'s baseline omits SoftSpoken&lt;4&gt; (only <code>&lt;2&gt;</code>/<code>&lt;8&gt;</code> traced, though the bench sweeps <code>k∈{2,4,8}</code>), so a wire regression specific to the <code>k=4</code> path escapes the documented trace-hash guard</td><td><code class="ref">test/trace_hash.cpp:171-184</code>, <code class="ref">bench/bench_ot_extension.cpp:98-100</code></td><td>Overview</td></tr>
+</table>
+
+<div class="callout c-ok"><span class="lbl">Correctness baseline</span>
+<p>The honest-execution correctness of all four base OTs, both RCOT-extension families, and both sVOLE carriers
+is cross-checked (correlation invariants, LSB choice recovery, MAC relation <code>mac_B = mac_A + Δ·val</code>),
+and the wire-trace-hash baseline is pinned and re-verified byte-for-byte at HEAD (§7). The residual audit
+surface is what the register above enumerates: the entirely-unexercised adversarial abort paths (#1), the
+<code>NDEBUG</code>-elided misuse asserts that guard security-critical invariants (#3, #6, #11, #12), the
+untested chosen-input / streaming wire verbs (#4, #5), the reimplemented SHAKE/CRS surface (#7, #8), and the
+un-<code>static_assert</code>ed <code>AuthValue</code> ABI and its alignment UB (#15, #16).</p></div>
+
+</main>
+<footer>
+emp-ot implementation audit · Repository overview · four base OTs + two extension families over one streaming
+skeleton · <code>HEAD @ 481cc1d</code> (branch <code>main</code>).
+Detailed reports: <a href="01-base-ot.html">Base OT</a> ·
+<a href="02-ot-extension.html">OT extension</a> ·
+<a href="03-silent.html">Silent</a> ·
+<a href="04-svole.html">sVOLE</a>.
+Full verified claims ledger: <code>claims.md</code>.
+</footer>
+</body>
+</html>

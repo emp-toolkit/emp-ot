@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>emp-ot implementation audit</title>
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#1b2027;--muted:#5b6573;--accent:#3a4fb8;--line:#e4e8ef}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+header.site{background:#10142a;color:#fff;padding:.7rem 1.1rem;font-weight:700}
+header.site span{color:#9fb0ff}
+main{max-width:54rem;margin:0 auto;padding:2.2rem 1.2rem 5rem}
+h1{font-size:2rem;margin:.2rem 0 .3rem}
+.lead{font-size:1.08rem;color:#39414f;margin-bottom:1.4rem}
+.meta{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.9rem 1.1rem;margin:1rem 0 1.8rem;font-size:.9rem;color:var(--muted)}
+.meta b{color:var(--ink)}
+code{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:.86em;background:#eef1f7;padding:.06em .36em;border-radius:5px;color:#293150}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.2rem;transition:box-shadow .15s,transform .15s}
+.card:hover{box-shadow:0 6px 20px rgba(20,30,60,.10);transform:translateY(-2px);text-decoration:none}
+.card .num{font-size:.72rem;font-weight:700;letter-spacing:.1em;color:#7c8aa8;text-transform:uppercase}
+.card h2{font-size:1.18rem;margin:.25rem 0 .4rem;color:#1b2027}
+.card p{margin:0;color:var(--muted);font-size:.9rem}
+.note{font-size:.85rem;color:var(--muted);margin-top:1.8rem;border-top:1px solid var(--line);padding-top:1rem}
+@media (max-width:640px){.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header class="site">emp-ot <span>· implementation audit</span></header>
+<main>
+<h1>emp-ot implementation audit</h1>
+<p class="lead">A high-level overview plus four implementation-level reports for an external auditor — one per
+protocol family. emp-ot is an oblivious-transfer library layered by a strict dependency order <b>base OT → OT
+extension → silent OT / sVOLE</b>: a handful of public-key bootstrap OTs (CO / PVW / CSW over P-256, BMM over
+ML-KEM-512), the IKNP / SoftSpoken symmetric extension over a shared streaming skeleton, the Half-Tree cGGM +
+MultiPointGadget + primal-LPN silent core driving Ferret / SilentFerret, and the subfield-VOLE family over
+GF(2<sup>128</sup>) and F<sub>p</sub>. It builds on <code>emp-tool::emp-tool</code> and exposes a C++20 contract.</p>
+
+<a class="card" href="00-overview.html" style="display:block;margin-bottom:1rem;border-color:#c3ccea;background:linear-gradient(180deg,#fbfcff,#f4f6fd)">
+  <div class="num">Start here · Overview</div>
+  <h2 style="margin-bottom:.3rem">Repository overview</h2>
+  <p>What emp-ot is, the <code>base OT → OT extension → silent OT / sVOLE</code> dependency stack, the module map,
+  the streaming-extension skeleton shared across the extension families, the <code>OT</code> / <code>COT</code> /
+  <code>RandomCOT</code> interface tower, build &amp; requirements, the ecosystem position, and a
+  security-posture-at-a-glance — the on-ramp to the four detailed reports.</p>
+</a>
+
+<div class="meta">
+<b>Source:</b> <code>/Users/wangxiao/Documents/emp-ot</code> · working tree on <code>main</code> (<code>HEAD @
+481cc1d</code>) &nbsp;·&nbsp; <b>Scope:</b> the <code>emp-ot/</code> header library + its tests &amp; benchmarks
+&nbsp;·&nbsp; <b>Method:</b> full source read; every claim carries a <code>file:line</code> reference against the
+current tree; security-relevant items are flagged inline (security · footgun · auditor-scrutiny · contract)
+&nbsp;·&nbsp; <b>Verification:</b> <b>96 confirmed</b> · <b>17 refuted</b> · <b>1 unverified</b> of <b>114</b>
+adversarially-verified claims (ledger in <code>claims.md</code>).
+</div>
+
+<div class="cards">
+  <a class="card" href="01-base-ot.html">
+    <div class="num">Report 1 · base OT</div>
+    <h2>Base OTs (classic + PQ)</h2>
+    <p>CO / PVW / CSW over P-256 and BMM over ML-KEM-512: the group- and lattice-based bootstrap OTs, the CSW
+    messy-core + deferred-check split, the length-framed random oracle and point validation, and the
+    vendored-vs-reimplemented Kyber / SHAKE boundary.</p>
+  </a>
+  <a class="card" href="02-ot-extension.html">
+    <div class="num">Report 2 · OT extension</div>
+    <h2>IKNP · SoftSpoken · interfaces</h2>
+    <p>The <code>OT</code> / <code>COT</code> / <code>RandomCOT</code> tower and streaming skeleton, IKNP's KOS
+    check, SoftSpoken's subspace-VOLE butterfly and <code>clone_lane</code> COT lanes, the Δ-LSB convention, and
+    the chosen-input / streaming test-coverage gaps.</p>
+  </a>
+  <a class="card" href="03-silent.html">
+    <div class="num">Report 3 · silent</div>
+    <h2>Ferret · SilentFerret · silent core</h2>
+    <p>The Half-Tree cGGM PPRF, the <code>MultiPointGadget</code> and its App.-C chi-fold, primal-LPN
+    amplification, Ferret's self-bootstrapping rollover, and SilentFerret's prepaid wire-free reschedule (with
+    its PRG-reuse / rollover hazards).</p>
+  </a>
+  <a class="card" href="04-svole.html">
+    <div class="num">Report 4 · sVOLE</div>
+    <h2>Subfield VOLE (F2k · F<sub>p</sub>)</h2>
+    <p>The generic <code>Svole&lt;AuthValue&gt;</code>, the F2k GF(2<sup>128</sup>) and F<sub>p</sub> Mersenne
+    GF(2<sup>61</sup>−1) carriers, the COPE base sVOLE, the Δ / <code>set_delta</code> invariants, and the
+    val-first <code>AuthValue</code> ABI that downstream emp-zk reinterpret-casts.</p>
+  </a>
+</div>
+
+<p class="note">These files live under <code>audit-report/</code> in the repository working tree and are
+intentionally left <b>unstaged</b>. They are self-contained static HTML (no external assets) — open any file
+directly in a browser, or print to PDF for distribution. The full verified-claims ledger is
+<code>claims.md</code>.</p>
+</main>
+</body>
+</html>
