@@ -8,7 +8,18 @@
 // verification round-trip, and benches never silently double as tests.
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/emp-ot.h"
+#include <cstring>
 using namespace emp;
+
+// Fault in a freshly allocated output buffer before the timer starts.
+// A `new block[length]` is demand-zero mapped; without this, the kernel's
+// first-touch page faults land inside the timed protocol call and get
+// billed to the protocol (measured 0.9-4.3 ns per 16-B OT depending on
+// OS/hardware -- comparable to the whole compute budget of the cheap
+// configs). memset makes every page resident and writable up front.
+inline void pretouch_blocks(block *p, int64_t n) {
+	std::memset(p, 0, sizeof(block) * (size_t)n);
+}
 
 // The connecting party (BOB / party 2) dials emp-tool's peer_ip() ($EMP_PEER_IP,
 // default loopback); ALICE (party 1) listens and ignores it. So no bench
@@ -24,6 +35,7 @@ double time_ot(T* ot, NetIO* io, int party, int64_t length,
 	block *b0 = new block[length], *b1 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	PRG().random_bool(b, length);
+	pretouch_blocks(b0, length); pretouch_blocks(b1, length); pretouch_blocks(r, length);
 	io->sync();
 	uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 	auto start = clock_start();
@@ -44,6 +56,7 @@ double time_cot(T* ot, NetIO* io, int party, int64_t length,
 	block *b0 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	PRG().random_bool(b, length);
+	pretouch_blocks(b0, length); pretouch_blocks(r, length);
 	io->sync();
 	uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 	auto start = clock_start();
@@ -64,6 +77,7 @@ double time_rot(T* ot, NetIO* io, int party, int64_t length,
 	block *b0 = new block[length], *b1 = new block[length], *r = new block[length];
 	bool *b = new bool[length];
 	PRG().random_bool(b, length);
+	pretouch_blocks(b0, length); pretouch_blocks(b1, length); pretouch_blocks(r, length);
 	io->sync();
 	uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 	auto start = clock_start();
@@ -82,6 +96,7 @@ double time_rcot(T* ot, NetIO* io, int party, int64_t length,
                  uint64_t* bytes_sent_out = nullptr,
                  uint64_t* bytes_recv_out = nullptr) {
 	block *b = new block[length];
+	pretouch_blocks(b, length);
 	io->sync();
 	uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 	auto start = clock_start();
@@ -106,6 +121,7 @@ double time_rcot_streaming(T* ot, NetIO* io, int party, int64_t length,
 	const int64_t eff_len = n_chunks * chunk;
 	if (effective_length_out) *effective_length_out = eff_len;
 	block *b = new block[eff_len];
+	pretouch_blocks(b, eff_len);
 	io->sync();
 	uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 	auto start = clock_start();
