@@ -103,8 +103,11 @@ int main(int argc, char** argv) {
         return 1;
     }
     const int64_t length = 1LL << length_log;
-    const int begin_threads = 4;
+    // argv: <party> [length_log] [online_threads] [begin_threads].
+    // begin_threads=1 disables the begin() expansion pool — use it when
+    // comparing against the single-threaded protocols (README table).
     const int online_threads = (argc <= 3) ? 2 : std::max(1, atoi(argv[3]));
+    const int begin_threads = (argc <= 4) ? 4 : std::max(1, atoi(argv[4]));
 
     party = parse_party(argv);
     port = peer_port();

@@ -32,8 +32,8 @@ for optimal concrete security.
 
 ## Requirements
 
-- CMake ≥ 3.21
-- A C++17 compiler (Clang ≥ 12, GCC ≥ 9, AppleClang 14+)
+- CMake ≥ 3.25 (emp-tool's floor; emp-ot alone configures with ≥ 3.21)
+- A C++20 compiler (GCC ≥ 11, Clang ≥ 14, AppleClang 14+)
 - [emp-tool](https://github.com/emp-toolkit/emp-tool) ≥ 1.0
 - OpenSSL ≥ 3.0. `BMM`'s ML-KEM SHAKE shim uses `EVP_DigestSqueeze` on
   ≥ 3.3 (one-shot squeeze) and falls back to a re-init / re-absorb
@@ -74,12 +74,25 @@ cmake -S emp-ot -B emp-ot/build \
     -Demp-tool_DIR=/abs/path/to/emp-tool/build
 ```
 
+Release builds self-tune: the first top-level Release build runs a
+one-time sweep of machine-local scheduling knobs (AES tile widths, LPN
+batching — never anything protocol- or security-relevant) and compiles
+with the winners; every later build reuses the recorded result
+(`emp-ot/tuning_local.h`, gitignored, provenance-stamped) and is
+deterministic. Tuning changes neither outputs nor wire bytes (enforced
+by `test_tuning_invariance` and the trace-hash baseline below), so
+differently-tuned parties interoperate freely. `-DEMP_OT_AUTO_TUNE=OFF`
+keeps the swept cross-platform defaults; `cmake --build build --target
+tune` forces a re-sweep and `tune-clean` discards it. Design and
+methodology: [`docs/performance-tuning.md`](docs/performance-tuning.md).
+
 ### CMake options
 
 | Option | Default | Effect |
 |---|---|---|
 | `EMP_OT_BUILD_TESTS` | `ON` when top-level | Build the test suite under `test/`. |
 | `EMP_OT_INSTALL`     | `ON` when top-level | Generate install + export rules. |
+| `EMP_OT_AUTO_TUNE`   | `ON` for top-level native Release | One-time per-machine tuning sweep before the first build (see above). |
 
 ## Consuming from another CMake project
 
@@ -121,10 +134,35 @@ for the full workflow.
 $ EMP_TEST_MODE=1 ./run ./build/trace_hash | grep '^[A-Za-z(]'
 ```
 
+### Profiling the SoftSpoken pipeline (off by default)
+
+The SoftSpoken chunk pipeline has optional per-phase wall-clock timers
+(butterfly / wire / derand / transpose / combine; per role — derand
+exists only on the OT-sender side, so the receiver line reports it as
+zero). They are **disabled by default** — a normal build compiles them
+to nothing and carries no timing code. To enable, build into a separate
+tree with the flag and run any SoftSpoken driver; a ns/OT breakdown
+prints to stderr at every session end:
+
+```bash
+cmake -S . -B build-phases -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_FLAGS=-DEMP_BENCH_PHASES
+cmake --build build-phases -j
+./run ./build-phases/bench_softspoken 24
+# stderr: [phases send] ots=...  butterfly=... io=... derand=... transpose=... combine=...  (ns/OT; sum=...)
+```
+
+The instrumented build is wire-identical to the default build (pinned
+by the trace-hash baseline above); only stderr output differs. See
+`emp-ot/ot_extension/softspoken/ss_bench_phases.h`.
+
 **Current baseline** (ALICE's view; first 16 hex of each direction's
 SHA-256). A change to any of these hashes means the corresponding
 protocol's wire format changed — fine if intentional, but flag it
-clearly in the commit message and update this table.
+clearly in the commit message and update this table. (The fingerprints
+are Fiat–Shamir transcript digests under the build's FS hash; this
+table assumes the default `sha256` — a stack built with emp-tool's
+`EMP_FS_HASH=blake3` produces a different, internally consistent set.)
 
 `Ferret(b11)` and `SilentFerret(b11)` are run over a whole number of
 SilentFerret rounds, where the two are **wire-identical by design**
@@ -349,11 +387,12 @@ the interactive section of a protocol should move no OT bytes.
 
 ## Performance
 
-Two AWS `m8a.xlarge` (AMD EPYC, Zen 5, 4 vCPU each), us-east-1 same AZ,
-Ubuntu 22.04, GCC 11.4, OpenSSL 3.0.2, `-march=native`. **The two parties
-run on separate instances over the AWS private network** (~0.4 ms RTT) —
-real inter-instance TCP, not loopback. Each party therefore gets a full
-4-vCPU box, and the network is in the measured path.
+Two AWS `m8a.8xlarge` (AMD EPYC 9R45, Zen 5) in a cluster placement
+group, us-east-1, Ubuntu 22.04, GCC 11.4, OpenSSL 3.0.2,
+`-march=native`. The two parties run on separate instances over the
+AWS private network; the link measured 9.54 Gbps single-flow / 0.12 ms
+RTT (iperf3 and ping archived with the results). Default Release build
+(auto-tuned); bench output buffers are pre-faulted.
 
 ### Base OTs
 
@@ -362,47 +401,44 @@ send/recv bytes are deterministic).
 
 | Protocol     | Time   |  Send B |  Recv B | Security                                     |
 |--------------|-------:|--------:|--------:|----------------------------------------------|
-| `CO`       |  12 ms |   4,165 |   8,832 | semi-honest                                  |
-| `CSW`      | 9.6 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
+| `CO`       |  11 ms |   4,165 |   8,832 | semi-honest                                  |
+| `CSW`      | 9.3 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `PVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `BMM`      | ≈10 ms | 200,704 | 106,496 | malicious-secure, post-quantum (ML-KEM-512)  |
+| `BMM`      |  11 ms | 200,704 | 106,496 | malicious-secure, post-quantum (ML-KEM-512)  |
 
 ### OT extensions (RCOT throughput)
 
-Length 2²⁵ OTs (~33M), each party on its own instance over the private
-network, **single-threaded** (one thread per party — `SilentFerret`'s
-`begin()` expansion pool is disabled so every protocol is measured the same
-way). `MOT/s` is the median of 5 runs, the slower of the two parties per run;
-`bits/RCOT` (total wire bytes, both directions — deterministic) includes the
-one-time base-OT bootstrap amortised over the length. With a
-real network in the path the comm-heavy extensions become **bandwidth-bound**
-(so `IKNP` semi and malicious collapse to the same rate) while `Ferret`'s
-tiny footprint stays **compute-bound** — hence the wide MOT/s spread.
+Length 2²⁵ OTs (~33M), single-threaded (one thread per party;
+`SilentFerret`'s `begin()` expansion pool disabled). `MOT/s` is the
+median of 5 runs, the slower of the two parties per run; `bits/RCOT`
+(total wire bytes, both directions — deterministic) includes the
+one-time base-OT bootstrap amortised over the length. Observed: the
+`IKNP` and `SoftSpoken<2>` rows ran at 90–98% of the measured link
+rate; the remaining rows were CPU-bound and reproduce across instance
+sizes and sessions within ~1–2%. Analysis of what binds each
+configuration is in
+[`docs/performance-tuning.md`](docs/performance-tuning.md).
 
 | Protocol         | Mode      | bits/RCOT | MOT/s |
 |------------------|-----------|----------:|------:|
-| `IKNP`           | semi      |       127 |    39 |
-| `IKNP`           | malicious |       127 |    39 |
-| `SoftSpoken<2>`  | semi      |        63 |    77 |
-| `SoftSpoken<2>`  | malicious |        63 |    77 |
-| `SoftSpoken<4>`  | semi      |        31 |   153 |
-| `SoftSpoken<4>`  | malicious |        31 |   153 |
-| `SoftSpoken<8>`  | semi      |        15 |    67 |
-| `SoftSpoken<8>`  | malicious |        15 |    66 |
-| `Ferret`         | semi      |      0.27 |   111 |
-| `Ferret`         | malicious |      0.27 |   101 |
-| `SilentFerret`   | semi      |      0.34 |    88 |
-| `SilentFerret`   | malicious |      0.34 |    75 |
+| `IKNP`           | semi      |       127 |    73 |
+| `IKNP`           | malicious |       127 |    74 |
+| `SoftSpoken<2>`  | semi      |        63 |   144 |
+| `SoftSpoken<2>`  | malicious |        63 |   128 |
+| `SoftSpoken<4>`  | semi      |        31 |   185 |
+| `SoftSpoken<4>`  | malicious |        31 |   178 |
+| `SoftSpoken<8>`  | semi      |        15 |    68 |
+| `SoftSpoken<8>`  | malicious |        15 |    68 |
+| `Ferret`         | semi      |      0.27 |   115 |
+| `Ferret`         | malicious |      0.27 |   103 |
+| `SilentFerret`   | semi      |      0.34 |    90 |
+| `SilentFerret`   | malicious |      0.34 |    72 |
 
-`IKNP` and `SoftSpoken<k>` traffic is one-direction: 127 bits/RCOT
-for `IKNP`, `128/k − 1` bits/RCOT for `SoftSpoken<k>`. `Ferret`'s
-0.27 bits/RCOT at 2²⁵ is ~0.20 bits/RCOT of steady-state per-round
-MPCOT/LPN traffic plus ~0.07 bits/RCOT of one-time bootstrap; the
-bootstrap fraction shrinks linearly with bench length. `SilentFerret`
-keeps the same sub-bit footprint (0.34 bits/RCOT — a touch more on the
-receiver side, since it prepays every round's corrections up front in
-`begin()`); it trades a little throughput for moving all wire traffic
-to `begin()`, leaving `next()` completely wire-free.
+`IKNP` and `SoftSpoken<k>` traffic is one-direction (127 and
+`128/k − 1` bits/RCOT). The `Ferret` rows use the default `ferret_b13`
+parameter set; `ferret_b11` measured 121 MOT/s at 0.80 bits/RCOT on
+the same setup. `SilentFerret`'s `next()` is wire-free (all traffic in
+`begin()`).
 
 `COT`, `ROT`, `OT` flavors layer one MITCCRH pass (and, for
 chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.
