@@ -91,17 +91,29 @@ public:
         return blocks;
     }
 
+    // Tuning/test hook: fold with an explicit batch size instead of the
+    // tuning.h value. Outputs and PRG consumption are identical to
+    // compute_slice for any M2 with M2*d % 4 == 0 that divides `length`
+    // (production fold lengths are 2^tree_depth, so the tuner's
+    // candidates {16, 32, 64} qualify); a tail would consume padding
+    // randomness differently per M2. test_tuning_invariance asserts
+    // both properties.
+    template <int M2>
+    void compute_slice_as(PRG & prg, AuthValue *out, const AuthValue *pre,
+                          int64_t length) const {
+        int64_t j = 0;
+        for (; j + M2 <= length; j += M2) compute_block<M2>(prg, out, pre, j);
+        for (; j + 4 <= length; j += 4)   compute_block<4>(prg, out, pre, j);
+        for (; j < length; ++j)           compute_block<1>(prg, out, pre, j);
+    }
+
     // Process `length` consecutive output positions, drawing index
     // randomness from the caller-owned `prg`. Reentrant (no shared
     // state): callers fork a PRG per task/range for parallel slicing.
     // M-batched first (tuning::lpn_batch_m), then 4-batched, then tail.
     void compute_slice(PRG & prg, AuthValue *out, const AuthValue *pre,
                        int64_t length) const {
-        constexpr int M = tuning::lpn_batch_m;
-        int64_t j = 0;
-        for (; j + M <= length; j += M) compute_block<M>(prg, out, pre, j);
-        for (; j + 4 <= length; j += 4) compute_block<4>(prg, out, pre, j);
-        for (; j < length; ++j)         compute_block<1>(prg, out, pre, j);
+        compute_slice_as<tuning::lpn_batch_m>(prg, out, pre, length);
     }
 
     // Back-compat: fold a chunk using the instance's own advancing PRG.

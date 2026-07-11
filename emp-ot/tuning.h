@@ -6,12 +6,27 @@
 // Single source of truth for emp-ot's tunable performance parameters
 // and LPN security parameters. Every consumer (IKNP, SoftSpoken,
 // Ferret, cGGM, LpnF2, COT chosen-input wrapper) reads its knob
-// from here. Edit values in this file to retune; no #defines, all
-// `constexpr` so the compiler folds them.
+// from here.
 //
 // LPN security parameters live here too — they're not pure perf, but
 // they're the most-tuned knobs in the codebase, and keeping them next
 // to the perf knobs makes "what changes if I bump this" easier to see.
+//
+// ===== Per-machine overrides (`make tune`) =====
+//
+// LOCAL-class knobs — scheduling/layout only, output- and wire-invariant,
+// so parties may differ freely (see docs/performance-tuning.md for the
+// LOCAL / AGREEMENT / SECURITY classification) — are macro-guarded below
+// and may be overridden by a generated emp-ot/tuning_local.h. That file
+// is machine-specific, gitignored, and written by the `tune` tool with
+// provenance comments; delete it (`make tune-clean`) to return to the
+// safe swept defaults. AGREEMENT and SECURITY knobs are plain constexpr
+// with no macro guard: tuning_local.h has no channel to reach them.
+// test_tuning_invariance asserts the output-invariance of every guarded
+// knob at its extreme candidate values.
+#if __has_include("emp-ot/tuning_local.h")
+#include "emp-ot/tuning_local.h"
+#endif
 
 namespace emp {
 
@@ -48,27 +63,76 @@ namespace tuning {
 inline constexpr int64_t iknp_chunk_ots = 2048;
 
 // ===== COT chosen-input wrapper (emp-ot/ot.h) =====
-// MITCCRH tile size: this many OT outputs hashed per ParaEnc<1, N>
-// AES-NI call inside COT::send / COT::recv / send_rot / recv_rot.
-// 8 keeps round-keys + plaintexts register-resident on x86 AVX-512
-// and aarch64 NEON.
-inline constexpr int64_t cot_chosen_input_tile = 8;
+// LOCAL (tunable): MITCCRH tile size — this many OT outputs hashed per
+// ParaEnc<1, N> AES-NI call inside COT::send / COT::recv / send_rot /
+// recv_rot. 8 keeps round-keys + plaintexts register-resident on x86
+// AVX-512 and aarch64 NEON. LOCAL because MITCCRH keys derive from the
+// running gid (bucketed by ReuseShift), so the OT-index -> key map and
+// the pad byte stream are identical for every tile; only the call
+// granularity changes. test_tuning_invariance asserts this.
+#ifndef EMP_TUNE_COT_TILE
+#define EMP_TUNE_COT_TILE 8
+#endif
+inline constexpr int64_t cot_chosen_input_tile = EMP_TUNE_COT_TILE;
 
 // ===== cGGM tree expand (emp-ot/common/cggm.h) =====
-// Per-arch in-register tile for the children-from-parents step.
-// cggm.h selects which one at compile time based on EMP_HAS_*
-// (VAES-512, VAES-256, or aarch64 NEON via sse2neon).
+// LOCAL (tunable). In-register tile for the children-from-parents step.
+// Consumers read cggm_tile(); the per-arch selection AND any per-machine
+// override resolve here, invisibly to them.
 // VAES-512: 32 lands two CCRH::H tiles on the AES interleaved path (relies on
 // aes.hpp's apply_grouped emitting <=4-tile groups); a sweep on Intel Granite
 // Rapids and AMD Zen 5 picks 32 over 16 at production depths d>=12. Larger
 // tiles help Zen 5 further but regress Granite Rapids, so 32 is the cross-x86
 // optimum. aarch64 is flat across 4..64 (within noise); 4 retained.
-inline constexpr int cggm_tile_x86_vaes512 = 32;
-inline constexpr int cggm_tile_x86_vaes256 = 32;
-inline constexpr int cggm_tile_aarch64     = 4;
+#ifndef EMP_TUNE_CGGM_TILE
+#define EMP_TUNE_CGGM_TILE 0   // 0 = use the per-arch default
+#endif
+// Shipped per-arch defaults (the tuner compares candidates against this).
+constexpr int cggm_tile_arch_default() {
+#if EMP_HAS_VAES512
+    return 32;
+#elif EMP_HAS_VAES256
+    return 32;
+#else
+    return 4;
+#endif
+}
+// The knob consumers read.
+constexpr int cggm_tile() {
+    return (EMP_TUNE_CGGM_TILE > 0) ? EMP_TUNE_CGGM_TILE
+                                    : cggm_tile_arch_default();
+}
 
 // ===== SoftSpoken =====
-// Per-chunk size in 128-block units; chunk_ots = N * 128.
+// LOCAL (tunable): sfvole butterfly tile T — the j-axis (PRG counter)
+// width each fuse call keeps in registers. Larger T = more independent
+// AES streams in flight (covers aesenc latency on multi-pipe parts) but
+// a bigger basic block + register working set. Measured optima diverge
+// by vendor AND by k — hence per-machine, per-k knobs, never a default
+// change. NOTE: `make tune` auto-emits only the k=8 knob; at k<=4 the
+// e2e optimum is dominated by two-party chunk scheduling that no
+// single-process sweep can rank (verified misses in both directions),
+// so K2/K4 are manual-only — see docs/performance-tuning.md.
+// Candidates must keep T % AesLane width == 0 (8/16/32 are safe on
+// every tier).
+#ifndef EMP_TUNE_SFVOLE_TILE_K2
+#define EMP_TUNE_SFVOLE_TILE_K2 8
+#endif
+#ifndef EMP_TUNE_SFVOLE_TILE_K4
+#define EMP_TUNE_SFVOLE_TILE_K4 8
+#endif
+#ifndef EMP_TUNE_SFVOLE_TILE_K8
+#define EMP_TUNE_SFVOLE_TILE_K8 8
+#endif
+template <int k>
+constexpr int sfvole_tile() {
+    if constexpr (k <= 2)      return EMP_TUNE_SFVOLE_TILE_K2;
+    else if constexpr (k <= 4) return EMP_TUNE_SFVOLE_TILE_K4;
+    else                       return EMP_TUNE_SFVOLE_TILE_K8;
+}
+
+// AGREEMENT (not tunable): per-chunk size in 128-block units;
+// chunk_ots = N * 128.
 // Larger N = more in-register AES pipeline depth, but more L1
 // pressure on the plane buffer.
 // kChunkBlocks: per-chunk plane buffer is `128 * kChunkBlocks * 16 B`
@@ -112,12 +176,26 @@ inline constexpr PrimalLPNParameter ferret_b11 = PrimalLPNParameter(1170, 17, 11
 inline constexpr PrimalLPNParameter ferret_b10 = PrimalLPNParameter( 850, 16, 10); // N =    870,400
 
 // ===== LPN encoder (LpnF2) =====
-// XOR positions per LPN output (the "d" of LPN(n, k, d)).
+// SECURITY (not tunable): XOR positions per LPN output (the "d" of
+// LPN(n, k, d)).
 inline constexpr int lpn_d = 10;
-// LpnF2::compute_slice batch size: outputs produced per AES-PRG
-// inner batch. Larger = more in-flight kk loads pipelined, but
-// pushes kk farther from the load-queue sweet spot.
-inline constexpr int lpn_batch_m = 32;
+// LOCAL (tunable, with a divisibility contract): compute_slice batch
+// size — outputs produced per AES-PRG inner batch. Larger = more
+// in-flight kk loads pipelined, but pushes kk farther from the
+// load-queue sweet spot. Output-identical across values ONLY when the
+// batch divides every production fold length (Ferret/sVOLE lengths are
+// 2^tree_depth, so powers of two <= 2^10 are safe; the candidate set
+// {16, 32, 64} also keeps M*d divisible by 4, i.e. no per-batch
+// randomness waste). test_tuning_invariance enforces both properties.
+#ifndef EMP_TUNE_LPN_BATCH_M
+#define EMP_TUNE_LPN_BATCH_M 32
+#endif
+inline constexpr int lpn_batch_m = EMP_TUNE_LPN_BATCH_M;
+// (A gather-prefetch knob lived here briefly and was removed: under the
+// tuner's interleaved A/B it never beat the default on any of 12 swept
+// microarchitectures — the old Zen-5 "+10% recipe" decomposed into the
+// batch-size half plus sweep drift. Recoverable from git if some future
+// part disagrees; see the case study in docs/performance-tuning.md.)
 
 }  // namespace tuning
 }  // namespace emp

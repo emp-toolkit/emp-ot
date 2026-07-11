@@ -39,19 +39,14 @@
 
 namespace emp { namespace cggm {
 
-// Per-platform default tile size for batched H. At production tree
+// Tile size for batched H, resolved in tuning.h (per-arch default; leaf
+// values and K0 sums are identical for every tile). At production tree
 // depth the leaves array exceeds L1, so per-tile working-set fit
 // dominates over AES port saturation: smaller tiles when the tree
 // exceeds L1, larger tiles only when everything stays L1-resident.
 // The Tile template parameter on expand_level / build_sender /
 // eval_receiver defaults to kTile but can be overridden.
-#if EMP_HAS_VAES512
-constexpr int kTile = tuning::cggm_tile_x86_vaes512;
-#elif EMP_HAS_VAES256
-constexpr int kTile = tuning::cggm_tile_x86_vaes256;
-#else
-constexpr int kTile = tuning::cggm_tile_aarch64;
-#endif
+constexpr int kTile = tuning::cggm_tile();
 
 namespace detail {
 

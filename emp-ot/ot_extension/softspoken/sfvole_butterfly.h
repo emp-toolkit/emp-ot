@@ -54,6 +54,7 @@
 // round per stream extra, amortized over AES throughput).
 
 #include <emp-tool/emp-tool.h>
+#include "emp-ot/tuning.h"
 #include <cstdint>
 
 namespace emp { namespace softspoken {
@@ -281,8 +282,11 @@ inline void sfvole_fuse_round01_quad(block* A_round1_y,
     }
 }
 
-// Sender. T=8 is the production default. Caller-provided u_chunk[bs]
-// and v_planes_chunk[k * bs] (plane-major: v_planes_chunk[d*bs + j]).
+// Sender. T (the j-axis tile) defaults to the per-machine value from
+// tuning.h — callers just write sfvole_sender_butterfly<k>; outputs are
+// value-identical for every T (test_tuning_invariance). Caller-provided
+// u_chunk[bs] and v_planes_chunk[k * bs] (plane-major:
+// v_planes_chunk[d*bs + j]).
 //
 // Kernel selection: k=8 uses the 8-leaf oct kernel (fuses rounds
 // 0+1+2) — the win compounds with the L1 footprint reduction at
@@ -290,7 +294,7 @@ inline void sfvole_fuse_round01_quad(block* A_round1_y,
 // — the oct kernel's larger basic block + 27-vec-reg working set
 // hurts the small-Q cases (only 1 or 2 oct calls per tile, not
 // enough to amortize the µop-cache pressure).
-template <int k, int T = 8>
+template <int k, int T = emp::tuning::sfvole_tile<k>()>
 EMP_AES_TARGET_ATTR
 inline void sfvole_sender_butterfly(const block leaves[1 << k],
                                      const AES_KEY* session_K,
@@ -390,7 +394,7 @@ inline void sfvole_sender_butterfly(const block leaves[1 << k],
 // leaves[α] (= zero_block). Its bogus r_0 lands in A_round?[0]'s
 // L-chain only and propagates into u (which receiver discards), never
 // into any w_b plane.
-template <int k, int T = 8>
+template <int k, int T = emp::tuning::sfvole_tile<k>()>
 EMP_AES_TARGET_ATTR
 inline void sfvole_receiver_butterfly(int alpha,
                                        const block leaves[1 << k],

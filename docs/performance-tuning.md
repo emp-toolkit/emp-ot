@@ -67,12 +67,22 @@ Hence the revert: defaults must be safe on hardware nobody swept, and the
 recipe is parked here for the tuner to recover per-machine:
 
 ```
-# The Zen-5-winning configuration (recoverable via make tune, future):
+# The Zen-5-winning configuration (as parked at the time):
 #   lpn_batch_m = 64
 #   gather prefetch, ahead-distance 4, enabled when table > 2 MiB
 # Implementation sketch: template <bool Prefetch> split of Lpn::compute_block,
 # per-instance selection from the table size (see 0b61590's diff).
 ```
+
+**Case study closed (2026-07):** the tuner swept both halves of the recipe
+independently, interleaved, on 12 microarchitectures (Granite Rapids,
+Sapphire Rapids, Ice Lake, Skylake, Zen 3/4/5, Graviton 2/3/4, Apple M4,
+across two box sizes for Zen 5). The batch-size half is real — M=64 wins
++1–4% on five of them and is a registry knob. The prefetch half **never
+cleared the variance gate anywhere, including Zen 5**: the original +9.8%
+decomposes into the M=64 contribution plus non-interleaved sweep drift.
+The prefetch knob and its `template <bool Prefetch>` split were removed
+(recoverable from git if a future part disagrees).
 
 ## Methodology requirements for any sweep
 
@@ -90,24 +100,111 @@ defend against them:
 - **Sweep the actual production shape** (table sizes, chunk sizes), not just
   microbench defaults — bench_lpn's default args stop at L1-resident sizes.
 
-## The autotune plan (for performance-sensitive users)
+## `make tune` (implemented)
 
-Phased; defaults always remain the safe swept-conservative values.
+Defaults always remain the safe swept-conservative values; tuning is
+per-machine, once.
 
-- **Phase 0 — classify and socket.** Mark every `tuning.h` constant with its
-  class (LOCAL / AGREEMENT / SECURITY). Wrap LOCAL constants in
-  `#ifndef`-style overrides and include a generated `tuning_local.h` when
-  present (`__has_include`). No behavior change.
-- **Phase 1 — derive where a formula truly exists.** Some knobs are honest
-  functions of queryable machine facts. Note the LPN prefetch threshold is
-  NOT one of them (see above); candidates must prove the formula on at least
-  two microarchitectures before shipping.
-- **Phase 2 — `make tune` (the old-style configure).** An opt-in target that
-  sweeps the LOCAL knobs with the methodology above (interleaved, medians of
-  ≥3 rounds, variance-gated) and emits `tuning_local.h` with provenance (CPU
-  model, cache sizes, date, and the measured table baked into a comment). A
-  tuned value whose measured advantage is inside the noise band is not
-  emitted. The tuner enumerates a registry of LOCAL knobs only.
+**Release builds tune automatically.** A top-level, non-cross-compiled
+`CMAKE_BUILD_TYPE=Release` build sweeps the LOCAL knobs before compiling
+the library — the tuner links no emp-ot objects, so it builds first and
+measures on an otherwise idle machine, and the library then compiles
+with the overrides in the same invocation. The sweep runs only when no
+`tuning_local.h` exists, so every build after the first is deterministic
+and sweep-free. Debug/unspecified build types and subproject consumers
+never auto-tune; `-DEMP_OT_AUTO_TUNE=OFF` opts a Release tree out.
+
+```
+cmake --build build --target tune        # explicit re-sweep (any build type)
+cmake --build build --target tune-clean  # delete overrides; next build reverts
+                                         # (an auto-tune Release tree re-sweeps
+                                         #  on its next build; use
+                                         #  -DEMP_OT_AUTO_TUNE=OFF to stay on
+                                         #  shipped defaults permanently)
+```
+
+A build-dependency subtlety the tooling handles for you: the include of
+`tuning_local.h` sits behind `__has_include`, so compiler dependency
+files record it only once it exists — creating it does NOT make a plain
+rebuild recompile anything. The tuner therefore touches `tuning.h`
+whenever it (re)writes the file, which forces every consumer to
+recompile on the next build. (Manually deleting or hand-editing
+`tuning_local.h` in an already-built tree: `touch emp-ot/tuning.h`
+yourself, or use the `tune`/`tune-clean` targets, which handle it.)
+
+How it works:
+
+- **The socket.** tuning.h includes a generated `emp-ot/tuning_local.h`
+  when present (`__has_include`); every LOCAL knob is an `#ifndef`-guarded
+  macro default forwarded into the existing constexpr. AGREEMENT and
+  SECURITY knobs have no macro guard — the generated file has no channel
+  to reach them, so the class boundary is enforced by construction.
+- **The tuner** (`tools/tune.cpp`, target `emp-ot-tune`). Every knob is a
+  template parameter, so all candidate values are instantiated side by
+  side in one binary and selected at runtime — one build, one run, no
+  reconfigure loop. Each knob is measured at its PRODUCTION shape (chunk-
+  sized butterfly, depth-13 trees, the 8 MiB b13 LPN table), with the
+  methodology above: candidates interleaved across 5 rounds, min-of-3
+  windows per measurement, medians across rounds, and a variance gate —
+  a candidate that does not beat the shipped default by more than the
+  default's own cross-round spread (and at least 1%) is not emitted.
+- **Cache-coupled knobs are scored jointly, in context.** `cggm_tile` and
+  `lpn_batch_m` interact through the cache (every Ferret tree expansion
+  runs interleaved with LPN folds against the 8 MiB table), and isolated
+  kernel sweeps produce rankings that do not survive the full pipeline:
+  on Zen 4 the isolated cggm sweep reported tile 64 as +12.8%, while
+  exhaustive end-to-end measurement shows the shipped default tile is
+  the true optimum there. The tuner therefore measures the (tile, M)
+  cross-product on a Ferret-shaped composite — build one depth-13 tree
+  into the out slice, then LPN-fold that slice against the table, per
+  candidate pair — and emits the pair that wins the composite. The
+  composite is shaped like the default `ferret_b13` regime (depth-13
+  trees, 8 MiB table); exhaustive grids at the smaller b11/b12 regimes
+  showed no penalty resolvable above run noise. The compute-local knobs
+  (`sfvole_tile`, `cot_chosen_input_tile`) stay kernel-scored.
+- **The output.** `tuning_local.h` is gitignored and carries provenance
+  (host CPU, date, the full verdict table) so a stale file is auditable.
+  An empty override list is a *correct* outcome, not a failure: it means
+  the shipped defaults are right for this machine.
+- **The guard.** `test_tuning_invariance` runs every registry knob at its
+  extreme candidates and asserts bit-identical outputs, so a knob that
+  actually shapes the transcript can never sit in the registry unnoticed.
+
+Registry (all LOCAL): `sfvole_tile_k{2,4,8}` (butterfly j-tile; k=2 and
+k=4 are swept-but-informational-only — see the policy note below —
+and only k=8 is emission-eligible), `cggm_tile`, `lpn_batch_m` (candidates
+{16,32,64} only: they divide every production fold length and keep M·d
+word-aligned, which the invariance test enforces), and
+`cot_chosen_input_tile`.
+
+### Validation against exhaustive search
+
+The tuner's picks were checked against exhaustive per-platform e2e
+sweeps (every live knob combination rebuilt and loopback-benched: 3
+uniform-tile builds span the whole butterfly space since per-k tiles
+never co-execute, plus the full 15-cell cggm×lpn grid) on six
+microarchitectures (Zen 4/5, Granite Rapids, Graviton 2/3/4). Result:
+for SoftSpoken k=4/k=8 and Ferret — the configurations that matter in
+deployments — the tuner's pick equals the exhaustive e2e argmax or
+sits within run noise on every platform.
+
+**Known limitation, handled by policy:** the SoftSpoken butterfly tile
+at small k has a two-party scheduling component no single-process score
+can see (tile changes each party's chunk duration, which flips a
+sleep/wake rendezvous at the per-chunk recv — the same mechanism behind
+the k=4 io-stall). Kernel rankings missed the e2e optimum in BOTH
+directions: on Granite Rapids the e2e optimum at k=2 is T16 (+12%)
+while the kernel is tile-flat; on Zen 5 the kernel prefers T32 (+16%
+in isolation) while the e2e optimum is T16. The policy: **the k=2 and
+k=4 tiles are swept and reported but never auto-emitted** — only the
+k=8 tile (kernel-dominated at 32 AES/OT; verified to transfer
+faithfully) is eligible for emission. The forfeited wins are small and
+confined to fast-link niches (`SoftSpoken<2>` moves ~8 B/OT and is
+bandwidth-bound on real networks; the measured cost of not emitting is
+~5% on its malicious path at ≥9 Gbps links, zero elsewhere). Users in
+exactly that niche can A/B by hand with `bench_softspoken` and set
+`EMP_TUNE_SFVOLE_TILE_K{2,4}` in `tuning_local.h` directly (Granite
+Rapids + fast link: T16 at k=2 measured +12%).
 
 ## Sweep provenance of current defaults
 
@@ -116,6 +213,58 @@ Phased; defaults always remain the safe swept-conservative values.
 - `softspoken_chunk_blocks` (64 for k ≤ 4, 128 for k = 8): AGREEMENT class;
   swept on x86, both parties must match.
 - `lpn_batch_m = 32`, no gather prefetch: the safe cross-platform setting
-  (see the case study above). Zen-5-only users can recover ~+10% on the LPN
-  kernel with the parked recipe.
+  (see the case study above). Both halves of the old Zen-5 recipe are now
+  registry knobs (EMP_TUNE_LPN_BATCH_M, EMP_TUNE_LPN_GATHER_PREFETCH with
+  EMP_TUNE_LPN_PREFETCH_AHEAD; prefetch additionally gated per-instance on
+  the table exceeding 2 MiB). Measured `make tune` outcome on Zen 5
+  (EPYC 9R45): M=64 wins +3.8% on the LPN kernel at the production shape;
+  the prefetch half did NOT clear the variance gate there — the case
+  study's ~+10% was the combined recipe at the older sweep shape, and
+  should not be quoted as a make-tune expectation.
 - `ferret_b13/b12/b10`: SECURITY class. Do not touch for performance.
+
+## Measured performance analysis (2026-07 campaign)
+
+Context for the README's observed numbers (two m8a.8xlarge, cluster
+placement group, default auto-tuned Release builds; raw outputs and the
+iperf3/ping captures are archived with the results).
+
+**What binds each configuration.**
+
+- `IKNP` and `SoftSpoken<2>` saturate the link: 90–98% of the measured
+  9.54 Gbps single-flow rate. That rate is the AWS per-connection
+  ceiling (~10 Gbps inside a cluster placement group, ~5 Gbps outside;
+  ENA Express/SRD would lift it to ~25 Gbps but is unsupported on m8a).
+  The same pair carries 14.9 Gbps aggregate over ≥2 flows — the NIC's
+  15 Gbps baseline — which is what `clone_lane` exists to exploit.
+  Their compute limits are only visible on loopback: `SoftSpoken<2>`
+  semi runs ~2× faster there on the same silicon.
+- Malicious mode hashes every wire byte into the Fiat–Shamir transcript
+  on both sides, in-line. For `IKNP` this hides entirely under the wire
+  wait (semi ≈ malicious throughput). For `SoftSpoken<2>` it does not:
+  the malicious row sits at 84% of the link (vs semi's 95%) with only
+  ~32 extra wire bytes per session — the gap is transcript hashing on
+  the critical path. SHA-256 runs 15–17.6 Gbps on these cores, so on
+  links faster than that (multi-lane aggregate, ENA Express) the
+  transcript hash — not the wire — becomes the malicious-mode ceiling
+  for the comm-heavy protocols. (Mitigations on the roadmap: the
+  BLAKE3 transcript backend, and overlapping the absorb with the wire
+  wait.)
+- `SoftSpoken<4>/<8>`, `Ferret`, and `SilentFerret` are CPU-bound at
+  these link rates and reproduce across instance sizes and sessions
+  within ~1–2% (identical cores ⇒ identical numbers).
+
+**Wire-format facts behind the bits/RCOT column.** `Ferret`'s 0.27
+bits/RCOT at 2²⁵ decomposes into ~0.20 of steady-state per-round
+MPCOT/LPN traffic plus ~0.07 of one-time bootstrap (the bootstrap
+fraction shrinks linearly with length). `SilentFerret` has the same
+sub-bit footprint, slightly more on the receiver-inbound side, because
+it prepays every round's corrections in `begin()`. `ferret_b11` trades
+0.80 bits/RCOT for more speed on CPUs whose per-core cache cannot hold
+b13's 8 MiB LPN table (measured −41% for b13 vs b11 on Granite Rapids;
+parameter choice must be agreed by both parties).
+
+**What tuning contributed on this hardware** (same-session A/B with
+verified-applied builds): ≈+4% `SilentFerret`, ≈+1% `Ferret`, and the
+deliberately forfeited ~5% on `SoftSpoken<2>` malicious (the k=2 tile
+is policy-excluded from auto-emission; see the tile policy note above).

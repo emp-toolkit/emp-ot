@@ -20,6 +20,9 @@ function(add_test_case_with_run name)
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 endfunction()
 
+# Output-invariance of the `make tune` LOCAL knobs (single-process).
+add_test_case(test_tuning_invariance)
+
 # Per-primitive correctness drivers (assert via check_*/verify_rcot in test.h).
 add_test_case_with_run(test_base_ot)
 add_test_case_with_run(test_iknp)

@@ -22,6 +22,21 @@ include(CMakePackageConfigHelpers)
 option(EMP_OT_BUILD_TESTS "Build emp-ot tests"            ${PROJECT_IS_TOP_LEVEL})
 option(EMP_OT_INSTALL     "Generate install / export rules" ${PROJECT_IS_TOP_LEVEL})
 
+# Release builds run the per-machine tuning sweep automatically, once
+# (skipped if emp-ot/tuning_local.h already exists; see
+# docs/performance-tuning.md). Debug/unspecified build types, subproject
+# consumers, and cross-compiles never auto-tune: the sweep is a
+# measurement of THIS machine and belongs to native optimized builds.
+if(PROJECT_IS_TOP_LEVEL AND CMAKE_BUILD_TYPE STREQUAL "Release"
+   AND NOT CMAKE_CROSSCOMPILING)
+    set(_EMP_OT_AUTO_TUNE_DEFAULT ON)
+else()
+    set(_EMP_OT_AUTO_TUNE_DEFAULT OFF)
+endif()
+option(EMP_OT_AUTO_TUNE
+    "Run the LOCAL-knob tuning sweep automatically during Release builds when no tuning_local.h exists"
+    ${_EMP_OT_AUTO_TUNE_DEFAULT})
+
 # ---------------------------------------------------------------------
 # Dependencies
 # ---------------------------------------------------------------------
@@ -126,4 +141,11 @@ if(EMP_OT_BUILD_TESTS)
     include(CTest)
     add_subdirectory(test)    # correctness tests (ctest)
     add_subdirectory(bench)   # performance benchmarks (build-only)
+endif()
+
+# Tuning tool + tune/tune-clean targets (and the Release auto-tune hook,
+# EMP_OT_AUTO_TUNE). Top-level only: tuning is a property of the machine
+# that builds and runs the standalone repo, never of an embedding parent.
+if(PROJECT_IS_TOP_LEVEL)
+    add_subdirectory(tools)
 endif()
