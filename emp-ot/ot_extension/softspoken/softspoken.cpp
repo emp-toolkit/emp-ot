@@ -75,6 +75,7 @@
 //       — see emp-ot/iknp.{h,cpp}.
 
 #include "emp-ot/ot_extension/softspoken/softspoken.h"
+#include "emp-ot/ot_extension/softspoken/ss_bench_phases.h"
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -426,6 +427,7 @@ void SoftSpoken<k, kChunkBlocks>::send_begin_() {
     cur_send_session_ = session_++;
     cur_send_b0_ = 0;
     if (malicious) check_q_ = zero_block;
+    EMP_SS_PHASE_RESET(send);
 }
 
 template <int k, int kChunkBlocks>
@@ -454,6 +456,7 @@ void SoftSpoken<k, kChunkBlocks>::send_end_() {
         csw_base_->recv_check();
         base_check_pending_ = false;
     }
+    EMP_SS_PHASE_REPORT(send);
 }
 
 template <int k, int kChunkBlocks>
@@ -477,22 +480,29 @@ void SoftSpoken<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
     AES_set_encrypt_key(makeBlock((uint64_t)lane_salt_, (uint64_t)cur_send_session_), &session_K);
 
     // Compute every sub-VOLE's contribution to this chunk's w_planes.
-    for (int i = 0; i < n; ++i) {
-        block* w_i = w_planes_chunk + i * k * bs;
-        softspoken::sfvole_receiver_butterfly<k>(
-            alphas_[i], &leaves_recv_[i * Q],
-            &session_K, b0, bs, w_i);
+    {
+        EMP_SS_PHASE(send, butterfly);
+        for (int i = 0; i < n; ++i) {
+            block* w_i = w_planes_chunk + i * k * bs;
+            softspoken::sfvole_receiver_butterfly<k>(
+                alphas_[i], &leaves_recv_[i * Q],
+                &session_K, b0, bs, w_i);
+        }
     }
 
     // Pull this chunk's batched d_bufs (n-1 vectors of bs blocks).
     if (n > 1) {
         const int64_t total_d_blocks = (int64_t)(n - 1) * bs;
-        this->io->recv_block(d_bufs, total_d_blocks);
+        {
+            EMP_SS_PHASE(send, io);
+            this->io->recv_block(d_bufs, total_d_blocks);
+        }
         // d_bufs are now absorbed into the IOChannel FS transcript via
         // recv_block → recv_data; the matching send side absorbs the
         // same bytes via send_data, so the chi seed taken via
         // io->get_digest() in combine_send_chunk agrees with the
         // receiver's combine_recv_chunk.
+        EMP_SS_PHASE(send, derand);
         for (int i = 1; i < n; ++i) {
             block* w_i = w_planes_chunk + i * k * bs;
             const block* d_i = d_bufs + (i - 1) * bs;
@@ -506,22 +516,29 @@ void SoftSpoken<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
         }
     }
 
-    // LSB convention (IKNP-style construction): force sub-VOLE 0's plane
-    // 0 to zero, so after Conv bit_0 of every output block is zero.
-    // Mirrored on the receiver side by V_0[0] := u_canonical. The COT
-    // relation V ⊕ W = u_canonical · α at bit 0 (where bit_0(α_0) = 1
-    // is forced in setup_send) then holds trivially: 0 ⊕ u_canonical =
-    // u_canonical. The fold work for sub-VOLE 0 plane 0 above is wasted,
-    // kept for now to avoid splitting the sfvole API.
-    std::memset(w_planes_chunk, 0, sizeof(block) * bs);
+    {
+        EMP_SS_PHASE(send, transpose);
+        // LSB convention (IKNP-style construction): force sub-VOLE 0's plane
+        // 0 to zero, so after Conv bit_0 of every output block is zero.
+        // Mirrored on the receiver side by V_0[0] := u_canonical. The COT
+        // relation V ⊕ W = u_canonical · α at bit 0 (where bit_0(α_0) = 1
+        // is forced in setup_send) then holds trivially: 0 ⊕ u_canonical =
+        // u_canonical. The fold work for sub-VOLE 0 plane 0 above is wasted,
+        // kept for now to avoid splitting the sfvole API.
+        std::memset(w_planes_chunk, 0, sizeof(block) * bs);
 
-    // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
-    // w_planes_chunk's plane-major layout is exactly the row-major
-    // byte layout sse_trans_n128 consumes.
-    sse_trans_n128(out, w_planes_chunk, /*ncols=*/bs * 128);
+        // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
+        // w_planes_chunk's plane-major layout is exactly the row-major
+        // byte layout sse_trans_n128 consumes.
+        sse_trans_n128(out, w_planes_chunk, /*ncols=*/bs * 128);
+    }
 
-    if (malicious) combine_send_chunk(out, bs);
+    if (malicious) {
+        EMP_SS_PHASE(send, combine);
+        combine_send_chunk(out, bs);
+    }
 
+    EMP_SS_PHASE_OTS(send, bs * 128);
     cur_send_b0_ += bs;
 }
 
@@ -531,6 +548,7 @@ void SoftSpoken<k, kChunkBlocks>::recv_begin_() {
     cur_recv_session_ = session_++;
     cur_recv_b0_ = 0;
     if (malicious) check_t_ = check_x_ = zero_block;
+    EMP_SS_PHASE_RESET(recv);
 }
 
 template <int k, int kChunkBlocks>
@@ -554,6 +572,7 @@ void SoftSpoken<k, kChunkBlocks>::recv_end_() {
     // Flush any d_buf bytes still buffered in NetIO so the peer's
     // matching recv_next_ can complete.
     this->io->flush();
+    EMP_SS_PHASE_REPORT(recv);
 }
 
 template <int k, int kChunkBlocks>
@@ -582,22 +601,28 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
     AES_KEY session_K;
     AES_set_encrypt_key(makeBlock((uint64_t)lane_salt_, (uint64_t)cur_recv_session_), &session_K);
 
-    // Sub-VOLE 0 produces u_canonical (no d_buf for i=0).
+    // Sub-VOLE 0 produces u_canonical (no d_buf for i=0). The i ≥ 1 loop
+    // interleaves each butterfly with its d_buf_i = u_canonical ⊕ u_temp
+    // build; the phase timer bills both to `butterfly` (the XOR is ~5% of
+    // the loop; the standalone kernel bench separates them if needed).
     {
-        block* v_0 = v_planes_chunk + 0 * k * bs;
-        softspoken::sfvole_sender_butterfly<k>(
-            &leaves_send_[0 * Q], &session_K, b0, bs,
-            u_canonical, v_0);
-    }
+        EMP_SS_PHASE(recv, butterfly);
+        {
+            block* v_0 = v_planes_chunk + 0 * k * bs;
+            softspoken::sfvole_sender_butterfly<k>(
+                &leaves_send_[0 * Q], &session_K, b0, bs,
+                u_canonical, v_0);
+        }
 
-    // For i ≥ 1: produce u_temp and v_i, then d_buf_i = u_canonical ⊕ u_temp.
-    for (int i = 1; i < n; ++i) {
-        block* v_i = v_planes_chunk + i * k * bs;
-        softspoken::sfvole_sender_butterfly<k>(
-            &leaves_send_[i * Q], &session_K, b0, bs,
-            u_temp, v_i);
-        block* d_i = d_bufs + (i - 1) * bs;
-        xorBlocks_arr(d_i, u_canonical, u_temp, bs);
+        // For i ≥ 1: produce u_temp and v_i, then d_buf_i = u_canonical ⊕ u_temp.
+        for (int i = 1; i < n; ++i) {
+            block* v_i = v_planes_chunk + i * k * bs;
+            softspoken::sfvole_sender_butterfly<k>(
+                &leaves_send_[i * Q], &session_K, b0, bs,
+                u_temp, v_i);
+            block* d_i = d_bufs + (i - 1) * bs;
+            xorBlocks_arr(d_i, u_canonical, u_temp, bs);
+        }
     }
 
     // One batched send: (n-1) * bs blocks.
@@ -606,21 +631,29 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
         // send_block → send_data absorbs d_bufs into the IOChannel FS
         // transcript; the matching OT-sender's recv_block does the same,
         // so io->get_digest() in combine_*_chunk agrees on both sides.
+        EMP_SS_PHASE(recv, io);
         this->io->send_block(d_bufs, total_d_blocks);
     }
 
-    // LSB convention (IKNP-style construction): pin sub-VOLE 0's plane
-    // 0 to u_canonical, so after Conv bit_0(out[j]) = bit_j(u_canonical)
-    // = receiver's intrinsic choice bit. Mirrored on the sender side
-    // by W_0[0] := 0. The fold work for sub-VOLE 0 plane 0 above is
-    // wasted, kept for now to avoid splitting the sfvole API.
-    std::memcpy(v_planes_chunk, u_canonical, sizeof(block) * bs);
+    {
+        EMP_SS_PHASE(recv, transpose);
+        // LSB convention (IKNP-style construction): pin sub-VOLE 0's plane
+        // 0 to u_canonical, so after Conv bit_0(out[j]) = bit_j(u_canonical)
+        // = receiver's intrinsic choice bit. Mirrored on the sender side
+        // by W_0[0] := 0. The fold work for sub-VOLE 0 plane 0 above is
+        // wasted, kept for now to avoid splitting the sfvole API.
+        std::memcpy(v_planes_chunk, u_canonical, sizeof(block) * bs);
 
-    // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
-    sse_trans_n128(out, v_planes_chunk, /*ncols=*/bs * 128);
+        // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
+        sse_trans_n128(out, v_planes_chunk, /*ncols=*/bs * 128);
+    }
 
-    if (malicious) combine_recv_chunk(out, u_canonical, bs);
+    if (malicious) {
+        EMP_SS_PHASE(recv, combine);
+        combine_recv_chunk(out, u_canonical, bs);
+    }
 
+    EMP_SS_PHASE_OTS(recv, bs * 128);
     cur_recv_b0_ += bs;
 }
 
