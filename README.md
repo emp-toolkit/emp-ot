@@ -24,9 +24,10 @@
 
 State-of-the-art OT implementations on top of [emp-tool](https://github.com/emp-toolkit/emp-tool):
 four base OTs (`CO`, `PVW`, `CSW`, `BMM`), IKNP and
-SoftSpoken OT extensions (semi-honest + malicious), and the Ferret and
-SilentFerret silent COT extensions. All hash functions used for OT are
-instantiated with
+SoftSpoken OT extensions (semi-honest + malicious), the Ferret and
+SilentFerret silent COT extensions, and the `F2kVOLE` / `FpVOLE`
+subfield-VOLE generators built on top of Ferret. All hash functions
+used for OT are instantiated with
 [MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/main/emp-tool/crypto/mitccrh.h)
 for optimal concrete security.
 
@@ -42,9 +43,11 @@ for optimal concrete security.
   `OPENSSL_VERSION_NUMBER`.
 - pthreads
 
-emp-ot builds a small static library (`emp-ot::emp-ot`) that bundles
-the IKNP, SoftSpoken, and Ferret OT bodies; the rest of the surface
-(base OTs, headers consumed inline) lives in headers.
+emp-ot builds a small static library (`emp-ot::emp-ot`) that compiles
+the IKNP, SoftSpoken, Ferret, and SilentFerret bodies plus the
+post-quantum `BMM` base OT (with its vendored ML-KEM/Kyber sources);
+the header-only base OTs (`CO`, `PVW`, `CSW`) and the sVOLE layer are
+consumed inline.
 
 ## Build and install
 
@@ -73,6 +76,8 @@ cmake -S emp-ot -B emp-ot/build \
     -DCMAKE_BUILD_TYPE=Release \
     -Demp-tool_DIR=/abs/path/to/emp-tool/build
 ```
+
+Omitting `-DCMAKE_BUILD_TYPE` defaults to `Release`.
 
 Release builds self-tune: the first top-level Release build runs a
 one-time sweep of machine-local scheduling knobs (AES tile widths, LPN
@@ -112,11 +117,11 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-The two-party benches (`bench_iknp_rcot`, `bench_softspoken_rcot`,
-`bench_ferret_rcot`, `bench_ot_extension`, `bench_base_ot`,
-`trace_equiv`) launch ALICE/BOB on localhost via the `run` script.
-`bench_lpn` and `bench_cggm` are single-process
-benchmarks of internal kernels.
+The two-party benches (`bench_base_ot`, `bench_iknp`,
+`bench_softspoken`, `bench_ferret`, `bench_silentferret`,
+`bench_ot_extension`, `bench_f2k_vole`, `bench_fp_vole`) launch
+ALICE/BOB on localhost via the `run` script. `bench_lpn` and
+`bench_cggm` are single-process benchmarks of internal kernels.
 
 ### Wire-trace hashes
 
@@ -131,13 +136,13 @@ diff. See [`docs/wire-trace-hashes.md`](docs/wire-trace-hashes.md)
 for the full workflow.
 
 ```
-$ EMP_TEST_MODE=1 ./run ./build/trace_hash | grep '^[A-Za-z(]'
+$ EMP_TEST_MODE=1 ./run ./build/trace_hash | grep 'send='
 ```
 
 ### Profiling the SoftSpoken pipeline (off by default)
 
 The SoftSpoken chunk pipeline has optional per-phase wall-clock timers
-(butterfly / wire / derand / transpose / combine; per role — derand
+(butterfly / io / derand / transpose / combine; per role — derand
 exists only on the OT-sender side, so the receiver line reports it as
 zero). They are **disabled by default** — a normal build compiles them
 to nothing and carries no timing code. To enable, build into a separate
@@ -199,7 +204,8 @@ FpVOLE mali            send=043213ac95d7de0e recv=ca3640000ceb5e93
 using namespace emp;
 
 int party = parse_party(argv);   // argv[1]; port/IP come from $EMP_PORT / $EMP_PEER_IP
-NetIO io(party == ALICE ? nullptr : peer_ip(), peer_port());
+auto io = (party == ALICE) ? NetIO::listen(peer_port())
+                           : NetIO::connect(peer_ip(), peer_port());
 ```
 
 ### Interfaces
@@ -208,7 +214,9 @@ All OTs in emp-ot derive from a four-layer hierarchy in
 [`emp-ot/ot.h`](emp-ot/ot.h) and
 [`emp-ot/ot_extension/ot_extension.h`](emp-ot/ot_extension/ot_extension.h).
 Each layer adds methods on top of the previous one; you can always
-call a lower-level method on a higher-level object.
+call a lower-level method on a higher-level object. See
+[`docs/class-organization.md`](docs/class-organization.md) for the
+full class layout.
 
 | Interface                 | New methods                                       | Semantics added                                                                 |
 |---------------------------|---------------------------------------------------|---------------------------------------------------------------------------------|
@@ -239,7 +247,7 @@ block m0[length], m1[length];   // sender's two messages
 block mc[length];               // receiver's chosen message
 bool  c [length];               // receiver's choice bits
 
-PVW ot(&io);
+PVW ot(io.get());
 if (party == ALICE) ot.send(m0, m1, length);
 else                ot.recv(mc, c, length);    // mc[i] = m_{c[i]}
 ```
@@ -254,8 +262,8 @@ All four implement the same `OT` interface. `CO` is semi-honest;
 exposes all four flavors:
 
 ```cpp
-IKNP ote(party, &io);
-// SoftSpoken<2> ote(party, &io); Ferret ote(party, &io); ... all the same below.
+IKNP ote(party, io.get());
+// SoftSpoken<2> ote(party, io.get()); Ferret ote(party, io.get()); ... all the same below.
 block buf[length];
 
 // rcot() is single-method and role-implicit — the instance's party
@@ -289,7 +297,7 @@ outer protocol like
 own correlation), call `set_delta` before the first `rcot()` call:
 
 ```cpp
-IKNP ote(party, &io);
+IKNP ote(party, io.get());
 if (party == ALICE) {
     bool delta_bool[128]; /* fill from outer protocol; delta_bool[0] = true */
     ote.set_delta(delta_bool);
@@ -306,13 +314,13 @@ a malicious-secure base — `IKNP` / `SoftSpoken` / `Ferret` check
 this at construction time and abort otherwise.
 
 ```cpp
-IKNP            ote1(party, &io, /*malicious=*/true,
-                     std::make_unique<CSW>(&io));
-SoftSpoken<4>   ote2(party, &io, /*malicious=*/true,
-                     std::make_unique<CSW>(&io));      // k=4
-Ferret          ote3(party, &io, /*malicious=*/true,
-                     ferret_b13,
-                     std::make_unique<CSW>(&io));
+IKNP            ote1(party, io.get(), /*malicious=*/true,
+                     std::make_unique<CSW>(io.get()));
+SoftSpoken<4>   ote2(party, io.get(), /*malicious=*/true,
+                     std::make_unique<CSW>(io.get()));      // k=4
+Ferret          ote3(party, io.get(), /*malicious=*/true,
+                     tuning::ferret_b13,
+                     std::make_unique<CSW>(io.get()));
 ```
 
 ### Streaming RCOT
@@ -356,6 +364,9 @@ COT draw is ~20× faster this way than calling `rcot(_, 1)` in a loop.
 `next_n` is mutually exclusive with `run()`/`rcot()` on the same
 instance (both touch the same leftover buffer).
 
+See [`docs/streaming-api.md`](docs/streaming-api.md) for the full
+lifecycle contract.
+
 ### SilentFerret
 
 `SilentFerret` is a drop-in `Ferret` subclass that **front-loads** all of
@@ -371,7 +382,7 @@ Prepay a known number of COTs up front, then draw them with no communication
 during the online phase:
 
 ```cpp
-SilentFerret ote(party, &io, /*malicious=*/true);  // default param; n_threads = 1
+SilentFerret ote(party, io.get(), /*malicious=*/true);  // default param; n_threads = 1
 ote.begin(n_ots);                  // ALL correction traffic + checks happen here
 BlockVec buf(ote.chunk_size());
 for (int i = 0; i < n_chunks; ++i)
@@ -390,7 +401,7 @@ the interactive section of a protocol should move no OT bytes.
 Two AWS `m8a.8xlarge` (AMD EPYC 9R45, Zen 5) in a cluster placement
 group, us-east-1, Ubuntu 22.04, GCC 11.4, OpenSSL 3.0.2,
 `-march=native`. The two parties run on separate instances over the
-AWS private network; the link measured 9.54 Gbps single-flow / 0.12 ms
+AWS private network; the link measured 9.54 Gbps single-flow / 0.15 ms
 RTT (iperf3 and ping archived with the results). Default Release build
 (auto-tuned); bench output buffers are pre-faulted.
 
@@ -424,21 +435,23 @@ configuration is in
 | `IKNP`           | semi      |       127 |    73 |
 | `IKNP`           | malicious |       127 |    74 |
 | `SoftSpoken<2>`  | semi      |        63 |   144 |
-| `SoftSpoken<2>`  | malicious |        63 |   128 |
-| `SoftSpoken<4>`  | semi      |        31 |   185 |
-| `SoftSpoken<4>`  | malicious |        31 |   178 |
-| `SoftSpoken<8>`  | semi      |        15 |    68 |
+| `SoftSpoken<2>`  | malicious |        63 |   131 |
+| `SoftSpoken<4>`  | semi      |        31 |   187 |
+| `SoftSpoken<4>`  | malicious |        31 |   181 |
+| `SoftSpoken<8>`  | semi      |        15 |    69 |
 | `SoftSpoken<8>`  | malicious |        15 |    68 |
-| `Ferret`         | semi      |      0.27 |   115 |
-| `Ferret`         | malicious |      0.27 |   103 |
-| `SilentFerret`   | semi      |      0.34 |    90 |
-| `SilentFerret`   | malicious |      0.34 |    72 |
+| `Ferret`         | semi      |      0.28 |   115 |
+| `Ferret`         | malicious |      0.28 |   104 |
+| `SilentFerret`   | semi      |      0.28 |    94 |
+| `SilentFerret`   | malicious |      0.28 |    80 |
 
 `IKNP` and `SoftSpoken<k>` traffic is one-direction (127 and
-`128/k − 1` bits/RCOT). The `Ferret` rows use the default `ferret_b13`
-parameter set; `ferret_b11` measured 121 MOT/s at 0.80 bits/RCOT on
-the same setup. `SilentFerret`'s `next()` is wire-free (all traffic in
-`begin()`).
+`128/k − 1` bits/RCOT). The `Ferret` and `SilentFerret` rows use the
+default `ferret_b13` parameter set and are measured over a whole number
+of `SilentFerret` rounds, so the two send byte-identical traffic and
+their `bits/RCOT` match exactly (pinned by the wire-trace table above);
+`ferret_b11` measured 124 MOT/s at 0.81 bits/RCOT on the same setup.
+`SilentFerret`'s `next()` is wire-free (all traffic in `begin()`).
 
 `COT`, `ROT`, `OT` flavors layer one MITCCRH pass (and, for
 chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.

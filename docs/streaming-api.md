@@ -217,10 +217,11 @@ The dispatch tree inside `OTExtension`:
          │     happens inside the per-tree private helpers).
 ```
 
-## Auto-rollover inside do_next
+## Auto-rollover inside next
 
-`StreamingExtension::next` does no rollover — it just asserts the
-session is active and calls `do_next(out)`. The protocol-specific
+The base declares `next()` as a pure virtual and does no rollover;
+the subclass's `next()` override asserts the session
+(`assert_in_session_()`) and implements the rollover. The protocol-specific
 auto-rollover (calling end+begin transparently when the round's
 user-visible budget is full) lives inside the subclass's `next`:
 
@@ -258,22 +259,25 @@ so each `next()` is just one chunk and `end()` is explicit.
 
 ## Fiat-Shamir hooks
 
-`IOChannel` (in emp-tool) carries two optional SHA-256 transcripts —
-`fs_send_` and `fs_recv_` — that absorb every byte sent / received
+`IOChannel` (in emp-tool) carries two optional per-direction
+transcripts — a running send and recv digest held in a single `fs_`
+variant, SHA-256 by default (the hash backend is selected at
+`enable_fs` time) — that absorb every byte sent / received
 once `enable_fs(send_first)` is called. Both must be called by
 exactly one party with `send_first=true` (the other passes false).
 
 Streaming extensions use FS in two ways:
 
-1. **Per-protocol chi seeds.** Inside a malicious-mode `do_next` /
-   `do_end`, the gadget snapshots `io->get_digest()` to derive
+1. **Per-protocol chi seeds.** Inside a malicious-mode `next` /
+   `end`, the gadget snapshots `io->get_digest()` to derive
    chi vectors. The digest is computed deterministically from the
    wire bytes both parties have observed, so both parties get the
    same chi vector without an extra round of communication.
 
 2. **Diagnostic per-direction digests.** `io->get_send_digest()`
-   and `io->get_recv_digest()` return the running SHA-256 of each
-   direction's transcript. The `trace_hash` test uses these to
+   and `io->get_recv_digest()` return the running digest (SHA-256 by
+   default) of each direction's transcript. The `trace_hash` test uses
+   these to
    verify wire-byte equivalence across refactors. See
    [`wire-trace-hashes.md`](wire-trace-hashes.md).
 

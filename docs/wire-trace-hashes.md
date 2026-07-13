@@ -37,8 +37,9 @@ EMP_TEST_MODE=1 ./run ./build/trace_hash | grep '^[A-Za-z(]' > /tmp/after.txt
 diff /tmp/before.txt /tmp/after.txt
 ```
 
-`EMP_TEST_MODE=1` swaps every randomness source for a counter-derived
-stream (see [`emp-tool/docs/test_mode.md`](https://github.com/emp-toolkit/emp-tool/blob/main/docs/test_mode.md));
+`EMP_TEST_MODE=1` swaps every randomness source for a
+`(lane, ordinal)`-seeded deterministic stream (see
+[`emp-tool/docs/test_mode.md`](https://github.com/emp-toolkit/emp-tool/blob/main/docs/test_mode.md));
 without it, the hashes are non-deterministic and the diff is useless.
 
 Empty diff → wire-byte equivalent. Any change → see below.
@@ -54,7 +55,12 @@ CO                   send=d698630b93938c23 recv=d9c1fafc2be169a6
 
 The hashes are taken from ALICE's perspective. ALICE's
 `send` digest = BOB's `recv` digest (they observe the same wire
-bytes from opposite ends), so a single party's view is enough.
+bytes from opposite ends), so a single party's view covers both
+directions. One caveat: only the ALICE-send direction is captured
+sender-side. The reverse direction rides on ALICE's `recv` digest,
+which hashes only the bytes ALICE actually consumed — so trailing
+bytes BOB sends but ALICE never reads slip past this row (see "What
+the test does NOT catch" below).
 
 A non-empty diff means at least one of the listed protocols sends
 different bytes than before. The shape of the diff tells you the
@@ -112,13 +118,18 @@ A hash change is not automatically bad. There are three categories:
   every run differs — the test mode is the only thing that makes
   hashes reproducible.
 - **Per-OS / per-arch differences.** PRG seeding under `EMP_TEST_MODE`
-  is platform-independent (counter-derived), but if a protocol picks
+  is platform-independent (`(lane, ordinal)`-seeded), but if a protocol picks
   up entropy from elsewhere (e.g. OpenSSL nondeterministic ECDH
   blinding when not pinned), hashes will differ between machines.
   Pin the baseline by running on the same host that produced it.
 - **Receiver-side abort paths.** A hash captures bytes that crossed
   the wire successfully. If a malicious check fires and the receiver
   errors out, the hash captures everything up to the abort point.
+- **Trailing bytes on the receiver-inbound direction.** The BOB→ALICE
+  direction is hashed via ALICE's `recv` digest, which sees only the
+  bytes ALICE consumed; bytes BOB sends that ALICE never reads don't
+  change it. `trace_equiv.cpp` diffs each direction at its *sender*
+  (both parties' `.send` files), so it does catch these.
 
 ## Extending the test
 

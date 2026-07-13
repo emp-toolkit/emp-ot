@@ -41,7 +41,7 @@ option(EMP_OT_AUTO_TUNE
 # Dependencies
 # ---------------------------------------------------------------------
 # Local-dev tip: point at a sibling emp-tool build tree with
-#   -Demp-tool_DIR=/path/to/emp-tool/build/release
+#   -Demp-tool_DIR=/path/to/emp-tool/build
 # or with -DCMAKE_PREFIX_PATH=/path/to/emp-tool/install.
 find_package(emp-tool 1.0 REQUIRED)
 

@@ -30,7 +30,7 @@ emp-ot/
 │   ├── ot_extension.h           OTExtension base
 │   ├── iknp.{h,cpp}             IKNP
 │   ├── softspoken/              SoftSpoken<k, kChunkBlocks>
-│   └── ferret/                  Ferret (+ AuthValueFerret carrier)
+│   └── ferret/                  Ferret + SilentFerret (+ AuthValueFerret carrier)
 │
 └── svole/                 sVOLE
     ├── svole.h                  Svole<AuthValue> + svole_n / svole_M
@@ -102,6 +102,8 @@ OTExtension : public RandomCOT, public StreamingExtension<block>
     ├── SoftSpoken<k, kChunkBlocks>  (same shape as IKNP)
     └── Ferret                  (unified body per stage; party-dispatch
                                  inside the per-tree helpers)
+        └── SilentFerret        (public subclass of Ferret; prepays
+                                 each round's corrections in begin())
 ```
 
 **Subclass choice — inline party-dispatch vs unified body.** IKNP and
@@ -135,8 +137,9 @@ Svole<AuthValue> : public StreamingExtension<AuthValue>
                                                                                 resolve_delta = 0 (user must set)
 ```
 
-`F2kVOLE` and `FpVOLE` are `using` aliases over `Svole<AuthValueF2k>`
-and `Svole<AuthValueFp>` respectively.
+`F2kVOLE` and `FpVOLE` are template aliases defaulting to
+`Svole<AuthValueF2k>` and `Svole<AuthValueFp>` respectively (each takes
+a carrier parameter, so callers write `F2kVOLE<>` / `FpVOLE<>`).
 
 ## The carrier (AuthValueXxx) is the protocol description
 
@@ -253,12 +256,12 @@ templating on AuthValue — it just writes `block` leaves. Used by
       ├── drain leftover
       └── begin → loop next → end
                               │
-   Svole::do_begin / do_next / do_end                       (svole/svole.h)
-      ├── do_begin:  bootstrap_ (lazy)
+   Svole::begin / next / end                                (svole/svole.h)
+      ├── begin:     bootstrap_ (lazy)
       │              swap carry_curr_/_next_
       │              inner_run_begin_ (pull base COTs from base_ferret_,
       │                                set Δ on gadget_send_)
-      ├── do_next:   process_one_tree_(out)
+      ├── next:      process_one_tree_(out)
       │                │
       │                ├── gadget_send_->run_next_tree       (common/mp_gadget.h)
       │                │       cGGM build, ship c[]+secret_sum, accumulate VW
@@ -266,7 +269,7 @@ templating on AuthValue — it just writes `block` leaves. Used by
       │                └── lpn_->compute_slice               (common/lpn.h)
       │                       fold LPN secret from carry_curr_ into dst
       │
-      └── do_end:    run_refill_ (refill trees write into carry_next_)
+      └── end:       run_refill_ (refill trees write into carry_next_)
                      inner_run_end_ (chi-fold check via gadget_send_->run_end_typed)
 ```
 

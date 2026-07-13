@@ -313,7 +313,7 @@ Most new RCOT constructions decompose into "build a puncturable PRF
 
 A new RCOT that fits the multi-point-then-LPN shape looks structurally
 just like Ferret — see `emp-ot/ot_extension/ferret/ferret.cpp` for the
-do_begin/do_next/do_end pattern with five private helpers.
+begin/next/end pattern with five protected helpers.
 
 ---
 
@@ -415,14 +415,16 @@ compare against.
 ### 5c. Write a correctness test
 
 If your protocol is an OT extension, follow the shape of
-`test/test_choice_seed.cpp` or `test/bench_ferret_rcot.cpp` —
+`test/test_choice_seed.cpp` or `test/test_ferret.cpp` —
 exercise sender + receiver, verify the COT correlation (`K = m ⊕ b·Δ`).
 
 For a sVOLE carrier, follow `test/test_f2k_vole.cpp` or
 `test/test_fp_vole.cpp` — exercise the streaming path and the
 one-shot path, then run the authenticated-triple check (`K = mac + Δ·val`).
 
-Both shapes have a `verify_*` helper in `test/test.h`.
+RCOT uses `verify_rcot` in `test/test.h`; the sVOLE shape uses a
+per-file `check_triple` helper (see `test/test_f2k_vole.cpp` /
+`test/test_fp_vole.cpp`).
 
 ### 5d. Register the test in CMake
 

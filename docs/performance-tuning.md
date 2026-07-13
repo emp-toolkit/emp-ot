@@ -213,10 +213,11 @@ Rapids + fast link: T16 at k=2 measured +12%).
 - `softspoken_chunk_blocks` (64 for k ≤ 4, 128 for k = 8): AGREEMENT class;
   swept on x86, both parties must match.
 - `lpn_batch_m = 32`, no gather prefetch: the safe cross-platform setting
-  (see the case study above). Both halves of the old Zen-5 recipe are now
-  registry knobs (EMP_TUNE_LPN_BATCH_M, EMP_TUNE_LPN_GATHER_PREFETCH with
-  EMP_TUNE_LPN_PREFETCH_AHEAD; prefetch additionally gated per-instance on
-  the table exceeding 2 MiB). Measured `make tune` outcome on Zen 5
+  (see the case study above). `lpn_batch_m` is now a registry knob
+  (EMP_TUNE_LPN_BATCH_M); the gather-prefetch half of the old Zen-5
+  recipe was removed (it never cleared the variance gate on any swept
+  machine — see the case study) and is not a knob. Measured `make tune`
+  outcome on Zen 5
   (EPYC 9R45): M=64 wins +3.8% on the LPN kernel at the production shape;
   the prefetch half did NOT clear the variance gate there — the case
   study's ~+10% was the combined recipe at the older sweep shape, and
