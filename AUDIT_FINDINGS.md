@@ -1,7 +1,7 @@
 # emp-ot — audit findings
 
 Distilled from the implementation audit in [`audit-report/`](audit-report/)
-(HEAD `481cc1d`). Full ledger with per-claim evidence:
+(audit basis `481cc1d`, re-verified at HEAD `da3ca9a`). Full ledger with per-claim evidence:
 [`audit-report/claims.md`](audit-report/claims.md). Method: 7 subsystem
 deep-readers + 3 design critics, 114 claims adversarially verified (96
 confirmed / 17 refuted / 1 unverified), every security-class claim checked
@@ -30,7 +30,7 @@ source lives under the inner `emp-ot/emp-ot/…` tree, tests at `test/`.
 ## HIGH severity
 
 ### H1 · `clone_lane` salt is the only lane domain separator, assert-only
-`emp-ot/ot_extension/softspoken/softspoken.cpp:103,477`; `softspoken.h:78,85,121`
+`emp-ot/ot_extension/softspoken/softspoken.cpp:104,480`; `softspoken.h:78,85,121`
 
 `lane_salt` (nonzero, distinct per lane) is the sole separator between
 concurrent lanes sharing one Δ and one PPRF leaf set. It is asserted nonzero
@@ -145,6 +145,38 @@ verified only indirectly (via `run()`'s internal loop), never directly.
   `__uint128_t*` → `AuthValueFp*` (`ostriple.h:59`) on every draw, with no
   `static_assert` on `sizeof`/`offsetof` to back it; reordering silently
   corrupts downstream. `svole/f2k_vole.h:26-31`; `fp_vole.h:28-31`
+
+### Build / tuning (added in the `da3ca9a` refresh)
+These two are reproducibility/build-hygiene, not wire security: the only
+overridable knobs are LOCAL-class and `test/test_tuning_invariance.cpp`
+asserts bit-identical output across their extreme values, and the
+AGREEMENT/SECURITY constants have no macro channel (`tuning.h:20-25`).
+- **M20 · A default Release build writes a machine-generated `tuning_local.h`
+  into the source tree** — `EMP_OT_AUTO_TUNE` defaults ON for a top-level,
+  non-cross `Release` configure, and the `tune-auto` `ALL` target
+  (`add_dependencies(emp-ot tune-auto)`) runs the sweep *before* the library
+  compiles, emitting `emp-ot/tuning_local.h` into the checked-out source dir
+  (and `utime`-touching the tracked `tuning.h` to force the recompile). The
+  default optimized build therefore mutates the working tree and bakes
+  per-machine knob values into the binary — the shipped artifact is no longer
+  a pure function of the commit — and the file is `.gitignore`d, hiding the
+  mutation from `git status`. Opt out durably with `-DEMP_OT_AUTO_TUNE=OFF`;
+  `make tune-clean` only reverts to swept defaults, and a later default
+  Release build re-tunes. `CMakeLists.txt:30-38`; `tools/CMakeLists.txt:43-53`;
+  `tools/tune.cpp:411-444`; `.gitignore:59`
+- **M21 · `tuning.h` is not a pure function of the commit — an ODR-adjacent
+  axis** — each LOCAL knob is an `EMP_TUNE_*` `#ifndef`/`#define` socket filled
+  by the shipped default or by a `__has_include("emp-ot/tuning_local.h")`
+  override whose *presence* differs per checkout, so two builds of the same
+  commit can bake different `inline constexpr` values (`cot_chosen_input_tile`,
+  `cggm_tile()`, `sfvole_tile<k>()`, `lpn_batch_m`) into these header-inline
+  symbols. Within one link all TUs agree, so there is no in-build violation;
+  but a prebuilt `libemp-ot` from a tuned checkout linked against a consumer
+  that includes `tuning.h` with no `tuning_local.h` present gives the two
+  sides disagreeing definitions of the same inline symbols — a latent
+  one-definition hazard across the header boundary. A `static_assert` pin, or
+  a documented "regenerate-or-absent consistently across a lib+consumer pair"
+  rule, would close it. `emp-ot/tuning.h:27-29,73-76,87-104,118-131,190-193`
 
 ---
 

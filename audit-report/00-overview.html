@@ -116,7 +116,7 @@ malicious security lives in the concrete consistency checks documented in the fo
 <div class="meta">
 <table>
 <tr><td>Report</td><td>High-level overview — the on-ramp to the four detailed sub-reports below</td></tr>
-<tr><td>Source tree</td><td><code>emp-ot</code> · <code>HEAD @ 481cc1d</code> (branch <code>main</code>, the 1.0 development line)</td></tr>
+<tr><td>Source tree</td><td><code>emp-ot</code> · <code>HEAD @ da3ca9a</code> (branch <code>main</code>, the 1.0 development line)</td></tr>
 <tr><td>License</td><td>see repo <code>LICENSE</code>; vendored pq-crystals Kyber under its own dual CC0-1.0 / Apache-2.0 terms</td></tr>
 <tr><td>Versioning</td><td><b>Stable:</b> tag <code>0.3.0</code> / branch <code>v0.3.x</code> (backported fixes). <b>This tree:</b> pre-alpha — CMake reads <code>1.0.0</code> but the API is <b>not frozen</b> (headers/names may still move between alphas). Requires <code>emp-tool ≥ 1.0</code>.</td></tr>
 <tr><td>Namespace</td><td><code>emp</code> (single namespace; every public class lives here)</td></tr>
@@ -130,7 +130,7 @@ malicious security lives in the concrete consistency checks documented in the fo
   <div class="stat"><div class="n">2</div><div class="l">extension families (RCOT · sVOLE)</div></div>
   <div class="stat"><div class="n">4</div><div class="l">base OTs</div></div>
   <div class="stat"><div class="n">6</div><div class="l">extension protocols (4 RCOT + 2 sVOLE)</div></div>
-  <div class="stat"><div class="n">11</div><div class="l">test binaries (+2 trace harnesses)</div></div>
+  <div class="stat"><div class="n">12</div><div class="l">ctest binaries (11 loopback + 1 invariance)</div></div>
   <div class="stat"><div class="n">5</div><div class="l">design docs</div></div>
   <div class="stat"><div class="n">18</div><div class="l">wire-trace baseline rows</div></div>
 </div>
@@ -294,29 +294,51 @@ its outputs to seed the rest.</p>
 <table class="grid">
 <tr><th>Option</th><th>Default</th><th>Effect</th></tr>
 <tr><td><code>CMAKE_BUILD_TYPE</code></td><td>Release (forced if unset)</td><td>Release = <code>-O3 -DNDEBUG -funroll-loops</code>; note that <code>NDEBUG</code> elides the assert-based misuse guards discussed throughout</td></tr>
-<tr><td><code>EMP_OT_BUILD_TESTS</code></td><td><code>PROJECT_IS_TOP_LEVEL</code></td><td>builds the 11 test binaries + 2 trace harnesses and registers ctest (loopback via the <code>run</code> script)</td></tr>
+<tr><td><code>EMP_OT_BUILD_TESTS</code></td><td><code>PROJECT_IS_TOP_LEVEL</code></td><td>builds the 12 ctest binaries (11 two-party loopback drivers via the <code>run</code> script + the single-process tuning-invariance check) and registers ctest</td></tr>
 <tr><td><code>EMP_OT_INSTALL</code></td><td><code>PROJECT_IS_TOP_LEVEL</code></td><td>install / export rules; headers to <code>${INCLUDEDIR}/emp-ot/</code></td></tr>
+<tr><td><code>EMP_OT_AUTO_TUNE</code></td><td>ON for top-level native Release; else OFF</td><td>when on, a top-level Release build runs a one-time per-machine sweep of the four LOCAL tuning knobs before the library compiles, writing the git-ignored <code>emp-ot/tuning_local.h</code> into the source tree; skipped if that file already exists, and never for Debug / sub-project / cross builds. <code>make tune</code> / <code>make tune-clean</code> drive it explicitly</td></tr>
 <tr><td><code>KYBER_K</code> (internal)</td><td><code>2</code></td><td>set per-source on the Kyber <code>.c</code> files only (namespace <code>pqcrystals_kyber512_ref_*</code>), scoped so ML-KEM-512 parameters don't leak into the C++ TUs</td></tr>
 </table>
+<div class="callout c-note"><span class="lbl">Release builds self-tune once per machine</span>
+<p>A top-level native Release build runs <code>tune-auto</code> before the library: a header-only sweep binary
+(it links no emp-ot objects, so it builds and runs before <code>libemp-ot</code> compiles) measures this machine
+and emits the git-ignored <code>emp-ot/tuning_local.h</code> into the source tree, which <code>tuning.h</code>
+then picks up through <code>__has_include</code> (<code>tuning.h:27-29</code>). It runs <b>once</b> — a present
+<code>tuning_local.h</code> (even an empty one) turns the sweep into a fast no-op, so repeat builds stay
+deterministic. The sweep only ever touches the <b>four LOCAL knobs</b> (SoftSpoken sfvole tile, cGGM expand
+tile, LPN batch size, COT MITCCRH tile); the AGREEMENT- and SECURITY-class constants are plain
+<code>constexpr</code> with no macro-override channel, so <code>tuning_local.h</code> cannot reach them, and
+<code>test_tuning_invariance</code> mechanically asserts the LOCAL knobs never change protocol output at their
+extreme candidate values. <code>make tune</code> re-measures on demand; <code>make tune-clean</code> reverts to
+the shipped defaults.</p></div>
 <div class="callout c-note"><span class="lbl">Benchmarks build separately; networked mode is env-driven</span>
 <p>The <code>bench/</code> tree (10 <code>bench_*</code> binaries) is build-only, not ctest-registered. Both tests
 and benches run two local parties over <code>127.0.0.1</code> by default; a networked run is selected purely by
 environment (<code>EMP_PEER_IP</code> — ALICE listens, BOB connects — and <code>EMP_PORT</code>, default 12345),
-with no hardcoded IP.</p></div>
+with no hardcoded IP.</p>
+<p>So the reported throughput isolates protocol compute: each bench driver pre-touches (<code>memset</code>) its
+freshly allocated output buffers before starting the timer, keeping first-touch page-fault cost out of the timed
+region (on the cheap configs that fault cost is comparable to the whole compute budget). A SoftSpoken build with
+<code>-DEMP_BENCH_PHASES</code> additionally emits a per-phase ns/OT breakdown (butterfly / wire / derand /
+transpose / combine, per role) to stderr at each session <code>end()</code> — off by default, compiling to
+nothing otherwise.</p></div>
 
 <!-- ===================================================================== -->
 <h2 id="docs">7 · Docs &amp; tests</h2>
 <p><b>Five design docs</b> under <code>docs/</code> are the best companion to this audit:</p>
 <table class="grid">
 <tr><td><code>class-organization.md</code></td><td>the interface tower + family layout</td><td><code>streaming-api.md</code></td><td>the <code>begin/next/end</code> + <code>run</code>/<code>next_n</code> lifecycle</td></tr>
-<tr><td><code>adding-a-protocol.md</code></td><td>the <code>AuthValue</code> carrier contract (val-first ABI)</td><td><code>performance-tuning.md</code></td><td>LPN parameter classes, sweep case study, autotune plan</td></tr>
+<tr><td><code>adding-a-protocol.md</code></td><td>the <code>AuthValue</code> carrier contract (val-first ABI)</td><td><code>performance-tuning.md</code></td><td>LPN parameter classes, sweep case study, the shipped <code>make tune</code> autotune</td></tr>
 <tr><td><code>wire-trace-hashes.md</code></td><td>the regression discipline (see below)</td><td></td><td></td></tr>
 </table>
-<p>The <code>test/</code> directory holds <b>11 test binaries</b> (one per protocol/primitive:
-<code>test_base_ot</code>, <code>test_iknp</code>, <code>test_softspoken</code>, <code>test_softspoken_lanes</code>,
+<p>The <code>test/</code> directory registers <b>12 ctest entries</b>: nine per-primitive protocol drivers
+(<code>test_base_ot</code>, <code>test_iknp</code>, <code>test_softspoken</code>, <code>test_softspoken_lanes</code>,
 <code>test_ferret</code>, <code>test_silentferret</code>, <code>test_f2k_vole</code>, <code>test_fp_vole</code>,
-<code>test_choice_seed</code>) plus two order-independent wire harnesses (<code>trace_equiv</code>,
-<code>trace_hash</code>). <b>10 throughput benchmarks</b> build on demand.</p>
+<code>test_choice_seed</code>) and two order-independent wire harnesses (<code>trace_equiv</code>,
+<code>trace_hash</code>) — those eleven all two-party loopback via the <code>run</code> script — plus one
+single-process output-invariance check (<code>test_tuning_invariance</code>, no <code>run</code>/no NetIO) that
+asserts the <code>make tune</code> LOCAL knobs never change protocol output. <b>10 throughput benchmarks</b>
+build on demand.</p>
 <div class="callout c-note"><span class="lbl">The wire-trace-hash discipline — a regression guard, not a security property</span>
 <p><code>trace_hash.cpp</code> pins the observed wire bytes of each protocol as a Fiat–Shamir transcript digest
 (first 16 hex of each direction's SHA-256, ALICE's view). The 18-row baseline table in <code>README.md</code>
@@ -325,7 +347,8 @@ but flag it in the commit</em>. Ferret(b11) and SilentFerret(b11) rows are <b>wi
 (SilentFerret changes only <em>when</em> correction traffic is sent) and must stay equal. This pass
 independently re-ran <code>EMP_TEST_MODE=1 ./run ./build/trace_hash</code> against a clean HEAD in Release: all
 18 rows matched the README baseline current at that HEAD byte-for-byte — no drift. (The baseline has since been
-regenerated: emp-tool reworked its test-mode seed derivation, which changes every test-mode digest.) Two caveats an auditor should note: the table is
+regenerated: emp-tool reworked its test-mode seed derivation to a per-<code>(lane, ordinal)</code> scheme, which
+changes every test-mode digest.) Two caveats an auditor should note: the table is
 <b>Release-only</b> (the RCOT length is <code>(1&lt;&lt;22)+101</code> under NDEBUG vs <code>(1&lt;&lt;18)+101</code>
 in Debug, <code>trace_hash.cpp:121-127</code>, so a Debug run will not match), and it <b>omits SoftSpoken&lt;4&gt;</b>
 (only <code>&lt;2&gt;</code> and <code>&lt;8&gt;</code> are traced, though the bench sweeps <code>k∈{2,4,8}</code>),
@@ -408,7 +431,7 @@ will not compile against the installed package.</li>
 <code>test/</code>, not <code>emp-ot/test/</code>.</li>
 <li><b>The reorganization is recent.</b> CSW was de-layered and <code>PVWKyber</code> retired in favor of BMM
 (<code>8c6d4d6</code>); the SoftSpoken <code>clone_lane</code> lanes and the wire-equivalence framework landed
-in the last handful of commits — read against <code>HEAD @ 481cc1d</code>, not the <code>0.3.x</code> line.</li>
+in the last handful of commits — read against <code>HEAD @ da3ca9a</code>, not the <code>0.3.x</code> line.</li>
 </ul>
 
 <!-- ===================================================================== -->
@@ -451,7 +474,7 @@ un-<code>static_assert</code>ed <code>AuthValue</code> ABI and its alignment UB 
 </main>
 <footer>
 emp-ot implementation audit · Repository overview · four base OTs + two extension families over one streaming
-skeleton · <code>HEAD @ 481cc1d</code> (branch <code>main</code>).
+skeleton · <code>HEAD @ da3ca9a</code> (branch <code>main</code>).
 Detailed reports: <a href="01-base-ot.html">Base OT</a> ·
 <a href="02-ot-extension.html">OT extension</a> ·
 <a href="03-silent.html">Silent</a> ·

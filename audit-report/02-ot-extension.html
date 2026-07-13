@@ -116,11 +116,11 @@ lives in the concrete protocols.</p>
 <div class="meta">
 <table>
 <tr><td>Report</td><td>2 of the emp-ot audit — OT interfaces &amp; the IKNP / SoftSpoken extensions</td></tr>
-<tr><td>Source tree</td><td><code>emp-ot</code> · working tree on <code>main</code> · HEAD <code class="ref">481cc1d</code> (clone_lane)</td></tr>
-<tr><td>Files in scope</td><td><code>emp-ot/{ot.h,ideal.h,emp-ot.h}</code> · <code>emp-ot/common/streaming_extension.h</code> · <code>emp-ot/ot_extension/{ot_extension.h,iknp.h,iknp.cpp}</code> · <code>emp-ot/ot_extension/softspoken/{softspoken.h,softspoken.cpp,sfvole_butterfly.h}</code> · <code>test/{test.h,trace_hash.cpp,trace_equiv.cpp,test_iknp.cpp,test_softspoken*.cpp,test_choice_seed.cpp}</code> · <code>docs/{streaming-api,wire-trace-hashes,class-organization}.md</code></td></tr>
+<tr><td>Source tree</td><td><code>emp-ot</code> · working tree on <code>main</code> (HEAD <code class="ref">da3ca9a</code>)</td></tr>
+<tr><td>Files in scope</td><td><code>emp-ot/{ot.h,ideal.h,emp-ot.h}</code> · <code>emp-ot/common/streaming_extension.h</code> · <code>emp-ot/ot_extension/{ot_extension.h,iknp.h,iknp.cpp}</code> · <code>emp-ot/ot_extension/softspoken/{softspoken.h,softspoken.cpp,sfvole_butterfly.h,ss_bench_phases.h}</code> · <code>test/{test.h,trace_hash.cpp,trace_equiv.cpp,test_iknp.cpp,test_softspoken*.cpp,test_choice_seed.cpp}</code> · <code>docs/{streaming-api,wire-trace-hashes,class-organization}.md</code></td></tr>
 <tr><td>Trust model</td><td><b>Bifurcated.</b> <code>OT/COT/RandomCOT</code> are abstract contracts with no self-enforcement — <code>is_malicious_secure()</code>/<code>supports_deferred_check()</code> are declarative capability flags the base trusts. The streaming layer enforces only an API-liveness tripwire. Actual malicious security (chi-fold, PPRF, base-OT extraction checks) lives in the concrete subclasses.</td></tr>
 <tr><td>Failure model</td><td><b>Two postures.</b> Wire-facing cheat detection aborts via always-on <code>error()</code> → <code>_Exit(1)</code> (live under <code>NDEBUG</code>); API-misuse preconditions are <code>assert()</code> (compiled out under <code>NDEBUG</code>). See the risk register.</td></tr>
-<tr><td>Method</td><td>Full read of every in-scope header + its tests; <code>file:line</code> references verified against the live tree at <code class="ref">481cc1d</code>. Historical performance claims and the README hash baseline were <b>not</b> re-run in this pass and are flagged UNVERIFIED.</td></tr>
+<tr><td>Method</td><td>Full read of every in-scope header + its tests; <code>file:line</code> references verified against the live tree at <code class="ref">da3ca9a</code>. Historical performance claims and the README hash baseline were <b>not</b> re-run in this pass and are flagged UNVERIFIED.</td></tr>
 </table>
 </div>
 
@@ -415,24 +415,26 @@ Semi-honest mode runs none of this: no FS, no chi-fold, no sacrificial chunk.</p
 <p><span class="tag">emp-ot/ot_extension/softspoken/softspoken.h</span> <span class="tag">softspoken.cpp</span></p>
 <p>Roy's Crypto'22 (2022/192) small-field subspace-VOLE extension, templated on <code>k</code> with
 <code>n = 128/k</code> sub-VOLEs and <code>Q = 2^k</code> leaves per sub-VOLE. A <code>static_assert</code>
-requires <code>k ∈ {1..8}</code> and <code>128 % k == 0</code>, but only <b>{2,4,8}</b> are instantiated (plus a
+requires <code>k ∈ {1..8}</code> and <code>128 % k == 0</code>, but only <b>{2,4,8}</b> are instantiated (the
+explicit template-class instantiation list, <code class="ref">softspoken.cpp:711-715</code>, plus a
 <code>k=8</code> 580-block Ferret-bootstrap variant); <code>k=1</code> is unreachable and the sfvole butterflies
-<code>static_assert(k &gt;= 2)</code> (<code class="ref">softspoken.cpp:677-681</code>,
-<code class="ref">sfvole_butterfly.h:301</code>). Chunk sizes: <code>kChunkBlocks = 64</code> for k=2/4, 128
-for k=8; the plane buffer is sized for L1/L2 residency (<code>tuning.h:79-92</code>).</p>
+<code>static_assert(k &gt;= 2)</code> (<code class="ref">sfvole_butterfly.h:305</code> sender,
+<code class="ref">sfvole_butterfly.h:405</code> receiver). Chunk sizes: <code>kChunkBlocks = 64</code> for k=2/4,
+128 for k=8; the plane buffer is sized for L1/L2 residency (<code>tuning::softspoken_chunk_blocks</code>,
+<code class="ref">tuning.h:143-156</code>).</p>
 <ul>
 <li><b>OT-sender = VOLE/PPRF receiver</b> (<code>bootstrap_send_</code>,
-<code class="ref">softspoken.cpp:120-179</code>): slices Δ into <code>α_i</code> (k-bit field elements),
+<code class="ref">softspoken.cpp:121-180</code>): slices Δ into <code>α_i</code> (k-bit field elements),
 drives cGGM <code>eval_receiver</code> with a bit-reversed path so the storage index equals the field element
 and <code>leaves[α_i]</code> stays pinned <code>zero_block</code> (the punctured slot). 128 base OTs consumed.</li>
 <li><b>OT-receiver = VOLE/PPRF sender</b> (<code>bootstrap_recv_</code>,
-<code class="ref">softspoken.cpp:181-230</code>): builds <code>n</code> Half-Tree cGGM trees, each with a
+<code class="ref">softspoken.cpp:182-231</code>): builds <code>n</code> Half-Tree cGGM trees, each with a
 <b>fresh</b> <code>(Δ_tree, root)</code> drawn from <code>choice_prg</code>, shipping per-level
 <code>K0[h]/K1[h]=K0[h]⊕Δ_tree</code> via base OT.</li>
 </ul>
 <div class="callout c-note"><span class="lbl">Choice determinism is load-bearing</span>
 <p>Drawing <b>both</b> <code>Δ_tree</code> and <code>root</code> from <code>choice_prg</code>
-(<code class="ref">softspoken.cpp:191,202</code>) makes the receiver's choice-bit stream a pure function of the
+(<code class="ref">softspoken.cpp:204-205</code>) makes the receiver's choice-bit stream a pure function of the
 choice seed — required for <code>set_choice_seed</code> determinism and cross-peer / cross-run consistency
 (<code>test_choice_seed</code>). The receiver reconstructs all leaves except the punctured <code>α</code> slot,
 whose pseudorandomness rests on never learning <code>Δ_tree</code>. <code>session_</code> increments per
@@ -451,6 +453,18 @@ kernel fusing rounds 0+1 (<code>k=2</code> cannot use oct, <code>Q=4&lt;8</code>
 (AES-NI/NEON) with <code>static_assert(T % L::N == 0)</code>; the scalar lane is an always-available fallback,
 so no intrinsic path lacks one.</p>
 
+<div class="callout c-note"><span class="lbl">The butterfly tile T is now a compile-time LOCAL tuning knob (was a hardcoded T=8)</span>
+<p>Both kernels default their j-axis tile width to <code>T = emp::tuning::sfvole_tile&lt;k&gt;()</code>
+(<code class="ref">sfvole_butterfly.h:297</code> sender, <code class="ref">sfvole_butterfly.h:397</code> receiver),
+replacing the earlier hardcoded <code>template &lt;int k, int T = 8&gt;</code>.
+<code>sfvole_tile&lt;k&gt;()</code> reads the per-<code>k</code> macros
+<code>EMP_TUNE_SFVOLE_TILE_K2/K4/K8</code> (all default <b>8</b>, so a stock build is byte-identical to the old
+default) and is a <b>LOCAL</b> knob: it changes only register/pipeline scheduling, never the wire bytes, and
+<code>test_tuning_invariance</code> asserts identical output across <code>T ∈ {8,16,32}</code>
+(<code class="ref">tuning.h:118-133</code>). The header notes <code>make tune</code> auto-emits only the
+<code>k=8</code> knob — the <code>k≤4</code> end-to-end optimum is dominated by two-party chunk scheduling a
+single-process sweep cannot rank, so K2/K4 stay manual.</p></div>
+
 <div class="callout c-ok"><span class="lbl">The punctured leaf's bogus output never reaches an output plane</span>
 <p>Security-critical and verified: the receiver substitution reads <code>tweaks[0] = leaves[α] = zero_block</code>
 (the punctured slot), producing a bogus <code>r_0</code>. Tracing the fold, <code>r_0</code> is excluded from
@@ -458,7 +472,7 @@ every <code>w_b</code> plane update and lands only in the <code>A[·][0]</code> 
 <code>butterfly_halve</code> keeps as the even/left operand while <code>v_acc</code> takes only odd
 <code>R</code> operands — so <code>r_0</code> ends as <code>u = A[0]</code>, which the receiver
 <b>discards</b>, and never flows into any <code>w_b</code> output plane
-(<code class="ref">sfvole_butterfly.h:389-404,436,477</code>). The plane-major output layout is exactly what
+(<code class="ref">sfvole_butterfly.h:393-408,440,481</code>). The plane-major output layout is exactly what
 <code>sse_trans_n128</code> consumes, so no gather scratch is needed. One acknowledged inefficiency: sub-VOLE 0
 plane 0 is folded then overwritten by the LSB pin (§10) — kept to avoid splitting the sfvole API.</p></div>
 
@@ -468,14 +482,14 @@ plane 0 is folded then overwritten by the LSB pin (§10) — kept to avoid split
 <h3>Per-chunk COT pipeline &amp; LSB pinning</h3>
 <p>The receiver batches all <code>n-1</code> sub-VOLE differences <code>d_i = u_canonical ⊕ u_temp</code> into
 one <code>io-&gt;send_block</code>, pins plane 0 of sub-VOLE 0 to <code>u_canonical</code> so
-<code>bit_0(out)</code> carries the choice, and transposes (<code class="ref">softspoken.cpp:564-625</code>).
+<code>bit_0(out)</code> carries the choice, and transposes (<code class="ref">softspoken.cpp:583-659</code>).
 The sender receives the batched <code>d_bufs</code>, XORs <code>d_i</code> into <code>w</code>-plane
 <code>b</code> for each set bit of <code>α_i</code> (derandomization), memsets the mirror LSB pin, and
-transposes (<code class="ref">softspoken.cpp:464-526</code>). The COT relation <code>V ⊕ W = u_canonical·Δ</code>
+transposes (<code class="ref">softspoken.cpp:467-543</code>). The COT relation <code>V ⊕ W = u_canonical·Δ</code>
 holds at full block level with <code>LSB(K)=0</code>, <code>LSB(M)=u_canonical bit</code>; the RandomCOT wrapper
 adds the 1-bit correction.</p>
 
-<h3>PPRF consistency check (<code class="ref">softspoken.cpp:261-345</code>)</h3>
+<h3>PPRF consistency check (<code class="ref">softspoken.cpp:262-346</code>)</h3>
 <p>Each leaf is expanded by <code>aes_ctr_fill_dm&lt;3&gt;</code> under a fixed key
 <code>check_K</code> keyed on <code>kPPRFCheckSessionHigh = 0x70505246434B5F00</code> in the high 64 bits;
 <code>exp[0]</code> overwrites the real leaf, <code>exp[1:2]</code> is the 2λ check material. The PPRF-sender
@@ -486,13 +500,13 @@ computes <code>t̂_i</code> and one rolling SHA-256 over all <code>(i,y)</code> 
 <div class="callout c-ok"><span class="lbl">The check never reveals the punctured leaf</span>
 <p>The receiver's reconstruction recovers only the check material <code>s'_{α_i}</code> (PRG′₀), never the real
 leaf PRG′₁, so <code>leaves[α_i]</code> stays <code>zero_block</code> after the check
-(<code class="ref">softspoken.cpp:322-336</code>). One global rolling digest binds all trees together to catch
+(<code class="ref">softspoken.cpp:323-337</code>). One global rolling digest binds all trees together to catch
 cross-tree swaps. The check key's high-64 domain (<code>0x70505246434B5F00</code>) is provably disjoint from
 every per-chunk session key domain (whose high 64 bits are a 16-bit <code>lane_salt</code>, max
 <code>0xFFFF</code>), so the two 128-bit AES key domains never collide regardless of the low bits
-(<code class="ref">softspoken.cpp:262,270,477</code>).</p></div>
+(<code class="ref">softspoken.cpp:263,271,480</code>).</p></div>
 
-<h3>Subspace-VOLE chi-fold (<code class="ref">softspoken.cpp:639-675</code>)</h3>
+<h3>Subspace-VOLE chi-fold (<code class="ref">softspoken.cpp:673-709</code>)</h3>
 <p>An IKNP-shape identity <code>Q_i ⊕ T_i = R_i·Δ</code> with <code>R_i = u_canonical[i]</code>: per-chunk
 <code>d_bufs</code> are FS-absorbed, the χ seed is <code>io-&gt;get_digest()</code> (again after commitment),
 the fold accumulates <code>χ_i·{Q,T,R}_i</code>, and <code>end()</code> runs one sacrificial
@@ -505,11 +519,24 @@ mirrors IKNP and is guarded by <code>!fs_enabled()</code> so Ferret's nesting is
 security combines (i) the config gate requiring a malicious-secure base OT (<code class="ref">ot_extension.h:152-153</code>)
 with three runtime abort checks all firing via the live-under-<code>NDEBUG</code> <code>error()</code>:
 (ii) the extension chi-fold (IKNP <code class="ref">iknp.cpp:88-89</code>; SoftSpoken subspace
-<code class="ref">softspoken.cpp:448-449</code>), (iii) the SoftSpoken PPRF check
-(<code class="ref">softspoken.cpp:343-344</code>), and (iv) the <b>deferred CSW base-OT extraction check</b>
+<code class="ref">softspoken.cpp:450-451</code>), (iii) the SoftSpoken PPRF check
+(<code class="ref">softspoken.cpp:344-345</code>), and (iv) the <b>deferred CSW base-OT extraction check</b>
 (<code>send/recv_check</code>, driven from the extension end phase, <code class="ref">iknp.cpp:95,194</code> /
-<code class="ref">softspoken.cpp:454,551</code>), which is a distinct check against base-OT selective failure,
+<code class="ref">softspoken.cpp:456,569</code>), which is a distinct check against base-OT selective failure,
 not part of the chi-fold.</p></div>
+
+<div class="callout c-note"><span class="lbl">Optional per-phase timers — off by default, zero wire effect</span>
+<p><code>ss_bench_phases.h</code> adds an opt-in profiling facility gated on <code>-DEMP_BENCH_PHASES</code>. When
+defined it wraps each pipeline stage in a scoped <code>steady_clock</code> accumulator — <code>butterfly</code>,
+<code>io</code>, <code>derand</code>, <code>transpose</code>, <code>combine</code>, per role — plus an OT counter,
+and prints a ns/OT breakdown to stderr at each <code>end()</code>
+(<code class="ref">ss_bench_phases.h:25-58</code>). <code>send_begin_</code>/<code>recv_begin_</code> reset the
+accumulators (<code class="ref">softspoken.cpp:430,551</code>) and <code>send_end_</code>/<code>recv_end_</code>
+report them (<code class="ref">softspoken.cpp:459,575</code>); the stage scopes sit inside
+<code>send_chunk_pipeline</code>/<code>recv_chunk_pipeline</code>. <b>Off by default all four macros compile to
+<code>do{}while(0)</code></b> (<code class="ref">ss_bench_phases.h:60-67</code>), so a production build carries no
+timers and the wire bytes are unchanged — the instrumentation is pure scope braces plus macro calls, with no
+reordering of any <code>send_block</code>/<code>recv_block</code> or arithmetic.</p></div>
 
 <!-- ===================================================================== -->
 <h2 id="clone">11 · clone_lane — lane-parallel COT (commit 481cc1d)</h2>
@@ -519,7 +546,7 @@ not part of the chi-fold.</p></div>
 streaming/COT state (<code>in_session_</code>, <code>leftover_</code>, mitccrh, prg) at in-class defaults — then
 value-copies the parent's <em>checked</em> <code>leaves_recv_</code>/<code>leaves_send_</code>,
 <code>alphas_</code>, Δ, <code>delta_bool</code>, sid, and flips <code>setup_done = true</code>
-(<code class="ref">softspoken.cpp:97-118</code>, <code class="ref">ot_extension.h:137-140</code>). A clone
+(<code class="ref">softspoken.cpp:98-119</code>, <code class="ref">ot_extension.h:137-140</code>). A clone
 <b>must</b> be constructed fresh, never copy-constructed — a genuine copy-construct would alias the parent's
 <code>leftover_</code>/prg, which the header explicitly forbids (<code class="ref">softspoken.h:109-114</code>).
 Domain separation rides in the high 64 bits of the per-chunk AES session key
@@ -529,7 +556,7 @@ Domain separation rides in the high 64 bits of the per-chunk AES session key
 <p><code>clone_lane</code>'s security-critical contract — <code>lane_salt</code> nonzero and distinct per lane —
 is the <b>only</b> thing separating concurrent lanes that share one Δ and one PPRF leaf set. It is enforced by a
 single <code>assert(lane_salt != 0)</code> that vanishes under <code>NDEBUG</code>
-(<code class="ref">softspoken.cpp:103</code>), and <b>nothing checks for duplicate nonzero salts</b>. A zero or
+(<code class="ref">softspoken.cpp:104</code>), and <b>nothing checks for duplicate nonzero salts</b>. A zero or
 duplicate salt makes <code>makeBlock(lane_salt, session)</code> identical across two lanes that share the same
 leaves and session counters (both start at 0), so the lanes silently emit <b>byte-identical COT streams</b> —
 Δ/choice reuse with no runtime detection and no wire-level failure — and the salt is only 16 bits (≤65535
@@ -541,9 +568,9 @@ deferred base-OT extraction checks entirely (<code>base_ot</code>/<code>csw_base
 <code>base_check_pending_</code> null/false, <code>setup_done</code> forced true). All lanes' malicious
 security therefore <b>transitively depends on the one PPRF check the parent ran at bootstrap</b> over the shared
 frozen leaves — correct only because the leaves are frozen post-check and value-copied, an invariant guaranteed
-only by the <code>clone_lane</code> "parent already bootstrapped" assert (<code class="ref">softspoken.cpp:102</code>).
+only by the <code>clone_lane</code> "parent already bootstrapped" assert (<code class="ref">softspoken.cpp:103</code>).
 Note the base-OT extraction check is deferred to the parent's first <code>end()</code>
-(<code class="ref">softspoken.cpp:451-456</code>), so the <code>setup_done</code> assert guarantees only that the
+(<code class="ref">softspoken.cpp:453-458</code>), so the <code>setup_done</code> assert guarantees only that the
 PPRF check ran. Parent and every <code>new_io</code> must outlive the clone.</p></div>
 
 <div class="callout c-warn"><span class="lbl">set_sid on a lane clone is a null deref under NDEBUG</span>
@@ -602,13 +629,14 @@ with a non-CSW (blocking-path) base OT</b>, so the <code>base_ot-&gt;send/recv</
 but bench code explicitly does not verify correctness — the streaming lifecycle is throughput-tested but
 correctness-tested nowhere in this repo.</p></div>
 <div class="callout c-audit"><span class="lbl">Documentation drift</span>
-<p><code>softspoken.h</code> and <code>test_softspoken_lanes.cpp</code> cite
-<code>docs/design/softspoken_lanes.md</code> and <code>threading_model.md</code>, which <b>do not exist in this
-repo</b> (they live only in a downstream consumer) — the authoritative spec for an upstream API dangles into a
-consumer repo, against the codebase's own no-downstream-refs convention. <code>softspoken.cpp:353</code>
-additionally names symbols (<code>sfvole_*_compute_chunk</code>, <code>rcot_next</code>) that are not the actual
-function names (the real kernels are <code>sfvole_sender/receiver_butterfly</code> and
-<code>send/recv_chunk_pipeline</code>).</p></div>
+<p><code>softspoken.h</code> (<code class="ref">softspoken.h:75</code>) and <code>test_softspoken_lanes.cpp</code>
+(<code class="ref">test_softspoken_lanes.cpp:1</code>) cite <code>docs/design/softspoken_lanes.md</code> and
+<code>threading_model.md</code>, which <b>do not exist in this repo</b> (there is no <code>docs/design/</code>
+directory) — the authoritative spec for an upstream API dangles into a consumer repo, against the codebase's own
+no-downstream-refs convention. The streaming-API doc comment additionally names symbols
+(<code>sfvole_*_compute_chunk</code> at <code class="ref">softspoken.cpp:355</code>, <code>rcot_next</code> at
+<code class="ref">softspoken.cpp:352</code>) that are not the actual function names (the real kernels are
+<code>sfvole_sender/receiver_butterfly</code> and <code>send/recv_chunk_pipeline</code>).</p></div>
 
 <div class="callout c-ok"><span class="lbl">What is solid</span>
 <p>ISA-tier consumption is complete: emp-ot reaches <code>sse_trans_n128</code> through emp-tool's
@@ -626,7 +654,7 @@ region from the finalize's in-place Δ-XOR.</p></div>
 (CONFIRMED) or relied on a doc/historical claim not re-run here (UNVERIFIED).</p>
 <table class="grid">
 <tr><th>#</th><th>Sev</th><th>Verdict</th><th>Item</th><th>Where</th></tr>
-<tr><td>1</td><td><span class="sev sev-high">high</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>lane_salt</code> is the sole domain separator across concurrent lanes sharing one Δ + PPRF leaf set; guarded only by an <code>NDEBUG</code>-erased assert, no duplicate-salt check, 16-bit space — a zero/dup salt silently yields byte-identical COT streams</td><td><code class="ref">softspoken.cpp:103</code>, <code class="ref">softspoken.h:78-121</code></td></tr>
+<tr><td>1</td><td><span class="sev sev-high">high</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>lane_salt</code> is the sole domain separator across concurrent lanes sharing one Δ + PPRF leaf set; guarded only by an <code>NDEBUG</code>-erased assert, no duplicate-salt check, 16-bit space — a zero/dup salt silently yields byte-identical COT streams</td><td><code class="ref">softspoken.cpp:104</code>, <code class="ref">softspoken.h:78-121</code></td></tr>
 <tr><td>2</td><td><span class="sev sev-high">high</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>OTIdeal::send_cot/recv_cot</code> call <code>random_block(data)</code> with default <code>nblocks=1</code>: for <code>length&gt;1</code> only <code>data[0]</code> is filled, the rest uninitialized and party-divergent — the mock's COT correlation is silently broken</td><td><code class="ref">ideal.h:17,21</code>, <code class="ref">prg.h:186</code></td></tr>
 <tr><td>3</td><td><span class="sev sev-high">high</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>check_cot</code>/<code>check_rot</code> have zero call sites — <code>send_cot/recv_cot</code> and <code>send_rot/recv_rot</code> wire paths are entirely untested by CI</td><td><code class="ref">test/test.h:40-82</code>, <code class="ref">ot.h:42-116</code></td></tr>
 <tr><td>4</td><td><span class="sev sev-high">high</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>check_rcot_streaming</code> has zero call sites — the <code>begin/next/end</code> lifecycle central to this subsystem is never directly correctness-tested, only indirectly through <code>run()</code></td><td><code class="ref">test/test.h:118-128</code></td></tr>
@@ -637,8 +665,8 @@ region from the finalize's in-place Δ-XOR.</p></div>
 <tr><td>9</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>run()</code> vs <code>begin/next_n</code> mutual exclusion is doc-prose only; every chosen-input verb funnels into <code>rcot→run→begin</code>, so calling a classic OT method on an instance with a long-lived session double-enters the session — caught only by a debug assert, else silent draw-ordering corruption</td><td><code class="ref">streaming_extension.h:163-177</code>, <code class="ref">ot.h:45-116</code></td></tr>
 <tr><td>10</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>The session tripwire is opt-in per subclass — the base never calls the helpers, so a subclass that forgets loses double-begin protection with no base-level detection</td><td><code class="ref">streaming_extension.h:148-161</code></td></tr>
 <tr><td>11</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>Flush semantics are an unwritten contract (docs never mention flush); <code>ot.h</code> is internally asymmetric — <code>send_rot</code> flushes after the seed, <code>send</code> does not — and downstream consumers compensate by flushing after every draw</td><td><code class="ref">ot.h:89</code>, <code class="ref">iknp.cpp:200</code></td></tr>
-<tr><td>12</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>SoftSpoken lane clones skip the PPRF and deferred base-OT extraction checks — all lanes' malicious security transitively depends on the one bootstrap PPRF check the parent ran over the frozen leaves</td><td><code class="ref">ot_extension.h:132-140</code>, <code class="ref">softspoken.cpp:97-110</code></td></tr>
-<tr><td>13</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>Stale doc refs: <code>docs/design/softspoken_lanes.md</code> + <code>threading_model.md</code> don't exist in-repo (only downstream); <code>softspoken.cpp:353</code> names nonexistent symbols — downstream-ref convention violation</td><td><code class="ref">softspoken.h:70-88</code>, <code class="ref">softspoken.cpp:353</code></td></tr>
+<tr><td>12</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>SoftSpoken lane clones skip the PPRF and deferred base-OT extraction checks — all lanes' malicious security transitively depends on the one bootstrap PPRF check the parent ran over the frozen leaves</td><td><code class="ref">ot_extension.h:132-140</code>, <code class="ref">softspoken.cpp:98-111</code></td></tr>
+<tr><td>13</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>Stale doc refs: <code>docs/design/softspoken_lanes.md</code> + <code>threading_model.md</code> don't exist in-repo (no <code>docs/design/</code> dir); the streaming-API doc comment names nonexistent symbols (<code>rcot_next</code>, <code>sfvole_*_compute_chunk</code>) — downstream-ref convention violation</td><td><code class="ref">softspoken.h:75</code>, <code class="ref">softspoken.cpp:352,355</code></td></tr>
 <tr><td>14</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>The Δ LSB=1 invariant is enforced only by the <code>set_delta</code> assert + ctor pin; the whole LSB choice convention and the RCOT correction depend on it, with no runtime enforcement of the output convention itself</td><td><code class="ref">ot_extension.h:79,165</code>, <code class="ref">ot.h:150</code></td></tr>
 <tr><td>15</td><td><span class="sev sev-med">med</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td>OTIdeal is dead API (zero callers in emp-ot + 4 downstream repos) yet exported via the umbrella, and no longer mirrors the RandomCOT/streaming interface downstream code programs against</td><td><code class="ref">emp-ot.h:5</code>, <code class="ref">ideal.h:1-28</code></td></tr>
 <tr><td>16</td><td><span class="sev sev-low">low</span></td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>set_sid</code> on a lane clone dereferences a null <code>base_ot</code> under <code>NDEBUG</code> (the <code>assert(!setup_done)</code> guard vanishes; clones carry <code>base_ot=nullptr, setup_done=true</code>)</td><td><code class="ref">ot_extension.h:102-106,137-140</code></td></tr>
@@ -663,7 +691,7 @@ malicious abort branch, and the two <code>OTIdeal</code> correctness bugs that n
 </main>
 <footer>
 emp-ot implementation audit · OT interfaces &amp; extension (IKNP, SoftSpoken) · working tree on
-<code>main</code> at <code>481cc1d</code>.
+<code>main</code> (HEAD <code>da3ca9a</code>).
 Reports: <a href="00-overview.html">Overview</a> · <a href="01-base-ot.html">Base OT</a> ·
 <a href="02-ot-extension.html">OT extension</a> · <a href="03-silent.html">Silent</a> ·
 <a href="04-svole.html">sVOLE</a>.

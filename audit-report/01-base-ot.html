@@ -115,12 +115,12 @@ constant-time posture, and the per-scheme assumptions.</p>
 <div class="meta">
 <table>
 <tr><td>Report</td><td>1 — Base OT (<code>emp-ot/base_ot/{co,pvw,csw,bmm}.h</code> + <code>emp-ot/base_ot/mlkem/</code>)</td></tr>
-<tr><td>Source tree</td><td><code>emp-ot</code> · working tree on <code>main</code> (HEAD <code>481cc1d</code>)</td></tr>
+<tr><td>Source tree</td><td><code>emp-ot</code> · working tree on <code>main</code> (HEAD <code>da3ca9a</code>)</td></tr>
 <tr><td>Files in scope</td><td><code>base_ot/{co,pvw,csw,bmm}.h</code> · <code>base_ot/mlkem/{bmm.cpp,crs.hpp,symmetric.h,params.hpp,kyber/*}</code> · consumed emp-tool substrate <code>runtime/crypto/{ec.cpp,ro.h}</code>, <code>runtime/io/io_channel.h</code></td></tr>
 <tr><td>Trust model</td><td><b>Per scheme.</b> CO is semi-honest; PVW / CSW / BMM declare malicious security via <code>is_malicious_secure()==true</code>. Only CSW carries an active runtime consistency check with an abort; PVW/BMM argue malice structurally/algebraically.</td></tr>
 <tr><td>Live vs legacy</td><td>Every extension (IKNP / SoftSpoken / Ferret) defaults its base OT to <b>CSW</b>. CO / PVW / BMM are reachable only via the standalone <code>test/bench_base_ot</code> or by a caller passing a custom base OT to an extension ctor.</td></tr>
 <tr><td>Failure model</td><td>Fail-fast <code>error()</code> (emp-tool <code>_Exit(1)</code>) on the CSW abort paths and on any off-curve / at-infinity point received; the <code>length≥80</code> CSW precondition is an <code>assert</code> (NDEBUG-elided).</td></tr>
-<tr><td>Method</td><td>Full read of each base-OT header + <code>bmm.cpp</code> and the mlkem shim, cross-checked against the emp-tool RO / EC / IO substrate and the standalone test/bench; all <code>file:line</code> references verified against HEAD <code>481cc1d</code>.</td></tr>
+<tr><td>Method</td><td>Full read of each base-OT header + <code>bmm.cpp</code> and the mlkem shim, cross-checked against the emp-tool RO / EC / IO substrate and the standalone test/bench; all <code>file:line</code> references verified against HEAD <code>da3ca9a</code>.</td></tr>
 </table>
 </div>
 
@@ -206,7 +206,7 @@ substrate facts are load-bearing for every scheme.</p>
 unconditionally re-checks <code>EC_POINT_is_on_curve</code> (rejecting off-curve,
 <code class="ref">ec.cpp:345</code>) and <code>EC_POINT_is_at_infinity</code> (rejecting the identity,
 <code class="ref">ec.cpp:347</code>), both via fatal <code>error()</code> (so they survive NDEBUG).
-<code>recv_pt</code> always calls <code>from_bin</code> (<code class="ref">io_channel.h:215</code>), so CO's
+<code>recv_pt</code> always calls <code>from_bin</code> (<code class="ref">io_channel.h:234</code>), so CO's
 <code>B<sub>i</sub></code>/<code>A</code>, PVW's <code>(g<sub>i</sub>,h<sub>i</sub>)</code>/<code>(u,c)</code>, and CSW's
 <code>B<sub>i</sub></code>/<code>z</code> are all validated on receipt.</p>
 <div class="callout c-note"><span class="lbl">Subgroup safety rides on P-256's cofactor being 1</span>
@@ -460,7 +460,7 @@ against FIPS 202 / the Kyber spec (the <code>kyber/</code> arithmetic stays verb
 <div class="callout c-note"><span class="lbl">ML-KEM-512 selection would fail loudly, not silently, on a mis-scoped build</span>
 <p><code>kyber/params.h</code> defaults to <code>KYBER_K=3</code> (<code class="ref">kyber/params.h:4-6</code>), and
 <code>-DKYBER_K=2</code> is applied only to the six Kyber <code>.c</code> TUs via scoped
-<code>COMPILE_DEFINITIONS</code> (<code class="ref">CMakeLists.txt:69-70</code>); the C++ side is pinned separately by
+<code>COMPILE_DEFINITIONS</code> (<code class="ref">CMakeLists.txt:84-85</code>); the C++ side is pinned separately by
 <code>params.hpp</code>'s own <code>#define KYBER_K 2</code>. This is <b>not</b> a silent-miscompile hazard: Kyber's
 <code>KYBER_NAMESPACE</code> symbol mangling is keyed on <code>KYBER_K</code>
 (<code class="ref">kyber/params.h:9-18</code>), so any <code>.c</code>/<code>.cpp</code> K mismatch becomes a link-time
@@ -576,7 +576,7 @@ malicious paths (#7), and the assert-only <code>length≥80</code> precondition 
 </main>
 <footer>
 emp-ot implementation audit · Base OT (public-key world) · CO / PVW / CSW over P-256 + BMM over ML-KEM-512 · working
-tree on <code>main</code> (HEAD <code>481cc1d</code>).
+tree on <code>main</code> (HEAD <code>da3ca9a</code>).
 </footer>
 </body>
 </html>

@@ -113,7 +113,7 @@ sparse authenticated vector to Δ before amplification.</p>
 <div class="meta">
 <table>
 <tr><td>Report</td><td>4 of the emp-ot audit — the sVOLE / subfield-VOLE extension (<code>emp-ot/svole/</code> over <code>emp-ot/common/</code>)</td></tr>
-<tr><td>Source tree</td><td><code>emp-ot</code> · working tree on <code>main</code> (HEAD <code>481cc1d</code>)</td></tr>
+<tr><td>Source tree</td><td><code>emp-ot</code> · working tree on <code>main</code> (HEAD <code>da3ca9a</code>)</td></tr>
 <tr><td>Files in scope</td><td><code>svole/{svole,f2k_vole,fp_vole,fp_base_svole,fp_utility}.h</code> · shared gadgets <code>common/{mp_gadget,cggm,lpn,streaming_extension}.h</code> · tests <code>test/test_{f2k,fp}_vole.cpp</code>; benches <code>bench/bench_{f2k,fp}_vole.cpp</code></td></tr>
 <tr><td>Lineage</td><td>PCG / Ferret line (eprint 2020/924, cited in <code class="ref">common/mp_gadget.h</code>) on the F2k side; Wolverine-style COPE seed sVOLE (<code>fp_base_svole.h</code>) on the F_p side. Shares Ferret's <code>PrimalLPNParameter</code> tuning classes.</td></tr>
 <tr><td>Trust model</td><td>Selectable semi-honest / malicious (<code>malicious</code> flag, <b>default true</b>). Malicious security = a per-round chi-fold check inside <code>MultiPointGadget::run_end_typed</code> (both fields) plus an <b>unconditional</b> COPE chi-fold check in <code>Base_svole</code> (F_p only).</td></tr>
@@ -184,7 +184,7 @@ non-Δ-holder has <code>val</code> at the sparse α positions after MPFSS and de
 (<code class="ref">svole.h:44-49</code>): <code>svole_n = t·2^tree_depth</code> (the trees this round) and
 <code>svole_M = t + k + 1</code> (the carry-over: <code>t</code> for MPFSS, <code>k</code> for LPN, and one extra
 for the chi-fold pseudo-triple). Note this <code>svole_M</code> is <b>not</b> the Ferret-M baked into
-<code>PrimalLPNParameter</code> (<code>M = k + t·tree_depth + 128</code>, <code class="ref">tuning.h:31,38</code>).
+<code>PrimalLPNParameter</code> (<code>M = k + t·tree_depth + 128</code>, <code class="ref">tuning.h:46,53</code>).
 <code>chunk_size() = 2^tree_depth</code> (<code class="ref">svole.h:143-145</code>) and
 <code>chunk_aligned_buf_sz() = (t − refill_trees)·chunk</code> (<code class="ref">svole.h:157-159</code>).</p>
 <div class="callout c-audit"><span class="lbl">Sizing invariant worth independent confirmation</span>
@@ -481,7 +481,7 @@ among what semi-honest skips.</p></div>
 <tr><td>3</td><td>val-first storage is a load-bearing cross-repo ABI (emp-zk casts <code>__uint128_t*</code> → <code>AuthValueFp*</code> on every draw) with no <code>static_assert</code> on <code>sizeof</code>/<code>offsetof</code>; reordering silently corrupts downstream</td><td><code class="ref">f2k_vole.h:26-31</code>, <code class="ref">fp_vole.h:28-31</code>, <code>emp-zk-arith/ostriple.h:59</code></td><td>Med · <span class="vt vt-c">CONFIRMED</span></td></tr>
 <tr><td>4</td><td>F2k <code>on_set_delta</code> requires <code>Δ.LSB == 1</code> but enforces it only with an NDEBUG-elidable <code>assert</code> (same downstream in <code>OTExtension::set_delta</code>); a release build silently accepts an even Δ</td><td><code class="ref">f2k_vole.h:93-100</code>, <code>ot_extension.h:79</code></td><td>Med · <span class="vt vt-c">CONFIRMED</span></td></tr>
 <tr><td>5</td><td>Carry slot <code>t</code> is dual-used as both the chi-fold check triple and the LPN secret's first element; safety asserted only in comments, no <code>static_assert</code> or dedicated test</td><td><code class="ref">svole.h:250-264,44-49</code></td><td>Med · <span class="vt vt-c">CONFIRMED</span></td></tr>
-<tr><td>6</td><td><code>refill_trees</code> is derived from Ferret-M, not <code>svole_M</code>; carry-over sizing relies on <code>svole_M ≤ Ferret-M</code> holding for all shipped params (it does, unasserted)</td><td><code class="ref">svole.h:152-159</code>, <code class="ref">tuning.h:31-39</code></td><td>Med · <span class="vt vt-c">CONFIRMED</span></td></tr>
+<tr><td>6</td><td><code>refill_trees</code> is derived from Ferret-M, not <code>svole_M</code>; carry-over sizing relies on <code>svole_M ≤ Ferret-M</code> holding for all shipped params (it does, unasserted)</td><td><code class="ref">svole.h:152-159</code>, <code class="ref">tuning.h:46-54</code></td><td>Med · <span class="vt vt-c">CONFIRMED</span></td></tr>
 <tr><td>7</td><td>Inner Ferret gets a derived child sid while the MPFSS/pre-stage gadgets get the raw <code>sid.value()</code>; separation correctness depends on no concurrent reuse of the raw sid (holds — gadgets run sequentially)</td><td><code class="ref">svole.h:208,221-226</code>, <code class="ref">fp_vole.h:152-153</code></td><td>Med · <span class="vt vt-c">CONFIRMED</span></td></tr>
 <tr><td>8</td><td>Nested F2k bootstrap is exercised only by the b13 bench and <code>trace_hash.cpp</code>'s default <code>F2kVOLE&lt;&gt;</code> (also b13, digest-only), never by the b11 test — so it is never correctness-verified</td><td><code class="ref">f2k_vole.h:110-118</code>, <code>test/test_f2k_vole.cpp</code>, <code>bench/bench_f2k_vole.cpp</code></td><td>Med · <span class="vt vt-c">CONFIRMED</span></td></tr>
 <tr><td>9</td><td>F_p base sVOLE uses semi-honest <code>CO</code> for COPE's 61 base OTs and upgrades via a single chi-fold check whose challenge is one <code>uint64</code> mod <code>2⁶¹−1</code> — soundness ≈ size/2⁶¹ (tens of bits, not 128), inherent to the field</td><td><code class="ref">base_ot/co.h:14</code>, <code class="ref">fp_base_svole.h:53,261</code></td><td>Low · <span class="vt vt-c">CONFIRMED</span></td></tr>
@@ -503,7 +503,7 @@ compile-time guard. The single-mod PRG-to-field draw is statistically negligible
 </main>
 <footer>
 emp-ot implementation audit · The sVOLE family (<code>emp-ot/svole/</code>) · working tree on <code>main</code>
-(HEAD <code>481cc1d</code>). AuthValue carriers · F₂¹²⁸ &amp; GF(2⁶¹−1) sVOLE · fp_utility · base-sVOLE / COPE ·
+(HEAD <code>da3ca9a</code>). AuthValue carriers · F₂¹²⁸ &amp; GF(2⁶¹−1) sVOLE · fp_utility · base-sVOLE / COPE ·
 MultiPointGadget + LPN. Overview: <a href="00-overview.html">overview</a>.
 </footer>
 </body>

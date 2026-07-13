@@ -112,7 +112,7 @@ chi-fold consistency check with a fail-closed <code>error()</code> abort.</p>
 <div class="meta">
 <table>
 <tr><td>Report</td><td>3 of 4 — Silent OT (<code>emp-ot/common/</code> + <code>emp-ot/ot_extension/ferret/</code>)</td></tr>
-<tr><td>Source tree</td><td><code>emp-ot</code> · working tree on <code>main</code> (head <code class="ref">481cc1d</code>)</td></tr>
+<tr><td>Source tree</td><td><code>emp-ot</code> · working tree on <code>main</code> (head <code class="ref">da3ca9a</code>)</td></tr>
 <tr><td>Files in scope</td><td><code>emp-ot/common/{cggm,mp_gadget,lpn,streaming_extension}.h</code> · <code>emp-ot/tuning.h</code> · <code>emp-ot/ot_extension/ferret/{ferret,silent_ferret}.{h,cpp}</code></td></tr>
 <tr><td>Papers</td><td>Ferret (ePrint <b>2020/924</b>, App. C consistency check) · Half-Tree cGGM (ePrint <b>2022/1431</b>, Fig. 3) · CCRH = emp-tool <code>H(x)=π(σ(x))⊕σ(x)</code> (ePrint 2019/074, Thm 4.3)</td></tr>
 <tr><td>Trust model</td><td><b>Dual</b>, dispatched by a <code>malicious</code> flag. Semi-honest ships/checks nothing; malicious rests on (a) a malicious-secure base OT (refused at construction otherwise) and (b) the round-final chi-fold check. Both abort via emp-tool <code>error()</code> → fail-closed <code>_Exit</code>.</td></tr>
@@ -188,7 +188,7 @@ correlation is what the sender's per-level corrections exploit; <code>H</code> i
 <p>Leaves are stored in a bit-reversed "split" layout (<code class="ref">cggm.h:25-38</code>): each level
 writes all left children into the lower half in place and all right children into the upper half, so path
 <code>p</code>'s leaf lands at <code>bit_reverse(p, d)</code>. <code>expand_level</code>
-(<code class="ref">cggm.h:66-111</code>) documents the tile invariant that makes the in-place left-write
+(<code class="ref">cggm.h:61-106</code>) documents the tile invariant that makes the in-place left-write
 safe — <code>CCRH::H</code> reads the parent tile up front, left writes only touch already-consumed inputs,
 right writes land strictly above unread parents.</p>
 
@@ -202,11 +202,11 @@ eval_receiver: zero all Q=2^d leaves, walk levels tracking pos = split-index of 
 
 <p>The <code>ClearLSB</code>/<code>ClearLeafLSB</code> path threads the COT LSB-choice convention into the tree
 write via <code>kCggmLsbClearMask = makeBlock(0xFF..FF, 0xFF..FE)</code>
-(<code class="ref">cggm.h:63-64</code>), applied to <em>both</em> the written leaf and the accumulated sum so
+(<code class="ref">cggm.h:58-59</code>), applied to <em>both</em> the written leaf and the accumulated sum so
 <code>K0</code> stays consistent on both sides. <b>Both parties must set the same
-<code>ClearLeafLSB</code></b> or <code>K0</code>/<code>K_recv</code> desync (<code class="ref">cggm.h:172-175</code>).
+<code>ClearLeafLSB</code></b> or <code>K0</code>/<code>K_recv</code> desync (<code class="ref">cggm.h:167-170</code>).
 The <code>Tile</code> template parameter is LOCAL-only — it changes batching of <code>CCRH::H</code>, not the
-computed leaves or wire bytes (<code class="ref">cggm.h:42-54</code>).</p>
+computed leaves or wire bytes (<code class="ref">cggm.h:42-49</code>).</p>
 
 <div class="callout c-audit"><span class="lbl">Receiver privacy = never learning Δ (stated, unenforced)</span>
 <p>cGGM receiver privacy rests on the receiver never learning Δ, which makes the punctured leaf
@@ -218,11 +218,11 @@ code.</p></div>
 
 <div class="callout c-note"><span class="lbl">d=0 is a latent precondition — but the true floor is d=2, not d=10</span>
 <p><code>build_sender</code> writes <code>leaves[0]</code>/<code>leaves[1]</code>/<code>K0[0]</code>
-unconditionally before any depth guard (<code class="ref">cggm.h:146-163</code>), so <code>d=0</code> would
+unconditionally before any depth guard (<code class="ref">cggm.h:141-158</code>), so <code>d=0</code> would
 produce two leaves for a nominally one-leaf tree. It is never triggered — but <em>not</em> because
 "tree_depth ≥ 10": that bound holds only for Ferret's MPCOT (<code>ferret_b10..b13</code>). SoftSpoken calls
 <code>cggm::build_sender</code> directly with <code>k ∈ {2,4,8}</code>
-(<code class="ref">softspoken.cpp:209</code>), so the real cross-call floor is <b>d=2</b> — still never 0,
+(<code class="ref">softspoken.cpp:210</code>), so the real cross-call floor is <b>d=2</b> — still never 0,
 just not for the stated reason.</p></div>
 
 <!-- ===================================================================== -->
@@ -317,7 +317,7 @@ adversary. A <code>static_assert</code> (<code class="ref">mp_gadget.h:51-52</co
 <!-- ===================================================================== -->
 <h2 id="lpn">5 · Primal-LPN amplifier</h2>
 <p><span class="tag">emp-ot/common/lpn.h</span></p>
-<p><code>Lpn&lt;AuthValue, d=10&gt;</code> (<code class="ref">lpn.h:34-112</code>) folds <code>d=10</code>
+<p><code>Lpn&lt;AuthValue, d=10&gt;</code> (<code class="ref">lpn.h:34-124</code>) folds <code>d=10</code>
 pseudo-random indices <code>idx = r &amp; (k-1)</code> into <code>pre[idx]</code> per output via
 <code>AuthValue::auth_add_into</code> — the implicit d-regular sparse code, n outputs each a XOR/sum of d
 columns of a k-wide table. Randomness is a sequential PRG keyed by <code>reseed(seed)</code>; Ferret derives
@@ -329,7 +329,7 @@ safe by design.</p>
 <p><code>idx = r &amp; (k-1)</code> is uniform on <code>[0,k)</code> with no rejection <em>only</em> because
 <code>k</code> is a power of two; the ctor's <code>mask(k_-1)</code> has no assert
 (<code class="ref">lpn.h:20-22,72</code>). The sole enforcement is <code>PrimalLPNParameter</code> deriving
-<code>k = 1&lt;&lt;logk</code> (<code class="ref">tuning.h:37</code>) — purely structural.</p></div>
+<code>k = 1&lt;&lt;logk</code> (<code class="ref">tuning.h:52</code>) — purely structural.</p></div>
 
 <h3>Reduction cadence &amp; parallel slicing</h3>
 <p>For non-F₂ fields the fold does <code>kStep = min(kLpnSafeAddsPerReduce, d)</code> adds between partial
@@ -337,9 +337,12 @@ reduces, then a final reduce per output (<code class="ref">lpn.h:44-68</code>). 
 <code>kLpnSafeAddsPerReduce = INT_MAX</code> (XOR has no carry → all d adds in one batch); for Mersenne
 F<sub>p</sub> it is <b>5</b> (<code class="ref">fp_vole.h:78</code>). <code>blocks_per_chunk(length)</code>
 (<code class="ref">lpn.h:84-92</code>) gives the exact PRG-block consumption of a chunk deterministically in
-<code>(length, d)</code>, so a seek'd, caller-owned PRG lets <code>compute_slice</code> be sliced across
-threads order-independently (<code class="ref">lpn.h:98-105</code>). The M=32 batched / 4-batched / scalar-tail
-split is pure scheduling — all three produce identical outputs, so parties may differ in batch width freely.</p>
+<code>(length, d)</code>, so a seek'd, caller-owned PRG lets <code>compute_slice</code>
+(<code class="ref">lpn.h:110-117</code>, now a one-line instantiation of the batch-parameterized
+<code>compute_slice_as&lt;M&gt;</code>, <code class="ref">lpn.h:94-108</code>) be sliced across threads
+order-independently. The M=32 batched / 4-batched / scalar-tail split is pure scheduling — all three produce
+identical outputs, so parties may differ in batch width freely (<code>test_tuning_invariance</code> pins this
+for M ∈ {16, 32, 64}).</p>
 
 <div class="callout c-warn"><span class="lbl">Fp reduce cadence vs d=10 — unchecked, untested</span>
 <p><code>fp_vole.h:74-78</code> notes mod-p adds overflow <code>uint64_t</code> after ~8 unreduced
@@ -354,15 +357,15 @@ C-style cast (<code class="ref">lpn.h:50</code>), leaning on <code>__m128i</code
 direction only — a strict-aliasing smell. The exact-count bookkeeping (<code class="ref">lpn.h:47</code> vs
 <code class="ref">lpn.h:84-92</code>) is consistent. The index cap is <b>k ≤ 2³⁰</b> (not 2³¹ — <code>mask</code>
 and <code>k_</code> are <code>int</code>, and 2³¹ overflows a signed <code>int</code>), well clear of the
-deployed <code>logk=19</code> (<code class="ref">tuning.h:109</code>).</p></div>
+deployed <code>logk=19</code> (<code class="ref">tuning.h:173</code>).</p></div>
 
 <!-- ===================================================================== -->
 <h2 id="params">6 · LPN parameter values &amp; the 128-bit claim</h2>
 <p><span class="tag">emp-ot/tuning.h</span></p>
-<p><code>PrimalLPNParameter</code> (<code class="ref">tuning.h:27-40</code>) is a constexpr bundle: given
+<p><code>PrimalLPNParameter</code> (<code class="ref">tuning.h:42-55</code>) is a constexpr bundle: given
 <code>(t, logk, tree_depth)</code> it precomputes <code>k = 1&lt;&lt;logk</code>,
 <code>M = k + t·tree_depth + 128</code>, and <code>refill_trees = ceil(M / 2^tree_depth)</code>. The
-<code>+128</code> is <code>kConsistCheckCotNum</code> folded in (<code class="ref">tuning.h:20-22</code>).</p>
+<code>+128</code> is <code>kConsistCheckCotNum</code> folded in (<code class="ref">tuning.h:35-37</code>).</p>
 
 <table class="grid">
 <tr><th>Set</th><th>(t, logk, tree_depth)</th><th>k</th><th>M</th><th>refill</th><th>N = t·2ᵈ</th></tr>
@@ -372,26 +375,26 @@ deployed <code>logk=19</code> (<code class="ref">tuning.h:109</code>).</p></div>
 <tr><td><code>ferret_b10</code></td><td>(850, 16, 10)</td><td>65,536</td><td>74,164</td><td>73</td><td>870,400</td></tr>
 </table>
 <p>All four <code>M</code>/<code>refill</code>/<code>N</code> values were recomputed from
-<code class="ref">tuning.h:109-112</code> and match every in-tree comment exactly. The user-visible budget per
+<code class="ref">tuning.h:173-176</code> and match every in-tree comment exactly. The user-visible budget per
 round is <code>t − refill_trees</code> = 1832 / 1451 / 1099 / 777 trees respectively — the round spends its last
 <code>refill_trees</code> trees seeding the next round's <code>M</code> bases (<code class="ref">ferret.cpp:98</code>).</p>
 
 <div class="callout c-audit"><span class="lbl">The 128-bit claim is an external, non-reproducible assertion</span>
-<p><code class="ref">tuning.h:103-108</code> asserts each set gives ~128-bit security against published
+<p><code class="ref">tuning.h:167-172</code> asserts each set gives ~128-bit security against published
 regular-LPN attacks (Gauss / SD-ISD / BJMM / hybrid / esser / agb2) "per the lpnestimator," with the hybrid
 attack binding and each <code>t</code> the largest the <code>(logk, tree_depth)</code> pair admits at the
 128-bit floor. <b>No estimator, script, or attack-cost table is vendored anywhere in the repo</b> — a whole-tree
 scan for <code>lpnestimator</code>/<code>SD-ISD</code>/<code>BJMM</code> and a <code>git ls-files</code> for
 <code>.py</code>/<code>.sage</code>/<code>.sh</code> turn up only this comment. The security claim on
 <code>t/logk/tree_depth</code> is a constexpr-encoded external result that cannot be reproduced from the
-codebase alone. These are SECURITY-class parameters (<code class="ref">docs/performance-tuning.md:20-25,121</code>:
+codebase alone. These are SECURITY-class parameters (<code class="ref">docs/performance-tuning.md:20-25,225</code>:
 "do not touch").</p></div>
 
 <div class="callout c-note"><span class="lbl">A numeric coupling between two files</span>
 <p><code>ferret_b10.M ≈ 74,164</code> drives two things: it is the tiered-bootstrap inner param
 (<code class="ref">ferret.cpp:156-167</code>), and <code>softspoken_ferret_bootstrap_chunk_blocks = 580</code>
 (= 74,240 OTs/chunk) is sized to fit <code>b10.M</code> in one SoftSpoken chunk
-(<code class="ref">tuning.h:88-92</code>). Changing <code>b10</code> without re-deriving 580 would silently
+(<code class="ref">tuning.h:152-156</code>). Changing <code>b10</code> without re-deriving 580 would silently
 over- or under-produce in the bootstrap chunk — a cross-file coupling with no compile-time link.</p></div>
 
 <!-- ===================================================================== -->
@@ -448,7 +451,7 @@ post-bootstrap <code>set_sid</code> dereferences the now-null <code>base_ot</cod
 
 <div class="callout c-warn"><span class="lbl">LPN arity is hardcoded, not read from tuning::lpn_d</span>
 <p><code>ferret.cpp:41</code> and <code>ferret.h:174</code> both pin the literal
-<code>Lpn&lt;AuthValueFerret, 10&gt;</code>. <code>tuning::lpn_d = 10</code> (<code class="ref">tuning.h:116</code>)
+<code>Lpn&lt;AuthValueFerret, 10&gt;</code>. <code>tuning::lpn_d = 10</code> (<code class="ref">tuning.h:181</code>)
 is only reachable via <code>lpn.h:34</code>'s default template arg, and no Ferret/svole call site omits the
 third arg — so retuning <code>tuning::lpn_d</code> alone is a <b>no-op</b> for Ferret and would desync it from
 any code that does read the constant. They coincide at 10 today; low severity, sharp edge.</p></div>
@@ -578,20 +581,24 @@ destruction in-session calls <code>error()</code> always-on (<code class="ref">s
 <div class="callout c-note"><span class="lbl">The reverted LPN tuning (7efb923 ← 0b61590)</span>
 <p>Commit <code class="ref">7efb923</code> fully reverts the per-platform <code>lpn_batch_m</code> 32→64 +
 size-gated gather-prefetch change: current <code>lpn.h</code> has no prefetch code and <code>tuning.h</code> has
-a single unconditional <code>lpn_batch_m = 32</code> (<code class="ref">tuning.h:120</code>). The documented
-reason (<code class="ref">docs/performance-tuning.md:26-75</code>): the same change was +9.8% on Zen 5 but a
+a single <code>lpn_batch_m</code> defaulting to 32 — now an <code>EMP_TUNE_LPN_BATCH_M</code>-guarded LOCAL knob,
+not the old unconditional constant (<code class="ref">tuning.h:190-193</code>). The documented
+reason (<code class="ref">docs/performance-tuning.md:26-86</code>): the same change was +9.8% on Zen 5 but a
 regression on Apple M4 and −4.1% on Granite Rapids at the production 8 MiB table, and <b>no queryable machine
 quantity (cache size) separates the Zen5/Granite behaviors</b> — so neither a fixed constant nor a runtime
-formula is safe, and defaults must be safe on un-swept hardware. The Zen-5 recipe is parked for a future
-"make tune."</p></div>
+formula is safe, and defaults must be safe on un-swept hardware. The Zen-5 recipe is no longer merely parked:
+the <code>make tune</code> subsystem now exists (<code>tools/tune.cpp</code>, <code>EMP_OT_AUTO_TUNE</code>), and
+per its measured Zen 5 outcome (<code class="ref">docs/performance-tuning.md:215-223</code>) the batch half
+(<code>M=64</code>) clears the variance gate (+3.8% on the LPN kernel) and is emitted as a per-machine LOCAL
+override, while the prefetch half does not — so the shipped cross-platform default stays 32.</p></div>
 
 <div class="callout c-ok"><span class="lbl">Verified neutral — bit0_mask de-dup (37e2576)</span>
 <p>Commit <code class="ref">37e2576</code> drops the local <code>lsb_only_mask = makeBlock(0LL,1LL)</code> in
 favor of emp-tool's <code>bit0_mask = makeBlock(0,1)</code> (<code class="ref">block.hpp:57</code>) —
 byte-identical, and the exact bitwise complement of <code>kCggmLsbClearMask</code> (…FE). A pure rename/de-dup
-with no functional change. Any future autotuner is required to enumerate only a registry of LOCAL knobs and emit
-<code>tuning_local.h</code> with provenance; a value inside the noise band is not emitted — a plan, not yet
-implemented code.</p></div>
+with no functional change. The autotuner is now implemented (<code>make tune</code> / <code>tools/tune.cpp</code>,
+gated behind <code>EMP_OT_AUTO_TUNE</code>): it enumerates only a registry of LOCAL knobs and emits a gitignored
+<code>tuning_local.h</code> with provenance; a value inside the noise band is not emitted.</p></div>
 
 <!-- ===================================================================== -->
 <h2 id="tests">11 · Test coverage &amp; gaps</h2>
@@ -634,12 +641,12 @@ corrected form.</p>
 <tr><td>8</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>cGGM α = <code>getLSB(base_i[j])</code> read with no verification that the outer extension delivered base COTs whose LSB is the choice bit</td><td><code class="ref">mp_gadget.h:408-411,546-549</code></td></tr>
 <tr><td>9</td><td>med</td><td><span class="vt vt-u">UNVERIFIED</span></td><td>cGGM receiver privacy rests on never learning Δ (punctured leaf pseudorandom); a stated invariant with no in-code enforcement — any Δ leak breaks it</td><td><code class="ref">cggm.h:16-20</code>, <code class="ref">mp_gadget.h:103-105</code></td></tr>
 <tr><td>10</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Fp LPN reduce cadence <code>kLpnSafeAddsPerReduce=5</code> vs d=10 has no static bound check and no overflow test; per-carrier constant, exercised at one field size</td><td><code class="ref">lpn.h:52-65</code>, <code class="ref">fp_vole.h:78</code></td></tr>
-<tr><td>11</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>128-bit LPN security is an external <code>lpnestimator</code> assertion; no estimator/script/cost-table vendored anywhere in the repo — not reproducible from the code</td><td><code class="ref">tuning.h:102-112</code>, <code class="ref">docs/performance-tuning.md:121</code></td></tr>
+<tr><td>11</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>128-bit LPN security is an external <code>lpnestimator</code> assertion; no estimator/script/cost-table vendored anywhere in the repo — not reproducible from the code</td><td><code class="ref">tuning.h:167-176</code>, <code class="ref">docs/performance-tuning.md:225</code></td></tr>
 <tr><td>12</td><td>med</td><td><span class="vt vt-c">CONFIRMED</span></td><td>emp-zk multiplexes SilentFerret + Svole + PolyProof over one IOChannel/FS transcript; sound only because the consume path is wire-free + single-threaded, but the sharing contract is never stated in emp-ot's streaming-API docs</td><td><code class="ref">docs/streaming-api.md:259-283</code>, <code class="ref">silent_ferret.h:10-28</code></td></tr>
 <tr><td>13</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Semi-honest mode elides the entire chi-fold check; a malicious sender's inconsistent trees go undetected — by design, sound only against a semi-honest sender</td><td><code class="ref">mp_gadget.h:275,566</code></td></tr>
-<tr><td>14</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Ferret LPN arity is the literal <code>Lpn&lt;…,10&gt;</code>, not <code>tuning::lpn_d</code>; retuning the constant alone is a no-op for Ferret</td><td><code class="ref">ferret.cpp:41</code>, <code class="ref">tuning.h:116</code></td></tr>
-<tr><td>15</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>k</code> must be a power of two for the rejection-free <code>idx = r &amp; (k-1)</code>; enforced only by callers pinning <code>k=1&lt;&lt;logk</code>, no assert in <code>Lpn</code></td><td><code class="ref">lpn.h:20-22,72</code>, <code class="ref">tuning.h:37</code></td></tr>
-<tr><td>16</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>softspoken_ferret_bootstrap_chunk_blocks=580</code> is numerically coupled to <code>ferret_b10.M≈74,164</code> across two files; changing b10 without re-deriving 580 over/under-produces</td><td><code class="ref">tuning.h:88-92,112</code>, <code class="ref">ferret.cpp:160-167</code></td></tr>
+<tr><td>14</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Ferret LPN arity is the literal <code>Lpn&lt;…,10&gt;</code>, not <code>tuning::lpn_d</code>; retuning the constant alone is a no-op for Ferret</td><td><code class="ref">ferret.cpp:41</code>, <code class="ref">tuning.h:181</code></td></tr>
+<tr><td>15</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>k</code> must be a power of two for the rejection-free <code>idx = r &amp; (k-1)</code>; enforced only by callers pinning <code>k=1&lt;&lt;logk</code>, no assert in <code>Lpn</code></td><td><code class="ref">lpn.h:20-22,72</code>, <code class="ref">tuning.h:52</code></td></tr>
+<tr><td>16</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>softspoken_ferret_bootstrap_chunk_blocks=580</code> is numerically coupled to <code>ferret_b10.M≈74,164</code> across two files; changing b10 without re-deriving 580 over/under-produces</td><td><code class="ref">tuning.h:152-156,176</code>, <code class="ref">ferret.cpp:160-167</code></td></tr>
 <tr><td>17</td><td>low</td><td><span class="vt vt-c">CONFIRMED</span></td><td><code>Lpn::compute_block</code> type-puns the PRG buffer <code>block[]→uint32_t*</code> (may_alias one-directional smell); bookkeeping consistent, index cap is k≤2³⁰ (int-limited) vs deployed 2¹⁹</td><td><code class="ref">lpn.h:50,84</code></td></tr>
 <tr><td>18</td><td>info</td><td><span class="vt vt-c">CONFIRMED</span></td><td>Not a risk: reusing <code>sid</code> does <em>not</em> make the check replayable — the RO absorbs the session-fresh secret <code>r1</code>/<code>vb</code>, so sid provides domain separation only (default <code>zero_block</code>, uniqueness unenforced but unnecessary)</td><td><code class="ref">mp_gadget.h:283-286,341-344</code></td></tr>
 </table>
@@ -658,7 +665,7 @@ result (#11).</p></div>
 </main>
 <footer>
 emp-ot implementation audit · Silent OT (cGGM · MPCOT · LPN · Ferret / SilentFerret) · working tree on
-<code>main</code> (head <code>481cc1d</code>). Reports:
+<code>main</code> (head <code>da3ca9a</code>). Reports:
 <a href="00-overview.html">Overview</a> ·
 <a href="01-base-ot.html">Base OT</a> ·
 <a href="02-ot-extension.html">OT extension</a> ·
