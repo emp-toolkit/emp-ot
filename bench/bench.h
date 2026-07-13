@@ -21,6 +21,17 @@ inline void pretouch_blocks(block *p, int64_t n) {
 	std::memset(p, 0, sizeof(block) * (size_t)n);
 }
 
+// Snap a requested RCOT length down to a whole number of SilentFerret
+// rounds (one round = (t - refill_trees) * 2^tree_depth COTs). Ferret
+// ships corrections per tree, but SilentFerret prepays whole rounds, so
+// a partial tail round over-ships its corrections; at a whole-round
+// length the two are wire-identical (the trace-hash baseline pins it)
+// and their reported bits/RCOT compare directly.
+inline int64_t snap_to_ferret_rounds(int64_t n, const PrimalLPNParameter& p) {
+	const int64_t cpr = (p.t - p.refill_trees) << p.tree_depth;
+	return n < cpr ? cpr : n / cpr * cpr;
+}
+
 // The connecting party (BOB / party 2) dials emp-tool's peer_ip() ($EMP_PEER_IP,
 // default loopback); ALICE (party 1) listens and ignores it. So no bench
 // hardcodes an IP.

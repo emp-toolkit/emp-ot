@@ -13,6 +13,7 @@ static void bench_one(NetIO* io, int party, int64_t length, bool malicious,
                       const char* tag, const PrimalLPNParameter& param,
                       int n_threads) {
     const char* mode = malicious ? "mali" : "semi";
+    length = snap_to_ferret_rounds(length, param);
     SilentFerret* ot =
         new SilentFerret(party, io, malicious, param, nullptr, n_threads);
     uint64_t ds = 0, dr = 0;
