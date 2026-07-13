@@ -324,7 +324,8 @@ is the human-maintained source of truth: a changed hash means a wire-format chan
 but flag it in the commit</em>. Ferret(b11) and SilentFerret(b11) rows are <b>wire-identical by design</b>
 (SilentFerret changes only <em>when</em> correction traffic is sent) and must stay equal. This pass
 independently re-ran <code>EMP_TEST_MODE=1 ./run ./build/trace_hash</code> against a clean HEAD in Release: all
-18 rows match the README baseline byte-for-byte — no drift. Two caveats an auditor should note: the table is
+18 rows matched the README baseline current at that HEAD byte-for-byte — no drift. (The baseline has since been
+regenerated: emp-tool reworked its test-mode seed derivation, which changes every test-mode digest.) Two caveats an auditor should note: the table is
 <b>Release-only</b> (the RCOT length is <code>(1&lt;&lt;22)+101</code> under NDEBUG vs <code>(1&lt;&lt;18)+101</code>
 in Debug, <code>trace_hash.cpp:121-127</code>, so a Debug run will not match), and it <b>omits SoftSpoken&lt;4&gt;</b>
 (only <code>&lt;2&gt;</code> and <code>&lt;8&gt;</code> are traced, though the bench sweeps <code>k∈{2,4,8}</code>),

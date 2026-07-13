@@ -171,24 +171,24 @@ the bytes). Their rows must stay equal in both modes; a divergence
 means a refactor broke the equivalence, not just one protocol's format.
 
 ```
-CO                     send=cb1241385e1fa266 recv=1527f501eb006b21
-CSW                    send=9f713474307b6bef recv=223f31baeb44267d
-PVW                    send=fb1f9d384ef04ffe recv=b64a168b41ee1583
-BMM                    send=dd6005127adc3c90 recv=1c7da28077d38345
-IKNP semi              send=86e8b983c8d94b52 recv=356ed16464da939e
-SoftSpoken<2> semi     send=a68cae132c81937b recv=68c283a18fbe3260
-SoftSpoken<8> semi     send=a68cae132c81937b recv=bbfe17cba524e658
-Ferret(b11) semi       send=d34d028893e1c381 recv=ff4d708e0d3e10ab
-SilentFerret(b11) semi send=d34d028893e1c381 recv=ff4d708e0d3e10ab
-F2kVOLE semi           send=803c95c701a28917 recv=ded2e867aa512643
-FpVOLE semi            send=a4542d2accf6a37d recv=64284c447cd40386
-IKNP mali              send=86e8b983c8d94b52 recv=407f8129b0560674
-SoftSpoken<2> mali     send=a68cae132c81937b recv=4163eb51f573dea9
-SoftSpoken<8> mali     send=a68cae132c81937b recv=01c693ab2d69ad70
-Ferret(b11) mali       send=718c719155039ea3 recv=c53770674b0d8bfa
-SilentFerret(b11) mali send=718c719155039ea3 recv=c53770674b0d8bfa
-F2kVOLE mali           send=9b19bae6bbfa35eb recv=4430fbb61f5e79d4
-FpVOLE mali            send=612f33f1b5ba8273 recv=dd149a3730c384e6
+CO                     send=d698630b93938c23 recv=d9c1fafc2be169a6
+CSW                    send=0c2796685cfc7b91 recv=51c6e689429102d6
+PVW                    send=49680c637b810195 recv=c5631a7f473a0998
+BMM                    send=1a153c6ad131ea0b recv=504bcea7a11ee9bf
+IKNP semi              send=ac441b93d05b591e recv=c861d33efcc306b2
+SoftSpoken<2> semi     send=c09818e2edddfcd6 recv=53f9e440f7df41f1
+SoftSpoken<8> semi     send=c09818e2edddfcd6 recv=6bda77ca7c0f9037
+Ferret(b11) semi       send=1f2d87e222bc509a recv=31f4d61323bea622
+SilentFerret(b11) semi send=1f2d87e222bc509a recv=31f4d61323bea622
+F2kVOLE semi           send=b3f5ce46fb1ab13d recv=0a7d75d69804b3ca
+FpVOLE semi            send=dfaecd1679444e65 recv=95ffe06f47813ae5
+IKNP mali              send=ac441b93d05b591e recv=98125593b26d3b02
+SoftSpoken<2> mali     send=c09818e2edddfcd6 recv=a549bba02e32f2a1
+SoftSpoken<8> mali     send=c09818e2edddfcd6 recv=b8690d0258534cc0
+Ferret(b11) mali       send=8f7e58077aa1d35f recv=74b34e5043665231
+SilentFerret(b11) mali send=8f7e58077aa1d35f recv=74b34e5043665231
+F2kVOLE mali           send=639b25364bcf3e8d recv=881af7fc8a3ad07c
+FpVOLE mali            send=043213ac95d7de0e recv=ca3640000ceb5e93
 ```
 
 ## Usage
