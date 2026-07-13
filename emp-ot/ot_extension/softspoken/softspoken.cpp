@@ -603,8 +603,9 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
 
     // Sub-VOLE 0 produces u_canonical (no d_buf for i=0). The i ≥ 1 loop
     // interleaves each butterfly with its d_buf_i = u_canonical ⊕ u_temp
-    // build; the phase timer bills both to `butterfly` (the XOR is ~5% of
-    // the loop; the standalone kernel bench separates them if needed).
+    // build; the phase timer bills both to `butterfly` (the XOR is a small
+    // fraction of the loop; the standalone kernel bench separates them if
+    // needed).
     {
         EMP_SS_PHASE(recv, butterfly);
         {

@@ -1,6 +1,6 @@
 # emp-ot implementation audit — verified claims ledger
 
-**Source tree:** `/Users/wangxiao/Documents/emp-ot` · `HEAD @ 481cc1d` (branch `main`, the 1.0 development line)
+**Source tree:** `emp-ot` · `HEAD @ 481cc1d` (branch `main`, the 1.0 development line)
 
 **Stats:** 114 merged claims adversarially verified — **96 confirmed, 17 refuted, 1 unverified**.
 Produced by 7 subsystem deep-readers (interfaces/streaming, base-classic, base-PQ, IKNP/SoftSpoken,
@@ -52,7 +52,7 @@ overview-page refutations are retained here as corrected facts for the record.
 | CONFIRMED | med | Only the PPRF check is at bootstrap; the base-OT extraction check is deferred to the parent's first `end()`, and the `setup_done` assert guarantees only that the PPRF check ran. | `emp-ot/ot_extension/ot_extension.h:132,137`; `softspoken.cpp:97,104,110,451-456` | Deferred-check split confirmed; `setup_done` covers PPRF only. |
 | CONFIRMED | med | The Δ LSB-must-be-1 invariant is enforced at `set_delta` (assert) and by the ctor pinning `bits[0]=true`; the whole LSB choice convention and RCOT correction depend on it — but the `set_delta` check is NDEBUG-elidable. | `emp-ot/ot_extension/ot_extension.h:79,165`; `emp-ot/ot.h:150` | Assert + ctor pin confirmed; release build unguarded. |
 | CONFIRMED | med | The tripwire posture: `~StreamingExtension` mid-session is an always-on `error()`, but enter/exit/assert-in-session are debug-only asserts; the receiver null `gadget_send_` deref path is real. (Nuance: docs describe tripwires as asserts and line 68 says "not enforced by the base", so "advertised as enforced" is loose.) | `emp-ot/ot_extension/ot_extension.h:76`; `streaming_extension.h:133-161,148`; `base_ot/csw.h:105`; `ferret/ferret.cpp:75`; `ferret/silent_ferret.cpp:235`; `softspoken.cpp:102-103`; `docs/streaming-api.md:54-68` | Assert-only vs always-on-`error()` posture fully supported by code. |
-| CONFIRMED | med | The `run()`/rcot vs `begin/next_n` mutual exclusion is doc-prose only: `run()` and `next_n()` share one `leftover_` buffer per instance with no assert against mixing, and every chosen-input verb funnels into `rcot→run()→begin()`, so calling a classic OT method on an instance holding a long-lived session (emp-ag's `EMP_AG_LONG_LIVED_COT`, emp-zk's persistent Ferret) double-enters and is caught only by a debug assert. | `emp-ot/common/streaming_extension.h:163-177`; `docs/streaming-api.md:170-173`; `emp-ot/ot.h:45-116`; `ot_extension.h:117-119`; `.../emp-ag/backend/auth_share_pool.h:325-330` | Shared buffer + funnel confirmed; silent draw-ordering corruption under NDEBUG. |
+| CONFIRMED | med | The `run()`/rcot vs `begin/next_n` mutual exclusion is doc-prose only: `run()` and `next_n()` share one `leftover_` buffer per instance with no assert against mixing, and every chosen-input verb funnels into `rcot→run()→begin()`, so calling a classic OT method on an instance holding a long-lived session (e.g. emp-zk's persistent Ferret) double-enters and is caught only by a debug assert. | `emp-ot/common/streaming_extension.h:163-177`; `docs/streaming-api.md:170-173`; `emp-ot/ot.h:45-116`; `ot_extension.h:117-119` | Shared buffer + funnel confirmed; silent draw-ordering corruption under NDEBUG. |
 
 ---
 

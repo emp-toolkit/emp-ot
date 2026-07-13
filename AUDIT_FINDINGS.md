@@ -97,8 +97,8 @@ verified only indirectly (via `run()`'s internal loop), never directly.
   build unguarded. `ot_extension.h:79,165`; `ot.h:150`
 - **M7 · `run()`/rcot vs `begin/next_n` mutual exclusion is doc-only** — one
   shared `leftover_` buffer, no assert against mixing; a classic OT call on
-  an instance holding a long-lived session (emp-ag `EMP_AG_LONG_LIVED_COT`,
-  emp-zk persistent Ferret) double-enters, caught only by a debug assert →
+  an instance holding a long-lived session (e.g. emp-zk's persistent
+  Ferret) double-enters, caught only by a debug assert →
   silent draw-ordering corruption under NDEBUG. `streaming_extension.h:163-177`
 - **M8 · tripwire posture** — `~StreamingExtension` mid-session is always-on
   `error()`, but enter/exit checks are debug-only asserts; the receiver null

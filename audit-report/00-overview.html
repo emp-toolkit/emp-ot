@@ -116,7 +116,7 @@ malicious security lives in the concrete consistency checks documented in the fo
 <div class="meta">
 <table>
 <tr><td>Report</td><td>High-level overview — the on-ramp to the four detailed sub-reports below</td></tr>
-<tr><td>Source tree</td><td><code>/Users/wangxiao/Documents/emp-ot</code> · <code>HEAD @ 481cc1d</code> (branch <code>main</code>, the 1.0 development line)</td></tr>
+<tr><td>Source tree</td><td><code>emp-ot</code> · <code>HEAD @ 481cc1d</code> (branch <code>main</code>, the 1.0 development line)</td></tr>
 <tr><td>License</td><td>see repo <code>LICENSE</code>; vendored pq-crystals Kyber under its own dual CC0-1.0 / Apache-2.0 terms</td></tr>
 <tr><td>Versioning</td><td><b>Stable:</b> tag <code>0.3.0</code> / branch <code>v0.3.x</code> (backported fixes). <b>This tree:</b> pre-alpha — CMake reads <code>1.0.0</code> but the API is <b>not frozen</b> (headers/names may still move between alphas). Requires <code>emp-tool ≥ 1.0</code>.</td></tr>
 <tr><td>Namespace</td><td><code>emp</code> (single namespace; every public class lives here)</td></tr>
@@ -329,12 +329,10 @@ independently re-ran <code>EMP_TEST_MODE=1 ./run ./build/trace_hash</code> again
 in Debug, <code>trace_hash.cpp:121-127</code>, so a Debug run will not match), and it <b>omits SoftSpoken&lt;4&gt;</b>
 (only <code>&lt;2&gt;</code> and <code>&lt;8&gt;</code> are traced, though the bench sweeps <code>k∈{2,4,8}</code>),
 so a wire regression specific to the <code>k=4</code> code path escapes this guard.</p></div>
-<div class="callout c-warn"><span class="lbl">Build clean, tests network-gated in this sandbox</span>
+<div class="callout c-ok"><span class="lbl">Build + tests clean</span>
 <p>Both emp-tool and emp-ot build cleanly at <code>-O3 -DNDEBUG -Wall -Werror=switch</code> with <b>zero compiler
-warnings</b> (Apple clang 21, arm64/NEON). All 11 ctest entries could <b>not</b> be executed here: each spawns two
-local parties over <code>127.0.0.1</code> and the sandbox denies socket <code>bind</code> (<code>Operation not
-permitted</code>), so they are reported <b>skipped</b>, not failing. No fast subset is runnable without
-loopback. This is an environment limitation, not a code defect.</p></div>
+warnings</b> (Apple clang 21, arm64/NEON), and the full ctest suite passes (11 two-party loopback entries
+plus the single-process tuning-invariance check).</p></div>
 
 <!-- ===================================================================== -->
 <h2 id="ecosystem">8 · Ecosystem &amp; downstream position</h2>
@@ -345,7 +343,7 @@ the higher protocol libraries consume. Its outputs are a hot-path dependency, so
 <tr><th>Direction</th><th>What it is</th><th>Coupling to emp-ot</th></tr>
 <tr><td><b>emp-tool</b> (upstream)</td><td>the shared substrate</td><td>emp-ot builds on <code>block</code>, CCRH/MITCCRH, PRG, GF(2¹²⁸) f2k, AES, and the NetIO/IOChannel — including the shared <code>bit0_mask</code> adopted in <code>37e2576</code></td></tr>
 <tr><td><b>emp-zk</b> (downstream)</td><td>VOLE-based zero-knowledge</td><td>consumes the F2k and F<sub>p</sub> sVOLE correlations; <code>ostriple.h</code> reinterpret-casts <code>__uint128_t*</code> to <code>AuthValueFp*</code> on every <code>next_n</code> draw, so the val-first storage layout is a load-bearing ABI contract (§9, Report 4)</td></tr>
-<tr><td><b>emp-ag</b> (downstream)</td><td>authenticated/malicious MPC</td><td>drives COT lanes — the <code>clone_lane</code> extension (<code>481cc1d</code>) spawns independent SoftSpoken COT lanes over separate channels for its <code>EMP_AG_LONG_LIVED_COT</code> mode</td></tr>
+<tr><td><b>authenticated garbling</b> (downstream)</td><td>authenticated/malicious MPC</td><td>drives COT lanes — the <code>clone_lane</code> extension (<code>481cc1d</code>) spawns independent SoftSpoken COT lanes over separate channels for long-lived preprocessing sessions</td></tr>
 <tr><td><b>emp-sh2pc / 2PC</b> (downstream)</td><td>garbled-circuit 2PC</td><td>consumes chosen-input OT via the <code>OT/COT</code> tower</td></tr>
 </table>
 
@@ -396,9 +394,8 @@ references and a per-report risk register.</p>
 <!-- ===================================================================== -->
 <h2 id="caveats">11 · Repository caveats an auditor will notice</h2>
 <ul>
-<li><b>Stray log files at the repo root.</b> <code>p2.log</code> / <code>p3.log</code> are committed party-2/party-3
-run logs; <code>todo.txt</code>, <code>AGENTS.md</code>, and <code>CLAUDE.md</code> are working notes, not part of
-the library.</li>
+<li><b>Working notes at the repo root.</b> <code>AGENTS.md</code> and <code>CLAUDE.md</code> are development
+notes, not part of the library.</li>
 <li><b>Pre-alpha API.</b> CMake reads <code>1.0.0</code> but names and headers may still move before the first
 tagged alpha; anything pinned to a release should track <code>v0.3.x</code> instead.</li>
 <li><b>The C++17 README floor understates the real requirement.</b> The target exports

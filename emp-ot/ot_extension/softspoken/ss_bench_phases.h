@@ -7,8 +7,8 @@
 // breakdown to stderr at every session end(). Off by default: production
 // builds compile every macro below to nothing and carry no timers. The
 // scopes sit at section granularity (a handful of steady_clock reads per
-// chunk), so an instrumented run stays within ~1% of the uninstrumented
-// wall time.
+// chunk), so instrumentation overhead is negligible relative to the
+// timed work.
 //
 // Usage (softspoken.cpp):
 //   { EMP_SS_PHASE(send, butterfly); ...section... }   scoped accumulation

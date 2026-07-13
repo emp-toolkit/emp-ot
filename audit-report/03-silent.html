@@ -112,7 +112,7 @@ chi-fold consistency check with a fail-closed <code>error()</code> abort.</p>
 <div class="meta">
 <table>
 <tr><td>Report</td><td>3 of 4 — Silent OT (<code>emp-ot/common/</code> + <code>emp-ot/ot_extension/ferret/</code>)</td></tr>
-<tr><td>Source tree</td><td><code>/Users/wangxiao/Documents/emp-ot</code> · working tree on <code>main</code> (head <code class="ref">481cc1d</code>)</td></tr>
+<tr><td>Source tree</td><td><code>emp-ot</code> · working tree on <code>main</code> (head <code class="ref">481cc1d</code>)</td></tr>
 <tr><td>Files in scope</td><td><code>emp-ot/common/{cggm,mp_gadget,lpn,streaming_extension}.h</code> · <code>emp-ot/tuning.h</code> · <code>emp-ot/ot_extension/ferret/{ferret,silent_ferret}.{h,cpp}</code></td></tr>
 <tr><td>Papers</td><td>Ferret (ePrint <b>2020/924</b>, App. C consistency check) · Half-Tree cGGM (ePrint <b>2022/1431</b>, Fig. 3) · CCRH = emp-tool <code>H(x)=π(σ(x))⊕σ(x)</code> (ePrint 2019/074, Thm 4.3)</td></tr>
 <tr><td>Trust model</td><td><b>Dual</b>, dispatched by a <code>malicious</code> flag. Semi-honest ships/checks nothing; malicious rests on (a) a malicious-secure base OT (refused at construction otherwise) and (b) the round-final chi-fold check. Both abort via emp-tool <code>error()</code> → fail-closed <code>_Exit</code>.</td></tr>

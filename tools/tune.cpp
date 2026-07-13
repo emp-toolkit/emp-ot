@@ -54,8 +54,9 @@ static constexpr double kMinRunMs = 30.0;   // per timed window (x3 per measurem
 static constexpr double kMinWinFrac = 0.01; // never emit for <1%
 
 // Pin the sweep to performance cores where the OS lets short bursts drift
-// to efficiency cores (Apple): without this, medians read 2-4x slow and
-// the noise band swallows every verdict.
+// to efficiency cores (Apple): without this, medians taken on an
+// efficiency core are wildly inflated and the noise band swallows every
+// verdict.
 static void pin_quality_of_service() {
 #ifdef __APPLE__
 	pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);

@@ -14,9 +14,9 @@ using namespace emp;
 // Fault in a freshly allocated output buffer before the timer starts.
 // A `new block[length]` is demand-zero mapped; without this, the kernel's
 // first-touch page faults land inside the timed protocol call and get
-// billed to the protocol (measured 0.9-4.3 ns per 16-B OT depending on
-// OS/hardware -- comparable to the whole compute budget of the cheap
-// configs). memset makes every page resident and writable up front.
+// billed to the protocol -- on the cheap configs the fault cost is
+// comparable to the whole compute budget. memset makes every page
+// resident and writable up front.
 inline void pretouch_blocks(block *p, int64_t n) {
 	std::memset(p, 0, sizeof(block) * (size_t)n);
 }

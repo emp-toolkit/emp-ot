@@ -115,7 +115,7 @@ constant-time posture, and the per-scheme assumptions.</p>
 <div class="meta">
 <table>
 <tr><td>Report</td><td>1 — Base OT (<code>emp-ot/base_ot/{co,pvw,csw,bmm}.h</code> + <code>emp-ot/base_ot/mlkem/</code>)</td></tr>
-<tr><td>Source tree</td><td><code>/Users/wangxiao/Documents/emp-ot</code> · working tree on <code>main</code> (HEAD <code>481cc1d</code>)</td></tr>
+<tr><td>Source tree</td><td><code>emp-ot</code> · working tree on <code>main</code> (HEAD <code>481cc1d</code>)</td></tr>
 <tr><td>Files in scope</td><td><code>base_ot/{co,pvw,csw,bmm}.h</code> · <code>base_ot/mlkem/{bmm.cpp,crs.hpp,symmetric.h,params.hpp,kyber/*}</code> · consumed emp-tool substrate <code>runtime/crypto/{ec.cpp,ro.h}</code>, <code>runtime/io/io_channel.h</code></td></tr>
 <tr><td>Trust model</td><td><b>Per scheme.</b> CO is semi-honest; PVW / CSW / BMM declare malicious security via <code>is_malicious_secure()==true</code>. Only CSW carries an active runtime consistency check with an abort; PVW/BMM argue malice structurally/algebraically.</td></tr>
 <tr><td>Live vs legacy</td><td>Every extension (IKNP / SoftSpoken / Ferret) defaults its base OT to <b>CSW</b>. CO / PVW / BMM are reachable only via the standalone <code>test/bench_base_ot</code> or by a caller passing a custom base OT to an extension ctor.</td></tr>
