@@ -272,7 +272,7 @@ public:
     io->recv_data(xz, 2 * sizeof(uint64_t));
     xz[1] = mult_mod(xz[1], (uint64_t)Delta);
     y = add_mod(y, xz[1]);
-    if (y != xz[0]) error("base sVOLE check fails");
+    expecting(y == xz[0], "base sVOLE check fails");
   }
 
   void recver_check(__uint128_t *macs, uint64_t *x, uint64_t c, uint64_t a,

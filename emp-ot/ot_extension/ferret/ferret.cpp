@@ -36,6 +36,7 @@ Ferret::Ferret(int party, IOChannel *io,
 	: OTExtension(party, io, malicious,
 	              base_ot ? std::move(base_ot)
 	                      : std::unique_ptr<OT>(new FerretBaseOT(io))) {
+	validate_primal_lpn_parameter(param);
 	this->param = param;
 
 	lpn_ = std::make_unique<Lpn<AuthValueFerret, 10>>(param.k);
@@ -69,7 +70,7 @@ int64_t Ferret::chunk_size() const {
 	return int64_t{1} << param.tree_depth;
 }
 
-// Pre-bootstrap only (asserted by OTExtension::set_delta on the
+// Pre-bootstrap only (enforced by OTExtension::set_delta on the
 // inherited setup_done). After updating Delta/delta_bool on the
 // base, re-propagate into the sender's mpcot gadget.
 void Ferret::set_delta(const bool *bits) {
@@ -90,7 +91,7 @@ void Ferret::begin() {
 }
 
 void Ferret::next(block *out) {
-	assert_in_session_();
+	expect_in_session_();
 	// Auto-rollover: if this round's user-visible budget is full,
 	// run end+begin transparently before producing the user's tree.
 	// Uses the public end()/begin() — exit_session_ then enter_session_
@@ -104,6 +105,7 @@ void Ferret::next(block *out) {
 }
 
 void Ferret::end() {
+	expect_in_session_();
 	run_refill_();
 	inner_run_end_();
 	exit_session_();

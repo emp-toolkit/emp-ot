@@ -18,10 +18,24 @@ function(add_test_case_with_run name)
     add_test(NAME ${name}
              COMMAND ${PROJECT_SOURCE_DIR}/run $<TARGET_FILE:${name}>
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    # The harness times out at 120 seconds by default; leave enough time for
+    # it to terminate and reap both party process groups before CTest intervenes.
+    set_tests_properties(${name} PROPERTIES TIMEOUT 130)
 endfunction()
+
+# Shell-level regression coverage for the two-party process supervisor itself.
+add_test(NAME test_run
+         COMMAND /bin/bash ${PROJECT_SOURCE_DIR}/test/test_run.sh
+                           ${PROJECT_SOURCE_DIR}/run
+         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+set_tests_properties(test_run PROPERTIES TIMEOUT 20)
 
 # Output-invariance of the `make tune` LOCAL knobs (single-process).
 add_test_case(test_tuning_invariance)
+
+# Release-surviving public/security contract checks (single-process).
+add_test_case(test_contracts)
+set_tests_properties(test_contracts PROPERTIES TIMEOUT 10)
 
 # Per-primitive correctness drivers (assert via check_*/verify_rcot in test.h).
 add_test_case_with_run(test_base_ot)

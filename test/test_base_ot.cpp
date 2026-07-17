@@ -1,6 +1,6 @@
 // Base-OT correctness test. Sweeps the base-OT protocols CO / PVW / CSW /
 // BMM and, for each, runs the protocol and asserts the receiver's
-// outputs via check_ot (which calls error() on mismatch). Correctness-only;
+// outputs via check_ot (which calls expecting() on mismatch). Correctness-only;
 // throughput lives in bench/bench_base_ot.cpp. Two-party via the `run` script
 // (loopback 127.0.0.1).
 #include "test/test.h"

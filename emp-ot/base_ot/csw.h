@@ -102,8 +102,10 @@ public:
 	// p0_/p1_ for the deferred check and does NOT flush — the core bytes stay
 	// buffered so an extension can bundle them with its first message.
 	void send_core(const block * data0, const block * data1, int64_t length) {
-		assert(length >= 80 &&
-		       "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
+		expecting(length >= 80,
+		          "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
+		expect_ot_args(length, data0, data1,
+		               "CSW::send_core: invalid length or null buffer");
 		length_ = length;
 
 		// Round 1 (R→S): receive seed, {B_i}.
@@ -168,8 +170,8 @@ public:
 
 		block otans_prime;
 		io->recv_block(&otans_prime, 1);
-		if (!cmpBlock(&otans, &otans_prime, 1))
-			error("CSW::send_check: otans verification failed (receiver misbehavior)");
+		expecting(cmpBlock(&otans, &otans_prime, 1),
+		          "CSW::send_check: otans verification failed (receiver misbehavior)");
 	}
 
 	// ----- Receiver side. Plays the OT receiver role (R in the paper). -----
@@ -179,7 +181,10 @@ public:
 	// acceptance; the extension's own check + this base check both run before
 	// any output is consumed). Does NOT flush.
 	void recv_core(block * data, const bool * b, int64_t length) {
-		assert(length >= 80 && "CSW: length must be ≥ 80");
+		expecting(length >= 80,
+		          "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
+		expect_ot_args(length, data, b,
+		               "CSW::recv_core: invalid length or null buffer");
 		length_ = length;
 		b_copy_.resize(length);
 		for (int64_t i = 0; i < length; ++i) b_copy_[i] = b[i] ? 1 : 0;
@@ -249,8 +254,8 @@ public:
 		                        .absorb(otresp.data(), (size_t)length_ * sizeof(block))
 		                        .squeeze_block();
 		block proof_check = check_h3(sid_v, otans_prime);
-		if (!cmpBlock(&proof, &proof_check, 1))
-			error("CSW::recv_check: proof verification failed (sender misbehavior or selective-failure attack)");
+		expecting(cmpBlock(&proof, &proof_check, 1),
+		          "CSW::recv_check: proof verification failed (sender misbehavior or selective-failure attack)");
 
 		io->send_block(&otans_prime, 1);
 		io->flush();

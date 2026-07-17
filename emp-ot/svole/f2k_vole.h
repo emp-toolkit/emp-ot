@@ -95,7 +95,7 @@ struct AuthValueF2k {
     const uint8_t *bytes = reinterpret_cast<const uint8_t *>(&delta);
     for (int i = 0; i < 128; ++i)
       bits[i] = (bytes[i / 8] >> (i % 8)) & 1;
-    assert(bits[0] && "F2k set_delta: Δ.LSB must be 1");
+    expecting(bits[0], "F2k set_delta: Δ.LSB must be 1");
     f->set_delta(bits);
   }
 

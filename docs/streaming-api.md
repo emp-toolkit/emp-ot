@@ -54,11 +54,14 @@ LPN-folded outputs for Svole. Constant per instance after setup.
 **Session tripwire**: a single bool on the base. Subclass overrides
 call protected helpers from inside `begin/next/end`:
 
-- `enter_session_()` at the top of `begin()` — asserts no prior session
-  was left open, then flips the flag.
-- `assert_in_session_()` inside `next()` — catches `next()` called
-  outside a begin/end pair.
-- `exit_session_()` at the bottom of `end()` — clears the flag.
+- `enter_session_()` at the top of `begin()` — uses the always-on
+  `emp::expecting` contract to reject a prior session left open, then
+  flips the flag.
+- `expect_in_session_()` inside `next()` and at the top of `end()` — an
+  always-on check before the override produces a chunk or performs any
+  protocol I/O.
+- `exit_session_()` at the bottom of `end()` — repeats the always-on
+  active-session check, then clears the flag.
 
 Each helper is one line and the subclass is free to do its real work
 around them. The pattern replaces the NVI wrapper that used to live
@@ -66,6 +69,12 @@ on the base (`begin/next/end` non-virtual public + `do_begin/do_next/
 do_end` protected virtuals) — a single set of virtuals is now both
 the public API and the override point, and the tripwire is opt-in via
 the helpers rather than enforced by the base.
+
+Public boundary operations use `emp::expecting`, so their contracts
+remain active in release builds: double `begin`, `end` without `begin`,
+`run` during an open session, and `next_n` without an open session are
+all rejected. A direct out-of-session call to virtual `next()` is also
+rejected in release builds.
 
 ## Lazy setup
 
@@ -77,19 +86,38 @@ and flipping `setup_done = true`. Every later begin sees
 
 This lets outer protocols configure the instance (e.g.
 `set_delta` / `set_choice_seed`) between construction and the
-first session — both setters assert `!setup_done` to catch use after
-bootstrap has consumed Δ / choice randomness.
+first session. Preconditions on these configuration APIs use
+`emp::expecting`, so misuse is rejected in release builds too:
+
+- OT-extension `set_delta` is sender-only, requires a non-null bit
+  buffer with bit 0 set, and must run before bootstrap.
+- `set_choice_seed` is receiver-only and must run before bootstrap.
+- OT-extension and sVOLE `set_sid` must run before bootstrap.
+- sVOLE `set_delta` is Δ-holder-only and pre-bootstrap; reading
+  `delta()` is Δ-holder-only. The F2k carrier additionally requires
+  Δ's least-significant bit to be one. Fp instead requires a canonical
+  nonzero field element and samples one automatically when not overridden.
 
 ## The leftover buffer (`run(data, num)`)
 
 ```cpp
 void run(Element *data, int64_t num) {
+    expecting(!in_session_,
+              "StreamingExtension::run: active streaming session");
+    expecting(num >= 0, "StreamingExtension::run: negative element count");
+    expecting(num <= max_element_count_(),
+              "StreamingExtension::run: element byte count overflow");
+    expecting(num == 0 || data != nullptr,
+              "StreamingExtension::run: null output for nonzero count");
+    if (num == 0) return;
+
     const int64_t chunk = chunk_size();
+    validate_chunk_size_(chunk);             // positive; byte count fits
     int64_t produced = drain_leftover(data, num);
     if (produced == num) return;
 
     begin();
-    while (produced + chunk <= num) {
+    while (chunk <= num - produced) {        // subtraction avoids overflow
         next(data + produced);
         produced += chunk;
     }
@@ -97,11 +125,12 @@ void run(Element *data, int64_t num) {
         // Tail handling: write one more chunk into a per-instance
         // scratch, copy out the prefix the user asked for, save
         // the suffix for the next call.
-        if ((int64_t)leftover_.size() < chunk) leftover_.resize(chunk);
+        if (leftover_.size() < static_cast<size_t>(chunk))
+            leftover_.resize(static_cast<size_t>(chunk));
         next(leftover_.data());
         int64_t take = num - produced;
         std::memcpy(data + produced, leftover_.data(),
-                    take * sizeof(Element));
+                    static_cast<size_t>(take) * sizeof(Element));
         leftover_pos_   = take;
         leftover_count_ = chunk - take;
     }
@@ -116,6 +145,15 @@ and then either returns or continues with `begin`/`next` loop.
 
 In other words, repeated `run(...)` calls on the same instance with
 `num != k·chunk_size()` don't pay a fresh chunk per call.
+
+The boundary checks happen before touching the leftover buffer or
+starting protocol work. With no session active, a zero count is a true
+no-op: `data` may be null, no leftover is consumed, and `chunk_size` /
+`begin` / `next` / `end` are not called. Negative counts, a null output
+for a nonzero count, counts whose `num * sizeof(Element)` cannot fit in
+`int64_t`, and nonpositive or byte-overflowing chunk sizes are rejected
+in every build flavor. `run` rejects being called during a
+caller-owned streaming session even when `num == 0`.
 
 ## Incremental draw (`next_n(dst, n)`)
 
@@ -134,21 +172,39 @@ chunk regardless of `n` — same structure as `run()`, minus begin/end:
 
 ```cpp
 void next_n(Element *dst, int64_t n) {
-    assert_in_session_();
+    expecting(n >= 0,
+              "StreamingExtension::next_n: negative element count");
+    expecting(n <= max_element_count_(),
+              "StreamingExtension::next_n: element byte count overflow");
+    expecting(n == 0 || dst != nullptr,
+              "StreamingExtension::next_n: null output for nonzero count");
+    expecting(in_session_, "StreamingExtension::next_n: call begin first");
+    if (n == 0) return;
+
     const int64_t chunk = chunk_size();
+    validate_chunk_size_(chunk);
     int64_t got = drain_leftover(dst, n);      // 1. prior partial tail (stream order)
-    while (got + chunk <= n) {                 // 2. whole chunks: no copy
+    while (chunk <= n - got) {                 // 2. whole chunks: no copy
         next(dst + got);
         got += chunk;
     }
     if (got < n) {                             // 3. sub-chunk remainder via leftover_
+        if (leftover_.size() < static_cast<size_t>(chunk))
+            leftover_.resize(static_cast<size_t>(chunk));
         next(leftover_.data());
         int64_t take = n - got;
-        memcpy(dst + got, leftover_.data(), take * sizeof(Element));
+        std::memcpy(dst + got, leftover_.data(),
+                    static_cast<size_t>(take) * sizeof(Element));
         leftover_pos_ = take; leftover_count_ = chunk - take;
     }
 }
 ```
+
+`next_n` applies the same signed-count, byte-overflow, null-buffer,
+and chunk-size checks as `run`. It additionally requires an active
+caller-owned session even when `n == 0`; once that requirement is met,
+a zero count is a no-op and `dst` may be null. Each concrete `next()`
+also applies the always-on session expectation when producing a chunk.
 
 Writing whole chunks directly into `dst` is safe at the (possibly
 non-chunk-aligned) offset `dst + got` because `Element`-pointer
@@ -171,6 +227,8 @@ Notes:
 - It shares the same `leftover_` buffer as `run()`, so the two are
   **mutually exclusive** on one instance — pick streaming (`next_n` /
   `begin`/`next`/`end`) *or* one-shot (`run` / `rcot`), not both.
+  In particular, `run()` rejects a call made while the streaming
+  session is open.
 - `enter_session_()` resets `leftover_count_ = 0`, so a fresh `begin()`
   never serves a stale tail from a previous session. (This is also why
   it composes with auto-rollover: the internal `end()`/`begin()` only
@@ -220,15 +278,18 @@ The dispatch tree inside `OTExtension`:
 ## Auto-rollover inside next
 
 The base declares `next()` as a pure virtual and does no rollover;
-the subclass's `next()` override asserts the session
-(`assert_in_session_()`) and implements the rollover. The protocol-specific
-auto-rollover (calling end+begin transparently when the round's
-user-visible budget is full) lives inside the subclass's `next`:
+the subclass's `next()` override checks the session with the
+always-on `expect_in_session_()` and implements the rollover. The check
+runs once per produced chunk, not once per OT; normal chunks contain
+thousands of OTs, so the expected branch is amortized over the batch. The
+protocol-specific auto-rollover (calling end+begin transparently when
+the round's user-visible budget is full) lives inside the subclass's
+`next`:
 
 ```cpp
 // Ferret::next (simplified)
 void Ferret::next(block* out) {
-    assert_in_session_();
+    expect_in_session_();
     const int64_t user_budget_trees = param.t - param.refill_trees;
     if (tree_idx_ == user_budget_trees) {
         end();   // exit_session_ flips the tripwire
@@ -241,7 +302,7 @@ void Ferret::next(block* out) {
 ```cpp
 // Svole::next (simplified)
 void Svole::next(AuthValue* out) {
-    assert_in_session_();
+    expect_in_session_();
     const int64_t user_budget_trees = param.t - param.refill_trees;
     if (tree_idx_ == user_budget_trees) { end(); begin(); }
     process_one_tree_(out);
@@ -290,13 +351,15 @@ A protocol may also have FS pre-enabled by an outer harness; the
 
 ```cpp
 ~StreamingExtension() {
-    if (in_session_) error("...");
+    expecting(!in_session_,
+              "~StreamingExtension: destructed without calling end()");
 }
 ```
 
 A protocol object destructed in the middle of a session is a bug —
 the leftover buffer may hold un-consumed bytes; the peer is waiting
-for more. The base catches this at all build flavors (not just debug).
+for more. The base catches this with `emp::expecting` in all build
+flavors (not just debug); it no longer calls `error`.
 This is also the tripwire for a `next_n` caller that forgets to
 `end()`: since `next_n` keeps the session open, the owner must close it
 (e.g. in its destructor) before the extension is destroyed — `end()`
@@ -308,9 +371,10 @@ gone).
 
 `setup_done` is a public-on-the-base bool. Subclasses set it true
 inside their lazy bootstrap. Setters that must fire pre-bootstrap
-(`set_delta`, `set_choice_seed`) assert `!setup_done`. The base does
-not check `setup_done` itself — it's a contract between the subclass
-and the caller, surfaced through the asserts.
+(`set_delta`, `set_choice_seed`, and `set_sid`) enforce
+`!setup_done` with always-on `emp::expecting` checks. The base does not
+check `setup_done` itself — it remains a contract implemented by each
+subclass's bootstrap and configuration surface.
 
 ## See also
 

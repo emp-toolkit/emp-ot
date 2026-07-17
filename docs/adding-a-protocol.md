@@ -149,13 +149,14 @@ Notes:
     holds Δ at the outer-protocol level. For F_2k convention is BOB;
     for F_p it's ALICE. The choice flows through to the inner-Ferret
     role assignment.
-  - `resolve_delta(Ferret*)` is the default Δ if the user doesn't
+  - `resolve_delta(Ferret*)` is the holder's default Δ if the user doesn't
     call `Svole::set_delta`. F_2k pulls Ferret's auto-sampled block
-    Δ; F_p returns 0 (user *must* call `set_delta`).
+    Δ; F_p samples a canonical nonzero field element.
   - `on_set_delta(F, Ferret*)` propagates Δ into the inner Ferret if
     the two need to share it. F_2k bool-decomposes the F-typed Δ and
-    forwards to `Ferret::set_delta` (asserts `LSB(Δ) = 1`); F_p is a
-    no-op (Fp's Δ is independent of Ferret's).
+    forwards to `Ferret::set_delta` (requires `LSB(Δ) = 1`); F_p validates
+    that Δ is canonical and nonzero but does not propagate it (Fp's Δ is
+    independent of Ferret's and has no LSB constraint).
   - `Bootstrap::run(svole)` is the lazy setup body. Owns the
     initial-round seed sVOLE pairs. See `f2k_vole.h` (Galois packing
     with optional nested Svole) and `fp_vole.h` (COPE + Base_svole +
@@ -218,7 +219,7 @@ layer. The choice is how the override is structured:
 
 In both shapes the override must:
 1. Call `enter_session_()` at the top of `begin()`.
-2. Call `assert_in_session_()` at the top of `next()`.
+2. Call `expect_in_session_()` at the top of `next()` and `end()`.
 3. Call `exit_session_()` at the bottom of `end()`.
 
 These protected helpers (inherited from `StreamingExtension`) keep
@@ -251,11 +252,12 @@ public:
         else                recv_begin_();
     }
     void next(block* out) override {
-        assert_in_session_();
+        expect_in_session_();
         if (is_ot_sender()) send_next_(out);
         else                recv_next_(out);
     }
     void end() override {
+        expect_in_session_();
         if (is_ot_sender()) send_end_();
         else                recv_end_();
         exit_session_();

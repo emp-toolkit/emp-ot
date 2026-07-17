@@ -53,6 +53,8 @@ class PVW: public OT { public:
 	}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
+		expect_ot_args(length, data0, data1,
+		               "PVW::send: invalid length or null buffer");
 		ensure_crs_();
 		// Per i: receive (g_i, h_i), build (u_b, c_b) for b in {0,1},
 		// send them and the ciphertexts. (g_i, h_i) is consumed within
@@ -88,6 +90,8 @@ class PVW: public OT { public:
 	}
 
 	void recv(block* data, const bool* b, int64_t length) override {
+		expect_ot_args(length, data, b,
+		               "PVW::recv: invalid length or null buffer");
 		ensure_crs_();
 		// Round 1: send (g, h) = (g_sigma^r, h_sigma^r) per OT instance.
 		// r_i is needed across rounds (used to recover x_sigma in round

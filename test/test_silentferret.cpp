@@ -29,11 +29,11 @@ static void verify_silent(NetIO* io, int party, bool malicious,
     const uint64_t s0 = io->send_counter, r0 = io->recv_counter;
     for (int64_t i = 0; i < n_chunks; ++i)
         ot.next(b + i * chunk);                  // must be wire-free
-    if (io->send_counter != s0 || io->recv_counter != r0)
-        error("SilentFerret next() performed wire I/O (not silent)");
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "SilentFerret next() performed wire I/O (not silent)");
     ot.end();                                    // local refill only
-    if (io->send_counter != s0 || io->recv_counter != r0)
-        error("SilentFerret end() performed wire I/O (not silent)");
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "SilentFerret end() performed wire I/O (not silent)");
 
     verify_rcot(&ot, io, party, b, eff);
     cout << "  silent next/end ok (" << n_chunks << " chunks, "
@@ -73,9 +73,9 @@ static void verify_parallel(NetIO* io, int party, bool malicious,
         }
         for (auto& th : ths) th.join();
     }
-    if (std::memcmp(buf_single.data(), buf_par.data(),
-                    (size_t)eff * sizeof(block)) != 0)
-        error("produce_range: threaded output != single-call output");
+    expecting(std::memcmp(buf_single.data(), buf_par.data(),
+                          (size_t)eff * sizeof(block)) == 0,
+              "produce_range: threaded output != single-call output");
 
     ot.end();
     verify_rcot(&ot, io, party, buf_single.data(), eff);
@@ -106,9 +106,9 @@ static void verify_next_n(NetIO* io, int party, bool malicious,
         ot.next_n(buf_inc.data() + got, step);
         got += step;
     }
-    if (std::memcmp(buf_ref.data(), buf_inc.data(),
-                    (size_t)eff * sizeof(block)) != 0)
-        error("next_n incremental output != produce_range output");
+    expecting(std::memcmp(buf_ref.data(), buf_inc.data(),
+                          (size_t)eff * sizeof(block)) == 0,
+              "next_n incremental output != produce_range output");
 
     ot.end();
     verify_rcot(&ot, io, party, buf_ref.data(), eff);
@@ -130,7 +130,7 @@ static void verify_prepaid(NetIO* io, int party, bool malicious,
     ot.begin(n_ots);                                // all wire traffic here
     const int64_t cap = ot.prepared_capacity();
     const int64_t K   = cap / cpr;
-    if (K < 4) error("verify_prepaid: expected K>=4 rounds");
+    expecting(K >= 4, "verify_prepaid: expected K>=4 rounds");
 
     const uint64_t s0 = io->send_counter, r0 = io->recv_counter;
     std::vector<block> buf(cap);
@@ -143,11 +143,11 @@ static void verify_prepaid(NetIO* io, int party, bool malicious,
         ot.next_n(buf.data() + got, step);          // must be wire-free
         got += step;
     }
-    if (io->send_counter != s0 || io->recv_counter != r0)
-        error("verify_prepaid: prepaid consume performed wire I/O");
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "verify_prepaid: prepaid consume performed wire I/O");
     ot.end();                                       // local roll only
-    if (io->send_counter != s0 || io->recv_counter != r0)
-        error("verify_prepaid: prepaid end performed wire I/O");
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "verify_prepaid: prepaid end performed wire I/O");
 
     verify_rcot(&ot, io, party, buf.data(), cap);
     cout << "  prepaid ok (K=" << K << " rounds, " << cap << " COTs, "
@@ -171,11 +171,11 @@ static void verify_parallel_rollover(NetIO* io, int party, bool malicious,
     ot.begin(n_ots);                                // K=2, all traffic here
     const uint64_t s0 = io->send_counter, r0 = io->recv_counter;
     ot.next_chunks_parallel(buf.data(), n_chunks, n_threads);
-    if (io->send_counter != s0 || io->recv_counter != r0)
-        error("next_chunks_parallel performed wire I/O");
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "next_chunks_parallel performed wire I/O");
     ot.end();
-    if (io->send_counter != s0 || io->recv_counter != r0)
-        error("next_chunks_parallel end performed wire I/O");
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "next_chunks_parallel end performed wire I/O");
 
     verify_rcot(&ot, io, party, buf.data(), n_ots);
     cout << "  parallel rollover ok (" << n_threads << " threads, "
@@ -212,7 +212,8 @@ static void verify_comm_matches_ferret(NetIO* io, int party,
     if (f_sent != s_sent || f_recv != s_recv) {
         cerr << "Ferret sent/recv = " << f_sent << "/" << f_recv
              << "  SilentFerret = " << s_sent << "/" << s_recv << endl;
-        error("Ferret vs SilentFerret communication differs (same N)");
+        expecting(false,
+                  "Ferret vs SilentFerret communication differs (same N)");
     }
     cout << "  comm == Ferret (sent=" << f_sent << " recv=" << f_recv
          << " B, N=" << N << ")" << endl;
@@ -262,7 +263,8 @@ static void verify_comm_batched_vs_ferret(NetIO* io, int party,
         cerr << "Ferret " << f_sent << "/" << f_recv << "  batched " << b_sent
              << "/" << b_recv << "  expected save " << exp_sent_save << "/"
              << exp_recv_save << endl;
-        error("batched comm != Ferret minus exactly the batched-away checks");
+        expecting(false,
+                  "batched comm != Ferret minus exactly the batched-away checks");
     }
     verify_rcot(&s, io, party, buf, N);    // 2-batch output is a valid RCOT
     cout << "  batched(" << B << "x" << R << " rounds) == Ferret - " << saved

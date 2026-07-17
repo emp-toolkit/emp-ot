@@ -3,9 +3,9 @@
 
 #include "emp-tool/emp-tool.h"
 #include <algorithm>
-#include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <vector>
 
 // Single-role streaming-extension base. Both RCOT extensions and
@@ -32,7 +32,7 @@
 // construction). begin/next/end are virtual — subclasses override them
 // directly. Session-tripwire enforcement (no double-begin, no end
 // without begin, no destruction in-session) is provided by protected
-// helpers (enter_session_ / exit_session_ / assert_in_session_) that
+// helpers (enter_session_ / expect_in_session_ / exit_session_) that
 // the subclass calls from its overrides.
 
 namespace emp {
@@ -59,9 +59,9 @@ public:
     // Streaming lifecycle. Each subclass overrides these with its
     // bootstrap / per-chunk / round-end body. The override is
     // expected to call enter_session_() at the top of begin(),
-    // exit_session_() at the end of end(), and assert_in_session_()
-    // inside next() — the protected helpers below enforce the
-    // tripwire without the NVI dispatcher layer.
+    // expect_in_session_() before work and exit_session_() at the end of
+    // end(), and expect_in_session_() inside next() — the protected helpers
+    // below enforce the tripwire without the NVI dispatcher layer.
     virtual void begin() = 0;
     virtual void next(Element *out) = 0;
     virtual void end() = 0;
@@ -71,21 +71,32 @@ public:
     // previous call is consumed before extending again. Non-virtual;
     // works for any subclass via the begin/next/end virtuals.
     void run(Element *data, int64_t num) {
+        expecting(!in_session_,
+                  "StreamingExtension::run: active streaming session");
+        expecting(num >= 0, "StreamingExtension::run: negative element count");
+        expecting(num <= max_element_count_(),
+                  "StreamingExtension::run: element byte count overflow");
+        expecting(num == 0 || data != nullptr,
+                  "StreamingExtension::run: null output for nonzero count");
+        if (num == 0) return;
+
         const int64_t chunk = chunk_size();
+        validate_chunk_size_(chunk);
         int64_t produced = drain_leftover(data, num);
         if (produced == num) return;
 
         begin();
-        while (produced + chunk <= num) {
+        while (chunk <= num - produced) {
             next(data + produced);
             produced += chunk;
         }
         if (produced < num) {
-            if ((int64_t)leftover_.size() < chunk) leftover_.resize(chunk);
+            if (leftover_.size() < static_cast<size_t>(chunk))
+                leftover_.resize(static_cast<size_t>(chunk));
             next(leftover_.data());
             int64_t take = num - produced;
             std::memcpy(data + produced, leftover_.data(),
-                        take * sizeof(Element));
+                        static_cast<size_t>(take) * sizeof(Element));
             leftover_pos_   = take;
             leftover_count_ = chunk - take;
         }
@@ -108,23 +119,35 @@ public:
     // the per-call copy is bounded by one chunk regardless of n (vs copying
     // all n through the buffer). Mirrors run() minus the begin()/end().
     void next_n(Element *dst, int64_t n) {
-        assert_in_session_();
+        expecting(n >= 0,
+                  "StreamingExtension::next_n: negative element count");
+        expecting(n <= max_element_count_(),
+                  "StreamingExtension::next_n: element byte count overflow");
+        expecting(n == 0 || dst != nullptr,
+                  "StreamingExtension::next_n: null output for nonzero count");
+        expecting(in_session_,
+                  "StreamingExtension::next_n: call begin first");
+        if (n == 0) return;
+
         const int64_t chunk = chunk_size();
+        validate_chunk_size_(chunk);
         // 1. Consume any partial tail left by a previous call (stream order
         //    requires these elements come first).
         int64_t got = drain_leftover(dst, n);
         // 2. Fill whole chunks directly in the caller's buffer — no copy.
-        while (got + chunk <= n) {
+        while (chunk <= n - got) {
             next(dst + got);
             got += chunk;
         }
         // 3. Sub-chunk remainder: produce one chunk into leftover_, copy the
         //    needed prefix, and keep the rest for the next call.
         if (got < n) {
-            if ((int64_t)leftover_.size() < chunk) leftover_.resize(chunk);
+            if (leftover_.size() < static_cast<size_t>(chunk))
+                leftover_.resize(static_cast<size_t>(chunk));
             next(leftover_.data());
             int64_t take = n - got;
-            std::memcpy(dst + got, leftover_.data(), take * sizeof(Element));
+            std::memcpy(dst + got, leftover_.data(),
+                        static_cast<size_t>(take) * sizeof(Element));
             leftover_pos_   = take;
             leftover_count_ = chunk - take;
         }
@@ -134,8 +157,8 @@ public:
         // Always-on (not just debug): a missed end() leaves the wire
         // transcript / FS state desynchronized — silently OK in NDEBUG
         // would hide the bug at runtime in production.
-        if (in_session_)
-            error("~StreamingExtension: destructed without calling end()");
+        expecting(!in_session_,
+                  "~StreamingExtension: destructed without calling end()");
     }
 
 protected:
@@ -143,21 +166,22 @@ protected:
         : party(party_), malicious(malicious_) {}
 
     // Session tripwire helpers. Subclass overrides call these from
-    // their begin/end (and assert_in_session_ from next) — the base
+    // their begin/end/next — the base
     // can't manage the flag automatically without an NVI layer.
     void enter_session_() {
-        assert(!in_session_ && "begin: previous session not ended");
+        expecting(!in_session_, "begin: previous session not ended");
         in_session_ = true;
         // Drop any leftover from a prior session so next_n() / run() never
         // serve a stale chunk tail across a begin().
         leftover_count_ = 0;
     }
     void exit_session_() {
-        assert(in_session_ && "end: no active session");
+        expecting(in_session_, "end: no active session");
         in_session_ = false;
     }
-    void assert_in_session_() const {
-        assert(in_session_ && "next: call begin first");
+    void expect_in_session_() const {
+        expecting(in_session_,
+                  "StreamingExtension: no active session; call begin first");
     }
 
 private:
@@ -166,11 +190,23 @@ private:
     int64_t leftover_pos_   = 0;
     int64_t leftover_count_ = 0;
 
+    static constexpr int64_t max_element_count_() {
+        return std::numeric_limits<int64_t>::max() /
+               static_cast<int64_t>(sizeof(Element));
+    }
+
+    static void validate_chunk_size_(int64_t chunk) {
+        expecting(chunk > 0,
+                  "StreamingExtension: chunk size must be positive");
+        expecting(chunk <= max_element_count_(),
+                  "StreamingExtension: chunk byte count overflow");
+    }
+
     int64_t drain_leftover(Element *out, int64_t take_max) {
         if (leftover_count_ == 0) return 0;
         int64_t take = std::min<int64_t>(take_max, leftover_count_);
         std::memcpy(out, leftover_.data() + leftover_pos_,
-                    take * sizeof(Element));
+                    static_cast<size_t>(take) * sizeof(Element));
         leftover_pos_   += take;
         leftover_count_ -= take;
         return take;

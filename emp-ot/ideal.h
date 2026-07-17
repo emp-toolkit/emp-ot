@@ -4,22 +4,31 @@
 
 namespace emp {
 class OTIdeal: public COT { public:
-	OTIdeal(IOChannel * io, bool * delta = nullptr) {
+	OTIdeal(IOChannel * io, const bool * delta = nullptr) {
 		this->io = io;
 		// Public, deterministic seed so both parties' OTIdeal PRGs agree
 		// without exchanging anything. Test-only mock — not for production.
 		prg.reseed(&zero_block);
-		if (delta!= nullptr)
+		if (delta != nullptr) {
+			expecting(delta[0], "OTIdeal: Delta.LSB must be 1");
 			Delta = bool_to_block(delta);
+		} else {
+			prg.random_block(&Delta, 1);
+			Delta = set_bit(Delta, 0);
+		}
 	}
 
 	void send_cot(block* data, int64_t length) override {
-		prg.random_block(data);
+		expect_ot_args(length, data, data,
+		               "OTIdeal::send_cot: invalid length or null buffer");
+		prg.random_block(data, length);
 	}
 
 	void recv_cot(block* data, const bool* b, int64_t length) override {
-		prg.random_block(data);
-		for(int i = 0; i < length; ++i)
+		expect_ot_args(length, data, b,
+		               "OTIdeal::recv_cot: invalid length or null buffer");
+		prg.random_block(data, length);
+		for(int64_t i = 0; i < length; ++i)
 			if(b[i])
 				data[i] = data[i] ^ Delta;
 	}

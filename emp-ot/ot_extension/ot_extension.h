@@ -1,7 +1,6 @@
 #ifndef EMP_OT_EXTENSION_H__
 #define EMP_OT_EXTENSION_H__
 
-#include <cassert>
 #include <cstring>
 #include <algorithm>
 #include <memory>
@@ -30,7 +29,7 @@ class OTExtension : public RandomCOT, public StreamingExtension<block> {
 public:
     // Subclass begin/next/end trip this on first call via
     // enter_session_; set_delta and any pre-bootstrap configuration
-    // assert !setup_done. (Inherited from StreamingExtension.)
+    // expect !setup_done. (Inherited from StreamingExtension.)
 
     // Owned base OT for the subclass's bootstrap. Allocated by the
     // subclass ctor (see IKNPBaseOT / SoftSpokenBaseOT / FerretBaseOT
@@ -74,9 +73,10 @@ public:
     // Subclasses that need to propagate Δ into auxiliary state (e.g.
     // Ferret's mpcot_sender) override and call this base first.
     virtual void set_delta(const bool* bits) {
-        assert(is_ot_sender() && "set_delta: receiver has no \xCE\x94");
-        assert(!setup_done && "set_delta: bootstrap already fired");
-        assert(bits[0] && "set_delta: bits[0] must be true (LSB invariant)");
+        expecting(is_ot_sender(), "set_delta: receiver has no \xCE\x94");
+        expecting(!setup_done, "set_delta: bootstrap already fired");
+        expecting(bits != nullptr, "set_delta: null bit buffer");
+        expecting(bits[0], "set_delta: bits[0] must be true (LSB invariant)");
         memcpy(this->delta_bool, bits, sizeof(this->delta_bool));
         this->Delta = bool_to_block(this->delta_bool);
     }
@@ -89,8 +89,10 @@ public:
     // set_choice_seed in their bootstrap path; the PRG lives on the
     // base and no subclass needs to override the setter.
     void set_choice_seed(const block& seed) {
-        assert(!is_ot_sender() && "set_choice_seed: sender has no choice bits");
-        assert(!setup_done && "set_choice_seed: bootstrap already fired");
+        expecting(!is_ot_sender(),
+                  "set_choice_seed: sender has no choice bits");
+        expecting(!setup_done,
+                  "set_choice_seed: bootstrap already fired");
         choice_prg.reseed(&seed);
     }
 
@@ -100,7 +102,7 @@ public:
     // extension at bootstrap — Ferret — additionally derive a child sid for
     // that nested instance in their bootstrap path.)
     void set_sid(SessionID s) override {
-        assert(!setup_done && "set_sid: bootstrap already fired");
+        expecting(!setup_done, "set_sid: bootstrap already fired");
         sid = s;
         base_ot->set_sid(sid.derive());
     }
@@ -147,10 +149,11 @@ protected:
                 std::unique_ptr<OT> base_ot_)
         : StreamingExtension<block>(party_, malicious_),
           base_ot(std::move(base_ot_)) {
-        assert(base_ot && "OTExtension: subclass must provide a non-null base_ot");
+        expecting(base_ot != nullptr,
+                  "OTExtension: subclass must provide a non-null base_ot");
         this->io = io_;
-        if (malicious_ && !base_ot->is_malicious_secure())
-            error("OT extension malicious mode requires a malicious-secure base OT");
+        expecting(!malicious_ || base_ot->is_malicious_secure(),
+                  "OT extension malicious mode requires a malicious-secure base OT");
         // Detect a CSW base OT for the deferred-check overlap (CSW is the only
         // OT setting this trait, so the static_cast is sound — no RTTI needed).
         if (base_ot->supports_deferred_check())

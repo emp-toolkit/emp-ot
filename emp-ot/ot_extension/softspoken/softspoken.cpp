@@ -77,7 +77,6 @@
 #include "emp-ot/ot_extension/softspoken/softspoken.h"
 #include "emp-ot/ot_extension/softspoken/ss_bench_phases.h"
 #include <algorithm>
-#include <cassert>
 #include <cstring>
 
 namespace emp {
@@ -100,8 +99,9 @@ SoftSpoken<k, kChunkBlocks>::SoftSpoken(OTExtension::CloneInit ci,
                               const SoftSpoken& parent,
                               IOChannel* new_io, uint16_t lane_salt)
     : OTExtension(ci, parent.party, new_io, parent.malicious) {
-    assert(parent.setup_done && "clone_lane: parent not bootstrapped");
-    assert(lane_salt != 0 && "clone_lane: lane_salt must be nonzero (0 = parent)");
+    expecting(parent.setup_done, "clone_lane: parent not bootstrapped");
+    expecting(lane_salt != 0,
+              "clone_lane: lane_salt must be nonzero (0 = parent)");
     leaves_recv_ = parent.leaves_recv_;   // populated on the OT-sender role
     leaves_send_ = parent.leaves_send_;   // populated on the OT-receiver role
     for (int i = 0; i < n; ++i) alphas_[i] = parent.alphas_[i];
@@ -341,8 +341,8 @@ void SoftSpoken<k, kChunkBlocks>::pprf_check_recv() {
 
     unsigned char our_digest[kHashSize];
     hash.digest(our_digest);
-    if (std::memcmp(our_digest, their_digest, kHashSize) != 0)
-        error("SoftSpoken PPRF check failed");
+    expecting(std::memcmp(our_digest, their_digest, kHashSize) == 0,
+              "SoftSpoken PPRF check failed");
 }
 
 // =====================================================================
@@ -409,13 +409,14 @@ void SoftSpoken<k, kChunkBlocks>::begin() {
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::next(block* out) {
-    this->assert_in_session_();
+    this->expect_in_session_();
     if (this->is_ot_sender()) send_next_(out);
     else                      recv_next_(out);
 }
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::end() {
+    this->expect_in_session_();
     if (this->is_ot_sender()) send_end_();
     else                      recv_end_();
     this->exit_session_();
@@ -447,8 +448,8 @@ void SoftSpoken<k, kChunkBlocks>::send_end_() {
         this->io->recv_block(&t, 1);
         gfmul(x, this->Delta, &tmp);
         block lhs = check_q_ ^ tmp;
-        if (!cmpBlock(&lhs, &t, 1))
-            error("SoftSpoken subspace VOLE check failed");
+        expecting(cmpBlock(&lhs, &t, 1),
+                  "SoftSpoken subspace VOLE check failed");
     }
     // Deferred base-OT extraction check, AFTER the subspace check so otans' is
     // the one closing flow. OT-sender plays the base RECEIVER → recv_check.

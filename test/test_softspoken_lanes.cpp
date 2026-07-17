@@ -90,7 +90,8 @@ static void test_domain_sep(int party, int64_t len) {
     bool identical = true;
     for (int64_t i = 0; i < len; ++i)
         if (!cmpBlock(&a[i], &b[i], 1)) { identical = false; break; }
-    if (identical) error("clone_lane: distinct salts produced IDENTICAL outputs (domain separation broken)");
+    expecting(!identical,
+              "clone_lane: distinct salts produced IDENTICAL outputs (domain separation broken)");
     cout << "[B k=" << k << " distinct] ";
     delete[] a; delete[] b;
 }

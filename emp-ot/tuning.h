@@ -2,6 +2,7 @@
 #define EMP_OT_TUNING_H__
 
 #include "emp-tool/emp-tool.h"
+#include <limits>
 
 // Single source of truth for emp-ot's tunable performance parameters
 // and LPN security parameters. Every consumer (IKNP, SoftSpoken,
@@ -48,11 +49,73 @@ class PrimalLPNParameter { public:
                               // refill_trees trees write next round's bases.
     constexpr PrimalLPNParameter() = default;
     constexpr PrimalLPNParameter(int64_t t_, int64_t logk_, int64_t tree_depth_)
-        : t(t_), logk(logk_), tree_depth(tree_depth_),
-          k(int64_t{1} << logk_),
-          M(k + t_ * tree_depth_ + kConsistCheckCotNum),
-          refill_trees((M + (int64_t{1} << tree_depth_) - 1) >> tree_depth_) {}
+        : t(t_), logk(logk_), tree_depth(tree_depth_) {
+        // Guard every derived-value operation before evaluating it. Calls to
+        // expecting(false, ...) are skipped for valid constant evaluation, so
+        // the shipped presets remain constexpr while malformed runtime input
+        // fails before a shift or signed multiplication can be undefined.
+        if (t <= 0)
+            expecting(false, "PrimalLPNParameter: t must be positive");
+        if (logk < 0 || logk > 30)
+            expecting(false,
+                      "PrimalLPNParameter: logk must be in [0, 30]");
+        if (tree_depth <= 0 || tree_depth > 30)
+            expecting(false,
+                      "PrimalLPNParameter: tree_depth must be in [1, 30]");
+
+        constexpr int64_t max_i64 = std::numeric_limits<int64_t>::max();
+        k = int64_t{1} << logk;
+        const int64_t m_fixed = k + kConsistCheckCotNum;
+        if (t > (max_i64 - m_fixed) / tree_depth)
+            expecting(false, "PrimalLPNParameter: M overflows int64_t");
+        M = m_fixed + t * tree_depth;
+
+        const int64_t chunk = int64_t{1} << tree_depth;
+        if (M > max_i64 - (chunk - 1))
+            expecting(false,
+                      "PrimalLPNParameter: refill rounding overflows int64_t");
+        refill_trees = (M + chunk - 1) / chunk;
+        if (refill_trees <= 0 || refill_trees >= t)
+            expecting(false,
+                      "PrimalLPNParameter: no user-output trees per round");
+        if (t > max_i64 / chunk)
+            expecting(false,
+                      "PrimalLPNParameter: round output size overflows int64_t");
+    }
 };
+
+// Runtime validation for user-supplied parameter bundles. The constexpr
+// constructor keeps the shipped presets usable at compile time; protocol
+// constructors call this before allocating, shifting, or narrowing `k` to the
+// LPN kernel's int mask.
+inline void validate_primal_lpn_parameter(const PrimalLPNParameter &p) {
+    constexpr int64_t max_i64 = std::numeric_limits<int64_t>::max();
+    expecting(p.t > 0, "PrimalLPNParameter: t must be positive");
+    expecting(p.logk >= 0 && p.logk <= 30,
+              "PrimalLPNParameter: logk must be in [0, 30]");
+    const int64_t expected_k = int64_t{1} << p.logk;
+    expecting(p.k == expected_k,
+              "PrimalLPNParameter: inconsistent k/logk");
+    expecting(p.tree_depth > 0 && p.tree_depth <= 30,
+              "PrimalLPNParameter: tree_depth must be in [1, 30]");
+    const int64_t chunk = int64_t{1} << p.tree_depth;
+    const int64_t m_fixed = p.k + kConsistCheckCotNum;
+    expecting(p.t <= (max_i64 - m_fixed) / p.tree_depth,
+              "PrimalLPNParameter: M overflows int64_t");
+    const int64_t expected_M =
+        m_fixed + p.t * p.tree_depth;
+    expecting(p.M == expected_M,
+              "PrimalLPNParameter: inconsistent M");
+    expecting(p.M <= max_i64 - (chunk - 1),
+              "PrimalLPNParameter: refill rounding overflows int64_t");
+    const int64_t expected_refill = (p.M + chunk - 1) / chunk;
+    expecting(p.refill_trees == expected_refill,
+              "PrimalLPNParameter: inconsistent refill_trees");
+    expecting(p.refill_trees > 0 && p.refill_trees < p.t,
+              "PrimalLPNParameter: no user-output trees per round");
+    expecting(p.t <= max_i64 / chunk,
+              "PrimalLPNParameter: round output size overflows int64_t");
+}
 
 namespace tuning {
 

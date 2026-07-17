@@ -80,8 +80,8 @@ static void bench_online(NetIO* io, int party, int64_t length, bool malicious,
     double us_par = time_online_range_threads(io, party, length, malicious,
                                               param, begin_threads,
                                               online_threads, &eff_par);
-    if (eff_next <= 0 || eff_next != eff_par)
-        error("bench_silentferret online: invalid effective length");
+    expecting(eff_next > 0 && eff_next == eff_par,
+              "bench_silentferret online: invalid effective length");
     cout << "SilentFerret " << tag << " " << mode << " online "
          << (party == ALICE ? "sender" : "receiver") << "\t"
          << "len=" << eff_next << "  "

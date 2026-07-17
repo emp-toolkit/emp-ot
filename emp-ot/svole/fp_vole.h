@@ -100,14 +100,26 @@ struct AuthValueFp {
   // F_p convention: ALICE is the Δ-holder externally.
   static constexpr int delta_holder_party() { return ALICE; }
 
-  // Ferret's block Δ is independent of the F_p sVOLE Δ on this side;
-  // the latter must come from the user via set_delta.
-  static inline F resolve_delta(Ferret * /*unused*/) { return 0; }
+  // Ferret's block Δ is independent of the F_p sVOLE Δ. Sample the
+  // holder's default uniformly from the canonical nonzero field elements.
+  // There is no LSB constraint in F_p; that convention belongs to binary COT.
+  static inline F resolve_delta(Ferret * /*unused*/) {
+    PRG prg;
+    F delta;
+    do {
+      prg.random_data_unaligned(&delta, sizeof(delta));
+      delta &= PR_VAL;
+    } while (delta == 0 || delta == PR_VAL);
+    return delta;
+  }
 
   // F_p Δ doesn't need to be propagated into Ferret — cGGM keeps using
   // Ferret's own block Δ for the F_2 sibling correlation; only the
   // chi-fold algebra (in MultiPointGadget) consumes the F_p Δ.
-  static inline void on_set_delta(F /*delta*/, Ferret * /*ferret*/) {}
+  static inline void on_set_delta(F delta, Ferret * /*ferret*/) {
+    expecting(delta > 0 && delta < PR_VAL,
+              "Fp set_delta: Δ must be a canonical nonzero field element");
+  }
 
   // Bootstrap: COPE seed sVOLE → pre-stage MPFSS+LPN → carry_next_.
   // Fixed inner PrimalLPNParameter (ferret_b10) for the pre stage,

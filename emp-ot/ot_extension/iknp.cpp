@@ -17,12 +17,13 @@ void IKNP::begin() {
 }
 
 void IKNP::next(block *out) {
-	assert_in_session_();
+	expect_in_session_();
 	if (is_ot_sender()) send_next_(out);
 	else                recv_next_(out);
 }
 
 void IKNP::end() {
+	expect_in_session_();
 	if (is_ot_sender()) send_end_();
 	else                recv_end_();
 	exit_session_();
@@ -63,7 +64,7 @@ void IKNP::send_begin_() {
 			io->enable_fs(/*send_first=*/is_ot_sender());
 		setup_done = true;
 	}
-	assert(is_ot_sender() && "IKNP::begin: not in sender role");
+	expecting(is_ot_sender(), "IKNP::begin: not in sender role");
 	if (malicious) check_q = makeBlock(0, 0);
 }
 
@@ -85,8 +86,8 @@ void IKNP::send_end_() {
 		io->recv_block(&t, 1);
 		gfmul(x, Delta, &tmp);
 		check_q = check_q ^ tmp;
-		if (!cmpBlock(&check_q, &t, 1))
-			error("OT Extension check failed");
+		expecting(cmpBlock(&check_q, &t, 1),
+		          "OT Extension check failed");
 	}
 	// Deferred base-OT extraction check, AFTER the extension's own check so the
 	// base challenge bundles into the receiver→sender run and otans' is the one
@@ -171,7 +172,7 @@ void IKNP::recv_begin_() {
 			io->enable_fs(/*send_first=*/is_ot_sender());
 		setup_done = true;
 	}
-	assert(!is_ot_sender() && "IKNP::begin: not in receiver role");
+	expecting(!is_ot_sender(), "IKNP::begin: not in receiver role");
 	if (malicious) {
 		check_t = makeBlock(0, 0);
 		check_x = makeBlock(0, 0);

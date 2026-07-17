@@ -1,6 +1,5 @@
 #ifndef EMP_IKNP_H__
 #define EMP_IKNP_H__
-#include <cassert>
 #include <memory>
 #include "emp-ot/ot_extension/ot_extension.h"
 #include "emp-ot/base_ot/csw.h"

@@ -186,14 +186,14 @@ SoftSpoken<8> semi     send=c09818e2edddfcd6 recv=6bda77ca7c0f9037
 Ferret(b11) semi       send=1f2d87e222bc509a recv=31f4d61323bea622
 SilentFerret(b11) semi send=1f2d87e222bc509a recv=31f4d61323bea622
 F2kVOLE semi           send=b3f5ce46fb1ab13d recv=0a7d75d69804b3ca
-FpVOLE semi            send=dfaecd1679444e65 recv=95ffe06f47813ae5
+FpVOLE semi            send=5bdf7f4cab96398a recv=30fa025221220ae8
 IKNP mali              send=ac441b93d05b591e recv=98125593b26d3b02
 SoftSpoken<2> mali     send=c09818e2edddfcd6 recv=a549bba02e32f2a1
 SoftSpoken<8> mali     send=c09818e2edddfcd6 recv=b8690d0258534cc0
 Ferret(b11) mali       send=8f7e58077aa1d35f recv=74b34e5043665231
 SilentFerret(b11) mali send=8f7e58077aa1d35f recv=74b34e5043665231
 F2kVOLE mali           send=639b25364bcf3e8d recv=881af7fc8a3ad07c
-FpVOLE mali            send=043213ac95d7de0e recv=ca3640000ceb5e93
+FpVOLE mali            send=efdc33076a565743 recv=dc3bd67a79aeeeae
 ```
 
 ## Usage
@@ -340,6 +340,12 @@ for (int i = 0; i < n_chunks; ++i) {
 }
 ote.end();
 ```
+
+In malicious mode, ordinary streaming output is provisional until
+`end()` completes the session's consistency checks. Do not expose it or
+make irreversible decisions from it before `end()` succeeds; the one-shot
+`rcot()` path performs that check before returning, and `SilentFerret`
+front-loads its checks into `begin(n_ots)`.
 
 The one-shot `rcot(data, num)` is implemented in terms of this
 streaming API plus a small leftover buffer for tails that aren't a

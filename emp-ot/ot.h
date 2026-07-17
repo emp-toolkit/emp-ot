@@ -2,8 +2,22 @@
 #define EMP_OT_H__
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/tuning.h"
+#include <limits>
 
 namespace emp {
+
+// Argument contract shared by every OT-shaped entry point: the count is
+// non-negative and small enough that count * sizeof(block) fits in int64_t,
+// and buffers are non-null whenever the count is nonzero. Single-buffer
+// entries pass the same pointer twice.
+inline void expect_ot_args(int64_t length, const void *buf0, const void *buf1,
+                           const char *message) {
+	expecting(length >= 0 &&
+	              length <= std::numeric_limits<int64_t>::max() /
+	                            static_cast<int64_t>(sizeof(block)) &&
+	              (length == 0 || (buf0 != nullptr && buf1 != nullptr)),
+	          message);
+}
 
 // Abstract 1-out-of-2 OT.
 class OT {
@@ -43,6 +57,8 @@ class COT : public OT { public:
 	virtual void recv_cot(block* data, const bool* b, int64_t length) = 0;
 
 	void send(const block* data0, const block* data1, int64_t length) override {
+		expect_ot_args(length, data0, data1,
+		               "COT::send: invalid length or null buffer");
 		BlockVec data(length);
 		send_cot(data.data(), length);
 		block s;prg.random_block(&s, 1);
@@ -64,6 +80,8 @@ class COT : public OT { public:
 	}
 
 	void recv(block* data, const bool* r, int64_t length) override {
+		expect_ot_args(length, data, r,
+		               "COT::recv: invalid length or null buffer");
 		recv_cot(data, r, length);
 		block s;
 		io->recv_block(&s,1);
@@ -82,6 +100,8 @@ class COT : public OT { public:
 	}
 
 	void send_rot(block* data0, block* data1, int64_t length) {
+		expect_ot_args(length, data0, data1,
+		               "COT::send_rot: invalid length or null buffer");
 		send_cot(data0, length);
 		block s; prg.random_block(&s, 1);
 		io->send_block(&s,1);
@@ -103,6 +123,8 @@ class COT : public OT { public:
 	}
 
 	void recv_rot(block* data, const bool* r, int64_t length) {
+		expect_ot_args(length, data, r,
+		               "COT::recv_rot: invalid length or null buffer");
 		recv_cot(data, r, length);
 		block s;
 		io->recv_block(&s,1);
@@ -138,6 +160,8 @@ public:
 	virtual void rcot(block* data, int64_t num) = 0;
 
 	void send_cot(block* data, int64_t length) override {
+		expect_ot_args(length, data, data,
+		               "RandomCOT::send_cot: invalid length or null buffer");
 		rcot(data, length);
 		// unsigned char (not bool) so the storage is one byte each —
 		// matches the wire layout that `recv_bool` writes (and avoids
@@ -152,6 +176,8 @@ public:
 	}
 
 	void recv_cot(block* data, const bool* b, int64_t length) override {
+		expect_ot_args(length, data, b,
+		               "RandomCOT::recv_cot: invalid length or null buffer");
 		rcot(data, length);
 		default_init_vector<unsigned char> bo(length);
 		for (int64_t i = 0; i < length; ++i)

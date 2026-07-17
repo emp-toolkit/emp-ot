@@ -71,7 +71,10 @@ public:
   // begin()/run(), and it is propagated as a derived child sid to the
   // inner Ferret (and, on the F2k path, to the nested bootstrap Svole).
   SessionID sid;
-  void set_sid(SessionID s) { sid = s; }
+  void set_sid(SessionID s) {
+    expecting(!this->setup_done, "set_sid: bootstrap already fired");
+    sid = s;
+  }
 
   // Ping-pong carry-over buffers. Size = `refill_trees * 2^tree_depth`
   // to mirror Ferret's slack-tolerant pattern: refill trees in
@@ -91,6 +94,7 @@ public:
         PrimalLPNParameter param = tuning::ferret_b13)
       : StreamingExtension<AuthValue>(party, malicious),
         param(param), io_(io) {
+    validate_primal_lpn_parameter(param);
     // Δ-holder ↔ inner-Ferret-ALICE (COT-sender) in both carriers.
     const int inner_party =
         (party == AuthValue::delta_holder_party()) ? ALICE : BOB;
@@ -113,10 +117,11 @@ public:
     carry_next_.assign(carry_blocks, AuthValue{});
     base_cots_.assign(param.t * param.tree_depth, zero_block);
 
-    // Pull a default Δ from the freshly-bootstrapped Ferret if the
-    // carrier wants it (F2k uses Ferret's auto-sampled block Δ; F_p
-    // returns zero, expecting the user to call set_delta).
-    delta_value_ = AuthValue::resolve_delta(base_ferret_.get());
+    // Only the holder owns Δ. F2k reuses inner Ferret's auto-sampled block;
+    // Fp samples a canonical nonzero field element independently.
+    delta_value_ = is_delta_holder()
+                       ? AuthValue::resolve_delta(base_ferret_.get())
+                       : AuthValue::f_zero();
   }
 
   ~Svole() override = default;
@@ -129,14 +134,14 @@ public:
   // additionally propagated into the inner Ferret iff the carrier
   // requires it (F2k case: Ferret Δ === sVOLE Δ; F_p case: no-op).
   void set_delta(F delta) {
-    assert(is_delta_holder() && "set_delta: caller is not Δ-holder");
-    assert(!this->setup_done && "set_delta: bootstrap already fired");
+    expecting(is_delta_holder(), "set_delta: caller is not Δ-holder");
+    expecting(!this->setup_done, "set_delta: bootstrap already fired");
     delta_value_ = delta;
     AuthValue::on_set_delta(delta, base_ferret_.get());
   }
 
   F delta() const {
-    assert(is_delta_holder() && "delta: caller is not Δ-holder");
+    expecting(is_delta_holder(), "delta: caller is not Δ-holder");
     return delta_value_;
   }
 
@@ -175,7 +180,7 @@ public:
   }
 
   void next(AuthValue *out) override {
-    this->assert_in_session_();
+    this->expect_in_session_();
     // Auto-rollover: if this round's user-visible budget is full,
     // run end+begin transparently before producing the user's tree.
     // Uses public end()/begin() so the session tripwire flips cleanly.
@@ -188,6 +193,7 @@ public:
   }
 
   void end() override {
+    this->expect_in_session_();
     run_refill_();
     inner_run_end_();
     this->exit_session_();

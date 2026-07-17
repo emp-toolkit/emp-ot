@@ -1,8 +1,8 @@
 #ifndef EMP_OT_TEST_H_
 #define EMP_OT_TEST_H_
 // Correctness-only drivers for the CI test_* harnesses. Each runs one protocol
-// call and asserts the outputs via error() (NOT assert(), which is compiled out
-// under NDEBUG) -- never times anything. Throughput timing lives in bench.h's
+// call and validates the outputs via expecting() (NOT assert(), which is
+// compiled out under NDEBUG) -- never times anything. Throughput timing lives in bench.h's
 // time_*, used by the manual bench_* harnesses. verify_rcot is the shared
 // output-checker reused by both check_rcot variants and the trace_* harnesses.
 #include <emp-tool/emp-tool.h>
@@ -30,7 +30,8 @@ void check_ot(T* ot, NetIO* io, int party, int64_t length) {
 	if (party == BOB)
 		for (int64_t i = 0; i < length; ++i)
 			if (!cmpBlock(&r[i], b[i] ? &b1[i] : &b0[i], 1)) {
-				std::cout << i << "\n"; error("OT failed");
+				std::cout << i << "\n";
+				expecting(false, "OT failed");
 			}
 	std::cout << "Tests passed.\t";
 	delete[] b0; delete[] b1; delete[] r; delete[] b;
@@ -52,7 +53,8 @@ void check_cot(T* ot, NetIO* io, int party, int64_t length) {
 		io->recv_block(b0, length);
 		for (int64_t i = 0; i < length; ++i) {
 			block b1 = b0[i] ^ delta;
-			if (!cmpBlock(&r[i], b[i] ? &b1 : &b0[i], 1)) error("COT failed");
+			expecting(cmpBlock(&r[i], b[i] ? &b1 : &b0[i], 1),
+			          "COT failed");
 		}
 	}
 	std::cout << "Tests passed.\t";
@@ -74,7 +76,8 @@ void check_rot(T* ot, NetIO* io, int party, int64_t length) {
 		io->recv_block(b0, length);
 		io->recv_block(b1, length);
 		for (int64_t i = 0; i < length; ++i)
-			if (!cmpBlock(&r[i], b[i] ? &b1[i] : &b0[i], 1)) error("ROT failed");
+			expecting(cmpBlock(&r[i], b[i] ? &b1[i] : &b0[i], 1),
+			          "ROT failed");
 	}
 	std::cout << "Tests passed.\t";
 	io->flush();
@@ -98,7 +101,7 @@ void verify_rcot(T* ot, NetIO* io, int party, block* b, int64_t mem_size) {
 		io->recv_block(ch + 1, 1);
 		io->recv_block(b0, mem_size);
 		for (int64_t i = 0; i < mem_size; ++i) b[i] = b[i] ^ ch[getLSB(b[i])];
-		if (!cmpBlock(b, b0, mem_size)) error("RCOT failed");
+		expecting(cmpBlock(b, b0, mem_size), "RCOT failed");
 		delete[] b0;
 	}
 	std::cout << "Tests passed.\t";

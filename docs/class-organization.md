@@ -57,7 +57,7 @@ emp-ot/
                 │  tripwire helpers (protected):│
                 │    enter_session_ /           │
                 │    exit_session_  /           │
-                │    assert_in_session_         │
+                │    expect_in_session_         │
                 └───────────────────────────────┘
                               ▲
                               │
@@ -96,7 +96,7 @@ OTExtension : public RandomCOT, public StreamingExtension<block>
 │
 └── three subclasses (each overrides begin / next / end directly —
     no NVI hooks; tripwire enforced via the inherited
-    enter_session_ / exit_session_ / assert_in_session_ helpers)
+    enter_session_ / exit_session_ / expect_in_session_ helpers)
     ├── IKNP                    (inline party-dispatch to
     │                            send/recv_{begin,next,end}_)
     ├── SoftSpoken<k, kChunkBlocks>  (same shape as IKNP)
@@ -134,7 +134,7 @@ Svole<AuthValue> : public StreamingExtension<AuthValue>
        Bootstrap: Galois packing of M·128 Ferret COTs                           Bootstrap: COPE seed sVOLE
        delta_holder = BOB                                                       + pre-stage MPFSS+LPN
                                                                                 delta_holder = ALICE
-                                                                                resolve_delta = 0 (user must set)
+                                                                                resolve_delta = random nonzero Fp element
 ```
 
 `F2kVOLE` and `FpVOLE` are template aliases defaulting to

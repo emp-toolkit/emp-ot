@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 namespace emp {
 
@@ -123,7 +124,15 @@ BMM::BMM(IOChannel* io_) { this->io = io_; }
 
 // ----- Receiver (R in the paper). Round 1 send, Round 2 recv + decrypt. -----
 void BMM::recv(block* data, const bool* b, int64_t length) {
-    if (length <= 0) return;
+    expect_ot_args(length, data, b,
+                   "BMM::recv: invalid length or null buffer");
+    // Per-OT payloads are wider than a block; kSendBytesPerOT is the larger
+    // element size, so this bound covers both byte-count products below.
+    expecting(length <= std::numeric_limits<int64_t>::max() / kSendBytesPerOT,
+              "BMM::recv: payload byte count overflow");
+    const int64_t recv_bytes = length * kRecvBytesPerOT;
+    const int64_t send_bytes = length * kSendBytesPerOT;
+    if (length == 0) return;
 
     uint8_t session_seed[kSymBytes];
     sid_to_session_seed(sid.value(), session_seed);
@@ -134,10 +143,10 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
     for (int j = 0; j < kK; ++j) polyvec_ntt(&A[j]);
 
     // Per-OT secret x (NTT domain), reused at decryption.
-    default_init_vector<polyvec> x_ntt(length);
+    default_init_vector<polyvec> x_ntt(static_cast<size_t>(length));
 
     // Round 1 payload: (r, c_0, c_1) per OT.
-    default_init_vector<uint8_t> send_buf((size_t)length * kRecvBytesPerOT);
+    default_init_vector<uint8_t> send_buf(static_cast<size_t>(recv_bytes));
 
     PRG prg;
 
@@ -183,12 +192,12 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
         std::memcpy(out + kPolyVecBytes + kLambdaBytes, c1.v, kLambdaBytes);
     }
 
-    io->send_data(send_buf.data(), (size_t)length * kRecvBytesPerOT);
+    io->send_data(send_buf.data(), recv_bytes);
     io->flush();
 
     // Round 2 (S→R): (ct_0, mask_0, ct_1, mask_1) per OT. Decrypt branch b.
-    default_init_vector<uint8_t> recv_buf((size_t)length * kSendBytesPerOT);
-    io->recv_data(recv_buf.data(), (size_t)length * kSendBytesPerOT);
+    default_init_vector<uint8_t> recv_buf(static_cast<size_t>(send_bytes));
+    io->recv_data(recv_buf.data(), send_bytes);
 
     for (int64_t i = 0; i < length; ++i) {
         const int bb = b[i] ? 1 : 0;
@@ -219,7 +228,15 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
 
 // ----- Sender (S in the paper). Round 1 recv, Round 2 send. -----
 void BMM::send(const block* data0, const block* data1, int64_t length) {
-    if (length <= 0) return;
+    expect_ot_args(length, data0, data1,
+                   "BMM::send: invalid length or null buffer");
+    // Per-OT payloads are wider than a block; kSendBytesPerOT is the larger
+    // element size, so this bound covers both byte-count products below.
+    expecting(length <= std::numeric_limits<int64_t>::max() / kSendBytesPerOT,
+              "BMM::send: payload byte count overflow");
+    const int64_t recv_bytes = length * kRecvBytesPerOT;
+    const int64_t send_bytes = length * kSendBytesPerOT;
+    if (length == 0) return;
 
     uint8_t session_seed[kSymBytes];
     sid_to_session_seed(sid.value(), session_seed);
@@ -230,10 +247,10 @@ void BMM::send(const block* data0, const block* data1, int64_t length) {
     for (int j = 0; j < kK; ++j) polyvec_ntt(&AT[j]);
 
     // Round 1 (R→S): pull the (r, c_0, c_1) batch.
-    default_init_vector<uint8_t> recv_buf((size_t)length * kRecvBytesPerOT);
-    io->recv_data(recv_buf.data(), (size_t)length * kRecvBytesPerOT);
+    default_init_vector<uint8_t> recv_buf(static_cast<size_t>(recv_bytes));
+    io->recv_data(recv_buf.data(), recv_bytes);
 
-    default_init_vector<uint8_t> send_buf((size_t)length * kSendBytesPerOT);
+    default_init_vector<uint8_t> send_buf(static_cast<size_t>(send_bytes));
 
     PRG prg;
 
@@ -307,7 +324,7 @@ void BMM::send(const block* data0, const block* data1, int64_t length) {
         }
     }
 
-    io->send_data(send_buf.data(), (size_t)length * kSendBytesPerOT);
+    io->send_data(send_buf.data(), send_bytes);
     io->flush();
 }
 

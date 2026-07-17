@@ -53,13 +53,7 @@ void test_streaming(NetIO *io, int svole_party) {
   FpVOLE<AuthValueFp> vtriple(svole_party, io,
                               /*malicious=*/true, kSvoleParam);
   uint64_t Delta = 0;
-  if (svole_party == ALICE) {
-    PRG prg;
-    prg.random_data_unaligned(&Delta, sizeof(uint64_t));
-    Delta = mod(Delta);
-    if (Delta == 0) Delta = 1;
-    vtriple.set_delta(Delta);
-  }
+  if (svole_party == ALICE) Delta = vtriple.delta();
 
   const int64_t chunk = vtriple.chunk_size();
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();
@@ -85,13 +79,7 @@ void test_oneshot(NetIO *io, int svole_party) {
   FpVOLE<AuthValueFp> vtriple(svole_party, io,
                               /*malicious=*/true, kSvoleParam);
   uint64_t Delta = 0;
-  if (svole_party == ALICE) {
-    PRG prg;
-    prg.random_data_unaligned(&Delta, sizeof(uint64_t));
-    Delta = mod(Delta);
-    if (Delta == 0) Delta = 1;
-    vtriple.set_delta(Delta);
-  }
+  if (svole_party == ALICE) Delta = vtriple.delta();
 
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();
   std::vector<AuthValueFp> buf(per_round);

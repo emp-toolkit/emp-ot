@@ -61,9 +61,8 @@ static void run_rcot(NetIO* io, int party, int64_t length, Make make,
     delete[] b;
 }
 
-// sVOLE runner: single-role extend(). The caller decides whether to
-// inject a Δ — F2k can use Ferret's auto-sampled Δ unchanged, while
-// Fp needs an explicit non-zero Δ so the chi-fold check is meaningful.
+// sVOLE runner: single-role extend(). The caller may override the
+// carrier-provided default Δ on the holder before bootstrap.
 template <typename SVole, typename DeltaSetter>
 static void run_svole(NetIO* io, int party, int64_t length,
                       bool malicious, DeltaSetter set_holder_delta) {
@@ -202,16 +201,9 @@ int main(int argc, char** argv) {
                 [](auto&){ /* no-op: keep auto Δ */ });
         });
         measure(party, port, "FpVOLE " + mode, fp_sf, [&](NetIO* io){
-            // Fp: AuthValueFp::resolve_delta returns 0, so the holder
-            // must inject a non-zero Δ for a meaningful chi-fold check.
-            // PRG keeps it reproducible under EMP_TEST_MODE.
+            // Fp: keep the carrier's auto-sampled canonical nonzero Δ.
             run_svole<FpVOLE<>>(io, party, svole_len, mali,
-                [](auto& sv) {
-                    PRG prg;
-                    uint64_t d;
-                    prg.random_data_unaligned(&d, sizeof(d));
-                    sv.set_delta(d % AuthValueFp::PR_VAL);
-                });
+                [](auto&){ /* no-op: keep auto Δ */ });
         });
     }
     return 0;

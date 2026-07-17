@@ -589,8 +589,8 @@ public:
     RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
     block recv[2];
     io->recv_data(recv, 2 * sizeof(block));
-    if (!cmpBlock(dig, recv, 2))
-      error("MultiPointGadget consistency check fails");
+    expecting(cmpBlock(dig, recv, 2),
+              "MultiPointGadget consistency check fails");
   }
 
   // ---- Batched F2kPacked check (SilentFerret multi-round prepay) --------
@@ -632,8 +632,8 @@ public:
     RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
     block recv[2];
     io->recv_data(recv, 2 * sizeof(block));
-    if (!cmpBlock(dig, recv, 2))
-      error("MultiPointGadget batched consistency check fails");
+    expecting(cmpBlock(dig, recv, 2),
+              "MultiPointGadget batched consistency check fails");
   }
 
   // FTyped round-final check (receiver). Both val- and mac-side
@@ -661,8 +661,8 @@ public:
     block h = RO(kDomCheckTyped, sid).absorb(&va, sizeof(F)).squeeze_block();
     block r;
     io->recv_data(&r, sizeof(block));
-    if (!cmpBlock(&r, &h, 1))
-      error("MultiPointGadget chi-fold check failed");
+    expecting(cmpBlock(&r, &h, 1),
+              "MultiPointGadget chi-fold check failed");
   }
 };
 

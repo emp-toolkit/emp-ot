@@ -4,7 +4,7 @@
 #include "emp-ot/ot_extension/ferret/silent_ferret.h"
 #include "emp-ot/common/lpn.h"
 #include <algorithm>
-#include <cassert>
+#include <limits>
 #include <thread>
 #include <vector>
 
@@ -13,14 +13,17 @@ namespace emp {
 // Per-tree cGGM correction/eval scratch (tree_depth blocks). Stack-allocated
 // per produce call so the produce path is reentrant; sized to the largest
 // Ferret tree_depth with margin.
-static constexpr int kMaxTreeDepth = 32;
+static constexpr int kMaxTreeDepth = 30;
 
 SilentFerret::SilentFerret(int party, IOChannel *io, bool malicious,
                            PrimalLPNParameter param,
                            std::unique_ptr<OT> base_ot, int n_threads)
 	: Ferret(party, io, malicious, param, std::move(base_ot)),
 	  n_threads_(n_threads < 1 ? 1 : n_threads) {
-	assert(param.tree_depth <= kMaxTreeDepth && "tree_depth exceeds scratch");
+	expecting(param.tree_depth > 0 && param.tree_depth <= kMaxTreeDepth,
+	          "SilentFerret: tree_depth exceeds scratch");
+	expecting(n_threads_ <= std::numeric_limits<int>::max() / 8,
+	          "SilentFerret: thread count is too large");
 	// One wave holds `batch_` trees' leaf buffers in flight; a small
 	// multiple of the worker count keeps every worker busy while bounding
 	// peak scratch (batch_ * leave_n blocks). Serial (1) when single-threaded.
@@ -55,6 +58,7 @@ void SilentFerret::begin(int64_t n_ots) { begin_batch_(n_ots); }
 // forward as in the normal path; we keep a pristine base0 so the consume
 // roll can restart from round 0.
 void SilentFerret::begin_batch_(int64_t n_ots) {
+	expecting(n_ots >= 0, "SilentFerret::begin: negative COT count");
 	enter_session_();
 
 	// Bootstrap (once) writes round-0's base COTs into carry_next_; swap so
@@ -81,9 +85,12 @@ void SilentFerret::begin_batch_(int64_t n_ots) {
 	}
 
 	const int64_t cpr = cots_per_round();
-	int64_t K = (n_ots <= 0) ? 1 : (n_ots + cpr - 1) / cpr;
+	expecting(cpr > 0, "SilentFerret::begin: nonpositive round capacity");
+	const int64_t K = (n_ots == 0) ? 1 : 1 + (n_ots - 1) / cpr;
+	expecting(K <= std::numeric_limits<int64_t>::max() / cpr,
+	          "SilentFerret::begin: prepared capacity overflow");
 	n_rounds_       = K;
-	batch_n_ots_    = (n_ots <= 0) ? cpr : n_ots;
+	batch_n_ots_    = (n_ots == 0) ? cpr : n_ots;
 	abs_round_base_ = abs_round_;
 
 	// Pristine round-0 base for the consume restart (saved before any check
@@ -91,8 +98,17 @@ void SilentFerret::begin_batch_(int64_t n_ots) {
 	base0_.resize(carry_curr_.size());
 	std::copy(carry_curr_.begin(), carry_curr_.end(), base0_.begin());
 
-	if (!is_ot_sender())
-		c_rounds_.resize((size_t)K * param.t * param.tree_depth);
+	if (!is_ot_sender()) {
+		expecting(param.t <= std::numeric_limits<int64_t>::max() /
+		                         param.tree_depth,
+		          "SilentFerret::begin: correction count overflow");
+		const int64_t corrections_per_round = param.t * param.tree_depth;
+		expecting(K <= std::numeric_limits<int64_t>::max() /
+		                 corrections_per_round,
+		          "SilentFerret::begin: correction count overflow");
+		c_rounds_.resize(
+		    static_cast<size_t>(K * corrections_per_round));
+	}
 
 	std::vector<block> seed_scratch;
 	if (is_ot_sender()) seed_scratch.resize(param.t);
@@ -148,6 +164,7 @@ void SilentFerret::begin_batch_(int64_t n_ots) {
 }
 
 void SilentFerret::end() {
+	expect_in_session_();
 	// Roll any unconsumed prepaid rounds forward to base_K so a following
 	// begin() continues the base chain (and the absolute counter) without
 	// re-shipping — counter reuse would repeat chi/LPN streams.
@@ -158,24 +175,29 @@ void SilentFerret::end() {
 }
 
 void SilentFerret::next(block *out) {
-	assert_in_session_();
+	expect_in_session_();
 	ensure_tree_available_();
 	process_one_tree_(reinterpret_cast<AuthValueFerret *>(out));
 }
 
 void SilentFerret::next_chunks_parallel(block *out, int64_t n_chunks,
                                         int n_threads) {
-	assert_in_session_();
-	if (n_chunks <= 0) return;
+	expect_in_session_();
+	expecting(n_chunks >= 0,
+	          "SilentFerret::next_chunks_parallel: negative chunk count");
+	const int64_t chunk = chunk_size();
+	expecting(n_chunks <= std::numeric_limits<int64_t>::max() / chunk,
+	          "SilentFerret::next_chunks_parallel: output count overflow");
+	expecting(n_chunks == 0 || out != nullptr,
+	          "SilentFerret::next_chunks_parallel: null output buffer");
+	if (n_chunks == 0) return;
 	const int T = (n_threads < 0) ? n_threads_ : n_threads;
 	if (T <= 1) {
-		const int64_t chunk = chunk_size();
 		for (int64_t i = 0; i < n_chunks; ++i)
 			next(out + i * chunk);
 		return;
 	}
 
-	const int64_t chunk = chunk_size();
 	int64_t done = 0;
 	// The online thread count is caller-selected and may differ from the
 	// begin-time pool size, so this path uses short-lived workers per slice.
@@ -232,9 +254,13 @@ void SilentFerret::process_one_tree_(AuthValueFerret *out) {
 
 void SilentFerret::produce_range(block *out, int64_t tree_begin,
                                  int64_t n_trees) const {
-	assert(tree_begin >= 0 && n_trees >= 0 &&
-	       tree_begin + n_trees <= round_capacity() &&
-	       "produce_range out of current-round bounds");
+	expect_in_session_();
+	const int64_t capacity = round_capacity();
+	expecting(tree_begin >= 0 && tree_begin <= capacity && n_trees >= 0 &&
+	              n_trees <= capacity - tree_begin,
+	          "produce_range out of current-round bounds");
+	expecting(n_trees == 0 || out != nullptr,
+	          "produce_range: null output for nonzero range");
 	produce_trees_(out, abs_round_base_ + (uint64_t)consume_round_, tree_begin,
 	               n_trees, carry_curr_.data());
 }
