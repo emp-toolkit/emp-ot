@@ -154,6 +154,49 @@ static void verify_prepaid(NetIO* io, int party, bool malicious,
          << (malicious ? "mali" : "semi") << ")" << endl;
 }
 
+// Ending a prepaid batch early must retain its already-computed base_K, not
+// leave the rolling base at the consumer's current round. Exercise both zero
+// consumption and a partial second round, then continue with a fresh batch on
+// the same instance and verify both produced segments.
+static void verify_partial_end_chain(NetIO* io, int party, bool malicious,
+                                     const PrimalLPNParameter& param,
+                                     int n_threads) {
+    SilentFerret ot(party, io, malicious, param, nullptr, n_threads);
+    const int64_t chunk = ot.chunk_size();
+    const int64_t cpr = ot.cots_per_round();
+    const int64_t request = 3 * cpr + 5 * chunk;  // K=4
+
+    io->sync();
+    ot.begin(request);
+    uint64_t s0 = io->send_counter, r0 = io->recv_counter;
+    ot.end();                                      // consume zero rounds
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "partial-chain zero-consume end performed wire I/O");
+
+    const int64_t partial = cpr + 5 * chunk;
+    std::vector<block> first(partial);
+    ot.begin(request);
+    s0 = io->send_counter; r0 = io->recv_counter;
+    ot.next_n(first.data(), partial);              // stop in round 1
+    ot.end();
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "partial-chain partial end performed wire I/O");
+
+    const int64_t tail = 17 * chunk;
+    std::vector<block> second(tail);
+    ot.begin();                                    // must start from prior base_K
+    s0 = io->send_counter; r0 = io->recv_counter;
+    ot.next_n(second.data(), tail);
+    ot.end();
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "partial-chain follow-up end performed wire I/O");
+
+    verify_rcot(&ot, io, party, first.data(), partial);
+    verify_rcot(&ot, io, party, second.data(), tail);
+    cout << "  partial end chain ok (zero + " << partial << " COTs, "
+         << (malicious ? "mali" : "semi") << ")" << endl;
+}
+
 // Threaded cursor fill across a prepaid round boundary. This is the emp-zk
 // buffer-fill shape: one call fills a chunk-multiple buffer in stream order,
 // while SilentFerret owns the rolling base transitions.
@@ -304,6 +347,11 @@ int main(int argc, char** argv) {
     verify_prepaid(io.get(), party, /*malicious=*/true,  tuning::ferret_b10, n_threads);
     verify_prepaid(io.get(), party, /*malicious=*/false, tuning::ferret_b11, n_threads);
     verify_prepaid(io.get(), party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
+
+    verify_partial_end_chain(io.get(), party, /*malicious=*/false,
+                             tuning::ferret_b10, n_threads);
+    verify_partial_end_chain(io.get(), party, /*malicious=*/true,
+                             tuning::ferret_b10, n_threads);
 
     verify_parallel_rollover(io.get(), party, /*malicious=*/false, tuning::ferret_b10, n_threads);
     verify_parallel_rollover(io.get(), party, /*malicious=*/true,  tuning::ferret_b10, n_threads);

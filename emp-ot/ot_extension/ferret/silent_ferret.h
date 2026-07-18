@@ -35,8 +35,8 @@ namespace emp {
  * persistent state is what cannot be reproduced locally — the receiver's
  * received corrections (~t * tree_depth blocks / round). The sender keeps
  * nothing per round: its cGGM roots are re-derived from a secret key via a
- * seek'd PRG. Resident base buffers stay at three (base0 + two rolling),
- * flat in K.
+ * seek'd PRG. Resident base buffers stay at three (one retained batch
+ * boundary + two rolling), flat in K.
  *
  * No-arg begin() is the K = 1 special case: one round prepaid, consumed
  * wire-free, with a live (communicating) rollover when the round's budget is
@@ -142,9 +142,9 @@ private:
 	// (Sender re-derives seeds, so it keeps nothing per round.)
 	std::vector<block> c_rounds_;
 
-	// Pristine copy of this batch's round-0 base COTs, kept so the consume
-	// roll can restart from base0 after the prepay roll walked past it. Its
-	// [0,128) consist region is also the single mask for the batched check.
+	// Batch-boundary scratch: holds pristine base_0 during prepay/check, then
+	// retains the already-computed base_K while the consumer rolls from base_0.
+	// Its [0,128) base_0 region is the single mask for the batched check.
 	BlockVec base0_;
 
 	// Batched malicious-check accumulators (Ferret App. C over m = K*t trees):

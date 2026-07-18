@@ -185,8 +185,8 @@ public:
   // ---- Decoupled "silent consume" path (SilentFerret) --------------
   // Splits run_next_tree into a one-shot prepare (all wire traffic, run
   // once at begin) and a wire-free per-tree produce (run at consume).
-  // prepare_all() expands every tree, ships all corrections in a single
-  // batched flush, and remembers the per-tree cGGM root seeds so
+  // prepare_all() expands every tree, ships corrections in tree order, and
+  // remembers the per-tree cGGM root seeds so
   // produce_tree() can re-derive a tree's leaves with no I/O. In
   // malicious mode it also folds each tree's chi contribution into
   // consist_check_VW here, so end()'s run_end_packed check is unchanged.
@@ -218,6 +218,7 @@ public:
     K0_scratch_.resize((int64_t)batch * tree_depth);
     std::vector<block> chi_seeds(batch);
     if (is_malicious) chi_scratch_.resize((int64_t)batch * leave_n);
+    int64_t last_flush = 0;
 
     for (int64_t b0 = 0; b0 < tree_n; b0 += batch) {
       const int B = (int)std::min<int64_t>(batch, tree_n - b0);
@@ -238,6 +239,18 @@ public:
         io->send_block(c_scratch_.data() + i * tree_depth, tree_depth);
         if (is_malicious) chi_seeds[s] = io->get_digest();
       }
+      // In malicious mode the receiver must evaluate these trees for its chi
+      // fold. Flush coarse waves so that work overlaps our VW fold instead of
+      // waiting for the full correction stream to fill NetIO's buffer. Keep
+      // the threshold independent of the compute batch: batch=1 must not turn
+      // every tree into a small socket write.
+      const int64_t shipped = b0 + B;
+      if (is_malicious &&
+          (shipped - last_flush >= tuning::mp_gadget_flush_trees ||
+           shipped == tree_n)) {
+        io->flush();
+        last_flush = shipped;
+      }
       // (3) VW fold — parallel; each tree writes its own slot.
       if (is_malicious)
         mp_parallel_for(pool, B, [&](int s) {
@@ -249,7 +262,9 @@ public:
                                    reinterpret_cast<AuthValue *>(lv), leave_n);
         });
     }
-    io->flush();
+    // Semi-honest preparation only stores corrections on the receiver, so a
+    // single flush avoids turning the stream into many small writes.
+    if (!is_malicious) io->flush();
   }
 
   // Re-derive one tree's leaves into `leaves_i` from its cGGM root `seed`
@@ -426,15 +441,13 @@ public:
     if constexpr (!AuthValue::kHasSecretSum) {
       // Ferret-style: AuthValue layout = block; cGGM writes directly.
       block* leaves_block_view = reinterpret_cast<block*>(leaves_i);
-      cggm::eval_receiver<cggm::kTile, AuthValue::kClearLeafLSB>(
-          tree_depth, alpha, K_recv.data(), leaves_block_view);
+      const block known_xor =
+          cggm::eval_receiver<cggm::kTile, AuthValue::kClearLeafLSB>(
+              tree_depth, alpha, K_recv.data(), leaves_block_view);
       // F2kPacked α-fill: eval_receiver leaves leaves[α] = zero_block;
       // XOR-sum of all LSB-cleared leaves equals the sender's LSB-
       // cleared α-leaf; OR in bit0_mask to recover the carrier bit.
-      block nodes_sum = zero_block;
-      for (int64_t k = 0; k < leave_n; ++k)
-        nodes_sum = nodes_sum ^ leaves_block_view[k];
-      leaves_block_view[rev] = nodes_sum ^ bit0_mask;
+      leaves_block_view[rev] = known_xor ^ bit0_mask;
       (void)secret_sum;
       (void)triple_yz_i;
     } else {
@@ -467,11 +480,12 @@ public:
 
   // ---- Decoupled "silent consume" path (SilentFerret) --------------
   // Mirror of MultiPointGadgetSender's prepare_all / produce_tree.
-  // prepare_all() receives every tree's correction once (one batched
-  // read), stores them, and — in malicious mode — folds each tree's chi
-  // contribution into consist_check_chi_alpha / consist_check_VW so end()'s
-  // run_end_packed check is unchanged. produce_tree() later re-evaluates a
-  // tree's leaves from its stored correction with no I/O.
+  // prepare_all() receives and stores every tree's correction. In malicious
+  // mode it also evaluates each tree and folds its chi contribution into
+  // consist_check_chi_alpha / consist_check_VW so end()'s run_end_packed
+  // check is unchanged. In semi-honest mode that evaluation has no persistent
+  // effect, so it is deferred to produce_tree(), which evaluates from the
+  // stored correction with no I/O.
   //
   // recv + per-tree get_digest() stay on this thread in tree order (so the
   // chi seeds match the sender's snapshots); the cGGM eval + VW run on
@@ -490,6 +504,11 @@ public:
                    block *c_out) {
     static_assert(!AuthValue::kHasSecretSum,
                   "prepare_all: Ferret-style (no secret_sum) path only");
+    if (!is_malicious) {
+      for (int64_t i = 0; i < tree_n; ++i)
+        io->recv_block(c_out + i * tree_depth, tree_depth);
+      return;
+    }
     if (batch < 1) batch = 1;
     leaves_scratch_.resize((int64_t)batch * leave_n);
     K_recv_scratch_.resize((int64_t)batch * tree_depth);
@@ -549,11 +568,10 @@ public:
     }
     const uint32_t rev = cggm::bit_reverse(alpha, (int)tree_depth);
     for (int64_t j = 0; j < tree_depth; ++j) kr[j] = base_i[j] ^ c_i[j];
-    cggm::eval_receiver<cggm::kTile, AuthValue::kClearLeafLSB>(
-        tree_depth, alpha, kr, lv);
-    block nodes_sum = zero_block;
-    for (int64_t k = 0; k < leave_n; ++k) nodes_sum = nodes_sum ^ lv[k];
-    lv[rev] = nodes_sum ^ bit0_mask;
+    const block known_xor =
+        cggm::eval_receiver<cggm::kTile, AuthValue::kClearLeafLSB>(
+            tree_depth, alpha, kr, lv);
+    lv[rev] = known_xor ^ bit0_mask;
     return rev;
   }
 

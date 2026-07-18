@@ -87,9 +87,11 @@ with the winners; every later build reuses the recorded result
 deterministic. Tuning changes neither outputs nor wire bytes (enforced
 by `test_tuning_invariance` and the trace-hash baseline below), so
 differently-tuned parties interoperate freely. `-DEMP_OT_AUTO_TUNE=OFF`
-keeps the swept cross-platform defaults; `cmake --build build --target
-tune` forces a re-sweep and `tune-clean` discards it. Design and
-methodology: [`docs/performance-tuning.md`](docs/performance-tuning.md).
+prevents a new automatic sweep, but an existing `tuning_local.h` still
+applies. To use the swept cross-platform defaults, configure with that
+option and run `tune-clean` to discard the header. The `tune` target
+forces a re-sweep. Design and methodology:
+[`docs/performance-tuning.md`](docs/performance-tuning.md).
 
 ### CMake options
 
@@ -365,8 +367,10 @@ ote.end();                         // close it (e.g. in your dtor)
 This matters because `rcot(data, num)` opens and closes a session per
 call, so the per-round end-work (refill trees + the malicious chi-fold
 check) is paid every `chunk_size()` COTs. `next_n` keeps one session
-open, amortizing that over the whole stream — e.g. emp-zk's per-AND-gate
-COT draw is ~20× faster this way than calling `rcot(_, 1)` in a loop.
+open, amortizing that over the whole stream. In a malicious b13 Ferret
+benchmark matching emp-zk's one-COT-per-AND-gate consumption shape,
+1,048,576 calls were 36.9× faster (slower-party median of 5) and used
+45.2× less wire this way than with `rcot(_, 1)` in a loop.
 `next_n` is mutually exclusive with `run()`/`rcot()` on the same
 instance (both touch the same leftover buffer).
 
@@ -375,14 +379,17 @@ lifecycle contract.
 
 ### SilentFerret
 
-`SilentFerret` is a drop-in `Ferret` subclass that **front-loads** all of
+`SilentFerret` is a drop-in `Ferret` subclass that can **front-load** all of
 its wire traffic. Where `Ferret` interleaves the MPCOT/LPN correction
 messages (and, in malicious mode, the chi-fold check) with production,
-`SilentFerret` concentrates every byte — and every malicious check — into
-`begin()`, leaving `next()` / `next_n()` **completely wire-free** for both
-roles. Over a whole number of rounds the two send byte-identical traffic;
-`SilentFerret` only changes *when* it is sent (this equivalence is pinned by
-the `trace_hash` baseline above).
+`SilentFerret::begin(n_ots)` concentrates every byte — and every malicious
+check — into the initial call, leaving `next()` / `next_n()` **completely
+wire-free** for both roles. The cGGM correction stream is identical to
+Ferret's. The no-argument path prepays one round at a time and, over whole
+rounds, remains byte-identical overall, as pinned by the `trace_hash`
+baseline above. For a multi-round malicious `begin(n_ots)`, SilentFerret
+folds the per-round consistency checks into one batch check, so its total
+transcript is slightly smaller even though the corrections are unchanged.
 
 Prepay a known number of COTs up front, then draw them with no communication
 during the online phase:
@@ -407,9 +414,10 @@ the interactive section of a protocol should move no OT bytes.
 Two AWS `m8a.8xlarge` (AMD EPYC 9R45, Zen 5) in a cluster placement
 group, us-east-1, Ubuntu 22.04, GCC 11.4, OpenSSL 3.0.2,
 `-march=native`. The two parties run on separate instances over the
-AWS private network; the link measured 9.54 Gbps single-flow / 0.15 ms
-RTT (iperf3 and ping archived with the results). Default Release build
-(auto-tuned); bench output buffers are pre-faulted.
+AWS private network; the link measured 9.50–9.53 Gbps single-flow /
+0.10–0.11 ms RTT (iperf3 and ping archived with the results). Release
+build with one final-source auto-tuner result frozen across both hosts;
+bench output buffers are pre-faulted.
 
 ### Base OTs
 
@@ -418,46 +426,50 @@ send/recv bytes are deterministic).
 
 | Protocol     | Time   |  Send B |  Recv B | Security                                     |
 |--------------|-------:|--------:|--------:|----------------------------------------------|
-| `CO`       |  11 ms |   4,165 |   8,832 | semi-honest                                  |
-| `CSW`      | 9.3 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
+| `CO`       |  10 ms |   4,165 |   8,832 | semi-honest                                  |
+| `CSW`      | 9.4 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `PVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
 | `BMM`      |  11 ms | 200,704 | 106,496 | malicious-secure, post-quantum (ML-KEM-512)  |
 
 ### OT extensions (RCOT throughput)
 
-Length 2²⁵ OTs (~33M), single-threaded (one thread per party;
-`SilentFerret`'s `begin()` expansion pool disabled). `MOT/s` is the
-median of 5 runs, the slower of the two parties per run; `bits/RCOT`
+Length 30,015,488 OTs (exactly two b13 rounds; ~30M), single-threaded
+(one thread per party; `SilentFerret`'s `begin()` expansion pool
+disabled). `MOT/s` is the median of 9 runs, the slower of the two
+parties per run; `bits/RCOT`
 (total wire bytes, both directions — deterministic) includes the
 one-time base-OT bootstrap amortised over the length. Observed: the
-`IKNP` and `SoftSpoken<2>` rows ran at 90–98% of the measured link
-rate; the remaining rows were CPU-bound and reproduce across instance
-sizes and sessions within ~1–2%. Analysis of what binds each
-configuration is in
+`IKNP` and `SoftSpoken<2>` rows, plus semi-honest `SoftSpoken<4>`, ran
+at 91–98% of the measured link rate; the remaining rows were CPU-bound.
+Analysis of what binds each configuration is in
 [`docs/performance-tuning.md`](docs/performance-tuning.md).
 
 | Protocol         | Mode      | bits/RCOT | MOT/s |
 |------------------|-----------|----------:|------:|
 | `IKNP`           | semi      |       127 |    73 |
-| `IKNP`           | malicious |       127 |    74 |
+| `IKNP`           | malicious |       127 |    73 |
 | `SoftSpoken<2>`  | semi      |        63 |   144 |
-| `SoftSpoken<2>`  | malicious |        63 |   131 |
-| `SoftSpoken<4>`  | semi      |        31 |   187 |
-| `SoftSpoken<4>`  | malicious |        31 |   181 |
-| `SoftSpoken<8>`  | semi      |        15 |    69 |
-| `SoftSpoken<8>`  | malicious |        15 |    68 |
-| `Ferret`         | semi      |      0.28 |   115 |
-| `Ferret`         | malicious |      0.28 |   104 |
-| `SilentFerret`   | semi      |      0.28 |    94 |
-| `SilentFerret`   | malicious |      0.28 |    80 |
+| `SoftSpoken<2>`  | malicious |        63 |   137 |
+| `SoftSpoken<4>`  | semi      |        31 |   280 |
+| `SoftSpoken<4>`  | malicious |        31 |   195 |
+| `SoftSpoken<8>`  | semi      |        15 |    75 |
+| `SoftSpoken<8>`  | malicious |        15 |    70 |
+| `Ferret`         | semi      |      0.28 |   124 |
+| `Ferret`         | malicious |      0.28 |   111 |
+| `SilentFerret`   | semi      |      0.28 |   116 |
+| `SilentFerret`   | malicious |      0.28 |   103 |
 
 `IKNP` and `SoftSpoken<k>` traffic is one-direction (127 and
 `128/k − 1` bits/RCOT). The `Ferret` and `SilentFerret` rows use the
-default `ferret_b13` parameter set and are measured over a whole number
-of `SilentFerret` rounds, so the two send byte-identical traffic and
-their `bits/RCOT` match exactly (pinned by the wire-trace table above);
-`ferret_b11` measured 124 MOT/s at 0.81 bits/RCOT on the same setup.
-`SilentFerret`'s `next()` is wire-free (all traffic in `begin()`).
+default `ferret_b13` parameter set and are measured over two complete
+rounds. Their correction traffic is identical, and their semi-honest
+total traffic matches exactly. Malicious SilentFerret batches the two
+per-round checks into one, saving 48 bytes total (about 0.000013
+bits/RCOT), so both still round to 0.28 bits/RCOT. The no-argument,
+one-round-at-a-time wire equivalence remains pinned by the trace table
+above. `ferret_b11` measured 124 MOT/s at 0.81 bits/RCOT on the same
+setup. The measured `SilentFerret` rows' `next()` calls are wire-free
+(all traffic is in `begin(n_ots)`).
 
 `COT`, `ROT`, `OT` flavors layer one MITCCRH pass (and, for
 chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.

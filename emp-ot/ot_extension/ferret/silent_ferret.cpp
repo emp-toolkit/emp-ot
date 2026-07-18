@@ -55,8 +55,8 @@ void SilentFerret::begin(int64_t n_ots) { begin_batch_(n_ots); }
 // Prepay K = ceil(n_ots / cots_per_round()) rounds: emit every round's
 // correction traffic and run every malicious check here, storing only the
 // receiver's corrections (the sender re-derives its seeds). The base rolls
-// forward as in the normal path; we keep a pristine base0 so the consume
-// roll can restart from round 0.
+// forward as in the normal path; base0_ preserves one batch boundary while
+// the consumer walks the other.
 void SilentFerret::begin_batch_(int64_t n_ots) {
 	expecting(n_ots >= 0, "SilentFerret::begin: negative COT count");
 	enter_session_();
@@ -68,7 +68,9 @@ void SilentFerret::begin_batch_(int64_t n_ots) {
 	bootstrap_();
 	if (need_swap) std::swap(carry_curr_, carry_next_);
 
-	if (n_threads_ > 1 && !pool_)
+	// Semi-honest receiver preparation only stores corrections; its tree
+	// evaluation is deferred to consume, so it has no begin-time pool work.
+	if (n_threads_ > 1 && !pool_ && (is_ot_sender() || malicious))
 		pool_ = std::make_unique<ThreadPool>((size_t)n_threads_);
 
 	// Sender's cGGM-root key = the gadget's own per-tree PRG key. Ferret's
@@ -156,20 +158,20 @@ void SilentFerret::begin_batch_(int64_t n_ots) {
 		gadget_recv_->finalize_batched_packed_receiver(
 		    acc_vw_, acc_phi_, base0_.data());
 
-	// All traffic shipped. Restore round-0's base and position the consumer
-	// at round 0; consume re-rolls the base wire-free from here.
-	std::copy(base0_.begin(), base0_.end(), carry_curr_.begin());
+	// All traffic shipped. Preserve base_K in base0_ while restoring base_0
+	// for consumption. The consume rolls mutate only the carry buffers, so
+	// end() can recover the already-computed base_K with the inverse swap.
+	std::swap(base0_, carry_curr_);
 	consume_round_ = 0;
 	local_tree_    = 0;
 }
 
 void SilentFerret::end() {
 	expect_in_session_();
-	// Roll any unconsumed prepaid rounds forward to base_K so a following
-	// begin() continues the base chain (and the absolute counter) without
-	// re-shipping — counter reuse would repeat chi/LPN streams.
-	for (int64_t r = consume_round_; r < n_rounds_; ++r)
-		roll_base_(abs_round_base_ + (uint64_t)r);
+	// begin() retained base_K in base0_; restore it in O(1), regardless of how
+	// far consumption advanced the rolling carry buffers. A following begin()
+	// therefore continues the base chain without repeating chi/LPN streams.
+	std::swap(base0_, carry_curr_);
 	abs_round_ = abs_round_base_ + (uint64_t)n_rounds_;
 	exit_session_();
 }

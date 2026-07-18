@@ -168,12 +168,12 @@ inline void build_sender(int d, block Delta, block k,
 // agree; if the sender used ClearLeafLSB the receiver must too,
 // so K0[d-1] / K_recv[d-1] match. Cleared leaves let the caller
 // drop the post-eval AND loop and do a pure XOR-fold.
+//
+// Returns the XOR of all reconstructed leaves (the punctured slot remains
+// zero). The value follows the same optional leaf-LSB clearing convention.
 template <int Tile = kTile, bool ClearLeafLSB = false>
-inline void eval_receiver(int d, int alpha,
-                          const block* K_recv, block* leaves) {
-    const int Q = 1 << d;
-    for (int i = 0; i < Q; ++i) leaves[i] = zero_block;
-
+inline block eval_receiver(int d, int alpha,
+                           const block* K_recv, block* leaves) {
     CCRH ccrh;
 
     // `pos` = split-layout storage index of the on-path node at the
@@ -181,13 +181,20 @@ inline void eval_receiver(int d, int alpha,
     // children at j (left) and j+half (right), so the on-path index
     // grows by alpha_i*half per level (the new bit is the index MSB).
     int pos = 0;
+    block known_xor = zero_block;
 
     // Level 1: receiver knows the alpha_bar_1-side root child only.
     {
         const int alpha_1     = (alpha >> (d - 1)) & 1;
         const int alpha_bar_1 = 1 - alpha_1;
+        // Only the two live level-1 slots need initialization. Every later
+        // expand_level call overwrites the complete live prefix [0, 2^i), so
+        // zeroing the full leaf array would be a redundant O(2^d) pass.
+        leaves[0] = zero_block;
+        leaves[1] = zero_block;
         leaves[alpha_bar_1] = K_recv[0];
         pos = alpha_1;
+        known_xor = K_recv[0];
     }
 
     // Levels 2..d. Expand the whole previous-level layer (the on-path
@@ -223,11 +230,21 @@ inline void eval_receiver(int d, int alpha,
         if constexpr (C) sib = sib & detail::kCggmLsbClearMask;
         leaves[pos + alpha_bar_i * half] = sib;
 
+        // XOR(left, right) equals the parent for every expanded pair. At the
+        // leaf level both children are masked, so the pair XOR is the masked
+        // parent. The two H(0) children of the punctured parent cancel before
+        // they are cleared; installing the recovered sibling then XORs `sib`
+        // into the known-node total. Carrying this invariant lets the caller
+        // fill its punctured leaf without rescanning all 2^d leaves.
+        if constexpr (C) known_xor = known_xor & detail::kCggmLsbClearMask;
+        known_xor = known_xor ^ sib;
+
         pos += alpha_i * half;   // on-path child = next level's `pos`
     };
 
     for (int i = 2; i < d; ++i) step(i, std::false_type{});
     if (d >= 2) step(d, std::integral_constant<bool, ClearLeafLSB>{});
+    return known_xor;
 }
 
 }}  // namespace emp::cggm

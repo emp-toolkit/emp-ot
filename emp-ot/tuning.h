@@ -17,14 +17,15 @@
 //
 // LOCAL-class knobs — scheduling/layout only, output- and wire-invariant,
 // so parties may differ freely (see docs/performance-tuning.md for the
-// LOCAL / AGREEMENT / SECURITY classification) — are macro-guarded below
-// and may be overridden by a generated emp-ot/tuning_local.h. That file
-// is machine-specific, gitignored, and written by the `tune` tool with
-// provenance comments; delete it (`make tune-clean`) to return to the
-// safe swept defaults. AGREEMENT and SECURITY knobs are plain constexpr
-// with no macro guard: tuning_local.h has no channel to reach them.
-// test_tuning_invariance asserts the output-invariance of every guarded
-// knob at its extreme candidate values.
+// LOCAL / AGREEMENT / SECURITY classification) — are macro-guarded when
+// managed by the auto-tuner, and may then be overridden by a generated
+// emp-ot/tuning_local.h. Fixed LOCAL policies are plain constexpr with an
+// explicit rationale. tuning_local.h is machine-specific, gitignored, and
+// written by the `tune` tool with provenance comments; delete it (`make
+// tune-clean`) to return to the safe swept defaults. AGREEMENT and SECURITY
+// knobs are also plain constexpr, with no macro guard: tuning_local.h has no
+// channel to reach them. test_tuning_invariance asserts the output-invariance
+// of every guarded knob at its extreme candidate values.
 #if __has_include("emp-ot/tuning_local.h")
 #include "emp-ot/tuning_local.h"
 #endif
@@ -165,6 +166,14 @@ constexpr int cggm_tile() {
     return (EMP_TUNE_CGGM_TILE > 0) ? EMP_TUNE_CGGM_TILE
                                     : cggm_tile_arch_default();
 }
+
+// ===== Multi-point gadget preparation (emp-ot/common/mp_gadget.h) =====
+// LOCAL scheduling policy (fixed, not auto-tuned): maximum trees whose
+// malicious-mode corrections may be buffered between flushes. The useful
+// value depends on two-party transport buffering and latency, which the
+// single-process tuner cannot model; keep one conservative cross-platform
+// policy here. It changes only flush timing, not transcript order or bytes.
+inline constexpr int64_t mp_gadget_flush_trees = 128;
 
 // ===== SoftSpoken =====
 // LOCAL (tunable): sfvole butterfly tile T — the j-axis (PRG counter)

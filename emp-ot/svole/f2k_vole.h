@@ -56,13 +56,43 @@ struct AuthValueF2k {
     prg.random_block(chi, sz);
   }
 
-  // VW[idx] = Σ chi[i] · leaves[i].mac.
+  // VW[idx] = Σ chi[i] · leaves[i].mac. Reduction in GF(2^128) is
+  // linear, so accumulate the 256-bit carry-less products first and reduce
+  // once at the end. The mac fields are strided inside AuthValueF2k and cannot
+  // be passed to emp-tool's contiguous vector inner-product helper directly.
   static inline void accumulate_VW(F& VW_slot, const F* chi,
                                    const AuthValueF2k* leaves, int64_t sz) {
-    F v = f_zero();
-    for (int64_t i = 0; i < sz; ++i)
-      v = f_add(v, f_mul(chi[i], leaves[i].mac));
-    VW_slot = v;
+    F lo0 = zero_block, hi0 = zero_block;
+    F lo1 = zero_block, hi1 = zero_block;
+    F lo2 = zero_block, hi2 = zero_block;
+    F lo3 = zero_block, hi3 = zero_block;
+
+    int64_t i = 0;
+    for (; i + 4 <= sz; i += 4) {
+      F lo, hi;
+      mul128(chi[i], leaves[i].mac, &lo, &hi);
+      lo0 = lo0 ^ lo;
+      hi0 = hi0 ^ hi;
+      mul128(chi[i + 1], leaves[i + 1].mac, &lo, &hi);
+      lo1 = lo1 ^ lo;
+      hi1 = hi1 ^ hi;
+      mul128(chi[i + 2], leaves[i + 2].mac, &lo, &hi);
+      lo2 = lo2 ^ lo;
+      hi2 = hi2 ^ hi;
+      mul128(chi[i + 3], leaves[i + 3].mac, &lo, &hi);
+      lo3 = lo3 ^ lo;
+      hi3 = hi3 ^ hi;
+    }
+    for (; i < sz; ++i) {
+      F lo, hi;
+      mul128(chi[i], leaves[i].mac, &lo, &hi);
+      lo0 = lo0 ^ lo;
+      hi0 = hi0 ^ hi;
+    }
+
+    const F lo = (lo0 ^ lo1) ^ (lo2 ^ lo3);
+    const F hi = (hi0 ^ hi1) ^ (hi2 ^ hi3);
+    VW_slot = reduce(lo, hi);
   }
 
   // -------- LPN ops (Lpn<AuthValueF2k, 10>) --------

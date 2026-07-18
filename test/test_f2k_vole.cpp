@@ -40,6 +40,42 @@ void check_triple(const block delta,
 static constexpr auto kSvoleParam   = tuning::ferret_b11;
 static constexpr int  kOneshotIters = 2;
 
+// Differential check for the carrier's strided chi·mac fold. The reference
+// reduces every product independently; accumulate_VW must return the identical
+// field element while deferring reduction until the end.
+bool test_accumulate_vw() {
+  const block seed = makeBlock(0x6d61632d666f6c64ULL,
+                               0x6465666572726564ULL);
+  PRG prg(&seed);
+  constexpr int64_t sizes[] = {0, 1, 2, 3, 4, 5, 7, 16, 127, 128, 1024};
+
+  for (int64_t size : sizes) {
+    std::vector<block> chi(size);
+    std::vector<AuthValueF2k> leaves(size);
+    if (size > 0) prg.random_block(chi.data(), size);
+    for (int64_t i = 0; i < size; ++i) {
+      prg.random_block(&leaves[i].val, 1);
+      prg.random_block(&leaves[i].mac, 1);
+    }
+
+    block expected = zero_block;
+    for (int64_t i = 0; i < size; ++i) {
+      block product;
+      gfmul(chi[i], leaves[i].mac, &product);
+      expected = expected ^ product;
+    }
+
+    block actual = all_one_block;
+    AuthValueF2k::accumulate_VW(actual, chi.data(), leaves.data(), size);
+    if (!cmpBlock(&actual, &expected, 1)) {
+      std::cerr << "AuthValueF2k::accumulate_VW mismatch at size "
+                << size << std::endl;
+      return false;
+    }
+  }
+  return true;
+}
+
 // Streaming-path exercise: begin -> many next -> end.
 // Walks chunk-by-chunk through ~one round of outputs, verifying each.
 void test_streaming(NetIO *io, int svole_party) {
@@ -90,6 +126,8 @@ void test_oneshot(NetIO *io, int svole_party) {
 }
 
 int main(int argc, char **argv) {
+  if (!test_accumulate_vw()) return 1;
+
   party = parse_party(argv);
   port = peer_port();
 

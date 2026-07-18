@@ -112,15 +112,17 @@ measures on an otherwise idle machine, and the library then compiles
 with the overrides in the same invocation. The sweep runs only when no
 `tuning_local.h` exists, so every build after the first is deterministic
 and sweep-free. Debug/unspecified build types and subproject consumers
-never auto-tune; `-DEMP_OT_AUTO_TUNE=OFF` opts a Release tree out.
+never auto-tune; `-DEMP_OT_AUTO_TUNE=OFF` opts a Release tree out of a
+new automatic sweep. It does not suppress an existing source-tree
+`tuning_local.h`; that header remains active until `tune-clean` removes it.
 
 ```
 cmake --build build --target tune        # explicit re-sweep (any build type)
 cmake --build build --target tune-clean  # delete overrides; next build reverts
                                          # (an auto-tune Release tree re-sweeps
-                                         #  on its next build; use
-                                         #  -DEMP_OT_AUTO_TUNE=OFF to stay on
-                                         #  shipped defaults permanently)
+                                         #  on its next build; configure with
+                                         #  -DEMP_OT_AUTO_TUNE=OFF before that
+                                         #  build to keep shipped defaults)
 ```
 
 A build-dependency subtlety the tooling handles for you: the include of
@@ -227,13 +229,16 @@ Rapids + fast link: T16 at k=2 measured +12%).
 ## Measured performance analysis (2026-07 campaign)
 
 Context for the README's observed numbers (two m8a.8xlarge, cluster
-placement group, default auto-tuned Release builds; raw outputs and the
-iperf3/ping captures are archived with the results).
+placement group, Release builds using one final-source tuner result
+frozen across both hosts; raw outputs and the iperf3/ping captures are
+archived with the results). The frozen result selected cGGM tile 32 and
+LPN batch 64.
 
 **What binds each configuration.**
 
-- `IKNP` and `SoftSpoken<2>` saturate the link: 90–98% of the measured
-  9.54 Gbps single-flow rate. That rate is the AWS per-connection
+- `IKNP` and `SoftSpoken<2>` use 91–98% of the measured 9.50 Gbps
+  single-flow rate; semi-honest `SoftSpoken<4>` also reaches 91%.
+  That rate is the AWS per-connection
   ceiling (~10 Gbps inside a cluster placement group, ~5 Gbps outside;
   ENA Express/SRD would lift it to ~25 Gbps but is unsupported on m8a).
   The same pair carries 14.9 Gbps aggregate over ≥2 flows — the NIC's
@@ -243,29 +248,31 @@ iperf3/ping captures are archived with the results).
 - Malicious mode hashes every wire byte into the Fiat–Shamir transcript
   on both sides, in-line. For `IKNP` this hides entirely under the wire
   wait (semi ≈ malicious throughput). For `SoftSpoken<2>` it does not:
-  the malicious row sits at 84% of the link (vs semi's 95%) with only
-  ~32 extra wire bytes per session — the gap is transcript hashing on
+  the malicious row sits at 91% of the link (vs semi's 96%) with
+  essentially the same wire volume — the gap is transcript hashing on
   the critical path. SHA-256 runs 15–17.6 Gbps on these cores, so on
   links faster than that (multi-lane aggregate, ENA Express) the
   transcript hash — not the wire — becomes the malicious-mode ceiling
   for the comm-heavy protocols. (Mitigations on the roadmap: the
   BLAKE3 transcript backend, and overlapping the absorb with the wire
   wait.)
-- `SoftSpoken<4>/<8>`, `Ferret`, and `SilentFerret` are CPU-bound at
-  these link rates and reproduce across instance sizes and sessions
-  within ~1–2% (identical cores ⇒ identical numbers).
+- Malicious `SoftSpoken<4>`, both `SoftSpoken<8>` modes, `Ferret`, and
+  `SilentFerret` are CPU-bound at these link rates. The published values
+  use nine-run medians: most rows were tightly clustered, while the
+  SoftSpoken<8> series contained isolated slow samples, so the former
+  blanket 1–2% reproducibility claim has been removed.
 
-**Wire-format facts behind the bits/RCOT column.** `Ferret`'s 0.27
-bits/RCOT at 2²⁵ decomposes into ~0.20 of steady-state per-round
-MPCOT/LPN traffic plus ~0.07 of one-time bootstrap (the bootstrap
-fraction shrinks linearly with length). `SilentFerret` has the same
-sub-bit footprint, slightly more on the receiver-inbound side, because
-it prepays every round's corrections in `begin()`. `ferret_b11` trades
-0.80 bits/RCOT for more speed on CPUs whose per-core cache cannot hold
-b13's 8 MiB LPN table (measured −41% for b13 vs b11 on Granite Rapids;
-parameter choice must be agreed by both parties).
+**Wire-format facts behind the bits/RCOT column.** At the common
+30,015,488-output length, b13 Ferret uses 0.278 bits/RCOT including the
+one-time bootstrap. SilentFerret sends the same correction stream. The
+semi-honest totals are identical; in malicious mode a two-round prepaid
+batch folds the two per-round checks into one, saving 48 bytes total
+(about 0.000013 bits/RCOT). `ferret_b11` measured 0.806 bits/RCOT and
+123.8 MOT/s on this setup; parameter choice must be agreed by both
+parties.
 
-**What tuning contributed on this hardware** (same-session A/B with
-verified-applied builds): ≈+4% `SilentFerret`, ≈+1% `Ferret`, and the
-deliberately forfeited ~5% on `SoftSpoken<2>` malicious (the k=2 tile
-is policy-excluded from auto-emission; see the tile policy note above).
+This absolute-number campaign did not repeat a tuned-versus-default A/B,
+so it makes no claim about the tuner's isolated contribution. Any such
+A/B must freeze one source revision and compare both builds in the same
+interleaved session; older percentages are not carried forward across the
+current kernel and SilentFerret changes.
