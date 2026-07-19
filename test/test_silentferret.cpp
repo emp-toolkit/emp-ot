@@ -325,47 +325,46 @@ int main(int argc, char** argv) {
     const int n_threads = 4;
     cout << "# test_silentferret: threads=" << n_threads << endl;
 
-    verify_silent(io.get(), party, /*malicious=*/false, tuning::ferret_b11, n_threads);
-    verify_silent(io.get(), party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
-    verify_silent(io.get(), party, /*malicious=*/false, tuning::ferret_b13, n_threads);
-    verify_silent(io.get(), party, /*malicious=*/true,  tuning::ferret_b13, n_threads);
+    // Every LPN size drives identical SilentFerret logic and differs only in
+    // scale (a b13 round is ~15M COTs). Release sweeps the shipped sizes;
+    // Debug — unoptimized, two-party, bounded by the harness timeout on slow
+    // runners — runs the single smallest size as a smoke test. Both parties
+    // compile the same lists, so they stay in lockstep.
+#ifdef NDEBUG
+    const PrimalLPNParameter sweep_sizes[]   = {tuning::ferret_b11, tuning::ferret_b13};
+    const PrimalLPNParameter consume_sizes[] = {tuning::ferret_b10, tuning::ferret_b11};
+    const PrimalLPNParameter comm_sizes[]    = {tuning::ferret_b10, tuning::ferret_b11};
+#else
+    const PrimalLPNParameter sweep_sizes[]   = {tuning::ferret_b10};
+    const PrimalLPNParameter consume_sizes[] = {tuning::ferret_b10};
+    const PrimalLPNParameter comm_sizes[]    = {tuning::ferret_b10};
+#endif
 
-    verify_parallel(io.get(), party, /*malicious=*/false, tuning::ferret_b11, n_threads);
-    verify_parallel(io.get(), party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
-    verify_parallel(io.get(), party, /*malicious=*/false, tuning::ferret_b13, n_threads);
-    verify_parallel(io.get(), party, /*malicious=*/true,  tuning::ferret_b13, n_threads);
+    // Single-round produce paths: basic, threaded, and incremental next_n.
+    for (const auto& p : sweep_sizes)
+        for (bool mali : {false, true}) {
+            verify_silent(io.get(), party, mali, p, n_threads);
+            verify_parallel(io.get(), party, mali, p, n_threads);
+            verify_next_n(io.get(), party, mali, p);
+        }
 
-    verify_next_n(io.get(), party, /*malicious=*/false, tuning::ferret_b11);
-    verify_next_n(io.get(), party, /*malicious=*/true,  tuning::ferret_b11);
-    verify_next_n(io.get(), party, /*malicious=*/false, tuning::ferret_b13);
-    verify_next_n(io.get(), party, /*malicious=*/true,  tuning::ferret_b13);
+    // Multi-round consume paths: prepaid begin(n_ots), early-end chaining, and
+    // threaded rollover — size-independent, kept on the small sizes so the
+    // K>=4-round output buffers stay light.
+    for (const auto& p : consume_sizes)
+        for (bool mali : {false, true}) {
+            verify_prepaid(io.get(), party, mali, p, n_threads);
+            verify_partial_end_chain(io.get(), party, mali, p, n_threads);
+            verify_parallel_rollover(io.get(), party, mali, p, n_threads);
+        }
 
-    // Multi-round consume is param-independent; exercise it on the smaller
-    // params so the K>=4-round output buffer stays light (b13 rounds are ~15M
-    // COTs each — too large to materialize several of here).
-    verify_prepaid(io.get(), party, /*malicious=*/false, tuning::ferret_b10, n_threads);
-    verify_prepaid(io.get(), party, /*malicious=*/true,  tuning::ferret_b10, n_threads);
-    verify_prepaid(io.get(), party, /*malicious=*/false, tuning::ferret_b11, n_threads);
-    verify_prepaid(io.get(), party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
-
-    verify_partial_end_chain(io.get(), party, /*malicious=*/false,
-                             tuning::ferret_b10, n_threads);
-    verify_partial_end_chain(io.get(), party, /*malicious=*/true,
-                             tuning::ferret_b10, n_threads);
-
-    verify_parallel_rollover(io.get(), party, /*malicious=*/false, tuning::ferret_b10, n_threads);
-    verify_parallel_rollover(io.get(), party, /*malicious=*/true,  tuning::ferret_b10, n_threads);
-    verify_parallel_rollover(io.get(), party, /*malicious=*/false, tuning::ferret_b11, n_threads);
-    verify_parallel_rollover(io.get(), party, /*malicious=*/true,  tuning::ferret_b11, n_threads);
-
-    // Differential: no-arg SilentFerret moves byte-for-byte the same as Ferret.
-    verify_comm_matches_ferret(io.get(), party, tuning::ferret_b10);
-    verify_comm_matches_ferret(io.get(), party, tuning::ferret_b11);
-
-    // Batched (2 batches x 2 rounds) vs Ferret (4 rounds): identical corrections,
-    // exactly (rounds - batches) fewer checks, and a valid 2-batch-chained RCOT.
-    verify_comm_batched_vs_ferret(io.get(), party, tuning::ferret_b10);
-    verify_comm_batched_vs_ferret(io.get(), party, tuning::ferret_b11);
+    // Differential: SilentFerret moves byte-for-byte the same as Ferret,
+    // both plain (2 batches x 2 rounds vs 4 rounds → identical corrections,
+    // (rounds - batches) fewer checks) and as a valid batch-chained RCOT.
+    for (const auto& p : comm_sizes) {
+        verify_comm_matches_ferret(io.get(), party, p);
+        verify_comm_batched_vs_ferret(io.get(), party, p);
+    }
 
     return 0;
 }
