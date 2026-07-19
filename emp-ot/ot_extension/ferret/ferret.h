@@ -57,9 +57,9 @@ struct AuthValueFerret {
   // -------- Chi-fold helpers --------
   // PRG-expand the chi seed into chi[leave_n]. Differs from
   // AuthValueF2k / AuthValueFp (hash + uni_hash_coeff_gen) — Ferret's
-  // MPCOT historically derives chi via PRG, and the round-final
-  // hash bytes on the wire depend on the resulting VW, so this
-  // expansion must be preserved verbatim.
+  // MPCOT derives chi via PRG, and the round-final hash bytes on the
+  // wire depend on the resulting VW, so this expansion is fixed by the
+  // wire format.
   static inline void expand_chi(block chi_seed, F* chi, int64_t sz) {
     PRG chi_prg(&chi_seed);
     chi_prg.random_block(chi, sz);
@@ -154,7 +154,7 @@ protected:
 	int64_t tree_idx_ = 0;
 
 	// Per-Ferret-lifetime LPN-seed exchange state. The seed is
-	// exchanged once on first do_begin (receiver derives from
+	// exchanged once on first begin() (receiver derives from
 	// choice_prg, sender receives), and lpn_'s PRG state advances
 	// continuously from there.
 	bool lpn_seed_set_ = false;
@@ -163,7 +163,7 @@ protected:
 	// blocks. curr_ holds the round's M base COTs (chi-check + LPN-secret +
 	// cGGM-correction slots, see ferret.cpp for the layout); next_ is
 	// written by this round's refill trees. Swapped at every round
-	// boundary in do_begin. Element type is raw `block` (block
+	// boundary in begin(). Element type is raw `block` (block
 	// storage; reinterpret to AuthValueFerret at the gadget/Lpn boundary).
 	BlockVec carry_curr_;
 	BlockVec carry_next_;

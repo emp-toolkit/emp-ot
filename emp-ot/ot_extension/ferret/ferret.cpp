@@ -116,7 +116,7 @@ void Ferret::end() {
 // =====================================================================
 
 // Idempotent. Writes the first round's M base COTs into next_ (the
-// first do_begin then swaps next_ → curr_).
+// first begin() then swaps next_ → curr_).
 //
 // Tiered source: when param.M is large (b11 / b12 / b13), nest a
 // ferret_b10 instance under SoftSpoken<8> so the expensive SoftSpoken

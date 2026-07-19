@@ -61,7 +61,8 @@ public:
     // expected to call enter_session_() at the top of begin(),
     // expect_in_session_() before work and exit_session_() at the end of
     // end(), and expect_in_session_() inside next() — the protected helpers
-    // below enforce the tripwire without the NVI dispatcher layer.
+    // below enforce the tripwire, and begin/next/end are plain virtuals the
+    // subclass overrides directly.
     virtual void begin() = 0;
     virtual void next(Element *out) = 0;
     virtual void end() = 0;
@@ -166,8 +167,7 @@ protected:
         : party(party_), malicious(malicious_) {}
 
     // Session tripwire helpers. Subclass overrides call these from
-    // their begin/end/next — the base
-    // can't manage the flag automatically without an NVI layer.
+    // their begin/end/next; the base does not manage the flag itself.
     void enter_session_() {
         expecting(!in_session_, "begin: previous session not ended");
         in_session_ = true;

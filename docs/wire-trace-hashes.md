@@ -6,10 +6,11 @@ between `send_data` / `recv_data`. This doc tells you how to detect
 whether that change altered the bytes that actually cross the wire.
 
 The test is [`test/trace_hash.cpp`](../test/trace_hash.cpp). It runs
-every OT / sVOLE protocol in the repo (base OTs, OT extensions, both
-sVOLE flavors, in semi and malicious modes) and prints one SHA-256
-digest per direction per protocol — derived from the IOChannel
-Fiat-Shamir transcript over a fresh `NetIO` per protocol.
+the covered OT / sVOLE protocols (base OTs, OT extensions, both sVOLE
+flavors, in semi and malicious modes) and prints one SHA-256 digest per
+direction per protocol — derived from the IOChannel Fiat-Shamir
+transcript over a sibling channel taken from one anchor `NetIO` per
+protocol.
 
 Each protocol is measured from a **reset deterministic seed state**
 (`reset_test_seed_counter()` before each one), so its digest depends
@@ -135,16 +136,41 @@ A hash change is not automatically bad. There are three categories:
 
 If you add a new protocol or want to test a new parameter combination:
 
-1. Add a `measure(party, port, "<name>", <send_first>, [&](NetIO* io){
-   run_*(io, party, length, ...); });` line in `trace_hash.cpp`. It can
-   go anywhere — `measure()` resets the seed state per protocol, so the
-   table is order-independent and the existing rows are unaffected.
+1. Add a `measure(party, anchor, "<name>", <send_first>, [&](NetIO* io){
+   run_*(io, party, length, ...); });` line in `trace_hash.cpp`
+   (`anchor` is the shared `NetIO*` from which `measure()` takes a sibling
+   channel). It can go anywhere — `measure()` resets the seed state per
+   protocol, so the table is order-independent and the existing rows are
+   unaffected.
 2. Pick `send_first` to match what the protocol's internal `enable_fs`
    would have used — the protocol's `if (!io->fs_enabled())
    enable_fs(<convention>)` should be a no-op when our pre-enable
    matches. (RCOT extensions: `is_ot_sender() == (party == ALICE)`.
    sVOLE: `is_delta_holder()`.)
-3. Run, capture the new line, paste it into the README.
+3. Run, capture the new line, paste it into the README table, and
+   regenerate the checked-in baseline (below).
 
-The baseline hash table in the README is the source of truth — if
-you add a protocol, the README must show its hash.
+## The CI gate (`trace_hash_baseline`)
+
+`test/trace_hash.baseline` holds the deterministic digest rows and is
+diffed by the Release-only `trace_hash_baseline` ctest — so a wire-format
+change fails CI instead of slipping through. It is a **regression guard,
+not a freeze**: it catches wire changes that were meant to be neutral
+(refactors, tuning, optimization), and an *intentional* protocol change
+is expected to change the digests.
+
+When you intentionally change the wire (a new protocol, or a real
+protocol change), the gate fails — that is the signal. Regenerate and
+commit the new baseline with the change:
+
+```bash
+EMP_TEST_MODE=1 ./run ./build/trace_hash \
+  | grep -E 'send=[0-9a-f]{16} recv=' > test/trace_hash.baseline
+```
+
+and update the matching table in `README.md`. The baseline diff in that
+commit is the reviewable record of exactly which protocols' bytes
+changed. The README table and `test/trace_hash.baseline` carry the same
+rows; regenerate them together (Release build, `EMP_TEST_MODE=1` — the
+digests are Release-specific, since `trace_hash` uses larger
+NDEBUG-gated lengths).

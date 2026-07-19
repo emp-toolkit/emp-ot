@@ -60,3 +60,16 @@ add_test_case_with_run(test_choice_seed)
 # Wire-equivalence / trace harnesses (self-checking via verify_rcot / digest diff).
 add_test_case_with_run(trace_equiv)
 add_test_case_with_run(trace_hash)
+
+# Wire-format gate: diff trace_hash's deterministic (EMP_TEST_MODE) digests
+# against the checked-in baseline. Release-only — trace_hash's NDEBUG-gated
+# lengths make Debug digests differ, so the baseline is a Release artifact.
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_test(NAME trace_hash_baseline
+             COMMAND /bin/bash ${PROJECT_SOURCE_DIR}/test/trace_hash_baseline.sh
+                               ${PROJECT_SOURCE_DIR}/run
+                               $<TARGET_FILE:trace_hash>
+                               ${PROJECT_SOURCE_DIR}/test/trace_hash.baseline
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    set_tests_properties(trace_hash_baseline PROPERTIES TIMEOUT 130)
+endif()

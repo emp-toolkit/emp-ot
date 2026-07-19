@@ -60,8 +60,8 @@ find_package(emp-tool 1.0 REQUIRED)
 # ---------------------------------------------------------------------
 # Library target
 # ---------------------------------------------------------------------
-# IKNP and Ferret bodies live in .cpp now (no longer header-only) —
-# the rest of the headers are still consumed inline.
+# IKNP and Ferret bodies live in .cpp; the rest of the headers are
+# consumed inline.
 #
 # Verbatim pq-crystals/kyber sources sit in emp-ot/base_ot/mlkem/kyber/;
 # the SHAKE / Keccak shim is a single header at emp-ot/base_ot/mlkem/
@@ -160,6 +160,13 @@ if(EMP_OT_INSTALL)
 
     install(FILES ${EMP_OT_TUNING_LOCAL_H}
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/emp-ot)
+
+    # License payload: emp-ot's Apache-2.0 text, the third-party notices,
+    # and the vendored Kyber upstream license.
+    install(FILES LICENSE THIRD_PARTY_NOTICES.md
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/emp-ot)
+    install(FILES emp-ot/base_ot/mlkem/kyber/LICENSE
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/emp-ot/kyber)
 
     install(EXPORT emp-otTargets
         NAMESPACE   emp-ot::

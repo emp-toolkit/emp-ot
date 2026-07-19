@@ -23,8 +23,8 @@ emp-ot/
 │   ├── co.h                     CO         (Chou-Orlandi)
 │   ├── csw.h                    CSW        (CSW "blazing-fast")
 │   ├── pvw.h                    PVW        (Peikert-Vaikuntanathan-Waters)
-│   ├── bmm.h                    BMM        (Badrinarayanan-Masny-Mukherjee, post-quantum)
-│   └── mlkem/                   shared ML-KEM-512 algebra + bmm.cpp impl
+│   ├── bmm.h                    BMM        (Badrinarayanan-Masny-Mukherjee; PQ, custom over ML-KEM-512 internals)
+│   └── mlkem/                   vendored Kyber / ML-KEM-512 arithmetic + bmm.cpp impl
 │
 ├── ot_extension/          RandomCOT extensions
 │   ├── ot_extension.h           OTExtension base
@@ -244,7 +244,7 @@ correlation. It's templated on the carrier; the carrier provides
 `namespace emp::cggm` (in `common/cggm.h`) is the Half-Tree cGGM tree
 build/eval. It's a free-function namespace, no class, no
 templating on AuthValue — it just writes `block` leaves. Used by
-`MultiPointGadget` (and historically by SoftSpoken's PPRF tree).
+`MultiPointGadget` and by SoftSpoken's PPRF tree.
 
 ## Putting it together: data-flow for a single sVOLE round
 

@@ -272,7 +272,7 @@ private:
 
   // Refill trees write LPN-folded outputs directly into carry_next_
   // (parallel to Ferret's pattern). First M of those become next
-  // round's carry_curr_ after the swap in do_begin; the trailing
+  // round's carry_curr_ after the swap in begin(); the trailing
   // slack is unused on the read side.
   void run_refill_() {
     const int64_t chunk = chunk_size();

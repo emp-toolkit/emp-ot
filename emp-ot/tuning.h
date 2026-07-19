@@ -270,10 +270,6 @@ inline constexpr int lpn_d = 10;
 #define EMP_TUNE_LPN_BATCH_M 32
 #endif
 inline constexpr int lpn_batch_m = EMP_TUNE_LPN_BATCH_M;
-// (A gather-prefetch knob lived here briefly and was removed: under the
-// tuner's interleaved A/B it never beat the default on any of 12 swept
-// microarchitectures. Recoverable from git if some future part
-// disagrees; see the case study in docs/performance-tuning.md.)
 
 }  // namespace tuning
 }  // namespace emp

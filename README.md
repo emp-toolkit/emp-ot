@@ -11,25 +11,28 @@
 >   tag [`0.3.0`](https://github.com/emp-toolkit/emp-ot/releases/tag/0.3.0)
 >   or branch [`v0.3.x`](https://github.com/emp-toolkit/emp-ot/tree/v0.3.x).
 >   Bug fixes and security patches will be backported to `v0.3.x`.
-> - **New projects, or willing to migrate: track the development branch**
->   (this branch). It will become `1.0.0-alpha` after a polish pass and
->   then `1.0.0`. New SoftSpoken butterfly kernel with rounds 0-2
->   fused into AES generation at k=8 (eight leaves' Davies-Meyer
->   outputs folded through three halving levels in-register;
->   cross-platform via emp-tool's AesLane abstraction over VAES-512 /
->   VAES-256 / AES-NI / NEON), post-quantum `BMM` base OT,
->   reorganized base OTs and extensions, the wire-equivalence framework
->   from emp-tool 1.0 — but the API is not yet frozen and headers may
->   move between alphas. Requires emp-tool ≥ 1.0.0-alpha.
+> - **New projects, or willing to migrate: use `v1.0.0-alpha.1`** —
+>   tag [`v1.0.0-alpha.1`](https://github.com/emp-toolkit/emp-ot/releases/tag/v1.0.0-alpha.1),
+>   the first alpha of the 1.0 line. New SoftSpoken butterfly kernel with
+>   rounds 0-2 fused into AES generation at k=8 (eight leaves' Davies-Meyer
+>   outputs folded through three halving levels in-register; cross-platform
+>   via emp-tool's AesLane abstraction over VAES-512 / VAES-256 / AES-NI /
+>   NEON), post-quantum `BMM` base OT, reorganized base OTs and extensions,
+>   the wire-equivalence framework from emp-tool. The API may change between
+>   alpha tags and before the final `1.0.0`, so pin to a tag. Pairs with
+>   emp-tool `v1.0.0-alpha.1` (the CMake package floor is `1.0`; see the
+>   Security section below for scope and limitations).
 
 State-of-the-art OT implementations on top of [emp-tool](https://github.com/emp-toolkit/emp-tool):
 four base OTs (`CO`, `PVW`, `CSW`, `BMM`), IKNP and
 SoftSpoken OT extensions (semi-honest + malicious), the Ferret and
 SilentFerret silent COT extensions, and the `F2kVOLE` / `FpVOLE`
-subfield-VOLE generators built on top of Ferret. All hash functions
-used for OT are instantiated with
-[MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/main/emp-tool/crypto/mitccrh.h)
-for optimal concrete security.
+subfield-VOLE generators built on top of Ferret. The chosen-input
+COT/ROT/OT conversion wrappers hash with
+[MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/main/emp-tool/runtime/crypto/mitccrh.h)
+for optimal concrete security; base OTs derive keys from a random oracle
+(`RO`), `BMM` additionally uses SHAKE-256 in its ML-KEM core, and the
+Fiat-Shamir transcript defaults to SHA-256.
 
 ## Requirements
 
@@ -87,7 +90,7 @@ reuses the recorded result and is deterministic. The result lives in the
 build directory (`<build>/tuning-include/emp-ot/tuning_local.h`,
 provenance-stamped); `install` ships the file the library was compiled
 with. Tuning changes neither outputs nor wire bytes (enforced by
-`test_tuning_invariance` and the trace-hash baseline below), so
+`test_tuning_invariance` and the `trace_hash_baseline` CI gate below), so
 differently-tuned parties interoperate freely. `-DEMP_OT_AUTO_TUNE=OFF`
 disables the automatic sweep; the `tune` target sweeps explicitly and
 `tune-clean` restores the shipped defaults, per build directory. Design
@@ -109,8 +112,9 @@ find_package(emp-ot CONFIG REQUIRED)
 target_link_libraries(my-app PRIVATE emp-ot::emp-ot)
 ```
 
-`emp-ot::emp-ot` is an `INTERFACE` target that pulls in `emp-tool::emp-tool`
-transitively, so consumers don't need to find emp-tool separately.
+`emp-ot::emp-ot` is a static library target that pulls in
+`emp-tool::emp-tool` transitively, so consumers don't need to find
+emp-tool separately.
 
 ## Tests
 
@@ -128,15 +132,18 @@ ALICE/BOB on localhost via the `run` script. `bench_lpn` and
 
 ### Wire-trace hashes
 
-`test/trace_hash.cpp` runs every protocol in the repo under a fresh
-`NetIO` with Fiat-Shamir enabled and prints one SHA-256 digest per
-direction per protocol. Each protocol is measured from a reset
-deterministic seed state, so the digests are *order-independent*:
-adding or reordering a protocol changes only its own row. Refactors
-that leave the wire bytes untouched leave the hashes untouched;
-refactors that *do* change the wire are visible as a single-line
-diff. See [`docs/wire-trace-hashes.md`](docs/wire-trace-hashes.md)
-for the full workflow.
+`test/trace_hash.cpp` runs the covered protocols under a sibling
+channel off one anchor `NetIO` with Fiat-Shamir enabled and prints one
+SHA-256 digest per direction per protocol. Each protocol is measured
+from a reset deterministic seed state, so the digests are
+*order-independent*: adding or reordering a protocol changes only its
+own row. Refactors that leave the wire bytes untouched leave the hashes
+untouched; refactors that *do* change the wire are visible as a
+single-line diff. The `trace_hash_baseline` ctest (Release) runs this
+deterministically (`EMP_TEST_MODE=1`) and diffs the checked-in
+`test/trace_hash.baseline`, so a wire-format change fails CI. See
+[`docs/wire-trace-hashes.md`](docs/wire-trace-hashes.md) for the full
+workflow.
 
 ```
 $ EMP_TEST_MODE=1 ./run ./build/trace_hash | grep 'send='
@@ -308,8 +315,8 @@ if (party == ALICE) {
 // ote.rcot(buf, length); // bootstrap fires here, on first streaming begin
 ```
 
-`set_delta` must fire before the first `rcot/begin/run` call (asserts
-otherwise).
+`set_delta` must fire before the first `rcot/begin/run` call (rejected
+otherwise, in every build flavor).
 
 Each extension can be parameterized to bootstrap from a non-default
 base OT (default is `CSW`); pair an extension's malicious mode with
@@ -430,7 +437,7 @@ send/recv bytes are deterministic).
 | `CO`       |  10 ms |   4,165 |   8,832 | semi-honest                                  |
 | `CSW`      | 9.4 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `PVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `BMM`      |  11 ms | 200,704 | 106,496 | malicious-secure, post-quantum (ML-KEM-512)  |
+| `BMM`      |  11 ms | 200,704 | 106,496 | malicious-secure, post-quantum (over ML-KEM-512 internals) |
 
 ### OT extensions (RCOT throughput)
 
@@ -475,8 +482,36 @@ setup. The measured `SilentFerret` rows' `next()` calls are wire-free
 `COT`, `ROT`, `OT` flavors layer one MITCCRH pass (and, for
 chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.
 
+## Security
+
+- Research software. This line has been reviewed by its maintainer and
+  by automated tooling (ASan/UBSan CI legs, CodeQL, always-on `expecting`
+  contract checks, the `trace_hash_baseline` wire-format gate, and the
+  test suite); it has not had an independent security audit.
+- **`FpVOLE` malicious mode does not provide 128-bit soundness.** The
+  field is p = 2⁶¹ − 1, so single-field consistency checks are bounded
+  near 2⁻⁶¹ and the bootstrap's polynomial check near 2⁻⁴⁵ at the
+  shipped size; the 61-bit Δ caps key-guessing near 2⁻⁶¹. `F2kVOLE`
+  works over GF(2¹²⁸).
+- The malicious-mode OT extensions realize **selective-abort**-style
+  functionalities: an adversary may make selective guesses that the
+  consistency checks catch with overwhelming probability, and streaming
+  outputs are **provisional until `end()`** completes those checks (see
+  the Streaming RCOT section).
+- **`BMM` is a custom OT construction** using ML-KEM-512 (Kyber)
+  parameters and arithmetic (vendored reference sources); it is not
+  standardized FIPS-203 ML-KEM used as a black box, and "post-quantum"
+  refers to the Module-LWE hardness of that construction, not an
+  end-to-end PQ composition claim.
+- No systematic constant-time guarantee: base-OT elliptic-curve ops call
+  OpenSSL and the symmetric kernels are written for throughput;
+  secret-dependent timing has not been audited across the tree.
+- Report vulnerabilities to wangxiao1254@gmail.com.
+
 ## [Acknowledgement, Reference, and Questions](https://github.com/emp-toolkit/emp-readme/blob/master/README.md#citation)
 
 ## License
 
 Licensed under the Apache License, Version 2.0 — see [LICENSE](LICENSE).
+Vendored third-party code (pq-crystals/Kyber) is noted in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -3,9 +3,8 @@
 
 /*
  * SHAKE / Keccak surface for the ML-KEM (Kyber) base OT, implemented inline
- * atop OpenSSL EVP. Replaces what used to be three separate files
- * lifted from pq-crystals/kyber/ref (fips202.h, fips202.c,
- * symmetric-shake.c) with a single self-contained header.
+ * atop OpenSSL EVP in a single self-contained header. Upstream provenance:
+ * pq-crystals/kyber/ref (fips202.h, fips202.c, symmetric-shake.c).
  *
  * What survives, and why:
  *

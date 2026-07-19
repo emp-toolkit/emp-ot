@@ -386,7 +386,7 @@ Open `test/trace_hash.cpp` and add a `measure(...)` call alongside
 the existing ones:
 
 ```cpp
-measure(party, port, "MyIKNP " + mode, rcot_sf, [&](NetIO* io){
+measure(party, anchor, "MyIKNP " + mode, rcot_sf, [&](NetIO* io){
     run_rcot(io, party, rcot_len,
         [&](IOChannel* x, bool m) {
             return std::unique_ptr<MyIKNP>(new MyIKNP(party, x, m));
@@ -397,7 +397,7 @@ measure(party, port, "MyIKNP " + mode, rcot_sf, [&](NetIO* io){
 For sVOLE carriers:
 
 ```cpp
-measure(party, port, "MyFieldVOLE " + mode, myfield_sf, [&](NetIO* io){
+measure(party, anchor, "MyFieldVOLE " + mode, myfield_sf, [&](NetIO* io){
     run_svole<MyFieldVOLE<>>(io, party, svole_len, mali,
         [](auto& sv){ sv.set_delta(/* deterministic non-zero */); });
 });

@@ -5,6 +5,7 @@
 #include "emp-ot/svole/fp_base_svole.h"
 #include "emp-ot/svole/fp_utility.h"
 #include "emp-ot/svole/svole.h"
+#include <cstddef>
 #include <vector>
 
 // F_p sVOLE: AuthValueFp carrier + FpVOLE alias over the generic
@@ -22,7 +23,11 @@ template <typename AuthValue> class Svole;
 // AuthValueFp — F_p = GF(2^61 - 1) carrier + ops.
 // =================================================================
 
-struct AuthValueFp {
+// alignas(16): the arithmetic below reinterprets an AuthValueFp as a
+// `block` (__m128i) and issues aligned SIMD loads, so every instance —
+// including stack temporaries — must be 16-byte aligned. sizeof is
+// already 16, so this changes only alignment, not layout.
+struct alignas(16) AuthValueFp {
   using F = uint64_t;
 
   // Storage (val-first). Downstream emp-zk casts to packed
@@ -206,6 +211,13 @@ struct AuthValueFp {
     }
   };
 };
+
+// ABI pinned by the block-reinterpret arithmetic above and by emp-zk's
+// packed-__uint128_t view (val in low 64, mac in high 64).
+static_assert(sizeof(AuthValueFp) == 16, "AuthValueFp must be 16 bytes");
+static_assert(alignof(AuthValueFp) == 16, "AuthValueFp must be 16-byte aligned");
+static_assert(offsetof(AuthValueFp, val) == 0, "AuthValueFp.val must be at offset 0");
+static_assert(offsetof(AuthValueFp, mac) == 8, "AuthValueFp.mac must be at offset 8");
 
 // Convenience alias naming the F_p carrier.
 template <typename AuthValue = AuthValueFp>

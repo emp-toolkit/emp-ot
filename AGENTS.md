@@ -8,8 +8,8 @@ this file first, then load only the subdocs relevant to your task.
 emp-ot is the OT layer of the EMP toolkit, on top of emp-tool. It
 ships three families of protocols:
 
-- **Base OTs** (chosen-input): `OTCO`, `OTCSW`, `OTPVW`, `OTBMM`.
-- **OT extensions** (RandomCOT): `IKNP`, `SoftSpokenOT<k, kChunkBlocks>`,
+- **Base OTs** (chosen-input): `CO`, `CSW`, `PVW`, `BMM`.
+- **OT extensions** (RandomCOT): `IKNP`, `SoftSpoken<k, kChunkBlocks>`,
   `Ferret`.
 - **sVOLE extensions** (authenticated linear correlations):
   `F2kVOLE` (= `Svole<AuthValueF2k>`),
@@ -20,7 +20,7 @@ Two abstractions tie those families together. `StreamingExtension<Element>`
 is the shared begin/next/end + leftover + Fiat-Shamir lifecycle for
 both OT and sVOLE extensions. Each protocol family then plugs in
 under it: `OTExtension : public StreamingExtension<block>` adds Δ /
-base_ot / choice_prg; `Svole<AuthValue, IO> : public StreamingExtension<AuthValue>`
+base_ot / choice_prg; `Svole<AuthValue> : public StreamingExtension<AuthValue>`
 parameterizes on a carrier type. The carrier (`AuthValueXxx`) is
 where every protocol-specific detail lives — field type, arithmetic
 ops, wire-format traits, chi-fold helpers, LPN ops, sVOLE bootstrap.
@@ -48,7 +48,7 @@ launch:
 ```bash
 ./run ./build/test_choice_seed              # alice + bob; default port
 ./run ./build/test_f2k_vole
-./run ./build/bench_ferret_rcot
+./run ./build/bench_ferret
 ```
 
 Single-process tests / benches run directly:
@@ -88,8 +88,8 @@ for the full workflow and the README baseline.
 ### Build flavors
 
 The `build/` directory is the default (Release-style: optimized,
-no asserts beyond `NDEBUG`-respecting). A `build-debug/` is also
-checked in for debugging:
+no asserts beyond `NDEBUG`-respecting). A separate `build-debug/` is
+the convention for a debug tree:
 
 ```bash
 cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug
@@ -109,7 +109,7 @@ self-contained and assumes you've read this index.
 | Task | Subdoc(s) |
 |---|---|
 | Understand who inherits from whom; where each carrier / gadget / LPN / cGGM lives | [docs/class-organization.md](docs/class-organization.md) |
-| Modify a `Svole<>`, `Ferret`, `IKNP`, or `SoftSpokenOT<>` body | [docs/class-organization.md](docs/class-organization.md) + [docs/streaming-api.md](docs/streaming-api.md) |
+| Modify a `Svole<>`, `Ferret`, `IKNP`, or `SoftSpoken<>` body | [docs/class-organization.md](docs/class-organization.md) + [docs/streaming-api.md](docs/streaming-api.md) |
 | Modify the begin/next/end lifecycle, leftover buffer, or Fiat-Shamir hooks on `StreamingExtension` / `OTExtension` | [docs/streaming-api.md](docs/streaming-api.md) |
 | Add a new sVOLE field, OT extension, or base OT | [docs/adding-a-protocol.md](docs/adding-a-protocol.md) (+ [class-organization.md](docs/class-organization.md) for the shape of the carrier contract) |
 | Modify a carrier (`AuthValueFerret` / `AuthValueF2k` / `AuthValueFp`) | [docs/class-organization.md § "The carrier is the protocol description"](docs/class-organization.md) |
@@ -151,20 +151,20 @@ from a subdoc.
 
 - **Lazy bootstrap, gated by `setup_done`.** Subclasses do no wire
   I/O in their constructor — pre-bootstrap setters (`set_delta`,
-  `set_choice_seed`) need a window to fire. The first `do_begin`
+  `set_choice_seed`) need a window to fire. The first `begin()`
   performs the bootstrap and flips `setup_done = true`; subsequent
-  begins see `setup_done` and skip. Setters assert `!setup_done` to
-  catch ordering bugs.
+  begins see `setup_done` and skip. Setters expect `!setup_done`
+  (always-on) to catch ordering bugs.
 
-- **Fresh NetIO per protocol in diagnostic harnesses.** When running
-  multiple protocols back-to-back from the same binary (as
-  `test/trace_hash.cpp` does), construct a fresh `NetIO` (or
-  whichever transport) for each protocol — don't try to reuse one
-  IOChannel across protocols with `disable_fs` / `reset_fs` /
-  similar plumbing. Each protocol's `enable_fs(send_first)` has its
-  own convention; mixing them on one IOChannel desyncs the chi-fold
-  check. A fresh socket per protocol is slower but isolates state
-  reliably.
+- **A sibling channel per protocol in diagnostic harnesses.** When
+  running multiple protocols back-to-back from the same binary (as
+  `test/trace_hash.cpp` does), give each protocol its own channel:
+  one anchor `NetIO`, then `make_sibling()` per protocol — don't try
+  to reuse one IOChannel across protocols with `disable_fs` /
+  `reset_fs` / similar plumbing. Each protocol's
+  `enable_fs(send_first)` has its own convention; mixing them on one
+  IOChannel desyncs the chi-fold check, and the anchor's shared
+  listener avoids same-port reconnect races.
 
 - **No perf numbers in comments.** Comments explain design logic.
   Benchmark deltas, "this was 3× faster", etc., belong in commit

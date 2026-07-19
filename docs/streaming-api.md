@@ -64,9 +64,7 @@ call protected helpers from inside `begin/next/end`:
   active-session check, then clears the flag.
 
 Each helper is one line and the subclass is free to do its real work
-around them. The pattern replaces the NVI wrapper that used to live
-on the base (`begin/next/end` non-virtual public + `do_begin/do_next/
-do_end` protected virtuals) — a single set of virtuals is now both
+around them. A single set of virtuals (`begin`/`next`/`end`) is both
 the public API and the override point, and the tripwire is opt-in via
 the helpers rather than enforced by the base.
 
@@ -208,10 +206,11 @@ also applies the always-on session expectation when producing a chunk.
 
 Writing whole chunks directly into `dst` is safe at the (possibly
 non-chunk-aligned) offset `dst + got` because `Element`-pointer
-arithmetic preserves alignment for `block` carriers (a chunk is a whole
-number of `block`s) and the sVOLE carriers write element-wise (no SIMD
-alignment requirement) — the same direct-`next` contract `run()` relies
-on after its own `drain_leftover`.
+arithmetic preserves each element's alignment: `AuthValueFerret` is a
+`block`, and `AuthValueFp` is `alignas(16)` (its arithmetic does SIMD
+`block` loads), so any element offset lands on a suitably aligned
+element — the same direct-`next` contract `run()` relies on after its
+own `drain_leftover`.
 
 Usage — the caller owns the session (typically begin in its ctor, end
 in its dtor):
@@ -359,7 +358,7 @@ A protocol may also have FS pre-enabled by an outer harness; the
 A protocol object destructed in the middle of a session is a bug —
 the leftover buffer may hold un-consumed bytes; the peer is waiting
 for more. The base catches this with `emp::expecting` in all build
-flavors (not just debug); it no longer calls `error`.
+flavors (not just debug).
 This is also the tripwire for a `next_n` caller that forgets to
 `end()`: since `next_n` keeps the session open, the owner must close it
 (e.g. in its destructor) before the extension is destroyed — `end()`
