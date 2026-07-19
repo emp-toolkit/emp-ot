@@ -23,21 +23,21 @@
 using namespace emp;
 using namespace std;
 
-// Open a fresh NetIO + FS, run `body(io)`, snapshot per-direction
-// digests, print (ALICE only — the BOB-side hashes are the inverse
-// pair and would just produce a duplicate table). Each call uses
-// the same port: the previous NetIO is destructed (TCP closed)
-// before the next is constructed, so successive calls re-handshake
-// on the same port.
+// Open a fresh sibling NetIO + FS off the anchor connection, run
+// `body(io)`, snapshot per-direction digests, print (ALICE only — the
+// BOB-side hashes are the inverse pair and would just produce a
+// duplicate table). A sibling per protocol keeps every protocol's FS
+// transcript independent, and the anchor's persistent listener avoids
+// the same-port close/re-listen race of per-protocol reconnects.
 template <typename Body>
-static void measure(int party, int port, const string& name,
+static void measure(int party, NetIO* anchor, const string& name,
                     bool send_first, Body&& body) {
     // Start every protocol from the same deterministic seed state, so its
     // trace hash is independent of which protocols ran before it. The table
     // is order-independent: a protocol can be added or reordered without
     // disturbing the others' digests. (No-op effect outside EMP_TEST_MODE.)
     reset_test_seed_counter();
-    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
+    auto io = anchor->make_sibling();
     io->enable_fs(send_first);
     body(io.get());
     io->flush();
@@ -106,6 +106,15 @@ int main(int argc, char** argv) {
         cerr << "trace_hash: EMP_TEST_MODE not set; hashes "
                 "will be non-deterministic\n";
 
+    // One quiet anchor connection for the whole run; every measured
+    // protocol gets a fresh sibling channel off its shared listener.
+    // Complete one handshake on the primary before opening any siblings
+    // so the two parties cannot pair the first sibling with the anchor.
+    auto anchor = (party == ALICE) ? NetIO::listen(port, /*quiet=*/true)
+                                   : NetIO::connect(peer_ip(), port,
+                                                    /*quiet=*/true);
+    anchor->sync();
+
     if (party == ALICE)
         cout << "# trace hashes (send / recv per protocol; alice view)\n";
 
@@ -153,54 +162,54 @@ int main(int argc, char** argv) {
     const bool base_sf = (party == ALICE);
 
     // Base OTs.
-    measure(party, port, "CO",       base_sf, [&](NetIO* io){ run_base_ot<CO>      (io, party, base_len); });
-    measure(party, port, "CSW",      base_sf, [&](NetIO* io){ run_base_ot<CSW>     (io, party, base_len); });
-    measure(party, port, "PVW",      base_sf, [&](NetIO* io){ run_base_ot<PVW>     (io, party, base_len); });
-    measure(party, port, "BMM",      base_sf, [&](NetIO* io){ run_base_ot<BMM>     (io, party, base_len); });
+    measure(party, anchor.get(), "CO",       base_sf, [&](NetIO* io){ run_base_ot<CO>      (io, party, base_len); });
+    measure(party, anchor.get(), "CSW",      base_sf, [&](NetIO* io){ run_base_ot<CSW>     (io, party, base_len); });
+    measure(party, anchor.get(), "PVW",      base_sf, [&](NetIO* io){ run_base_ot<PVW>     (io, party, base_len); });
+    measure(party, anchor.get(), "BMM",      base_sf, [&](NetIO* io){ run_base_ot<BMM>     (io, party, base_len); });
 
     for (bool mali : {false, true}) {
         const string mode = mali ? "mali" : "semi";
 
-        measure(party, port, "IKNP " + mode, rcot_sf, [&](NetIO* io){
+        measure(party, anchor.get(), "IKNP " + mode, rcot_sf, [&](NetIO* io){
             run_rcot(io, party, rcot_len,
                 [&](IOChannel* x, bool m) {
                     return std::unique_ptr<IKNP>(new IKNP(party, x, m));
                 }, mali);
         });
-        measure(party, port, "SoftSpoken<2> " + mode, rcot_sf, [&](NetIO* io){
+        measure(party, anchor.get(), "SoftSpoken<2> " + mode, rcot_sf, [&](NetIO* io){
             run_rcot(io, party, rcot_len,
                 [&](IOChannel* x, bool m) {
                     return std::unique_ptr<SoftSpoken<2>>(
                         new SoftSpoken<2>(party, x, m));
                 }, mali);
         });
-        measure(party, port, "SoftSpoken<8> " + mode, rcot_sf, [&](NetIO* io){
+        measure(party, anchor.get(), "SoftSpoken<8> " + mode, rcot_sf, [&](NetIO* io){
             run_rcot(io, party, rcot_len,
                 [&](IOChannel* x, bool m) {
                     return std::unique_ptr<SoftSpoken<8>>(
                         new SoftSpoken<8>(party, x, m));
                 }, mali);
         });
-        measure(party, port, "Ferret(b11) " + mode, rcot_sf, [&](NetIO* io){
+        measure(party, anchor.get(), "Ferret(b11) " + mode, rcot_sf, [&](NetIO* io){
             run_rcot(io, party, ferret_len,
                 [&](IOChannel* x, bool m) {
                     return std::unique_ptr<Ferret>(
                         new Ferret(party, x, m, tuning::ferret_b11));
                 }, mali);
         });
-        measure(party, port, "SilentFerret(b11) " + mode, rcot_sf, [&](NetIO* io){
+        measure(party, anchor.get(), "SilentFerret(b11) " + mode, rcot_sf, [&](NetIO* io){
             run_rcot(io, party, ferret_len,
                 [&](IOChannel* x, bool m) {
                     return std::unique_ptr<SilentFerret>(
                         new SilentFerret(party, x, m, tuning::ferret_b11));
                 }, mali);
         });
-        measure(party, port, "F2kVOLE " + mode, f2k_sf, [&](NetIO* io){
+        measure(party, anchor.get(), "F2kVOLE " + mode, f2k_sf, [&](NetIO* io){
             // F2k: use Ferret's auto-sampled Δ (no set_delta call).
             run_svole<F2kVOLE<>>(io, party, svole_len, mali,
                 [](auto&){ /* no-op: keep auto Δ */ });
         });
-        measure(party, port, "FpVOLE " + mode, fp_sf, [&](NetIO* io){
+        measure(party, anchor.get(), "FpVOLE " + mode, fp_sf, [&](NetIO* io){
             // Fp: keep the carrier's auto-sampled canonical nonzero Δ.
             run_svole<FpVOLE<>>(io, party, svole_len, mali,
                 [](auto&){ /* no-op: keep auto Δ */ });
