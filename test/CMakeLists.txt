@@ -30,6 +30,15 @@ add_test(NAME test_run
          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 set_tests_properties(test_run PROPERTIES TIMEOUT 20)
 
+# Per-build-dir tuning_local.h mechanism: stub semantics, override
+# visibility, and the include-order shadowing the build relies on.
+add_test(NAME test_tuning_local
+         COMMAND /bin/bash ${PROJECT_SOURCE_DIR}/test/test_tuning_local.sh
+                           ${CMAKE_CXX_COMPILER} ${EMP_OT_TUNING_INCLUDE_DIR}
+                           ${EMP_OT_TUNING_STUB_H}
+         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+set_tests_properties(test_tuning_local PROPERTIES TIMEOUT 30)
+
 # Output-invariance of the `make tune` LOCAL knobs (single-process).
 add_test_case(test_tuning_invariance)
 

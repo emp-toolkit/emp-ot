@@ -4,16 +4,20 @@
 //
 // Each row drives a begin → next loop into a reusable chunk_size()-sized
 // scratch buffer and discards the generated blocks. This keeps memory flat
-// regardless of how many OTs the row runs, so the length default sits at 2^25
-// (~33M OTs) without paying length × 16 B of heap. SilentFerret is the one
+// regardless of how many OTs the row runs. The requested length defaults to
+// 2^25, then snaps to a whole number of b13 rounds (30,015,488 OTs at the
+// Release default) so Ferret and SilentFerret cover the same round geometry
+// and ship the same correction traffic. SilentFerret is the one
 // exception to pure streaming: it prepays every round in begin(eff_len) (all
-// correction traffic up front) and then draws wire-free -- its defining mode. The first row of each protocol absorbs the
-// base-OT bootstrap (set_delta hasn't fired and the streaming begin
-// triggers it lazily) inside the timed window; this is intentional —
-// the reported B/RCOT for a protocol includes its one-time bootstrap
+// correction traffic up front) and then draws wire-free -- its defining mode.
+// Every row gets a fresh NetIO so its Fiat-Shamir state is independent. Each
+// row also absorbs its base-OT bootstrap (set_delta hasn't fired and the
+// streaming begin triggers it lazily) inside the timed window; this is
+// intentional -- the reported B/RCOT includes the one-time bootstrap
 // amortised over the bench length.
 #include "bench/bench.h"
 #include <type_traits>
+#include <utility>
 using namespace std;
 
 template <typename T>
@@ -23,6 +27,7 @@ void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) 
     const int64_t eff_len = n_chunks * chunk;
 
     BlockVec buf(chunk);
+    pretouch_blocks(buf.data(), chunk);
     io->sync();
     uint64_t s0 = io->send_counter, r0 = io->recv_counter;
     auto start = clock_start();
@@ -44,25 +49,28 @@ void run_row(T* ot, NetIO* io, int party, int64_t length, const char* row_name) 
 
     cout << row_name << "\t"
          << double(eff_len) / us << " MOTps  "
+         << "n=" << eff_len << "  "
          << "send=" << double(ds) / eff_len << " B/RCOT  "
          << "recv=" << double(dr) / eff_len << " B/RCOT" << endl;
 }
 
+template <typename T, typename... Args>
+void run_fresh_row(NetIO* anchor, int party, int64_t length,
+                   const char* row_name, Args&&... args) {
+    auto io = anchor->make_sibling();
+    T ot(party, io.get(), std::forward<Args>(args)...);
+    run_row(&ot, io.get(), party, length, row_name);
+}
+
 template <int k>
-void run_softspoken_k(NetIO* io, int party, int64_t length) {
+void run_softspoken_k(NetIO* anchor, int party, int64_t length) {
     char name[32];
-    {
-        SoftSpoken<k>* ot = new SoftSpoken<k>(party, io, /*malicious=*/false);
-        snprintf(name, sizeof(name), "SoftSpoken<%d> semi", k);
-        run_row(ot, io, party, length, name);
-        delete ot;
-    }
-    {
-        SoftSpoken<k>* ot = new SoftSpoken<k>(party, io, /*malicious=*/true);
-        snprintf(name, sizeof(name), "SoftSpoken<%d> mali", k);
-        run_row(ot, io, party, length, name);
-        delete ot;
-    }
+    snprintf(name, sizeof(name), "SoftSpoken<%d> semi", k);
+    run_fresh_row<SoftSpoken<k>>(anchor, party, length, name,
+                                 /*malicious=*/false);
+    snprintf(name, sizeof(name), "SoftSpoken<%d> mali", k);
+    run_fresh_row<SoftSpoken<k>>(anchor, party, length, name,
+                                 /*malicious=*/true);
 }
 
 int main(int argc, char** argv) {
@@ -73,60 +81,64 @@ int main(int argc, char** argv) {
 #else
     constexpr int default_length_log = 12;
 #endif
+    constexpr auto ferret_param = tuning::ferret_b13;
+    constexpr const char *ferret_param_name = "b13";
     if (argc <= 2) length = int64_t{1} << default_length_log;
     else           length = int64_t{1} << atoi(argv[2]);
 
+    // SilentFerret prepays complete rounds in begin(length), whereas Ferret
+    // streams one tree at a time. Use one shared whole-round length for every
+    // row so the two implementations have identical output/correction
+    // geometry. b13 is divisible by every current chunk size, so all rows
+    // have equal n.
+    length = snap_to_ferret_rounds(length, ferret_param);
+
     party = parse_party(argv);
     port = peer_port();
-    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
+    // The unused primary connection keeps one listener alive. Every measured
+    // row runs on a fresh sibling channel with independent transcript state.
+    auto anchor = (party == ALICE) ? NetIO::listen(port, /*quiet=*/true)
+                                   : NetIO::connect(peer_ip(), port,
+                                                    /*quiet=*/true);
+    // connect() may return before the listener's first accept() completes. If
+    // the client opens a sibling immediately, the server can accept the two
+    // connections in the opposite order and pair different sockets by role.
+    // Complete one handshake on the primary before opening any siblings.
+    anchor->sync();
 
-    cout << "# bench_ot_extension: length=" << length << "  (RCOT throughput, streaming API)" << endl;
+    cout << "# bench_ot_extension: length=" << length
+         << "  ferret_param=" << ferret_param_name
+         << "  (RCOT throughput, streaming API)" << endl;
 
     // IKNP
-    {
-        IKNP* iknp = new IKNP(party, io.get(), /*malicious=*/false);
-        run_row(iknp, io.get(), party, length, "IKNP semi");
-        delete iknp;
-    }
-    {
-        IKNP* iknp = new IKNP(party, io.get(), /*malicious=*/true);
-        run_row(iknp, io.get(), party, length, "IKNP mali");
-        delete iknp;
-    }
+    run_fresh_row<IKNP>(anchor.get(), party, length, "IKNP semi",
+                        /*malicious=*/false);
+    run_fresh_row<IKNP>(anchor.get(), party, length, "IKNP mali",
+                        /*malicious=*/true);
 
     // SoftSpoken<k>, k ∈ {2, 4, 8}, semi + mali.
-    run_softspoken_k<2>(io.get(), party, length);
-    run_softspoken_k<4>(io.get(), party, length);
-    run_softspoken_k<8>(io.get(), party, length);
+    run_softspoken_k<2>(anchor.get(), party, length);
+    run_softspoken_k<4>(anchor.get(), party, length);
+    run_softspoken_k<8>(anchor.get(), party, length);
 
     // Ferret (semi + mali).
-    {
-        Ferret* ot = new Ferret(party, io.get(), /*malicious=*/false);
-        run_row(ot, io.get(), party, length, "Ferret semi");
-        delete ot;
-    }
-    {
-        Ferret* ot = new Ferret(party, io.get(), /*malicious=*/true);
-        run_row(ot, io.get(), party, length, "Ferret mali");
-        delete ot;
-    }
+    run_fresh_row<Ferret>(anchor.get(), party, length, "Ferret semi",
+                          /*malicious=*/false, ferret_param);
+    run_fresh_row<Ferret>(anchor.get(), party, length, "Ferret mali",
+                          /*malicious=*/true, ferret_param);
 
     // SilentFerret (semi + mali). n_threads=1 so it is single-threaded like
     // every other row here (the begin() expansion pool stays disabled) -- an
-    // apples-to-apples throughput comparison. Default LPN param (ferret_b13)
-    // matches Ferret; prepays all rounds in begin(), then draws wire-free.
-    {
-        SilentFerret* ot = new SilentFerret(party, io.get(), /*malicious=*/false,
-                                            tuning::ferret_b13, nullptr, /*n_threads=*/1);
-        run_row(ot, io.get(), party, length, "SilentFerret semi");
-        delete ot;
-    }
-    {
-        SilentFerret* ot = new SilentFerret(party, io.get(), /*malicious=*/true,
-                                            tuning::ferret_b13, nullptr, /*n_threads=*/1);
-        run_row(ot, io.get(), party, length, "SilentFerret mali");
-        delete ot;
-    }
+    // apples-to-apples throughput comparison. Its LPN parameter matches
+    // Ferret; it prepays all rounds in begin(), then draws wire-free.
+    run_fresh_row<SilentFerret>(anchor.get(), party, length,
+                                "SilentFerret semi",
+                                /*malicious=*/false, ferret_param,
+                                nullptr, /*n_threads=*/1);
+    run_fresh_row<SilentFerret>(anchor.get(), party, length,
+                                "SilentFerret mali",
+                                /*malicious=*/true, ferret_param,
+                                nullptr, /*n_threads=*/1);
 
     return 0;
 }

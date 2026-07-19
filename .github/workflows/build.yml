@@ -34,9 +34,12 @@ jobs:
           cmake --install "$RUNNER_TEMP/emp-tool/build"
 
       - name: Configure
+        # AUTO_TUNE off: a CI runner's sweep result is noisy and dies with
+        # the container; tests must run on shipped defaults.
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DEMP_OT_AUTO_TUNE=OFF
           -DCMAKE_PREFIX_PATH=${{ runner.temp }}/emp-tool-install
 
       - name: Build

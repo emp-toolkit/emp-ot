@@ -103,36 +103,55 @@ defend against them:
 ## `make tune` (implemented)
 
 Defaults always remain the safe swept-conservative values; tuning is
-per-machine, once.
+per build directory, once.
+
+**The override header is build-directory state.** CMake creates
+`<build>/tuning-include/emp-ot/tuning_local.h` at configure time — a
+canonical marked stub, meaning shipped defaults — and prepends its
+directory to the `emp-ot` target's include path, so it shadows any pre-redesign
+source-tree copy (CMake warns while one exists, and `tune-clean` deletes
+it). The tuner overwrites the stub via an atomic write-then-rename;
+`install` ships the file the library objects were compiled with, so
+installed consumers compile against the same configuration as the
+binary. Concurrent build directories, differently-configured checkouts,
+and `-DEMP_OT_AUTO_TUNE=OFF` builds therefore cannot see each other's
+overrides. `test_tuning_local` pins the stub/override/shadowing
+semantics.
+
+The stub is marked with a canonical signature. The automatic hook sweeps
+only a missing, legacy-empty, or exactly canonical stub; every other
+nonempty header is treated as an intentional override and preserved. This
+includes hand-written build-directory overrides and hand-written legacy
+headers migrated from the source tree.
 
 **Release builds tune automatically.** A top-level, non-cross-compiled
 `CMAKE_BUILD_TYPE=Release` build sweeps the LOCAL knobs before compiling
 the library — the tuner links no emp-ot objects, so it builds first and
 measures on an otherwise idle machine, and the library then compiles
-with the overrides in the same invocation. The sweep runs only when no
-`tuning_local.h` exists, so every build after the first is deterministic
-and sweep-free. Debug/unspecified build types and subproject consumers
-never auto-tune; `-DEMP_OT_AUTO_TUNE=OFF` opts a Release tree out of a
-new automatic sweep. It does not suppress an existing source-tree
-`tuning_local.h`; that header remains active until `tune-clean` removes it.
+with the overrides in the same invocation. The sweep runs only while the
+build directory's `tuning_local.h` is the untuned stub, so every build
+after the first is deterministic and sweep-free (the no-op path also
+warns if the kept result records a different host CPU than the current
+one). Debug/unspecified build types and subproject consumers never
+auto-tune; `-DEMP_OT_AUTO_TUNE=OFF` disables the automatic sweep — a
+result written by the explicit `tune` target still applies until
+`tune-clean`.
 
 ```
 cmake --build build --target tune        # explicit re-sweep (any build type)
-cmake --build build --target tune-clean  # delete overrides; next build reverts
-                                         # (an auto-tune Release tree re-sweeps
-                                         #  on its next build; configure with
-                                         #  -DEMP_OT_AUTO_TUNE=OFF before that
-                                         #  build to keep shipped defaults)
+cmake --build build --target tune-clean  # restore the untuned stub
+                                         # (an auto-tune Release build dir
+                                         #  re-sweeps on its next build;
+                                         #  configure with
+                                         #  -DEMP_OT_AUTO_TUNE=OFF to keep
+                                         #  shipped defaults)
 ```
 
-A build-dependency subtlety the tooling handles for you: the include of
-`tuning_local.h` sits behind `__has_include`, so compiler dependency
-files record it only once it exists — creating it does NOT make a plain
-rebuild recompile anything. The tuner therefore touches `tuning.h`
-whenever it (re)writes the file, which forces every consumer to
-recompile on the next build. (Manually deleting or hand-editing
-`tuning_local.h` in an already-built tree: `touch emp-ot/tuning.h`
-yourself, or use the `tune`/`tune-clean` targets, which handle it.)
+Because the header exists from configure time onward, it is in every
+consuming TU's dependency file from the first compile: rewriting it (by
+`tune` or `tune-clean`) is all it takes for the next build to recompile
+exactly the affected TUs. Hand-editing the build-dir file works the same
+way.
 
 How it works:
 
@@ -163,7 +182,7 @@ How it works:
   composite is shaped like the default `ferret_b13` regime (depth-13
   trees, 8 MiB table); exhaustive grids at the smaller b11/b12 regimes
   showed no penalty resolvable above run noise. The compute-local knobs
-  (`sfvole_tile`, `cot_chosen_input_tile`) stay kernel-scored.
+  (`sfvole_tile`, the pinned `cot_chosen_input_tile`) stay kernel-scored.
 - **The output.** `tuning_local.h` is gitignored and carries provenance
   (host CPU, date, the full verdict table) so a stale file is auditable.
   An empty override list is a *correct* outcome, not a failure: it means
@@ -177,7 +196,11 @@ k=4 are swept-but-informational-only — see the policy note below —
 and only k=8 is emission-eligible), `cggm_tile`, `lpn_batch_m` (candidates
 {16,32,64} only: they divide every production fold length and keep M·d
 word-aligned, which the invariance test enforces), and
-`cot_chosen_input_tile`.
+`cot_chosen_input_tile` (swept-but-informational-only: it sizes `COT`'s
+`MITCCRH` member, so an override would change the layout of every COT
+descendant across differently-configured translation units — an ABI
+break — and it has not beaten its noise band on any measured host; the
+value is pinned as a plain constexpr in `tuning.h`).
 
 ### Validation against exhaustive search
 

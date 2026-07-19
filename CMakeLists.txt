@@ -22,20 +22,32 @@ include(CMakePackageConfigHelpers)
 option(EMP_OT_BUILD_TESTS "Build emp-ot tests"            ${PROJECT_IS_TOP_LEVEL})
 option(EMP_OT_INSTALL     "Generate install / export rules" ${PROJECT_IS_TOP_LEVEL})
 
-# Release builds run the per-machine tuning sweep automatically, once
-# (skipped if emp-ot/tuning_local.h already exists; see
-# docs/performance-tuning.md). Debug/unspecified build types, subproject
-# consumers, and cross-compiles never auto-tune: the sweep is a
-# measurement of THIS machine and belongs to native optimized builds.
+# Native top-level Release builds run the tuning sweep automatically, once
+# per build directory (skipped while the build dir already holds a tuned or
+# manually overridden tuning_local.h; see docs/performance-tuning.md).
+# Debug/unspecified build types, subproject consumers, and cross-compiles
+# never auto-tune: the sweep is a measurement of THIS machine's optimized
+# code. EMP_OT_AUTO_TUNE selects the policy; EMP_OT_AUTO_TUNE_ACTIVE is the
+# effective native-Release gate, kept separate so a cached ON cannot leak
+# into a later Debug or cross-build reconfiguration. OFF disables the
+# automatic sweep and the legacy-file migration below; a result written by
+# the explicit `tune` target still applies until `tune-clean`.
+set(_EMP_OT_AUTO_TUNE_ELIGIBLE OFF)
 if(PROJECT_IS_TOP_LEVEL AND CMAKE_BUILD_TYPE STREQUAL "Release"
    AND NOT CMAKE_CROSSCOMPILING)
-    set(_EMP_OT_AUTO_TUNE_DEFAULT ON)
-else()
-    set(_EMP_OT_AUTO_TUNE_DEFAULT OFF)
+    set(_EMP_OT_AUTO_TUNE_ELIGIBLE ON)
 endif()
 option(EMP_OT_AUTO_TUNE
-    "Run the LOCAL-knob tuning sweep automatically during Release builds when no tuning_local.h exists"
-    ${_EMP_OT_AUTO_TUNE_DEFAULT})
+    "Run the LOCAL-knob tuning sweep automatically during Release builds when this build directory is untuned"
+    ${_EMP_OT_AUTO_TUNE_ELIGIBLE})
+set(EMP_OT_AUTO_TUNE_ACTIVE OFF)
+if(EMP_OT_AUTO_TUNE AND _EMP_OT_AUTO_TUNE_ELIGIBLE)
+    set(EMP_OT_AUTO_TUNE_ACTIVE ON)
+elseif(EMP_OT_AUTO_TUNE)
+    message(STATUS "emp-ot: EMP_OT_AUTO_TUNE=ON is inactive for this "
+                   "non-native-Release configuration; use the explicit "
+                   "tune target only when its executable can run on this host")
+endif()
 
 # ---------------------------------------------------------------------
 # Dependencies
@@ -91,6 +103,43 @@ target_include_directories(emp-ot PUBLIC
 target_link_libraries(emp-ot PUBLIC emp-tool::emp-tool)
 
 # ---------------------------------------------------------------------
+# Per-build-directory tuning overrides
+# ---------------------------------------------------------------------
+# The LOCAL-knob override header (emp-ot/tuning_local.h) lives in the
+# build directory, not the source tree: each build directory owns its
+# tuning state, so concurrent build dirs and checkouts cannot see each
+# other's overrides, and EMP_OT_AUTO_TUNE=OFF cannot be undermined by a
+# stale file. The header always exists — a canonical marked stub means
+# shipped defaults — so compiler depfiles track it from the first compile
+# and a later `tune` rewrite recompiles exactly the affected TUs. The include
+# dir is prepended (BEFORE) so this file shadows any pre-redesign
+# source-tree copy. tools/ owns the tune / tune-clean / auto-tune
+# targets that write it.
+set(EMP_OT_TUNING_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/tuning-include)
+set(EMP_OT_TUNING_LOCAL_H ${EMP_OT_TUNING_INCLUDE_DIR}/emp-ot/tuning_local.h)
+set(EMP_OT_TUNING_STUB_H ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tuning_local.stub.h)
+set(_emp_ot_legacy_tuning ${CMAKE_CURRENT_SOURCE_DIR}/emp-ot/tuning_local.h)
+if(NOT EXISTS ${EMP_OT_TUNING_LOCAL_H})
+    file(MAKE_DIRECTORY ${EMP_OT_TUNING_INCLUDE_DIR}/emp-ot)
+    if(EXISTS ${_emp_ot_legacy_tuning} AND EMP_OT_AUTO_TUNE_ACTIVE)
+        # One-time migration from the pre-redesign source-tree location,
+        # so an already-tuned machine does not pay a fresh sweep.
+        file(COPY_FILE ${_emp_ot_legacy_tuning} ${EMP_OT_TUNING_LOCAL_H})
+        message(STATUS "emp-ot: migrated source-tree emp-ot/tuning_local.h "
+                       "into ${EMP_OT_TUNING_LOCAL_H}")
+    else()
+        file(COPY_FILE ${EMP_OT_TUNING_STUB_H} ${EMP_OT_TUNING_LOCAL_H})
+    endif()
+endif()
+if(EXISTS ${_emp_ot_legacy_tuning})
+    message(WARNING "emp-ot: source-tree emp-ot/tuning_local.h is no longer "
+                    "read by CMake builds (tuning is per build directory); "
+                    "delete it, or the tune-clean target will.")
+endif()
+target_include_directories(emp-ot BEFORE PUBLIC
+    $<BUILD_INTERFACE:${EMP_OT_TUNING_INCLUDE_DIR}>)
+
+# ---------------------------------------------------------------------
 # Install + export
 # ---------------------------------------------------------------------
 if(EMP_OT_INSTALL)
@@ -98,10 +147,19 @@ if(EMP_OT_INSTALL)
 
     install(TARGETS emp-ot EXPORT emp-otTargets)
 
+    # tuning_local.h is excluded from the glob (a source-tree copy is a
+    # pre-redesign leftover) and installed explicitly from the build dir
+    # below: the library objects were compiled with exactly that file, so
+    # installed consumers see the same configuration as the binary —
+    # required, since one knob-adjacent constant sizes class members.
     install(DIRECTORY emp-ot
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING
+            PATTERN "tuning_local.h" EXCLUDE
             PATTERN "*.h")
+
+    install(FILES ${EMP_OT_TUNING_LOCAL_H}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/emp-ot)
 
     install(EXPORT emp-otTargets
         NAMESPACE   emp-ot::

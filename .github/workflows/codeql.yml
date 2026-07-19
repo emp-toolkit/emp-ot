@@ -52,6 +52,7 @@ jobs:
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
+            -DEMP_OT_AUTO_TUNE=OFF \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/emp-tool-install"
           cmake --build build -j
 

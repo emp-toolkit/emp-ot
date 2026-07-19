@@ -79,18 +79,19 @@ cmake -S emp-ot -B emp-ot/build \
 
 Omitting `-DCMAKE_BUILD_TYPE` defaults to `Release`.
 
-Release builds self-tune: the first top-level Release build runs a
-one-time sweep of machine-local scheduling knobs (AES tile widths, LPN
-batching — never anything protocol- or security-relevant) and compiles
-with the winners; every later build reuses the recorded result
-(`emp-ot/tuning_local.h`, gitignored, provenance-stamped) and is
-deterministic. Tuning changes neither outputs nor wire bytes (enforced
-by `test_tuning_invariance` and the trace-hash baseline below), so
+Release builds self-tune: the first top-level Release build in a build
+directory runs a one-time sweep of machine-local scheduling knobs (AES
+tile widths, LPN batching — never anything protocol- or
+security-relevant) and compiles with the winners; every later build
+reuses the recorded result and is deterministic. The result lives in the
+build directory (`<build>/tuning-include/emp-ot/tuning_local.h`,
+provenance-stamped); `install` ships the file the library was compiled
+with. Tuning changes neither outputs nor wire bytes (enforced by
+`test_tuning_invariance` and the trace-hash baseline below), so
 differently-tuned parties interoperate freely. `-DEMP_OT_AUTO_TUNE=OFF`
-prevents a new automatic sweep, but an existing `tuning_local.h` still
-applies. To use the swept cross-platform defaults, configure with that
-option and run `tune-clean` to discard the header. The `tune` target
-forces a re-sweep. Design and methodology:
+disables the automatic sweep; the `tune` target sweeps explicitly and
+`tune-clean` restores the shipped defaults, per build directory. Design
+and methodology:
 [`docs/performance-tuning.md`](docs/performance-tuning.md).
 
 ### CMake options
@@ -99,7 +100,7 @@ forces a re-sweep. Design and methodology:
 |---|---|---|
 | `EMP_OT_BUILD_TESTS` | `ON` when top-level | Build the test suite under `test/`. |
 | `EMP_OT_INSTALL`     | `ON` when top-level | Generate install + export rules. |
-| `EMP_OT_AUTO_TUNE`   | `ON` for top-level native Release | One-time per-machine tuning sweep before the first build (see above). |
+| `EMP_OT_AUTO_TUNE`   | `ON` for top-level native Release | One-time per-build-directory tuning sweep before the first build (see above). |
 
 ## Consuming from another CMake project
 

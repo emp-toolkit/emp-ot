@@ -13,19 +13,23 @@
 // they're the most-tuned knobs in the codebase, and keeping them next
 // to the perf knobs makes "what changes if I bump this" easier to see.
 //
-// ===== Per-machine overrides (`make tune`) =====
+// ===== Per-build-directory overrides (`make tune`) =====
 //
 // LOCAL-class knobs — scheduling/layout only, output- and wire-invariant,
 // so parties may differ freely (see docs/performance-tuning.md for the
 // LOCAL / AGREEMENT / SECURITY classification) — are macro-guarded when
 // managed by the auto-tuner, and may then be overridden by a generated
-// emp-ot/tuning_local.h. Fixed LOCAL policies are plain constexpr with an
-// explicit rationale. tuning_local.h is machine-specific, gitignored, and
-// written by the `tune` tool with provenance comments; delete it (`make
-// tune-clean`) to return to the safe swept defaults. AGREEMENT and SECURITY
-// knobs are also plain constexpr, with no macro guard: tuning_local.h has no
-// channel to reach them. test_tuning_invariance asserts the output-invariance
-// of every guarded knob at its extreme candidate values.
+// tuning_local.h. Fixed LOCAL policies are plain constexpr with an
+// explicit rationale. The override header lives in the BUILD directory
+// (<build>/tuning-include/emp-ot/tuning_local.h): CMake creates a canonical
+// marked stub at configure time; the `tune` tool overwrites it with
+// provenance comments, `tune-clean` restores the stub, and `install` ships the file
+// the library objects were compiled with. Every build directory owns its
+// tuning state; a source-tree tuning_local.h is a pre-redesign leftover
+// and is not read by CMake builds. AGREEMENT and SECURITY knobs are plain
+// constexpr, with no macro guard: tuning_local.h has no channel to reach
+// them. test_tuning_invariance asserts the output-invariance of every
+// guarded knob at its extreme candidate values.
 #if __has_include("emp-ot/tuning_local.h")
 #include "emp-ot/tuning_local.h"
 #endif
@@ -127,17 +131,20 @@ namespace tuning {
 inline constexpr int64_t iknp_chunk_ots = 2048;
 
 // ===== COT chosen-input wrapper (emp-ot/ot.h) =====
-// LOCAL (tunable): MITCCRH tile size — this many OT outputs hashed per
-// ParaEnc<1, N> AES-NI call inside COT::send / COT::recv / send_rot /
-// recv_rot. 8 keeps round-keys + plaintexts register-resident on x86
-// AVX-512 and aarch64 NEON. LOCAL because MITCCRH keys derive from the
-// running gid (bucketed by ReuseShift), so the OT-index -> key map and
-// the pad byte stream are identical for every tile; only the call
-// granularity changes. test_tuning_invariance asserts this.
-#ifndef EMP_TUNE_COT_TILE
-#define EMP_TUNE_COT_TILE 8
-#endif
-inline constexpr int64_t cot_chosen_input_tile = EMP_TUNE_COT_TILE;
+// LOCAL (pinned, not tuner-managed): MITCCRH tile size — this many OT
+// outputs hashed per ParaEnc<1, N> AES-NI call inside COT::send /
+// COT::recv / send_rot / recv_rot. 8 keeps round-keys + plaintexts
+// register-resident on x86 AVX-512 and aarch64 NEON. LOCAL because
+// MITCCRH keys derive from the running gid (bucketed by ReuseShift), so
+// the OT-index -> key map and the pad byte stream are identical for
+// every tile; only the call granularity changes (test_tuning_invariance
+// asserts this). Pinned rather than macro-guarded because this is the
+// one knob that shapes a class layout — COT's MITCCRH<ot_bsize> member —
+// so an override would change the ABI of every COT descendant across
+// differently-configured translation units, and no measured host has
+// beaten the default beyond noise (`make tune` still sweeps it for the
+// record).
+inline constexpr int64_t cot_chosen_input_tile = 8;
 
 // ===== cGGM tree expand (emp-ot/common/cggm.h) =====
 // LOCAL (tunable). In-register tile for the children-from-parents step.

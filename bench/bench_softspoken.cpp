@@ -5,25 +5,23 @@
 using namespace std;
 
 template <int k>
-void run_k(NetIO* io, int party, int64_t length) {
-    auto bench = [&](const char* mode_name, SoftSpoken<k>* ot) {
+void run_k(NetIO* anchor, int party, int64_t length) {
+    auto bench = [&](const char* mode_name, bool malicious) {
+        // Fiat-Shamir state belongs to the IOChannel. A fresh connection per
+        // row keeps a malicious run from enabling transcript hashing for the
+        // semi-honest row that follows it.
+        auto io = anchor->make_sibling();
+        SoftSpoken<k> ot(party, io.get(), malicious);
         uint64_t ds = 0, dr = 0;
-        double us = time_rcot<SoftSpoken<k>>(ot, io, party, length, &ds, &dr);
+        double us = time_rcot<SoftSpoken<k>>(&ot, io.get(), party, length,
+                                             &ds, &dr);
         cout << "SoftSpoken<" << k << "> " << mode_name << " RCOT\t"
              << double(length) / us << " MOTps  "
              << "send=" << double(ds) / length << " B/COT  "
              << "recv=" << double(dr) / length << " B/COT" << endl;
     };
-    {
-        SoftSpoken<k>* ot = new SoftSpoken<k>(party, io, /*malicious=*/false);
-        bench("semi", ot);
-        delete ot;
-    }
-    {
-        SoftSpoken<k>* ot = new SoftSpoken<k>(party, io, /*malicious=*/true);
-        bench("mali", ot);
-        delete ot;
-    }
+    bench("semi", /*malicious=*/false);
+    bench("mali", /*malicious=*/true);
 }
 
 int main(int argc, char** argv) {
@@ -39,12 +37,20 @@ int main(int argc, char** argv) {
 
     party = parse_party(argv);
     port = peer_port();
-    auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
+    // Keep the listener alive while each benchmark row uses an independent
+    // sibling channel. This avoids both shared transcript state and same-port
+    // close/reconnect races between parties.
+    auto anchor = (party == ALICE) ? NetIO::listen(port, /*quiet=*/true)
+                                   : NetIO::connect(peer_ip(), port,
+                                                    /*quiet=*/true);
+    // Ensure the server has accepted the primary connection before the client
+    // opens its first sibling; otherwise the accept queue can reverse them.
+    anchor->sync();
 
     cout << "# bench_softspoken: length=" << length << endl;
-    run_k<2>(io.get(), party, length);
-    run_k<4>(io.get(), party, length);
-    run_k<8>(io.get(), party, length);
+    run_k<2>(anchor.get(), party, length);
+    run_k<4>(anchor.get(), party, length);
+    run_k<8>(anchor.get(), party, length);
 
     return 0;
 }
