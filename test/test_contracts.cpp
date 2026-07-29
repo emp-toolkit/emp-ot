@@ -1,5 +1,6 @@
 #include "emp-ot/emp-ot.h"
 
+#include <array>
 #include <cerrno>
 #include <cstdio>
 #include <cstdint>
@@ -119,6 +120,26 @@ public:
         exit_session_();
     }
     void mark_setup_done() { setup_done = true; }
+};
+
+class FixedInputIO final : public IOChannel {
+public:
+    FixedInputIO(const uint8_t *input, int64_t size)
+        : input_(input), size_(size) {}
+
+    void send_data_internal(const void *, int64_t) override {}
+    void recv_data_internal(void *out, int64_t nbyte) override {
+        expecting(nbyte >= 0 && offset_ >= 0 && offset_ <= size_ &&
+                      nbyte <= size_ - offset_,
+                  "FixedInputIO: insufficient input");
+        std::memcpy(out, input_ + offset_, static_cast<size_t>(nbyte));
+        offset_ += nbyte;
+    }
+
+private:
+    const uint8_t *input_;
+    int64_t size_;
+    int64_t offset_ = 0;
 };
 
 bool check_zero_count_semantics() {
@@ -278,6 +299,19 @@ int main() {
     ok &= expect_rejected("BMM negative length", "invalid length or null buffer", [] {
         BMM bmm(nullptr);
         bmm.send(nullptr, nullptr, -1);
+    });
+    ok &= expect_rejected("BMM noncanonical r", "noncanonical r encoding", [] {
+        // One receiver first-flow payload: 768-byte r followed by c_0,c_1.
+        // Encode coefficient 3329 (= q) in the first 12-bit slot; every
+        // canonical R_q coefficient must instead be in [0,3329).
+        std::array<uint8_t, 832> first_flow = {};
+        first_flow[0] = 0x01;
+        first_flow[1] = 0x0d;
+        FixedInputIO io(first_flow.data(), static_cast<int64_t>(first_flow.size()));
+        BMM bmm(&io);
+        block data0[1] = {zero_block};
+        block data1[1] = {zero_block};
+        bmm.send(data0, data1, 1);
     });
     ok &= expect_rejected("invalid BaseOtKind", "invalid BaseOtKind", [] {
         (void)make_base_ot(static_cast<BaseOtKind>(255), nullptr);

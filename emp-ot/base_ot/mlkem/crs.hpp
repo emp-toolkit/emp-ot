@@ -4,11 +4,11 @@
 // Common reference string (CRS) / public-parameter expansion for the
 // ML-KEM-512 base OTs.
 //
-// Inputs:  32-byte session_seed (shared by sender and receiver, e.g.
-//          derived from the OT class's `block sid`).
+// Inputs:  32-byte session_seed (shared by sender and receiver, derived from
+//          the OT class's (`block sid`, OT index) pair).
 // Outputs: A (resp. A^T) — a polyvec[K] sampled uniformly from R_q^{KxK}.
-//          This is the shared matrix of the Regev/Kyber PKE; both parties
-//          derive it identically, so it plays the role of a public-coin CRS.
+//          This is one OT instance's public matrix for the Regev/Kyber PKE;
+//          both parties derive it identically from public coins.
 //
 // A is derived from session_seed via SHAKE-256 with a one-byte
 // domain-separation tag 0x01. The uniform-sampling routine reuses Kyber's

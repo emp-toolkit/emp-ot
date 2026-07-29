@@ -20,12 +20,12 @@ namespace emp {
  * a "correlation breaker", which is what lets the reduction be tight (no
  * guess-the-query rewinding, unlike Masny-Rindal).
  *
- * Setup. Both parties derive the shared matrix A in R_q^{KxK} from the
- * 16-byte session id `sid` via SHAKE-256 (a public-coin CRS). The PKE is
- * Regev/Kyber: pk = t = A·x + e in R_q^K (pseudorandom under DMLWE),
+ * Setup. For every OT index i, both parties independently derive
+ * A_i in R_q^{KxK} from (`sid`, i) via SHAKE-256 (public coins). The PKE is
+ * Regev/Kyber: pk = t = A_i·x + e in R_q^K (pseudorandom under DMLWE),
  * sk = x; Enc/Dec are Kyber's IND-CPA core (with ciphertext compression).
- * The OT-string space is the PKE message; for a base OT we encrypt a random
- * 256-bit μ and use K = H(sid,i,β,μ) as the pad (c = K ⊕ data, KEM-style).
+ * The 128-bit base-OT string is embedded directly in the first half of the
+ * PKE's 256-bit message; the second half is zero.
  *
  * Symmetric security parameter λ = 256 (the {0,1}^λ correlation-breaker
  * strings and the H_β outputs): the malicious-receiver argument tolerates a
@@ -37,7 +37,6 @@ namespace emp {
  * Random oracles (all bind sid and the instance index i):
  *   - H_β   : R_q^K × {0,1}^λ → {0,1}^λ   (correlation breaker, λ=256)
  *   - Ĥ_β   : {0,1}^λ → R_q^K             (hash to public-key space)
- *   - out-key H : (μ) → {0,1}^128         (the delivered block pad)
  *
  *   Recv (choice b):
  *     (pk_b=t_b, sk_b=x_b) ← Gen ; ĉ_b, c_b ← {0,1}^λ ;
@@ -46,15 +45,14 @@ namespace emp {
  *   Send:
  *     ĉ_0 := c_1 ⊕ H_0(r,c_0) ; ĉ_1 := c_0 ⊕ H_1(r,c_1) ;
  *     pk_β := r + Ĥ_β(ĉ_β) ;
- *     ct_β := Enc(pk_β, μ_β) ; mask_β := H(sid,i,β,μ_β) ⊕ data_β ;
- *     send (ct_0, mask_0, ct_1, mask_1).
+ *     ct_β := Enc(pk_β, data_β) ; send (ct_0, ct_1).
  *   Recv:
- *     μ_b := Dec(sk_b, ct_b) ; data[i] := H(sid,i,b,μ_b) ⊕ mask_b.
+ *     data[i] := Dec(sk_b, ct_b).
  *
  * Wire bytes per OT (Kyber IND-CPA compression du=10, dv=4 at K=2; r is
  * a uniform R_q^K element, uncompressible; c_β are λ=256-bit):
  *   recv → send  :  832 B  =  768 B (r)  +  2 × 32 B (c_β)
- *   send → recv  : 1568 B  =  2 × (640 B u_β + 128 B v_β + 16 B mask_β)
+ *   send → recv  : 1536 B  =  2 × (640 B u_β + 128 B v_β)
  *
  * This is a 2-round protocol with no third-flow extraction check (the
  * tightness comes from the correlation breaker, not from a challenge), so
@@ -68,8 +66,8 @@ public:
     bool is_malicious_secure() const override { return true; }
 
     // sid is the inherited OT::sid (default zero_block); set via OT::set_sid
-    // before first use. It seeds the CRS expansion, the H/Ĥ oracles, and the
-    // output-key derivation. io is the inherited OT::io (set in the ctor).
+    // before first use. Together with the OT index, it seeds the per-OT matrix
+    // expansion and the H/Ĥ oracles. io is the inherited OT::io (set in the ctor).
     explicit BMM(IOChannel* io_);
     ~BMM() override = default;
 
