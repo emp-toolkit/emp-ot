@@ -154,7 +154,49 @@ static void test_lpn_batches() {
 	                        reinterpret_cast<block*>(got.data()), n)
 	        && cmpBlock(&sent_ref, &sent_got, 1);
 
-	check("lpn batch M {16,32,64}: fold + PRG cursor", ok);
+	// The production sink path must expose the same finalized values in order
+	// and consume exactly the same PRG range as the materializing fold.
+	vector<AuthValueFerret> sink_out(n);
+	PRG sink_prg(&seed);
+	lpn.compute_slice_sink(
+	    sink_prg, base.data(), pre.data(), n,
+	    [&sink_out](int64_t position, const AuthValueFerret& value) {
+		    sink_out[(size_t)position] = value;
+	    });
+	sink_prg.random_block(&sent_got, 1);
+	ok = ok && blocks_equal(reinterpret_cast<block*>(ref.data()),
+	                        reinterpret_cast<block*>(sink_out.data()), n)
+	        && cmpBlock(&sent_ref, &sent_got, 1);
+
+	// Exercise the sink's M-wide, 4-wide, and scalar tails and pin its callback
+	// contract: exactly one ordered call per output, with no write to `initial`.
+	const int64_t tail_n = tuning::lpn_batch_m + 5;
+	vector<AuthValueFerret> tail_initial(base.begin(), base.begin() + tail_n);
+	const vector<AuthValueFerret> tail_snapshot = tail_initial;
+	vector<AuthValueFerret> tail_ref = tail_initial;
+	vector<AuthValueFerret> tail_sink((size_t)tail_n);
+	PRG tail_ref_prg(&seed), tail_sink_prg(&seed);
+	lpn.compute_slice(tail_ref_prg, tail_ref.data(), pre.data(), tail_n);
+	tail_ref_prg.random_block(&sent_ref, 1);
+	int64_t sink_calls = 0;
+	bool sink_ordered = true;
+	lpn.compute_slice_sink(
+	    tail_sink_prg, tail_initial.data(), pre.data(), tail_n,
+	    [&](int64_t position, const AuthValueFerret& value) {
+		    sink_ordered = sink_ordered && position == sink_calls;
+		    if (sink_calls < tail_n) tail_sink[(size_t)sink_calls] = value;
+		    ++sink_calls;
+	    });
+	tail_sink_prg.random_block(&sent_got, 1);
+	ok = ok && sink_ordered && sink_calls == tail_n
+	        && blocks_equal(reinterpret_cast<block*>(tail_ref.data()),
+	                        reinterpret_cast<block*>(tail_sink.data()), tail_n)
+	        && blocks_equal(reinterpret_cast<block*>(tail_initial.data()),
+	                        reinterpret_cast<const block*>(tail_snapshot.data()),
+	                        tail_n)
+	        && cmpBlock(&sent_ref, &sent_got, 1);
+
+	check("lpn batch M {16,32,64} + sink: fold + PRG cursor", ok);
 }
 
 // ---- 4. COT chosen-input MITCCRH tile -------------------------------

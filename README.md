@@ -126,9 +126,10 @@ ctest --test-dir build --output-on-failure
 
 The two-party benches (`bench_base_ot`, `bench_iknp`,
 `bench_softspoken`, `bench_ferret`, `bench_silentferret`,
-`bench_ot_extension`, `bench_f2k_vole`, `bench_fp_vole`) launch
-ALICE/BOB on localhost via the `run` script. `bench_lpn` and
-`bench_cggm` are single-process benchmarks of internal kernels.
+`bench_silentferret_sink`, `bench_ot_extension`, `bench_f2k_vole`,
+`bench_fp_vole`) launch ALICE/BOB on localhost via the `run` script.
+`bench_lpn` and `bench_cggm` are single-process benchmarks of internal
+kernels.
 
 ### Wire-trace hashes
 
@@ -416,6 +417,21 @@ live. The constructor's last argument `n_threads` sizes the `begin()`-time
 expansion pool (`<= 1` runs serially), parallelizing the bursty setup. The
 trade is a heavier, bursty `begin()` for a silent online phase — useful when
 the interactive section of a protocol should move no OT bytes.
+
+Consumers that need only the XOR of a current-round tree range can avoid a
+full output buffer. Both variants use one `chunk_size()` scratch buffer and
+leave the stream cursor unchanged; concurrent ranges require one scratch
+buffer per caller:
+
+```cpp
+BlockVec scratch(ote.chunk_size());
+block sum = ote.produce_range_fused_xor(scratch.data(), tree_begin, n_trees);
+```
+
+`produce_range_scratch_xor()` materializes and folds one tree at a time;
+`produce_range_fused_xor()` sends each finalized LPN value directly to the
+XOR accumulator and skips the final store. Both reproduce the XOR of the
+corresponding `produce_range()` output and remain wire-free after `begin()`.
 
 ## Performance
 

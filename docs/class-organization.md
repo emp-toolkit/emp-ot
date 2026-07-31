@@ -239,7 +239,10 @@ using MPCOT_Receiver = MultiPointGadgetReceiver<AuthValueFerret>;
 that turns the sparse output of the multi-point gadget into a dense
 correlation. It's templated on the carrier; the carrier provides
 `auth_add_into / auth_partial_reduce / auth_final_reduce` and the
-`kLpnSafeAddsPerReduce` integer that controls reduce frequency.
+`kLpnSafeAddsPerReduce` integer that controls reduce frequency. Its
+`compute_slice_sink` variant consumes the identical PRG range and produces
+the identical finalized values as `compute_slice`, but delivers them to a
+caller-supplied sink instead of storing them back to the initial buffer.
 
 `namespace emp::cggm` (in `common/cggm.h`) is the Half-Tree cGGM tree
 build/eval. It's a free-function namespace, no class, no

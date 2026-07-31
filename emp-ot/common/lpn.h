@@ -68,6 +68,38 @@ class Lpn { private:
         }
     }
 
+    // Variant of compute_block that exposes each finalized value to a
+    // caller-supplied sink instead of writing it back to `initial`. The sink
+    // receives (position, value), with positions ordered over the slice.
+    template <int M, typename Sink>
+    void compute_block_sink(PRG & prg,
+                            const AuthValue * __restrict initial,
+                            const AuthValue * __restrict pre, int64_t i,
+                            Sink & sink) const {
+        constexpr int kNeededBlocks = (M * d + 3) / 4;
+        block tmp[kNeededBlocks];
+        prg.random_block(tmp, kNeededBlocks);
+        const uint32_t* r = (const uint32_t*)(tmp);
+        const int lmask = mask;
+        constexpr int kStep = (AuthValue::kLpnSafeAddsPerReduce < d)
+                              ? AuthValue::kLpnSafeAddsPerReduce : d;
+        for (int m = 0; m < M; ++m) {
+            AuthValue acc = initial[i+m];
+            int j = 0;
+            while (j < d) {
+                const int batch_end = std::min(j + kStep, d);
+                for (; j < batch_end; ++j) {
+                    const int idx = (int)((*r) & lmask);
+                    ++r;
+                    AuthValue::auth_add_into(acc, pre[idx]);
+                }
+                if (j < d) AuthValue::auth_partial_reduce(acc);
+            }
+            AuthValue::auth_final_reduce(acc);
+            sink(i + m, acc);
+        }
+    }
+
 public:
     explicit Lpn(int k_) : mask(k_ - 1) {}
     void reseed(block seed) { prg_.reseed(&seed); }
@@ -114,6 +146,24 @@ public:
     void compute_slice(PRG & prg, AuthValue *out, const AuthValue *pre,
                        int64_t length) const {
         compute_slice_as<tuning::lpn_batch_m>(prg, out, pre, length);
+    }
+
+    // Process a slice with the same PRG consumption and finalized values as
+    // compute_slice(), but call `sink(position, value)` once per output rather
+    // than storing those final values back to `initial`. The initial carrier
+    // values remain available for callers that reuse a bounded scratch area.
+    template <typename Sink>
+    void compute_slice_sink(PRG & prg, const AuthValue *initial,
+                            const AuthValue *pre, int64_t length,
+                            Sink && sink) const {
+        constexpr int M = tuning::lpn_batch_m;
+        int64_t j = 0;
+        for (; j + M <= length; j += M)
+            compute_block_sink<M>(prg, initial, pre, j, sink);
+        for (; j + 4 <= length; j += 4)
+            compute_block_sink<4>(prg, initial, pre, j, sink);
+        for (; j < length; ++j)
+            compute_block_sink<1>(prg, initial, pre, j, sink);
     }
 
     // Back-compat: fold a chunk using the instance's own advancing PRG.

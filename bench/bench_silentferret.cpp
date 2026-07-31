@@ -1,7 +1,12 @@
 // SilentFerret RCOT throughput: all wire traffic at begin(), wire-free
 // next()/end(). Reports one-shot rcot() throughput (MOTps) and the per-COT
 // wire bytes in each direction across the b11/b13 params in semi-honest and
-// malicious modes. Correctness lives in test/test_silentferret.cpp.
+// malicious modes. Also reports an end-to-end line (bench_e2e) that times
+// begin() + parallel-extend + end() in a single window with BOTH begin_threads
+// and online_threads engaged, so the offline (base OTs + begin wire traffic)
+// cost is included -- the honest full-protocol, both-phases-threaded number,
+// versus the serial-extend rcot() line above. Correctness lives in
+// test/test_silentferret.cpp.
 #include "emp-ot/emp-ot.h"
 #include "bench/bench.h"
 #include <algorithm>
@@ -25,69 +30,38 @@ static void bench_one(NetIO* io, int party, int64_t length, bool malicious,
     delete ot;
 }
 
-static double time_online_next(NetIO* io, int party, int64_t length,
-                               bool malicious, const PrimalLPNParameter& param,
-                               int begin_threads, int64_t* eff_len_out) {
-    SilentFerret ot(party, io, malicious, param, nullptr, begin_threads);
-    const int64_t chunk = ot.chunk_size();
-    const int64_t n_trees = length / chunk;
-    const int64_t eff_len = n_trees * chunk;
-    if (eff_len_out) *eff_len_out = eff_len;
-    std::vector<block> buf(eff_len);
-
-    io->sync();
-    ot.begin(eff_len);
-    io->sync();
-    auto start = clock_start();
-    for (int64_t i = 0; i < n_trees; ++i)
-        ot.next(buf.data() + i * chunk);
-    long long us = time_from(start);
-    ot.end();
-    return us;
-}
-
-static double time_online_range_threads(NetIO* io, int party, int64_t length,
-                                        bool malicious,
-                                        const PrimalLPNParameter& param,
-                                        int begin_threads, int online_threads,
-                                        int64_t* eff_len_out) {
-    SilentFerret ot(party, io, malicious, param, nullptr, begin_threads);
-    const int64_t chunk = ot.chunk_size();
-    const int64_t n_trees = length / chunk;
-    const int64_t eff_len = n_trees * chunk;
-    if (eff_len_out) *eff_len_out = eff_len;
-    std::vector<block> buf(eff_len);
-
-    io->sync();
-    ot.begin(eff_len);
-    io->sync();
-    auto start = clock_start();
-    ot.next_chunks_parallel(buf.data(), n_trees, online_threads);
-    long long us = time_from(start);
-    ot.end();
-    return us;
-}
-
-// Silent online phase only: begin(n) is run before the timer, then output
-// production is timed across the requested chunk-multiple length.
-static void bench_online(NetIO* io, int party, int64_t length, bool malicious,
-                         const char* tag, const PrimalLPNParameter& param,
-                         int begin_threads, int online_threads) {
+// End-to-end multithreaded: begin() + parallel extend + end() timed as one
+// window. begin_threads drives the begin() offline pool; online_threads drives
+// the wire-free extend (next_chunks_parallel). Unlike bench_one (rcot(), whose
+// extend loop is serial and ignores online_threads) this threads both phases,
+// and unlike bench_online it keeps begin() -- hence the base OTs and all begin
+// wire traffic -- inside the timer. Wire bytes are captured across the whole
+// call, so send/recv B/COT reflect the full protocol.
+static void bench_e2e(NetIO* io, int party, int64_t length, bool malicious,
+                      const char* tag, const PrimalLPNParameter& param,
+                      int begin_threads, int online_threads) {
     const char* mode = malicious ? "mali" : "semi";
-    int64_t eff_next = 0, eff_par = 0;
-    double us_next = time_online_next(io, party, length, malicious, param,
-                                      begin_threads, &eff_next);
-    double us_par = time_online_range_threads(io, party, length, malicious,
-                                              param, begin_threads,
-                                              online_threads, &eff_par);
-    expecting(eff_next > 0 && eff_next == eff_par,
-              "bench_silentferret online: invalid effective length");
-    cout << "SilentFerret " << tag << " " << mode << " online "
+    SilentFerret ot(party, io, malicious, param, nullptr, begin_threads);
+    const int64_t chunk = ot.chunk_size();
+    const int64_t n_trees = length / chunk;
+    const int64_t eff_len = n_trees * chunk;
+    expecting(n_trees > 0, "bench_silentferret e2e: length below one chunk");
+    std::vector<block> buf(eff_len);  // vector ctor value-inits, faulting pages
+    io->sync();
+    uint64_t s0 = io->send_counter, r0 = io->recv_counter;
+    auto start = clock_start();
+    ot.begin(eff_len);
+    ot.next_chunks_parallel(buf.data(), n_trees, online_threads);
+    ot.end();
+    long long us = time_from(start);
+    uint64_t ds = io->send_counter - s0, dr = io->recv_counter - r0;
+    cout << "SilentFerret " << tag << " " << mode << " e2e "
          << (party == ALICE ? "sender" : "receiver") << "\t"
-         << "len=" << eff_next << "  "
-         << "next=" << double(eff_next) / us_next << " MOTps  "
-         << online_threads << "thr=" << double(eff_par) / us_par << " MOTps  "
-         << "speedup=" << us_next / us_par << "x" << endl;
+         << "len=" << eff_len << "  "
+         << "bt=" << begin_threads << " ot=" << online_threads << "  "
+         << double(eff_len) / us << " MOTps  "
+         << "send=" << double(ds) / eff_len << " B/COT  "
+         << "recv=" << double(dr) / eff_len << " B/COT" << endl;
 }
 
 int main(int argc, char** argv) {
@@ -123,10 +97,10 @@ int main(int argc, char** argv) {
     bench_one(io.get(), party, length, /*malicious=*/false, "b13", tuning::ferret_b13, begin_threads);
     bench_one(io.get(), party, length, /*malicious=*/true,  "b13", tuning::ferret_b13, begin_threads);
 
-    bench_online(io.get(), party, length, /*malicious=*/false, "b11", tuning::ferret_b11, begin_threads, online_threads);
-    bench_online(io.get(), party, length, /*malicious=*/true,  "b11", tuning::ferret_b11, begin_threads, online_threads);
-    bench_online(io.get(), party, length, /*malicious=*/false, "b13", tuning::ferret_b13, begin_threads, online_threads);
-    bench_online(io.get(), party, length, /*malicious=*/true,  "b13", tuning::ferret_b13, begin_threads, online_threads);
+    bench_e2e(io.get(), party, length, /*malicious=*/false, "b11", tuning::ferret_b11, begin_threads, online_threads);
+    bench_e2e(io.get(), party, length, /*malicious=*/true,  "b11", tuning::ferret_b11, begin_threads, online_threads);
+    bench_e2e(io.get(), party, length, /*malicious=*/false, "b13", tuning::ferret_b13, begin_threads, online_threads);
+    bench_e2e(io.get(), party, length, /*malicious=*/true,  "b13", tuning::ferret_b13, begin_threads, online_threads);
 
     return 0;
 }

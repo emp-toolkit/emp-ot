@@ -2,14 +2,45 @@
 // next()/end(). Verifies RCOT correctness (one-shot + streaming) for
 // semi-honest and malicious modes with a parallel begin()-time pool, and
 // asserts that the next()/end() path moves zero bytes after begin — the
-// "silent consume" property. Throughput lives in bench/bench_silentferret.cpp.
+// "silent consume" property. Throughput lives in bench/bench_silentferret.cpp
+// and the bounded-scratch comparison in bench/bench_silentferret_sink.cpp.
 #include "emp-ot/emp-ot.h"
 #include "test/test.h"
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <thread>
 #include <vector>
 using namespace std;
+
+static block xor_blocks(const block* data, int64_t n) {
+    block sums[4] = {zero_block, zero_block, zero_block, zero_block};
+    for (int64_t i = 0; i < n; ++i)
+        sums[i & 3] = sums[i & 3] ^ data[i];
+    return (sums[0] ^ sums[1]) ^ (sums[2] ^ sums[3]);
+}
+
+// Split one bounded-scratch XOR path across two consumer-owned threads. Each
+// caller gets one tree-sized scratch buffer, matching the public concurrency
+// contract of produce_range_{scratch,fused}_xor().
+static block produce_xor_split(SilentFerret& ot,
+                               array<BlockVec, 2>& scratch,
+                               int64_t n_trees, bool fused) {
+    const int64_t first = (n_trees + 1) / 2;
+    array<block, 2> sums = {zero_block, zero_block};
+    thread worker([&ot, &scratch, &sums, first, n_trees, fused]() {
+        sums[1] = fused
+                      ? ot.produce_range_fused_xor(
+                            scratch[1].data(), first, n_trees - first)
+                      : ot.produce_range_scratch_xor(
+                            scratch[1].data(), first, n_trees - first);
+    });
+    sums[0] = fused
+                  ? ot.produce_range_fused_xor(scratch[0].data(), 0, first)
+                  : ot.produce_range_scratch_xor(scratch[0].data(), 0, first);
+    worker.join();
+    return sums[0] ^ sums[1];
+}
 
 // Drive begin / next* / end within a single round (no rollover) and assert
 // next()/end() move zero bytes on either side — the silent property after
@@ -54,6 +85,7 @@ static void verify_parallel(NetIO* io, int party, bool malicious,
     const int64_t n = std::min<int64_t>(ot.round_capacity(), 256);
     const int64_t eff = n * chunk;
     std::vector<block> buf_single(eff), buf_par(eff);
+    const uint64_t s0 = io->send_counter, r0 = io->recv_counter;
 
     // (a) single call.
     ot.produce_range(buf_single.data(), 0, n);
@@ -77,10 +109,43 @@ static void verify_parallel(NetIO* io, int party, bool malicious,
                           (size_t)eff * sizeof(block)) == 0,
               "produce_range: threaded output != single-call output");
 
+    // Production tail paths: compare both bounded-scratch implementations to
+    // a materialized prefix, then repeat each as a concurrent two-way split.
+    // A short odd tree count exercises the partition boundary without making
+    // the Debug matrix materially slower.
+    const int64_t sink_n = std::min<int64_t>(n, 17);
+    const block expected_xor = xor_blocks(buf_single.data(), sink_n * chunk);
+    array<BlockVec, 2> scratch;
+    for (BlockVec& b : scratch) b.resize((size_t)chunk);
+
+    block scratch_single =
+        ot.produce_range_scratch_xor(scratch[0].data(), 0, sink_n);
+    block fused_single =
+        ot.produce_range_fused_xor(scratch[0].data(), 0, sink_n);
+    block scratch_split = produce_xor_split(ot, scratch, sink_n, false);
+    block fused_split = produce_xor_split(ot, scratch, sink_n, true);
+    expecting(cmpBlock(&expected_xor, &scratch_single, 1) &&
+                  cmpBlock(&expected_xor, &fused_single, 1) &&
+                  cmpBlock(&expected_xor, &scratch_split, 1) &&
+                  cmpBlock(&expected_xor, &fused_split, 1),
+              "SilentFerret bounded-scratch XOR path mismatch");
+
+    const block scratch_empty =
+        ot.produce_range_scratch_xor(nullptr, 0, 0);
+    const block fused_empty = ot.produce_range_fused_xor(nullptr, 0, 0);
+    expecting(cmpBlock(&scratch_empty, &zero_block, 1) &&
+                  cmpBlock(&fused_empty, &zero_block, 1),
+              "SilentFerret empty bounded-scratch XOR must be zero");
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "SilentFerret range production performed wire I/O");
+
     ot.end();
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "SilentFerret range end performed wire I/O");
     verify_rcot(&ot, io, party, buf_single.data(), eff);
-    cout << "  produce_range ok (" << n << " trees, " << T << " threads, "
-         << (malicious ? "mali" : "semi") << ")" << endl;
+    cout << "  produce_range + bounded-scratch XOR ok (" << n << " trees, "
+         << T << " threads, " << (malicious ? "mali" : "semi") << ")"
+         << endl;
 }
 
 // Exercise next_n's drain + whole-chunk-direct + sub-chunk-tail paths with

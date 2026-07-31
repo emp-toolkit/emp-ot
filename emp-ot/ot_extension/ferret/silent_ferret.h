@@ -109,6 +109,18 @@ public:
 	// the rolling base is single-round state.
 	void produce_range(block *out, int64_t tree_begin, int64_t n_trees) const;
 
+	// Re-derive the same current-round range as produce_range() into a reusable
+	// one-tree scratch. Each tree runs the ordinary in-place LPN kernel, then a
+	// separate loop XOR-folds its finalized COTs. `tree_scratch` supplies
+	// chunk_size() blocks; concurrent callers must provide separate buffers.
+	block produce_range_scratch_xor(block *tree_scratch, int64_t tree_begin,
+	                                int64_t n_trees) const;
+
+	// Same bounded-scratch contract, but the LPN fold sends each finalized COT
+	// directly to the XOR accumulator instead of storing it back to scratch.
+	block produce_range_fused_xor(block *tree_scratch, int64_t tree_begin,
+	                              int64_t n_trees) const;
+
 protected:
 	void process_one_tree_(AuthValueFerret *out) override;
 
@@ -168,6 +180,14 @@ private:
 	// re-derives seeds from cggm_seed_key_. No wire I/O; thread-safe / const.
 	void produce_trees_(block *out, uint64_t abs_round, int64_t local_begin,
 	                    int64_t n, const block *base_for_round) const;
+
+	// Bounded-scratch counterparts to produce_trees_.
+	block produce_trees_scratch_xor_(block *tree_scratch, uint64_t abs_round,
+	                                 int64_t local_begin, int64_t n,
+	                                 const block *base_for_round) const;
+	block produce_trees_fused_xor_(block *tree_scratch, uint64_t abs_round,
+	                               int64_t local_begin, int64_t n,
+	                               const block *base_for_round) const;
 
 	// Roll the rolling base from `abs_round`'s refill into carry_next_, then
 	// swap so carry_curr_ becomes the next round's base. Wire-free.

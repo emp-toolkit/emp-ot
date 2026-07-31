@@ -7,7 +7,8 @@
 #   A$ ./build/bench_ot_extension 1
 #   B$ EMP_PEER_IP=<A's address> ./build/bench_ot_extension 2
 #   (EMP_PEER_IP unset => loopback, the default single-box behaviour)
-# Timing helpers live in bench/bench.h; these emit throughput only (no asserts).
+# Timing helpers live in bench/bench.h; benchmarks may self-check the values
+# they time, but remain build-only because their performance is noisy.
 function(add_bench name)
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE emp-ot::emp-ot)
@@ -20,6 +21,7 @@ add_bench(bench_iknp)
 add_bench(bench_softspoken)
 add_bench(bench_ferret)
 add_bench(bench_silentferret)
+add_bench(bench_silentferret_sink)
 add_bench(bench_lpn)
 add_bench(bench_cggm)
 add_bench(bench_ot_extension)

@@ -15,6 +15,23 @@ namespace emp {
 // Ferret tree_depth with margin.
 static constexpr int kMaxTreeDepth = 30;
 
+static block xor_blocks_unrolled(const block *data, int64_t n) {
+	block sum0 = zero_block;
+	block sum1 = zero_block;
+	block sum2 = zero_block;
+	block sum3 = zero_block;
+	int64_t i = 0;
+	for (; i + 4 <= n; i += 4) {
+		sum0 = sum0 ^ data[i];
+		sum1 = sum1 ^ data[i + 1];
+		sum2 = sum2 ^ data[i + 2];
+		sum3 = sum3 ^ data[i + 3];
+	}
+	block sum = (sum0 ^ sum1) ^ (sum2 ^ sum3);
+	for (; i < n; ++i) sum = sum ^ data[i];
+	return sum;
+}
+
 SilentFerret::SilentFerret(int party, IOChannel *io, bool malicious,
                            PrimalLPNParameter param,
                            std::unique_ptr<OT> base_ot, int n_threads)
@@ -267,6 +284,38 @@ void SilentFerret::produce_range(block *out, int64_t tree_begin,
 	               n_trees, carry_curr_.data());
 }
 
+block SilentFerret::produce_range_scratch_xor(block *tree_scratch,
+                                              int64_t tree_begin,
+                                              int64_t n_trees) const {
+	expect_in_session_();
+	const int64_t capacity = round_capacity();
+	expecting(tree_begin >= 0 && tree_begin <= capacity && n_trees >= 0 &&
+	              n_trees <= capacity - tree_begin,
+	          "produce_range_scratch_xor out of current-round bounds");
+	expecting(n_trees == 0 || tree_scratch != nullptr,
+	          "produce_range_scratch_xor: null scratch for nonzero range");
+	if (n_trees == 0) return zero_block;
+	return produce_trees_scratch_xor_(
+	    tree_scratch, abs_round_base_ + (uint64_t)consume_round_, tree_begin,
+	    n_trees, carry_curr_.data());
+}
+
+block SilentFerret::produce_range_fused_xor(block *tree_scratch,
+                                            int64_t tree_begin,
+                                            int64_t n_trees) const {
+	expect_in_session_();
+	const int64_t capacity = round_capacity();
+	expecting(tree_begin >= 0 && tree_begin <= capacity && n_trees >= 0 &&
+	              n_trees <= capacity - tree_begin,
+	          "produce_range_fused_xor out of current-round bounds");
+	expecting(n_trees == 0 || tree_scratch != nullptr,
+	          "produce_range_fused_xor: null scratch for nonzero range");
+	if (n_trees == 0) return zero_block;
+	return produce_trees_fused_xor_(
+	    tree_scratch, abs_round_base_ + (uint64_t)consume_round_, tree_begin,
+	    n_trees, carry_curr_.data());
+}
+
 void SilentFerret::roll_base_(uint64_t abs_round) {
 	// The round's refill trees [round_capacity, t) produce the next round's
 	// M base COTs; write them into carry_next_ and swap.
@@ -314,6 +363,88 @@ void SilentFerret::produce_trees_(block *out, uint64_t abs_round,
 		}
 		lpn_->compute_slice(lpn_prg, o, pre, chunk);  // advances by bpc_
 	}
+}
+
+block SilentFerret::produce_trees_scratch_xor_(
+    block *tree_scratch, uint64_t abs_round, int64_t local_begin, int64_t n,
+    const block *base_for_round) const {
+	const int64_t chunk    = chunk_size();
+	const int64_t cggm_off = kConsistCheckCotNum + param.k;
+	const AuthValueFerret *pre = reinterpret_cast<const AuthValueFerret *>(
+	    base_for_round + kConsistCheckCotNum);
+	const uint64_t G0 =
+	    abs_round * (uint64_t)param.t + (uint64_t)local_begin;
+	PRG lpn_prg(&lpn_key_);
+	lpn_prg.seek(G0 * bpc_);
+	const int64_t r = (int64_t)(abs_round - abs_round_base_);
+
+	block path_scratch[kMaxTreeDepth];
+	PRG seed_prg(&cggm_seed_key_);
+	if (is_ot_sender()) seed_prg.seek(G0);
+
+	block sum = zero_block;
+	AuthValueFerret *leaves =
+	    reinterpret_cast<AuthValueFerret *>(tree_scratch);
+	for (int64_t m = 0; m < n; ++m) {
+		const int64_t i = local_begin + m;
+		if (is_ot_sender()) {
+			block seed;
+			seed_prg.random_block(&seed, 1);
+			gadget_send_->produce_tree(leaves, seed, path_scratch);
+		} else {
+			const block *base_j =
+			    base_for_round + cggm_off + i * param.tree_depth;
+			const block *c_i =
+			    c_rounds_.data() + (size_t)(r * param.t + i) * param.tree_depth;
+			gadget_recv_->produce_tree(leaves, base_j, c_i, path_scratch);
+		}
+		lpn_->compute_slice(lpn_prg, leaves, pre, chunk);
+		sum = sum ^ xor_blocks_unrolled(tree_scratch, chunk);
+	}
+	return sum;
+}
+
+block SilentFerret::produce_trees_fused_xor_(
+    block *tree_scratch, uint64_t abs_round, int64_t local_begin, int64_t n,
+    const block *base_for_round) const {
+	const int64_t chunk    = chunk_size();
+	const int64_t cggm_off = kConsistCheckCotNum + param.k;
+	const AuthValueFerret *pre = reinterpret_cast<const AuthValueFerret *>(
+	    base_for_round + kConsistCheckCotNum);
+	const uint64_t G0 =
+	    abs_round * (uint64_t)param.t + (uint64_t)local_begin;
+	PRG lpn_prg(&lpn_key_);
+	lpn_prg.seek(G0 * bpc_);
+	const int64_t r = (int64_t)(abs_round - abs_round_base_);
+
+	block path_scratch[kMaxTreeDepth];
+	PRG seed_prg(&cggm_seed_key_);
+	if (is_ot_sender()) seed_prg.seek(G0);
+
+	block sums[4] = {zero_block, zero_block, zero_block, zero_block};
+	AuthValueFerret *leaves =
+	    reinterpret_cast<AuthValueFerret *>(tree_scratch);
+	for (int64_t m = 0; m < n; ++m) {
+		const int64_t i = local_begin + m;
+		if (is_ot_sender()) {
+			block seed;
+			seed_prg.random_block(&seed, 1);
+			gadget_send_->produce_tree(leaves, seed, path_scratch);
+		} else {
+			const block *base_j =
+			    base_for_round + cggm_off + i * param.tree_depth;
+			const block *c_i =
+			    c_rounds_.data() + (size_t)(r * param.t + i) * param.tree_depth;
+			gadget_recv_->produce_tree(leaves, base_j, c_i, path_scratch);
+		}
+		lpn_->compute_slice_sink(
+		    lpn_prg, leaves, pre, chunk,
+		    [&sums](int64_t position, const AuthValueFerret& value) {
+			    const int lane = (int)(position & 3);
+			    sums[lane] = sums[lane] ^ value.mac;
+		    });
+	}
+	return (sums[0] ^ sums[1]) ^ (sums[2] ^ sums[3]);
 }
 
 }  // namespace emp
