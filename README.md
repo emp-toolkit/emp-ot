@@ -330,9 +330,12 @@ IKNP            ote1(party, io.get(), /*malicious=*/true,
 SoftSpoken<4>   ote2(party, io.get(), /*malicious=*/true,
                      std::make_unique<CSW>(io.get()));      // k=4
 Ferret          ote3(party, io.get(), /*malicious=*/true,
-                     tuning::ferret_b13,
-                     std::make_unique<CSW>(io.get()));
+                     std::make_unique<CSW>(io.get()),
+                     tuning::ferret_b13);
 ```
+
+Ferret's final LPN parameter is optional and defaults to
+`tuning::ferret_b13`.
 
 ### Streaming RCOT
 

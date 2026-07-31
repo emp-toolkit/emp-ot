@@ -309,7 +309,7 @@ static void verify_comm_matches_ferret(NetIO* io, int party,
 
     io->sync();
     uint64_t a = io->send_counter, b = io->recv_counter;
-    { Ferret f(party, io, /*malicious=*/true, param); f.rcot(buf, N); }
+    { Ferret f(party, io, /*malicious=*/true, nullptr, param); f.rcot(buf, N); }
     const uint64_t f_sent = io->send_counter - a, f_recv = io->recv_counter - b;
 
     io->sync();
@@ -347,7 +347,7 @@ static void verify_comm_batched_vs_ferret(NetIO* io, int party,
 
     io->sync();
     uint64_t a = io->send_counter, b = io->recv_counter;
-    { Ferret f(party, io, /*malicious=*/true, param); f.rcot(buf, N); }
+    { Ferret f(party, io, /*malicious=*/true, nullptr, param); f.rcot(buf, N); }
     const uint64_t f_sent = io->send_counter - a, f_recv = io->recv_counter - b;
 
     SilentFerret s(party, io, /*malicious=*/true, param, nullptr, 1);

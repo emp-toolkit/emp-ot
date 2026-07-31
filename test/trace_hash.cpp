@@ -194,7 +194,7 @@ int main(int argc, char** argv) {
             run_rcot(io, party, ferret_len,
                 [&](IOChannel* x, bool m) {
                     return std::unique_ptr<Ferret>(
-                        new Ferret(party, x, m, tuning::ferret_b11));
+                        new Ferret(party, x, m, nullptr, tuning::ferret_b11));
                 }, mali);
         });
         measure(party, anchor.get(), "SilentFerret(b11) " + mode, rcot_sf, [&](NetIO* io){

@@ -49,7 +49,8 @@ namespace emp {
 class SilentFerret : public Ferret {
 public:
 	// `n_threads` sizes the begin()-time expansion pool (<=1 → serial,
-	// no pool). Other args mirror Ferret.
+	// no pool). `param` selects the Ferret LPN tuning and `base_ot` overrides
+	// the bootstrap OT.
 	SilentFerret(int party, IOChannel *io, bool malicious = true,
 	             PrimalLPNParameter param = tuning::ferret_b13,
 	             std::unique_ptr<OT> base_ot = nullptr,

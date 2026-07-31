@@ -109,10 +109,11 @@ public:
 	PrimalLPNParameter param;
 
 	// `base_ot` is forwarded to the internal SoftSpoken<8> bootstrap.
-	// Default (nullptr) → the base allocates an CSW.
+	// Default (nullptr) → the base allocates a CSW. The optional final
+	// parameter selects the Ferret LPN tuning.
 	Ferret(int party, IOChannel *io, bool malicious = true,
-			PrimalLPNParameter param = tuning::ferret_b13,
-			std::unique_ptr<OT> base_ot = nullptr);
+			std::unique_ptr<OT> base_ot = nullptr,
+			PrimalLPNParameter param = tuning::ferret_b13);
 
 	~Ferret() override;
 

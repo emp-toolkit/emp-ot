@@ -35,7 +35,7 @@ static block xor_blocks_unrolled(const block *data, int64_t n) {
 SilentFerret::SilentFerret(int party, IOChannel *io, bool malicious,
                            PrimalLPNParameter param,
                            std::unique_ptr<OT> base_ot, int n_threads)
-	: Ferret(party, io, malicious, param, std::move(base_ot)),
+	: Ferret(party, io, malicious, std::move(base_ot), param),
 	  n_threads_(n_threads < 1 ? 1 : n_threads) {
 	expecting(param.tree_depth > 0 && param.tree_depth <= kMaxTreeDepth,
 	          "SilentFerret: tree_depth exceeds scratch");

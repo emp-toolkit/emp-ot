@@ -31,8 +31,8 @@ static block derive_lpn_seed_(block sid) {
 }
 
 Ferret::Ferret(int party, IOChannel *io,
-		bool malicious, PrimalLPNParameter param,
-		std::unique_ptr<OT> base_ot)
+		bool malicious, std::unique_ptr<OT> base_ot,
+		PrimalLPNParameter param)
 	: OTExtension(party, io, malicious,
 	              base_ot ? std::move(base_ot)
 	                      : std::unique_ptr<OT>(new FerretBaseOT(io))) {
@@ -157,7 +157,7 @@ void Ferret::bootstrap_() {
 
 	if (param.M > tuning::ferret_bootstrap_nest_factor * tuning::ferret_b10.M) {
 		Ferret b10(party, io, /*malicious=*/malicious,
-		           tuning::ferret_b10, std::move(base_ot));
+		           std::move(base_ot), tuning::ferret_b10);
 		pump(&b10);
 	} else {
 		// kChunkBlocks sized so b10.M (~74k) fits in a single

@@ -123,9 +123,9 @@ int main(int argc, char** argv) {
 
     // Ferret (semi + mali).
     run_fresh_row<Ferret>(anchor.get(), party, length, "Ferret semi",
-                          /*malicious=*/false, ferret_param);
+                          /*malicious=*/false, nullptr, ferret_param);
     run_fresh_row<Ferret>(anchor.get(), party, length, "Ferret mali",
-                          /*malicious=*/true, ferret_param);
+                          /*malicious=*/true, nullptr, ferret_param);
 
     // SilentFerret (semi + mali). n_threads=1 so it is single-threaded like
     // every other row here (the begin() expansion pool stays disabled) -- an

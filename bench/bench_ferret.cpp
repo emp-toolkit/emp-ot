@@ -11,7 +11,7 @@ static void bench_one(NetIO* io, int party, int64_t length, bool malicious,
                       const char* tag, const PrimalLPNParameter& param) {
     const char* mode_name = malicious ? "mali" : "semi";
     length = snap_to_ferret_rounds(length, param);
-    Ferret* ot = new Ferret(party, io, malicious, param);
+    Ferret* ot = new Ferret(party, io, malicious, nullptr, param);
 
     uint64_t ds = 0, dr = 0;
     double us = time_rcot<Ferret>(ot, io, party, length, &ds, &dr);
