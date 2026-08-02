@@ -6,7 +6,7 @@
 //
 //   begin : lazy bootstrap → swap curr/next → tree_idx_ = 0
 //           → inner_run_begin_ (gadget round-begin + one-shot LPN
-//                               seed exchange)
+//                               matrix-seed initialization)
 //   next  : if this round's user-visible budget is full, end + begin
 //           (transparent rollover); then process_one_tree_
 //   end   : run_refill_ (refill trees write directly into next_) +
@@ -28,6 +28,18 @@ namespace emp {
 // derivations and of other sessions; the LPN matrix it seeds is public.
 static block derive_lpn_seed_(block sid) {
 	return RO("emp-ot:ferret:lpn-seed", sid).squeeze_block();
+}
+
+// An explicit root may intentionally be shared by several Ferret instances.
+// Bind the concrete matrix geometry here so nested and top-level amplifiers do
+// not reuse one PRG stream under different parameter sets.
+static block derive_lpn_seed_from_root_(block root,
+		const PrimalLPNParameter &param) {
+	return RO("emp-ot:ferret:lpn-matrix-seed", root)
+		.absorb((uint64_t)param.t)
+		.absorb((uint64_t)param.logk)
+		.absorb((uint64_t)param.tree_depth)
+		.squeeze_block();
 }
 
 Ferret::Ferret(int party, IOChannel *io,
@@ -76,6 +88,15 @@ int64_t Ferret::chunk_size() const {
 void Ferret::set_delta(const bool *bits) {
 	OTExtension::set_delta(bits);
 	gadget_send_->set_cggm_delta(this->Delta);
+}
+
+void Ferret::set_lpn_matrix_seed(const block &seed) {
+	expecting(!setup_done,
+		"Ferret::set_lpn_matrix_seed: bootstrap already fired");
+	expecting(!lpn_seed_set_,
+		"Ferret::set_lpn_matrix_seed: LPN matrix already initialized");
+	lpn_matrix_seed_root_ = seed;
+	lpn_matrix_seed_overridden_ = true;
 }
 
 // =====================================================================
@@ -137,9 +158,9 @@ void Ferret::end() {
 // below the threshold, and drops straight to SoftSpoken — at most one
 // level of nesting.
 //
-// FS transcript enabled before either path; in malicious mode it
-// binds the per-tree chi seeds pulled by MPCOT, and in both modes it
-// gives Ferret a fresh per-round LPN seed.
+// FS transcript enabled before either path; in malicious mode it binds the
+// per-tree chi seeds pulled by MPCOT. Unless explicitly overridden, the public
+// LPN matrix seed is derived once from the SID for this Ferret instance.
 void Ferret::bootstrap_() {
 	if (setup_done) return;
 	if (!io->fs_enabled())
@@ -168,6 +189,8 @@ void Ferret::bootstrap_() {
 	if (param.M > tuning::ferret_bootstrap_nest_factor * tuning::ferret_b10.M) {
 		Ferret b10(party, io, /*malicious=*/malicious,
 		           std::move(base_ot), tuning::ferret_b10);
+		if (lpn_matrix_seed_overridden_)
+			b10.set_lpn_matrix_seed(lpn_matrix_seed_root_);
 		pump(&b10);
 	} else {
 		// kChunkBlocks sized so b10.M (~74k) fits in a single
@@ -192,7 +215,10 @@ void Ferret::inner_run_begin_() {
 		gadget_recv_->run_begin();
 	}
 	if (!lpn_seed_set_) {
-		lpn_->reseed(derive_lpn_seed_(sid.value()));
+		const block seed = lpn_matrix_seed_overridden_
+			? derive_lpn_seed_from_root_(lpn_matrix_seed_root_, param)
+			: derive_lpn_seed_(sid.value());
+		lpn_->reseed(seed);
 		lpn_seed_set_ = true;
 	}
 }

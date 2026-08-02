@@ -143,7 +143,7 @@ private:
 	//   LPN:  fold the stream at counter G * bpc_ (PRG forked from lpn_key_).
 	//   seed: sender's cGGM root at counter G (PRG forked from cggm_seed_key_).
 	uint64_t bpc_ = 0;                 // LPN PRG blocks per chunk
-	block    lpn_key_;                 // captured after the one-shot LPN reseed
+	block    lpn_key_;                 // captured after one-shot matrix init
 	bool     lpn_key_set_ = false;
 	block    cggm_seed_key_;           // sender's secret cGGM-root key
 	bool     cggm_seed_key_set_ = false;

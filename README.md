@@ -335,7 +335,11 @@ Ferret          ote3(party, io.get(), /*malicious=*/true,
 ```
 
 Ferret's final LPN parameter is optional and defaults to
-`tuning::ferret_b13`.
+`tuning::ferret_b13`. By default its public LPN matrix is derived from the
+transcript session id. An outer protocol that needs identical receiver-choice
+patterns across several separately domain-separated Ferret instances may call
+`set_lpn_matrix_seed(root)` on both roles before bootstrap; the transcript ids
+remain distinct, and Ferret domain-separates the root by its LPN parameters.
 
 ### Streaming RCOT
 

@@ -121,6 +121,15 @@ public:
 	// sender-side mpcot state. Pre-bootstrap only.
 	void set_delta(const bool *bits) override;
 
+	// Override the public LPN-matrix seed root independently of the
+	// transcript session id. Both roles must supply the same root before
+	// bootstrap. The default remains a matrix derived from `sid`; this hook is
+	// for outer protocols that deliberately need identical receiver-choice
+	// patterns across otherwise domain-separated Ferret instances. Ferret
+	// domain-separates the root by its LPN parameters, including for a nested
+	// b10 bootstrap.
+	void set_lpn_matrix_seed(const block &seed);
+
 	// StreamingExtension contract. Each next() produces exactly
 	// `chunk_size()` = 2^tree_depth RCOT outputs (one cGGM tree's
 	// leaves). next() includes the auto-rollover check (transparent
@@ -155,11 +164,13 @@ protected:
 
 	int64_t tree_idx_ = 0;
 
-	// Per-Ferret-lifetime LPN-seed exchange state. The seed is
-	// exchanged once on first begin() (receiver derives from
-	// choice_prg, sender receives), and lpn_'s PRG state advances
-	// continuously from there.
+	// Per-Ferret-lifetime public LPN-matrix seed state. By default both roles
+	// derive it from the shared transcript sid. An outer protocol may instead
+	// install the same explicit root on several domain-separated instances;
+	// lpn_'s PRG state advances continuously after the first begin().
 	bool lpn_seed_set_ = false;
+	bool lpn_matrix_seed_overridden_ = false;
+	block lpn_matrix_seed_root_ = zero_block;
 
 	// Two ping-pong base-COT buffers, each `refill_trees * 2^tree_depth`
 	// blocks. curr_ holds the round's M base COTs (chi-check + LPN-secret +

@@ -27,6 +27,32 @@ static void compare_lsbs(const char* tag, const block* a, const block* b, int64_
     }
 }
 
+// An outer multi-party protocol may deliberately share one receiver-choice
+// pattern across peer COTs while assigning every pair a distinct transcript
+// sid. An explicit public LPN-matrix root must preserve that pattern; the sid
+// remains free to domain-separate the rest of each Ferret transcript.
+static void check_ferret_distinct_sids(NetIO* io, int party, bool malicious,
+                                       const block& choice_seed,
+                                       const block& matrix_seed) {
+    BlockVec buf1(kN), buf2(kN);
+    const block sids[2] = {
+        makeBlock(0x1011121314151617ULL, 0x18191a1b1c1d1e1fULL),
+        makeBlock(0x2021222324252627ULL, 0x28292a2b2c2d2e2fULL)};
+    BlockVec* outputs[2] = {&buf1, &buf2};
+    for (int run = 0; run < 2; ++run) {
+        Ferret ot(party, io, malicious);
+        ot.set_sid(SessionID(sids[run]));
+        ot.set_lpn_matrix_seed(matrix_seed);
+        if (party == BOB) ot.set_choice_seed(choice_seed);
+        ot.rcot(outputs[run]->data(), kN);
+        io->flush();
+    }
+    if (party == BOB)
+        compare_lsbs(malicious ? "Ferret distinct-sid mali"
+                               : "Ferret distinct-sid semi",
+                     buf1.data(), buf2.data(), kN);
+}
+
 template <typename MakeOT>
 static void check_one(NetIO* io, int party, const char* tag,
                       const block& seed, MakeOT make_ot) {
@@ -79,6 +105,13 @@ int main(int argc, char** argv) {
     check_one(io.get(), party, "Ferret(b13) mali", seed, [&]{
         return std::make_unique<Ferret>(party, io.get(), /*malicious=*/true);
     });
+
+    const block matrix_seed =
+        makeBlock(0x3141592653589793ULL, 0x2384626433832795ULL);
+    check_ferret_distinct_sids(io.get(), party, /*malicious=*/false, seed,
+                              matrix_seed);
+    check_ferret_distinct_sids(io.get(), party, /*malicious=*/true, seed,
+                              matrix_seed);
 
     return 0;
 }
