@@ -71,10 +71,15 @@ public:
 	// (sequential, auto-rolls rounds wire-free), next_chunks_parallel()
 	// (cursor-ordered, auto-rolls, internally threaded), or produce_range()
 	// (one round at a time, concurrent within the round); then end().
-	void begin(int64_t n_ots);
+	void begin(int64_t n_ots) override;
 
 	void next(block *out) override;
 	void end() override;
+
+	// OTExtension::check() is intentionally a no-op throughout the prepared
+	// consume window: begin()/begin(n_ots) already certified every tree before
+	// exposing it, and these next()/range paths therefore never mark a backend
+	// chunk provisional. The inherited API still enforces an active session.
 
 	// Cursor-ordered bulk draw with the same auto-rollover semantics as
 	// next(). Produces `n_chunks * chunk_size()` COTs into `out`, splitting

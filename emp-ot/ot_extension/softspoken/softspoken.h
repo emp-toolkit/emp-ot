@@ -101,6 +101,7 @@ public:
     // StreamingExtension lifecycle. Party-dispatches inline to the
     // private per-role helpers below — SoftSpoken's sender and receiver
     // paths share no per-stage work.
+    using OTExtension::begin;
     void begin() override;
     void next(block* out) override;
     void end() override;
@@ -161,6 +162,10 @@ private:
     // chunk in {send,recv}_end_.
     void send_chunk_pipeline(block* out, int64_t bs);
     void recv_chunk_pipeline(block* out, int64_t bs);
+
+    // Counted begin() can finish at SoftSpoken's native 128-COT unit instead
+    // of materializing a complete public chunk.
+    int64_t next_sized_tail_(block* out, int64_t requested) override;
 
     // Per-role bodies invoked from begin/next/end with inline
     // party-dispatch.

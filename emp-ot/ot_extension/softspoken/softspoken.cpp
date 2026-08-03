@@ -86,7 +86,8 @@ SoftSpoken<k, kChunkBlocks>::SoftSpoken(int party, IOChannel* io_, bool maliciou
                               std::unique_ptr<OT> base_ot)
     : OTExtension(party, io_, malicious,
                   base_ot ? std::move(base_ot)
-                          : std::unique_ptr<OT>(new SoftSpokenBaseOT(io_))) {}
+                          : std::unique_ptr<OT>(new SoftSpokenBaseOT(io_))) {
+}
 
 // Clone ctor (see softspoken.h clone_lane). A FRESH object via the CloneInit
 // base ctor (no base OT, no Δ sample; all mutable streaming/COT state at its
@@ -412,13 +413,33 @@ void SoftSpoken<k, kChunkBlocks>::next(block* out) {
     this->expect_in_session_();
     if (this->is_ot_sender()) send_next_(out);
     else                      recv_next_(out);
+    this->mark_chunk_unchecked_();
+}
+
+template <int k, int kChunkBlocks>
+int64_t SoftSpoken<k, kChunkBlocks>::next_sized_tail_(block* out,
+                                                      int64_t requested) {
+    this->expect_in_session_();
+    expecting(requested > 0 && requested <= kChunkOTs,
+              "SoftSpoken: invalid sized-tail count");
+    const int64_t bs = 1 + (requested - 1) / 128;
+    if (this->is_ot_sender()) send_chunk_pipeline(out, bs);
+    else                      recv_chunk_pipeline(out, bs);
+    this->mark_chunk_unchecked_();
+    return bs * 128;
 }
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::end() {
     this->expect_in_session_();
+    if (this->can_close_checked_continuation_()) {
+        this->mark_checked_continuation_closed_();
+        this->exit_session_();
+        return;
+    }
     if (this->is_ot_sender()) send_end_();
     else                      recv_end_();
+    this->mark_chunks_checked_();
     this->exit_session_();
 }
 

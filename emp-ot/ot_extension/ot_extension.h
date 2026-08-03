@@ -11,12 +11,14 @@
 namespace emp {
 
 // Common base class for OT extensions (IKNP / SoftSpoken / Ferret).
-// Conceptually `OTExtension` is `StreamingExtension<block>` with two
+// Conceptually `OTExtension` is `StreamingExtension<block>` with three
 // additions:
 //   - rcot(data, num) — the polymorphic one-shot entry from RandomCOT.
 //     Implemented here by forwarding to StreamingExtension::run (the
 //     leftover-buffer drainer). Concrete subclasses don't override
 //     this — they implement begin / next / end and let rcot delegate.
+//   - check() — certify newly generated chunks without closing the caller's
+//     session or dropping an already-certified next_n() tail.
 //   - Δ / delta_bool / choice_prg / base_ot — OT-specific plumbing.
 //
 // Concrete subclasses (IKNP, SoftSpoken, Ferret) override the three
@@ -39,13 +41,15 @@ public:
     // Non-null iff base_ot is CSW (the only base OT exposing the messy-core +
     // deferred extraction-check split). Set once in the ctor. When set, the
     // subclass bootstrap calls *_core in begin() (buffering the base round-2
-    // bytes) and the deferred *_check at the tail of end(), overlapping the
-    // base OT's last two flows with the extension's first message (3-round
-    // result). nullptr → blocking path (base_ot->send/recv).
+    // bytes) and the deferred *_check at the tail of the first end() or
+    // mid-session check(), overlapping the base OT's last two flows with the
+    // extension's first message (3-round result). nullptr → blocking path
+    // (base_ot->send/recv).
     CSW* csw_base_ = nullptr;
     // One-shot: set true when the bootstrap runs *_core, cleared when end()
-    // runs the deferred *_check. Keyed off this (not setup_done / malicious) so
-    // multi-session callers run the base check exactly once, in the first end().
+    // (possibly through check()) runs the deferred *_check. Keyed off this (not
+    // setup_done / malicious) so the base check runs exactly once at the first
+    // certification boundary.
     bool base_check_pending_ = false;
     // Sender-side bool[128] mirror of this->Delta. Maintained in sync
     // by the base ctor and set_delta — subclasses that need per-bit
@@ -107,12 +111,46 @@ public:
         base_ot->set_sid(sid.derive());
     }
 
-    // Streaming surface: begin / next / end / run / chunk_size are
-    // inherited verbatim from StreamingExtension<block>. Each instance
-    // is single-role at runtime (`party` is fixed at construction), so
-    // the role is implicit. Subclasses override the inherited
-    // chunk_size() — one cGGM tree's leaves for Ferret, the max-batch
-    // unit for IKNP / SoftSpoken.
+    // Streaming surface: ordinary begin / next / end / run / chunk_size come
+    // from StreamingExtension<block>. Each instance is single-role at runtime
+    // (`party` is fixed at construction), so the role is implicit. Subclasses
+    // override the inherited chunk_size() — one cGGM tree's leaves for Ferret,
+    // the max-batch unit for IKNP / SoftSpoken.
+
+    // Counted streaming begin: `n_ots` is an upper bound across this
+    // session's next_n() calls. It enables a backend to shrink its final
+    // production unit. Both peers must pass the same count because a sized
+    // unit changes wire length. Ordinary begin() remains unchanged.
+    //
+    // Virtual to preserve SilentFerret's existing stronger begin(n_ots)
+    // prepayment semantics.
+    using StreamingExtension<block>::begin;
+    virtual void begin(int64_t n_ots) { begin_counted_(n_ots); }
+
+    // Certify every backend chunk generated since begin() / the preceding
+    // successful check(), while keeping the caller-owned streaming session
+    // active. A partial next_n() tail was generated and folded as part of its
+    // whole backend chunk, so it is already certified and remains buffered for
+    // subsequent draws. If the caller has consumed only such a certified tail,
+    // check() is a no-op. The first check still runs when a CSW bootstrap left
+    // its deferred base-OT extraction check pending.
+    //
+    // The default implementation deliberately composes the concrete virtual
+    // end()/begin() lifecycle. This gives every OTExtension backend its exact
+    // existing round-final check/restart semantics without adding a new pure
+    // hook, while StreamingExtension preserves the buffered cursor across that
+    // internal boundary. Ordinary public end(); begin(); continues to discard
+    // a prior caller-owned tail.
+    virtual void check() {
+        expect_in_session_();
+        if (unchecked_chunk_ || base_check_pending_)
+            restart_session_preserving_leftover_();
+        // Even an empty check establishes that this logical continuation has
+        // no provisional material. Concrete end() implementations may close
+        // this idle post-check continuation without an empty sacrificial
+        // exchange; Ferret additionally restores its pre-begin buffer swap.
+        checked_continuation_idle_ = true;
+    }
 
     // RandomCOT polymorphic entry. Single-method (role-implicit),
     // forwards to the inherited leftover-buffer one-shot run().
@@ -121,6 +159,26 @@ public:
     }
 
 protected:
+    // Concrete next() overrides mark once after successfully producing one
+    // backend chunk; concrete end() overrides clear only after every check and
+    // deferred base-OT check succeeds. This is per chunk (thousands of COTs),
+    // never per COT or per downstream gate.
+    void mark_chunk_unchecked_() {
+        unchecked_chunk_ = true;
+        checked_continuation_idle_ = false;
+    }
+    void mark_chunks_checked_() {
+        unchecked_chunk_ = false;
+        checked_continuation_idle_ = false;
+    }
+    bool can_close_checked_continuation_() const {
+        return checked_continuation_idle_ && !unchecked_chunk_ &&
+               !base_check_pending_;
+    }
+    void mark_checked_continuation_closed_() {
+        checked_continuation_idle_ = false;
+    }
+
     // Tag for the clone-lane ctor below (disambiguates from the normal ctor).
     struct CloneInit {};
 
@@ -174,6 +232,10 @@ protected:
             // via set_choice_seed.
         }
     }
+
+private:
+    bool unchecked_chunk_ = false;
+    bool checked_continuation_idle_ = false;
 };
 
 }  // namespace emp

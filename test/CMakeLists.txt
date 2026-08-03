@@ -56,6 +56,7 @@ add_test_case_with_run(test_silentferret)
 add_test_case_with_run(test_f2k_vole)
 add_test_case_with_run(test_fp_vole)
 add_test_case_with_run(test_choice_seed)
+add_test_case_with_run(test_extension_check)
 
 # Wire-equivalence / trace harnesses (self-checking via verify_rcot / digest diff).
 add_test_case_with_run(trace_equiv)

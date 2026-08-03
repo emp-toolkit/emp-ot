@@ -54,6 +54,7 @@ class IKNP : public OTExtension { public:
 	                           : std::unique_ptr<OT>(new IKNPBaseOT(io_))) {}
 
 	// ===== StreamingExtension contract =====
+	using OTExtension::begin;
 	int64_t chunk_size() const override { return block_size; }
 	void begin() override;
 	void next(block *out) override;

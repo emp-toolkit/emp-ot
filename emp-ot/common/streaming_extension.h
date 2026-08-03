@@ -28,6 +28,11 @@
 // Lazy setup is gated by the `setup_done` flag (subclass flips it inside
 // its first begin).
 //
+// OTExtension layers a mid-session check() API over the same virtual
+// lifecycle. Its internal end/begin continuation uses
+// restart_session_preserving_leftover_() so an already-checked next_n() tail
+// survives. The shared sVOLE surface remains begin/next/end.
+//
 // Each instance is single-role at runtime (`party` is fixed at
 // construction). begin/next/end are virtual — subclasses override them
 // directly. Session-tripwire enforcement (no double-begin, no end
@@ -128,6 +133,8 @@ public:
                   "StreamingExtension::next_n: null output for nonzero count");
         expecting(in_session_,
                   "StreamingExtension::next_n: call begin first");
+        expecting(!count_plan_active_ || n <= count_plan_remaining_,
+                  "StreamingExtension::next_n: exceeds declared element count");
         if (n == 0) return;
 
         const int64_t chunk = chunk_size();
@@ -145,13 +152,32 @@ public:
         if (got < n) {
             if (leftover_.size() < static_cast<size_t>(chunk))
                 leftover_.resize(static_cast<size_t>(chunk));
-            next(leftover_.data());
+            int64_t made = chunk;
+            if (count_plan_active_) {
+                // Include demand from later next_n() calls, not merely this
+                // call's remainder. If the entire declared suffix now fits in
+                // one chunk, a backend may produce a smaller final unit once
+                // and leave it buffered across those later calls.
+                const int64_t planned_tail = count_plan_remaining_ - got;
+                if (planned_tail <= chunk) {
+                    made = next_sized_tail_(leftover_.data(), planned_tail);
+                    expecting(made >= planned_tail,
+                              "StreamingExtension: sized tail under-produced");
+                    expecting(made <= chunk,
+                              "StreamingExtension: sized tail exceeds chunk size");
+                } else {
+                    next(leftover_.data());
+                }
+            } else {
+                next(leftover_.data());
+            }
             int64_t take = n - got;
             std::memcpy(dst + got, leftover_.data(),
                         static_cast<size_t>(take) * sizeof(Element));
             leftover_pos_   = take;
-            leftover_count_ = chunk - take;
+            leftover_count_ = made - take;
         }
+        if (count_plan_active_) count_plan_remaining_ -= n;
     }
 
     virtual ~StreamingExtension() {
@@ -166,6 +192,20 @@ protected:
     StreamingExtension(int party_, bool malicious_)
         : party(party_), malicious(malicious_) {}
 
+    // Open the concrete session and install an upper bound across its
+    // next_n() calls. Protocol-family bases expose this selectively; keeping
+    // the helper protected avoids adding a counted public API to every
+    // StreamingExtension family.
+    void begin_counted_(int64_t n) {
+        expecting(n >= 0,
+                  "StreamingExtension::begin: negative element count");
+        expecting(n <= max_element_count_(),
+                  "StreamingExtension::begin: element byte count overflow");
+        begin();
+        count_plan_active_ = true;
+        count_plan_remaining_ = n;
+    }
+
     // Session tripwire helpers. Subclass overrides call these from
     // their begin/end/next; the base does not manage the flag itself.
     void enter_session_() {
@@ -174,6 +214,8 @@ protected:
         // Drop any leftover from a prior session so next_n() / run() never
         // serve a stale chunk tail across a begin().
         leftover_count_ = 0;
+        count_plan_active_ = false;
+        count_plan_remaining_ = 0;
     }
     void exit_session_() {
         expecting(in_session_, "end: no active session");
@@ -184,11 +226,55 @@ protected:
                   "StreamingExtension: no active session; call begin first");
     }
 
+    // Produce the final declared suffix into `out`, returning the number of
+    // elements actually written. The default deliberately delegates to the
+    // ordinary full-chunk next() so existing backends are byte-for-byte
+    // unchanged. A backend with a smaller native production granularity may
+    // override this and round `requested` up to that granularity.
+    virtual int64_t next_sized_tail_(Element *out, int64_t requested) {
+        (void)requested;
+        next(out);
+        return chunk_size();
+    }
+
+    // Finish the concrete subclass's current session and immediately open its
+    // next one without discarding a buffered next_n() tail. This is the
+    // lifecycle primitive behind OTExtension::check(): end() performs the
+    // backend's consistency work, begin() resets its per-session accumulators,
+    // and the already-generated (therefore already-checked) suffix remains the
+    // next part of the caller-visible stream.
+    //
+    // Ordinary caller-visible end(); begin(); behavior is unchanged: the
+    // begin() still clears leftovers in enter_session_(). Only this explicit
+    // continuation helper restores the saved cursor after begin() returns.
+    void restart_session_preserving_leftover_() {
+        expecting(in_session_,
+                  "StreamingExtension: no active session; call begin first");
+        const int64_t saved_pos = leftover_pos_;
+        const int64_t saved_count = leftover_count_;
+        const bool saved_plan_active = count_plan_active_;
+        const int64_t saved_plan_remaining = count_plan_remaining_;
+
+        end();
+        expecting(!in_session_,
+                  "StreamingExtension: end did not close the session");
+        begin();
+        expecting(in_session_,
+                  "StreamingExtension: begin did not open the session");
+
+        leftover_pos_ = saved_pos;
+        leftover_count_ = saved_count;
+        count_plan_active_ = saved_plan_active;
+        count_plan_remaining_ = saved_plan_remaining;
+    }
+
 private:
     bool in_session_ = false;
     std::vector<Element> leftover_;
     int64_t leftover_pos_   = 0;
     int64_t leftover_count_ = 0;
+    bool count_plan_active_ = false;
+    int64_t count_plan_remaining_ = 0;
 
     static constexpr int64_t max_element_count_() {
         return std::numeric_limits<int64_t>::max() /

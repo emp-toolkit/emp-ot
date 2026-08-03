@@ -190,6 +190,7 @@ void SilentFerret::end() {
 	// therefore continues the base chain without repeating chi/LPN streams.
 	std::swap(base0_, carry_curr_);
 	abs_round_ = abs_round_base_ + (uint64_t)n_rounds_;
+	mark_chunks_checked_();
 	exit_session_();
 }
 
@@ -197,6 +198,8 @@ void SilentFerret::next(block *out) {
 	expect_in_session_();
 	ensure_tree_available_();
 	process_one_tree_(reinterpret_cast<AuthValueFerret *>(out));
+	// Deliberately no mark_chunk_unchecked_(): begin_batch_ authenticated the
+	// whole prepared range before returning, so inherited check() stays a no-op.
 }
 
 void SilentFerret::next_chunks_parallel(block *out, int64_t n_chunks,

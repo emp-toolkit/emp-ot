@@ -93,21 +93,31 @@ void Ferret::begin() {
 void Ferret::next(block *out) {
 	expect_in_session_();
 	// Auto-rollover: if this round's user-visible budget is full,
-	// run end+begin transparently before producing the user's tree.
-	// Uses the public end()/begin() — exit_session_ then enter_session_
-	// flip the tripwire cleanly across the boundary.
+	// restart transparently before producing the user's tree. The helper keeps
+	// a counted begin() plan alive across this internal session boundary.
 	const int64_t user_budget_trees = param.t - param.refill_trees;
 	if (tree_idx_ == user_budget_trees) {
-		end();
-		begin();
+		restart_session_preserving_leftover_();
 	}
 	process_one_tree_(reinterpret_cast<AuthValueFerret*>(out));
+	mark_chunk_unchecked_();
 }
 
 void Ferret::end() {
 	expect_in_session_();
+	if (can_close_checked_continuation_()) {
+		// check() already finished the preceding round, then begin() swapped
+		// its certified next-round base into carry_curr_. With no new tree
+		// generated, undo that swap so a later ordinary begin() advances to
+		// exactly this base again. inner_run_begin_ only reset check scratch.
+		std::swap(carry_curr_, carry_next_);
+		mark_checked_continuation_closed_();
+		exit_session_();
+		return;
+	}
 	run_refill_();
 	inner_run_end_();
+	mark_chunks_checked_();
 	exit_session_();
 }
 

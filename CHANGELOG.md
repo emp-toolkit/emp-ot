@@ -25,8 +25,11 @@ maintained separately and receives backported fixes.
   wire-free `SilentFerret`.
 - Subfield-VOLE generators `F2kVOLE` / `FpVOLE` over Ferret.
 - One streaming API (`begin`/`next`/`end`, `next_n`, `run`) across every
-  extension, with always-on `expecting` lifecycle/argument/role
-  contracts that survive `NDEBUG`.
+  extension, plus OT-extension `begin(n_ots)` and `check()`: counted begin
+  bounds session demand and lets SoftSpoken shorten its terminal transfer to
+  128-COT granularity, while check certifies a mid-session prefix without
+  dropping its buffered tail. Always-on `expecting` lifecycle/argument/role
+  contracts survive `NDEBUG`.
 - Per-build-directory auto-tuning of LOCAL scheduling knobs
   (output- and wire-invariant; see `docs/performance-tuning.md`).
 - Wire-trace framework: `trace_hash` + the `trace_hash_baseline` CI gate
@@ -43,6 +46,6 @@ maintained separately and receives backported fixes.
 See the README's Security section. In particular: `FpVOLE` malicious
 mode is not 128-bit sound (field p = 2⁶¹ − 1), the malicious OT
 extensions realize selective-abort functionalities with streaming
-outputs provisional until `end()`, and `BMM` is a custom construction
-over ML-KEM-512 internals (not standardized FIPS-203). Research
-software; no independent audit.
+outputs provisional until `check()` or `end()`, and `BMM` is a custom
+construction over ML-KEM-512 internals (not standardized FIPS-203).
+Research software; no independent audit.

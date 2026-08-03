@@ -11,7 +11,7 @@ producer. Callers pick one of three access styles:
   which opens and closes a session per call.
 
 This doc covers the lifecycle, the leftover buffer, `next_n`, the
-dual-role wrapper, auto-rollover, and the Fiat-Shamir hooks.
+OT-extension `check()` boundary, auto-rollover, and the Fiat-Shamir hooks.
 
 The base lives in
 [`emp-ot/common/streaming_extension.h`](../emp-ot/common/streaming_extension.h)
@@ -28,24 +28,38 @@ virtual void    next(Element* out) = 0;
 virtual void    end() = 0;
 ```
 
-Plus two public non-virtual entry points the base provides:
+The base also provides two non-virtual draw entry points:
 
 ```cpp
 void run   (Element* data, int64_t num);  // one-shot: opens+closes a session per call
 void next_n(Element* dst,  int64_t n);    // buffered draw within a caller-owned session
 ```
 
+`OTExtension` additionally exposes `virtual void begin(int64_t n_ots)`. Its
+default calls the backend's ordinary virtual `begin()` and records `n_ots` as
+an upper bound across subsequent `next_n()` calls. Concrete OT backends retain
+the overload with `using OTExtension::begin`. It is virtual because
+`SilentFerret` keeps its stronger existing meaning: prepay enough complete
+Ferret rounds before returning. That override preserves its prior
+prepayment-hint contract and may roll live if a caller continues beyond
+`n_ots`. sVOLE exposes only the ordinary streaming lifecycle.
+
 The lifecycle is
 
 ```
-   begin()  ─► next() ─► next() ─► ... ─► next() ─► end()
-                                                       │
-                                                       ▼
-                                                   (session
-                                                    closed;
-                                                    can begin
-                                                    again)
+   begin()  ─► next()/next_n() ─► check() ─► next()/next_n() ─► end()
+                 ▲                  │                                │
+                 └──────────────────┘                                ▼
+                    session remains open                         (closed)
 ```
+
+`check()` is an `OTExtension` API, not a fifth
+`StreamingExtension<Element>` virtual: OT extensions have a public
+mid-session certification use case, while the shared sVOLE lifecycle remains
+`begin/next/end`. The concrete OT backends keep implementing the same four
+streaming virtuals listed above; `OTExtension::check()` composes their existing
+virtual `end()` and `begin()` semantics while the streaming base preserves the
+buffer cursor across that internal boundary.
 
 `chunk_size()` is the unit each `next()` emits — one cGGM tree's
 leaves for Ferret, one batch for IKNP/SoftSpoken, one tree's
@@ -222,40 +236,123 @@ ote.next_n(batch.data(), k);    // round-end work amortizes over the whole sessi
 ote.end();
 ```
 
+When the total demand is known, pass it to `begin`:
+
+```cpp
+ote.begin(total);
+ote.next_n(first.data(), first.size());
+ote.check();
+ote.next_n(rest.data(), rest.size());
+ote.end();
+```
+
+The declared count is an upper bound over all `next_n()` calls in that
+caller-owned session; exceeding it is rejected before producing output, while
+ending early is allowed. Both peers must declare the same total: a backend's
+sized final unit changes the actual message length, so mismatched declarations
+desynchronize the stream rather than acting as independent local hints. Once
+the entire remaining declaration fits in one chunk, the base offers it to a
+protected sized-tail hook. Existing OT backends' default hook still calls one
+full `next()`, so IKNP, Ferret, and every ordinary no-argument `begin()` retain
+their previous behavior. SoftSpoken
+overrides the hook using its existing arbitrary-`bs` pipeline and rounds only
+to its native 128-COT unit: a declared suffix of `r` COTs produces
+`128 * ceil(r / 128)`, not a full public chunk.
+
+The plan counts caller-visible outputs, including values drained from the
+leftover buffer, and survives both `OTExtension::check()`'s internal restart
+and Ferret's transparent round rollover. `check()` also preserves a rounded
+SoftSpoken suffix already in the buffer. Direct `next()` is the explicit
+whole-chunk API and is not charged against this `next_n()` plan.
+
 Notes:
 - It shares the same `leftover_` buffer as `run()`, so the two are
   **mutually exclusive** on one instance — pick streaming (`next_n` /
   `begin`/`next`/`end`) *or* one-shot (`run` / `rcot`), not both.
   In particular, `run()` rejects a call made while the streaming
   session is open.
-- `enter_session_()` resets `leftover_count_ = 0`, so a fresh `begin()`
-  never serves a stale tail from a previous session. (This is also why
-  it composes with auto-rollover: the internal `end()`/`begin()` only
-  fires when the buffer is empty mid-refill, so nothing is dropped.)
+- `enter_session_()` resets `leftover_count_ = 0` and any prior count plan, so
+  a fresh ordinary `begin()` never serves a stale tail from a previous
+  session. Internal certification/rollover helpers save and restore both
+  pieces of stream state.
 - The name is `next_n`, not an overload of `next`, on purpose: a
   subclass's `next(Element*)` override would otherwise hide a base
   `next(Element*, int64_t)` overload (C++ name hiding), forcing a
   `using` in every subclass. A distinct name avoids that.
 
+## Mid-session certification (`OTExtension::check()`)
+
+Malicious OT-extension outputs are provisional until the backend's
+consistency check succeeds. A long-lived incremental consumer can establish a
+safe boundary without discarding its chunk tail:
+
+```cpp
+ote.begin();
+ote.next_n(cots.data(), cots.size());
+ote.check();                         // cots (and the buffered chunk suffix) certified
+reveal_or_commit(cots);
+
+ote.next_n(more.data(), more.size()); // first drains that certified suffix
+ote.check();
+reveal_or_commit(more);
+ote.end();
+```
+
+The contract is:
+
+- `check()` requires an active caller-owned session and leaves it active.
+- It completes every backend consistency check covering chunks generated
+  since `begin()` or the preceding successful `check()`. On the first call it
+  also completes a deferred CSW base-OT extraction check, even if no user chunk
+  was requested yet.
+- A sub-chunk `next_n()` request generated and folded one whole backend chunk.
+  The unused suffix is therefore covered by the same successful check and stays
+  buffered. It is served before any post-check chunk is generated.
+- Consuming only this already-certified suffix creates no new unchecked work;
+  another `check()` is wire-free. Tracking changes once per generated backend
+  chunk, never per returned COT or downstream gate.
+- `end()` immediately after `check()` (or after consuming only its certified
+  suffix) closes without an empty sacrificial exchange. Ferret restores the
+  empty continuation's buffer swap so a later ordinary `begin()` still advances
+  from the correct round base.
+- An ordinary caller-written `end(); begin();` remains a fresh session and
+  discards an old `next_n()` tail. Tail retention is specific to `check()`.
+
+The default implementation finishes the concrete backend's current logical
+session and starts its next logical session internally. IKNP keeps its row PRG
+streams advancing and resets only the malicious fold. SoftSpoken likewise
+resets its fold and selects a fresh per-session key. Ferret finishes the
+current refill/check and swaps to the certified next-round base. Because these
+are the same virtual `end()`/`begin()` bodies used by the ordinary lifecycle,
+the security check itself is not duplicated in a generic wrapper.
+
+`SilentFerret` is the deliberate exception in timing, not in security:
+`begin()`/`begin(n_ots)` authenticates the whole prepared range before any
+output is visible. Its consume paths never mark a chunk provisional, so the
+inherited `check()` is an active-session-checked no-op throughout that prepared
+range.
+
 ## The polymorphic entry on OTExtension
 
 `StreamingExtension` is single-role: each instance, given its
 `party`, runs one side of the protocol. `OTExtension` inherits the
-streaming lifecycle (`begin/next/end/run/chunk_size`) verbatim and
-additionally implements `RandomCOT::rcot` — the polymorphic one-shot
+streaming lifecycle (`begin/next/end/run/chunk_size`), adds the
+mid-session `check()` boundary described above, and implements
+`RandomCOT::rcot` — the polymorphic one-shot
 entry that callers holding a `RandomCOT*` (chosen-correlation
 auto-wrapper inside `COT::send_cot/recv_cot`, generic-OT consumers in
 emp-zk / emp-sh2pc) use without knowing the instance's party:
 
 ```cpp
 //   begin/next/end / run / chunk_size  (StreamingExtension contract — inherited)
+//   check                              (OTExtension certification boundary)
 //   rcot(data, num)                    (RandomCOT abstract; final on OTExtension)
 ```
 
 `OTExtension::rcot` is a one-line wrapper over the inherited `run()`
 — same leftover-buffer service, just exposed under the
 polymorphic-RandomCOT name. Streaming-savvy callers use
-`begin/next/end` (or `run` for one-shot) directly; the role is
+`begin/next/check/end` (or `run` for one-shot) directly; the role is
 implicit in `party` and no party-assertion is needed.
 
 The dispatch tree inside `OTExtension`:

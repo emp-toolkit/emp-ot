@@ -93,6 +93,44 @@ private:
     uint64_t counter_ = 0;
 };
 
+class SizedFakeStreaming final : public StreamingExtension<uint64_t> {
+public:
+    SizedFakeStreaming() : StreamingExtension<uint64_t>(ALICE, false) {}
+
+    int64_t chunk_size() const override { return 4; }
+    void begin_counted_for_test(int64_t n) { begin_counted_(n); }
+    void begin() override { enter_session_(); }
+    void next(uint64_t *out) override {
+        expect_in_session_();
+        ++full_calls;
+        fill_(out, 4);
+    }
+    void end() override {
+        expect_in_session_();
+        exit_session_();
+    }
+
+    int64_t full_calls = 0;
+    int64_t sized_calls = 0;
+    int64_t last_sized_request = 0;
+
+protected:
+    int64_t next_sized_tail_(uint64_t *out, int64_t requested) override {
+        expect_in_session_();
+        ++sized_calls;
+        last_sized_request = requested;
+        fill_(out, requested);
+        return requested;
+    }
+
+private:
+    void fill_(uint64_t *out, int64_t n) {
+        for (int64_t i = 0; i < n; ++i) out[i] = counter_++;
+    }
+
+    uint64_t counter_ = 0;
+};
+
 class DummyOT final : public OT {
 public:
     explicit DummyOT(bool secure) : secure_(secure) {}
@@ -109,6 +147,7 @@ public:
     DummyExtension(int party, bool malicious, std::unique_ptr<OT> base)
         : OTExtension(party, nullptr, malicious, std::move(base)) {}
 
+    using OTExtension::begin;
     int64_t chunk_size() const override { return 1; }
     void begin() override { enter_session_(); }
     void next(block *out) override {
@@ -162,10 +201,31 @@ bool check_zero_count_semantics() {
     return next == 4;
 }
 
+bool check_counted_begin_semantics() {
+    SizedFakeStreaming stream;
+    uint64_t counted[3] = {};
+    stream.begin_counted_for_test(3);
+    stream.next_n(counted, 1);
+    stream.next_n(counted + 1, 2);
+    stream.end();
+    if (counted[0] != 0 || counted[1] != 1 || counted[2] != 2 ||
+        stream.sized_calls != 1 || stream.last_sized_request != 3 ||
+        stream.full_calls != 0)
+        return false;
+
+    // The ordinary overload retains the historical full-chunk refill.
+    uint64_t ordinary = 0;
+    stream.begin();
+    stream.next_n(&ordinary, 1);
+    stream.end();
+    return ordinary == 3 && stream.sized_calls == 1 &&
+           stream.full_calls == 1;
+}
+
 }  // namespace
 
 int main() {
-    bool ok = check_zero_count_semantics();
+    bool ok = check_zero_count_semantics() && check_counted_begin_semantics();
     uint64_t word = 0;
 
     constexpr PrimalLPNParameter tiny_svole_param(2, 0, 8);
@@ -212,6 +272,16 @@ int main() {
         stream.begin();
         stream.begin();
     });
+    ok &= expect_rejected("counted begin negative", "negative element count", [] {
+        DummyExtension extension(
+            ALICE, false, std::make_unique<DummyOT>(false));
+        extension.begin(-1);
+    });
+    ok &= expect_rejected("counted begin byte overflow", "byte count overflow", [] {
+        DummyExtension extension(
+            ALICE, false, std::make_unique<DummyOT>(false));
+        extension.begin(std::numeric_limits<int64_t>::max());
+    });
     ok &= expect_rejected("end before begin", "no active session", [] {
         FakeStreaming stream(4);
         stream.end();
@@ -224,6 +294,11 @@ int main() {
         FakeStreaming stream(4);
         stream.next_n(&word, 1);
     });
+    ok &= expect_rejected("check before begin", "no active session", [] {
+        DummyExtension extension(
+            ALICE, false, std::make_unique<DummyOT>(false));
+        extension.check();
+    });
     ok &= expect_rejected("next_n negative", "negative element count", [&] {
         FakeStreaming stream(4);
         stream.begin();
@@ -233,6 +308,13 @@ int main() {
         FakeStreaming stream(4);
         stream.begin();
         stream.next_n(nullptr, 1);
+    });
+    ok &= expect_rejected("next_n exceeds declared count", "exceeds declared", [&] {
+        DummyExtension extension(
+            ALICE, false, std::make_unique<DummyOT>(false));
+        block out[2];
+        extension.begin(1);
+        extension.next_n(out, 2);
     });
     ok &= expect_rejected("run during session", "active streaming session", [&] {
         FakeStreaming stream(4);

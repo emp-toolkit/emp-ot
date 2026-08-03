@@ -24,7 +24,7 @@ emp-ot/
 │   ├── csw.h                    CSW        (CSW "blazing-fast")
 │   ├── pvw.h                    PVW        (Peikert-Vaikuntanathan-Waters)
 │   ├── bmm.h                    BMM        (Badrinarayanan-Masny-Mukherjee; PQ, custom over ML-KEM-512 internals)
-│   └── mlkem/                   vendored Kyber / ML-KEM-512 arithmetic + bmm.cpp impl
+│   └── mlkem/                   vendored Kyber / ML-KEM-512 arithmetic + lattice OT impls
 │
 ├── ot_extension/          RandomCOT extensions
 │   ├── ot_extension.h           OTExtension base
@@ -67,8 +67,8 @@ emp-ot/
    StreamingExtension<block>               : public StreamingExtension<AuthValue>
    (OTExtension)
               │
-   ┌──────────┼──────────┬─────────────────┐
-   │          │          │                 │
+   ┌──────────┼──────────┐
+   │          │          │
   IKNP    SoftSpoken  Ferret
                 <k>
 ```
@@ -90,18 +90,20 @@ OTExtension : public RandomCOT, public StreamingExtension<block>
 │   ├── set_delta(bool*)        (override Δ pre-bootstrap)
 │   ├── set_choice_seed(block)  (override choice PRG seed)
 │   ├── chunk_size()            (inherited; subclass overrides)
-│   ├── begin/next/end          (inherited; subclass overrides)
+│   ├── begin/next/end          (inherited; subclass overrides no-arg begin)
+│   ├── begin(total)            (counted next_n plan; OT-only virtual default)
+│   ├── check()                 (mid-session certification; retains tail)
 │   └── rcot(data, num)         (RandomCOT abstract; final override —
 │                                forwards to inherited run())
 │
-└── three subclasses (each overrides begin / next / end directly —
+└── four subclasses (each overrides begin / next / end directly —
     no NVI hooks; tripwire enforced via the inherited
     enter_session_ / exit_session_ / expect_in_session_ helpers)
     ├── IKNP                    (inline party-dispatch to
     │                            send/recv_{begin,next,end}_)
     ├── SoftSpoken<k, kChunkBlocks>  (same shape as IKNP)
-    └── Ferret                  (unified body per stage; party-dispatch
-                                 inside the per-tree helpers)
+    ├── Ferret                  (unified body per stage; party-dispatch
+    │                            inside the per-tree helpers)
         └── SilentFerret        (public subclass of Ferret; prepays
                                  each round's corrections in begin())
 ```

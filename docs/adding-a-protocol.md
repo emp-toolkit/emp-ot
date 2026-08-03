@@ -220,10 +220,18 @@ layer. The choice is how the override is structured:
 In both shapes the override must:
 1. Call `enter_session_()` at the top of `begin()`.
 2. Call `expect_in_session_()` at the top of `next()` and `end()`.
-3. Call `exit_session_()` at the bottom of `end()`.
+3. Call `mark_chunk_unchecked_()` after `next()` successfully produces its
+   whole backend chunk. This is one update per chunk, not per RCOT.
+4. Call `mark_chunks_checked_()` only after `end()` has successfully completed
+   its extension and deferred base-OT checks.
+5. Call `exit_session_()` at the bottom of `end()`.
 
 These protected helpers (inherited from `StreamingExtension`) keep
-the session tripwire honest without an NVI dispatcher layer.
+the session tripwire honest without an NVI dispatcher layer. The two mark
+helpers are inherited from `OTExtension`; its public `check()` uses them to
+avoid regenerating or rechecking an already-certified `next_n()` tail. Missing
+the `next()` mark is a security bug: `check()` would incorrectly treat new
+outputs as already certified.
 
 ### 2b. Boilerplate
 
@@ -246,6 +254,7 @@ public:
 
     int64_t chunk_size() const override { return /* per-next() batch */; }
 
+    using OTExtension::begin;  // retain the inherited counted overload
     void begin() override {
         enter_session_();
         if (is_ot_sender()) send_begin_();
@@ -255,11 +264,19 @@ public:
         expect_in_session_();
         if (is_ot_sender()) send_next_(out);
         else                recv_next_(out);
+        mark_chunk_unchecked_();
     }
     void end() override {
         expect_in_session_();
+        // Optional for a backend whose empty begin-state needs no teardown:
+        // if (can_close_checked_continuation_()) {
+        //     mark_checked_continuation_closed_();
+        //     exit_session_();
+        //     return;
+        // }
         if (is_ot_sender()) send_end_();
         else                recv_end_();
+        mark_chunks_checked_();
         exit_session_();
     }
 
@@ -274,6 +291,20 @@ private:
 
 } // namespace emp
 ```
+
+`OTExtension::check()` supplies a correct default by invoking these virtual
+`end()`/`begin()` bodies while preserving `StreamingExtension`'s buffered
+cursor. A backend may use the optional idle-close branch above to avoid an
+empty final consistency exchange immediately after `check()`. If `begin()`
+mutates persistent round state, that branch must first undo only the empty
+begin transition; Ferret, for example, restores its carry-buffer swap so a
+later ordinary `begin()` sees the same certified next-round base. Do not use
+the shortcut unless that invariant is explicit.
+
+A backend that authenticates material before returning from `begin()` (the
+SilentFerret shape) intentionally does **not** call `mark_chunk_unchecked_()`
+from its wire-free consume paths. Its inherited `check()` is therefore a no-op
+for that already-certified prepared range.
 
 ### 2c. Lazy bootstrap
 

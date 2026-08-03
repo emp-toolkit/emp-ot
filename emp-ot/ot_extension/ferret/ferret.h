@@ -125,6 +125,7 @@ public:
 	// `chunk_size()` = 2^tree_depth RCOT outputs (one cGGM tree's
 	// leaves). next() includes the auto-rollover check (transparent
 	// end→begin when this round's user-visible budget is full).
+	using OTExtension::begin;
 	int64_t chunk_size() const override;         // = 2^tree_depth
 	void begin() override;
 	void next(block *out) override;

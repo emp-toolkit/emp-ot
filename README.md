@@ -24,7 +24,7 @@
 >   Security section below for scope and limitations).
 
 State-of-the-art OT implementations on top of [emp-tool](https://github.com/emp-toolkit/emp-tool):
-four base OTs (`CO`, `PVW`, `CSW`, `BMM`), IKNP and
+four ordinary base OTs (`CO`, `PVW`, `CSW`, `BMM`), IKNP and
 SoftSpoken OT extensions (semi-honest + malicious), the Ferret and
 SilentFerret silent COT extensions, and the `F2kVOLE` / `FpVOLE`
 subfield-VOLE generators built on top of Ferret. The chosen-input
@@ -39,7 +39,7 @@ Fiat-Shamir transcript defaults to SHA-256.
 - CMake ≥ 3.25 (emp-tool's floor; emp-ot alone configures with ≥ 3.21)
 - A C++20 compiler (GCC ≥ 11, Clang ≥ 14, AppleClang 14+)
 - [emp-tool](https://github.com/emp-toolkit/emp-tool) ≥ 1.0
-- OpenSSL ≥ 3.0. `BMM`'s ML-KEM SHAKE shim uses `EVP_DigestSqueeze` on
+- OpenSSL ≥ 3.0. The lattice OT ML-KEM SHAKE shim uses `EVP_DigestSqueeze` on
   ≥ 3.3 (one-shot squeeze) and falls back to a re-init / re-absorb
   loop on 3.0.x — same answers, slightly slower CRS expansion. No
   build-time configuration needed; the version is detected from
@@ -48,7 +48,7 @@ Fiat-Shamir transcript defaults to SHA-256.
 
 emp-ot builds a small static library (`emp-ot::emp-ot`) that compiles
 the IKNP, SoftSpoken, Ferret, and SilentFerret bodies plus the
-post-quantum `BMM` base OT (with its vendored ML-KEM/Kyber sources);
+`BMM` lattice base-OT body (with its vendored ML-KEM/Kyber sources);
 the header-only base OTs (`CO`, `PVW`, `CSW`) and the sVOLE layer are
 consumed inline.
 
@@ -234,13 +234,13 @@ full class layout.
 | `OT`                      | `send(m0, m1, n)` / `recv(mc, c, n)`              | chosen-input 1-out-of-2: sender supplies both messages, receiver picks one      |
 | `COT : OT`                | `send_cot(m0, n)` / `recv_cot(mc, c, n)`; free `send_rot`/`recv_rot` | chosen-correlation: sender's two messages always differ by a public `Delta` |
 | `RandomCOT : COT`         | `rcot(data, n)` (role implicit in instance party) | random correlation: no choice-bit input; receiver's choice ends up in `getLSB(data[i])`, and `Delta`'s LSB is forced to 1 so the correlation survives that one bit |
-| `OTExtension : RandomCOT` | `set_delta(const bool* delta_bool)` (sender-only Δ override), `chunk_size()`, `begin/next/end`, `next_n(data, n)`, `run(data, num)` | streaming RCOT (one fixed-size chunk per `next`); base-OT bootstrap fires lazily on the first `begin` |
+| `OTExtension : RandomCOT` | `set_delta(const bool* delta_bool)` (sender-only Δ override), `chunk_size()`, `begin([n_ots])/next/check/end`, `next_n(data, n)`, `run(data, num)` | streaming RCOT (one fixed-size chunk per `next`); counted `begin` bounds total demand and lets SoftSpoken shorten its terminal unit; `check` certifies a mid-session prefix without dropping the buffered tail; base-OT bootstrap fires lazily on the first `begin` |
 
 Concrete classes attach as follows:
 
 - **Base OTs** (`OT` only): `CO`, `PVW`, `CSW`, `BMM`.
 - **OT extensions** (`OTExtension`, so all of the above): `IKNP`,
-  `SoftSpoken<k>`, `Ferret`.
+  `SoftSpoken<k>`, and `Ferret`.
 
 The chosen-input / chosen-correlation / random conversions are
 implemented once in the base classes (one MITCCRH pass per OT for the
@@ -250,7 +250,7 @@ flavor.
 
 ### Base OTs
 
-The four base OTs (`CO`, `PVW`, `CSW`, `BMM`) implement
+The four ordinary base OTs (`CO`, `PVW`, `CSW`, `BMM`) implement
 only the `OT` interface — chosen-input 1-out-of-2.
 
 ```cpp
@@ -356,10 +356,32 @@ ote.end();
 ```
 
 In malicious mode, ordinary streaming output is provisional until
-`end()` completes the session's consistency checks. Do not expose it or
-make irreversible decisions from it before `end()` succeeds; the one-shot
+`check()` or `end()` completes the covering consistency checks. Do not expose it or
+make irreversible decisions from it before one of those calls succeeds; the one-shot
 `rcot()` path performs that check before returning, and `SilentFerret`
 front-loads its checks into `begin(n_ots)`.
+
+For a long-lived session that must reveal or commit intermediate results, use
+`check()` as the certification boundary:
+
+```cpp
+ote.begin();
+ote.next_n(batch.data(), batch.size());
+ote.check();                         // session stays open; buffered tail stays available
+reveal_or_commit(batch);
+ote.next_n(more.data(), more.size());
+ote.check();
+reveal_or_commit(more);
+ote.end();                           // no empty check exchange if nothing new was generated
+```
+
+The whole backend chunk underlying a partial `next_n()` draw is included in
+the check, so its unused suffix is already certified. It is drained after the
+boundary before the extension generates another chunk. Calling `check()` after
+consuming only that suffix is wire-free. The first check also completes CSW's
+deferred base-OT extraction check. `SilentFerret` inherits the API, but its
+consume-time call is intentionally a no-op because `begin()` already certified
+the complete prepared range.
 
 The one-shot `rcot(data, num)` is implemented in terms of this
 streaming API plus a small leftover buffer for tails that aren't a
@@ -515,8 +537,8 @@ chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.
 - The malicious-mode OT extensions realize **selective-abort**-style
   functionalities: an adversary may make selective guesses that the
   consistency checks catch with overwhelming probability, and streaming
-  outputs are **provisional until `end()`** completes those checks (see
-  the Streaming RCOT section).
+  outputs are **provisional until `check()` or `end()`** completes the
+  covering checks (see the Streaming RCOT section).
 - **`BMM` is a custom OT construction** using ML-KEM-512 (Kyber)
   parameters and arithmetic (vendored reference sources); it is not
   standardized FIPS-203 ML-KEM used as a black box, and "post-quantum"

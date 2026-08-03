@@ -20,12 +20,19 @@ void IKNP::next(block *out) {
 	expect_in_session_();
 	if (is_ot_sender()) send_next_(out);
 	else                recv_next_(out);
+	mark_chunk_unchecked_();
 }
 
 void IKNP::end() {
 	expect_in_session_();
+	if (can_close_checked_continuation_()) {
+		mark_checked_continuation_closed_();
+		exit_session_();
+		return;
+	}
 	if (is_ot_sender()) send_end_();
 	else                recv_end_();
+	mark_chunks_checked_();
 	exit_session_();
 }
 
