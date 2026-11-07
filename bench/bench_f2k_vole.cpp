@@ -15,9 +15,9 @@ using namespace std;
 
 int party, port;
 
-// Release-mode keeps the default (b13) for stress coverage of the largest
+// Release-mode keeps the default (b12) for stress coverage at the default
 // parameter point.
-static constexpr auto kSvoleParam   = tuning::ferret_b13;
+static constexpr auto kSvoleParam   = tuning::ferret_b12;
 static constexpr int  kOneshotIters = 8;
 
 // Streaming-path timing: begin -> many next -> end.

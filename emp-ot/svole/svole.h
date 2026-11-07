@@ -91,7 +91,7 @@ public:
   std::unique_ptr<Lpn<AuthValue, 10>>                  lpn_;
 
   Svole(int party, IOChannel *io, bool malicious = true,
-        PrimalLPNParameter param = tuning::ferret_b13)
+        PrimalLPNParameter param = tuning::ferret_b12)
       : StreamingExtension<AuthValue>(party, malicious),
         param(param), io_(io) {
     validate_primal_lpn_parameter(param);

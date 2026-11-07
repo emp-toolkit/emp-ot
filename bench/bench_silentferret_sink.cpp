@@ -24,11 +24,11 @@ struct Config {
 };
 
 Config parse_config(const char *arg) {
+	if (std::strcmp(arg, "b9") == 0)  return {"b9",  tuning::ferret_b9};
 	if (std::strcmp(arg, "b10") == 0) return {"b10", tuning::ferret_b10};
-	if (std::strcmp(arg, "b11") == 0) return {"b11", tuning::ferret_b11};
-	if (std::strcmp(arg, "b13") == 0) return {"b13", tuning::ferret_b13};
-	expecting(false, "bench_silentferret_sink: parameter must be b10, b11, or b13");
-	return {"b13", tuning::ferret_b13};
+	if (std::strcmp(arg, "b12") == 0) return {"b12", tuning::ferret_b12};
+	expecting(false, "bench_silentferret_sink: parameter must be b9, b10, or b12");
+	return {"b12", tuning::ferret_b12};
 }
 
 int parse_positive(const char *arg, const char *message) {
@@ -121,12 +121,12 @@ double time_online(NetIO *io, F&& fn) {
 int main(int argc, char **argv) {
 	if (argc > 6) {
 		std::cerr << "usage: " << argv[0]
-		          << " <party> [b10|b11|b13] [threads:1|2] [warmups] [reps]"
+		          << " <party> [b9|b10|b12] [threads:1|2] [warmups] [reps]"
 		          << std::endl;
 		return 2;
 	}
 	const int party = parse_party(argv);
-	const Config config = parse_config(argc > 2 ? argv[2] : "b13");
+	const Config config = parse_config(argc > 2 ? argv[2] : "b12");
 	const int threads =
 	    argc > 3 ? parse_positive(argv[3], "threads must be 1 or 2") : 1;
 	expecting(threads == 1 || threads == 2,

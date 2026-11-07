@@ -193,7 +193,7 @@ static Candidate sfvole_candidate(bool is_default) {
 
 // ---------------------------------------------------------------------
 // Knobs 2+3, scored JOINTLY: cGGM expand tile x LPN batch M on a
-// Ferret-shaped composite — per "tree": build a depth-13 cGGM tree into
+// Ferret-shaped composite — per "tree": build a depth-12 cGGM tree into
 // an out slice, then LPN-fold that slice against the production 8 MiB
 // pre table, exactly the per-tree sequence of Ferret::process_one_tree_.
 // Isolated kernel sweeps mis-rank these two knobs on small shared
@@ -203,9 +203,9 @@ static Candidate sfvole_candidate(bool is_default) {
 // ---------------------------------------------------------------------
 template <int Tile, int M>
 static Candidate cggm_lpn_candidate(bool is_default) {
-	constexpr int d = 13;
+	constexpr int d = 12;
 	constexpr int64_t slice = int64_t{1} << d;    // one tree of leaves
-	constexpr int64_t kk = int64_t{1} << 19;      // b13: 8 MiB pre table
+	constexpr int64_t kk = int64_t{1} << 19;      // ferret_b12 (default): 8 MiB pre table
 	constexpr int64_t out_n = int64_t{1} << 20;   // 16 MiB rotating out
 	auto pre = make_shared<vector<AuthValueFerret>>(kk);
 	auto out = make_shared<vector<AuthValueFerret>>(out_n);

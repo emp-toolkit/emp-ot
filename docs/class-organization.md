@@ -126,7 +126,7 @@ Ferret normally derives its public LPN matrix from the transcript session id.
 several otherwise domain-separated Ferret instances to expose one identical
 receiver-choice pattern. Both roles set the same root before bootstrap; Ferret
 domain-separates it by the concrete LPN parameters and forwards it through a
-nested b10 bootstrap.
+nested `ferret_b9` bootstrap.
 
 ## Svole — one template, two carriers, two policies
 

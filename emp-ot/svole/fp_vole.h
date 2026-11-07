@@ -127,13 +127,13 @@ struct alignas(16) AuthValueFp {
   }
 
   // Bootstrap: COPE seed sVOLE → pre-stage MPFSS+LPN → carry_next_.
-  // Fixed inner PrimalLPNParameter (ferret_b10) for the pre stage,
+  // Fixed inner PrimalLPNParameter (ferret_b9) for the pre stage,
   // mirroring F2k's bootstrap structure. No tiered recursion —
-  // ferret_b10's n is comfortably > the main param's M for all
-  // b10..b13 main configurations.
+  // ferret_b9's n exceeds the main param's M for all b9..b13 main
+  // configurations.
   struct Bootstrap {
     static void run(Svole<AuthValueFp> &svole) {
-      constexpr PrimalLPNParameter pre_param = tuning::ferret_b10;
+      constexpr PrimalLPNParameter pre_param = tuning::ferret_b9;
       const int64_t M     = svole_M(svole.param);
       const int64_t n_pre = svole_n(pre_param);
 

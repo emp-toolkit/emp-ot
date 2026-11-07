@@ -129,16 +129,16 @@ struct AuthValueF2k {
     f->set_delta(bits);
   }
 
-  // Bootstrap: Galois packing, with optional tiered nesting if the
-  // main param's M would exhaust ferret_b10's amplification budget.
+  // Bootstrap: Galois packing, with tiered nesting when the main param's M
+  // exceeds ferret_bootstrap_nest_factor times ferret_b9's.
   struct Bootstrap {
     static void run(Svole<AuthValueF2k> &svole) {
       const int64_t M = svole_M(svole.param);
-      constexpr PrimalLPNParameter base_param = tuning::ferret_b10;
+      constexpr PrimalLPNParameter base_param = tuning::ferret_b9;
       const int64_t base_M = svole_M(base_param);
 
       if (M > tuning::ferret_bootstrap_nest_factor * base_M) {
-        // Nested: a smaller Svole (default ferret_b10) provides M seed
+        // Nested: a smaller Svole (ferret_b9) provides M seed
         // pairs. Inner's own bootstrap hits the base case (direct
         // Galois packing) since its M is below the nest threshold.
         Svole<AuthValueF2k> inner(svole.party, svole.io_,

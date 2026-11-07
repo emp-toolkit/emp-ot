@@ -180,7 +180,7 @@ private:
 extern template class SoftSpoken<2>;
 extern template class SoftSpoken<4>;
 extern template class SoftSpoken<8>;
-// Smaller-chunk variant for Ferret::bootstrap_base_cots_.
+// Bootstrap-sized chunk variant for Ferret::bootstrap_.
 extern template class SoftSpoken<8, emp::tuning::softspoken_ferret_bootstrap_chunk_blocks>;
 
 } // namespace emp

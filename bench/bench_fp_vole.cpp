@@ -22,8 +22,8 @@ using namespace std;
 
 int party, port;
 
-// Largest parameter point for stress / throughput coverage.
-static constexpr auto kSvoleParam   = tuning::ferret_b13;
+// Default parameter point for stress / throughput coverage.
+static constexpr auto kSvoleParam   = tuning::ferret_b12;
 static constexpr int  kOneshotIters = 8;
 
 void bench_streaming(NetIO *io, int svole_party) {

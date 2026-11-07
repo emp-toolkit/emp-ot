@@ -26,7 +26,7 @@ interop; one that touches LPN parameters breaks the security claim.
 ## Case study: the LPN gather tuning (added 0b61590, reverted 7efb923)
 
 The LPN fold does `d = 10` random 16-byte gathers per output into the `pre`
-table (ferret_b13: 2^19 blocks = 8 MiB). Two seemingly-safe LOCAL changes were
+table (ferret_b12: 2^19 blocks = 8 MiB). Two seemingly-safe LOCAL changes were
 swept on AMD Zen 5 (1 MiB private L2, 32 MiB L3 per CCX):
 
 - `lpn_batch_m` 32 → 64 (more independent accumulator chains in flight);
@@ -164,7 +164,7 @@ How it works:
   template parameter, so all candidate values are instantiated side by
   side in one binary and selected at runtime — one build, one run, no
   reconfigure loop. Each knob is measured at its PRODUCTION shape (chunk-
-  sized butterfly, depth-13 trees, the 8 MiB b13 LPN table), with the
+  sized butterfly, depth-12 trees, the 8 MiB `ferret_b12` LPN table), with the
   methodology above: candidates interleaved across 5 rounds, min-of-3
   windows per measurement, medians across rounds, and a variance gate —
   a candidate that does not beat the shipped default by more than the
@@ -176,12 +176,12 @@ How it works:
   on Zen 4 the isolated cggm sweep reported tile 64 as +12.8%, while
   exhaustive end-to-end measurement shows the shipped default tile is
   the true optimum there. The tuner therefore measures the (tile, M)
-  cross-product on a Ferret-shaped composite — build one depth-13 tree
+  cross-product on a Ferret-shaped composite — build one depth-12 tree
   into the out slice, then LPN-fold that slice against the table, per
   candidate pair — and emits the pair that wins the composite. The
-  composite is shaped like the default `ferret_b13` regime (depth-13
-  trees, 8 MiB table); exhaustive grids at the smaller b11/b12 regimes
-  showed no penalty resolvable above run noise. The compute-local knobs
+  composite is shaped like the default `ferret_b12` regime (depth-12
+  trees, 8 MiB table); exhaustive grids at the 2 and 4 MiB tables (depths
+  11 and 12) showed no penalty resolvable above run noise. The compute-local knobs
   (`sfvole_tile`, the pinned `cot_chosen_input_tile`) stay kernel-scored.
 - **The output.** `tuning_local.h` is gitignored and carries provenance
   (host CPU, date, the full verdict table) so a stale file is auditable.
@@ -247,31 +247,32 @@ Rapids + fast link: T16 at k=2 measured +12%).
   the prefetch half did NOT clear the variance gate there — the case
   study's ~+10% was the combined recipe at the older sweep shape, and
   should not be quoted as a make-tune expectation.
-- `ferret_b13/b12/b10`: SECURITY class. Do not touch for performance.
+- `ferret_b9`–`ferret_b13`: SECURITY class. Do not touch for performance;
+  how they were selected is in [`lpn-security.md`](lpn-security.md).
 
-## Measured performance analysis (2026-07 campaign)
+## Measured performance analysis (2026-11 campaign)
 
 Context for the README's observed numbers (two m8a.8xlarge, cluster
 placement group, Release builds using one final-source tuner result
 frozen across both hosts; raw outputs and the iperf3/ping captures are
-archived with the results). The frozen result selected cGGM tile 32 and
+archived with the results). The frozen result selected cGGM tile 64 and
 LPN batch 64.
 
 **What binds each configuration.**
 
-- `IKNP` and `SoftSpoken<2>` use 91–98% of the measured 9.50 Gbps
-  single-flow rate; semi-honest `SoftSpoken<4>` also reaches 91%.
+- `IKNP` and `SoftSpoken<2>` use 89–98% of the measured 9.54 Gbps
+  single-flow rate; semi-honest `SoftSpoken<4>` also reaches 92%.
   That rate is the AWS per-connection
   ceiling (~10 Gbps inside a cluster placement group, ~5 Gbps outside;
   ENA Express/SRD would lift it to ~25 Gbps but is unsupported on m8a).
-  The same pair carries 14.9 Gbps aggregate over ≥2 flows — the NIC's
+  A pair of these instances carries 14.9 Gbps aggregate over ≥2 flows — the NIC's
   15 Gbps baseline — which is what `clone_lane` exists to exploit.
   Their compute limits are only visible on loopback: `SoftSpoken<2>`
   semi runs ~2× faster there on the same silicon.
 - Malicious mode hashes every wire byte into the Fiat–Shamir transcript
   on both sides, in-line. For `IKNP` this hides entirely under the wire
   wait (semi ≈ malicious throughput). For `SoftSpoken<2>` it does not:
-  the malicious row sits at 91% of the link (vs semi's 96%) with
+  the malicious row sits at 89% of the link (vs semi's 96%) with
   essentially the same wire volume — the gap is transcript hashing on
   the critical path. SHA-256 runs 15–17.6 Gbps on these cores, so on
   links faster than that (multi-lane aggregate, ENA Express) the
@@ -281,21 +282,20 @@ LPN batch 64.
   wait.)
 - Malicious `SoftSpoken<4>`, both `SoftSpoken<8>` modes, `Ferret`, and
   `SilentFerret` are CPU-bound at these link rates. The published values
-  use nine-run medians: most rows were tightly clustered, while the
-  SoftSpoken<8> series contained isolated slow samples, so the former
-  blanket 1–2% reproducibility claim has been removed.
+  use nine-run medians: `IKNP` and semi-honest `SoftSpoken<2>` varied by under 1%
+  across the runs, semi-honest `SoftSpoken<4>` and malicious `SoftSpoken<2>` by
+  about 3%, and the CPU-bound rows by 4–10%, so no blanket reproducibility figure
+  is claimed.
 
 **Wire-format facts behind the bits/RCOT column.** At the common
-30,015,488-output length, b13 Ferret uses 0.278 bits/RCOT including the
-one-time bootstrap. SilentFerret sends the same correction stream. The
-semi-honest totals are identical; in malicious mode a two-round prepaid
-batch folds the two per-round checks into one, saving 48 bytes total
-(about 0.000013 bits/RCOT). `ferret_b11` measured 0.806 bits/RCOT and
-123.8 MOT/s on this setup; parameter choice must be agreed by both
-parties.
+33,251,328-output length (two `ferret_b12` rounds), Ferret uses 0.476
+bits/RCOT including the one-time bootstrap (0.388 in steady state).
+SilentFerret sends the same correction stream. The semi-honest totals are
+identical; in malicious mode a two-round prepaid batch folds the two
+per-round checks into one, saving 48 bytes total (about 0.000012
+bits/RCOT). Parameter choice must be agreed by both parties.
 
 This absolute-number campaign did not repeat a tuned-versus-default A/B,
 so it makes no claim about the tuner's isolated contribution. Any such
 A/B must freeze one source revision and compare both builds in the same
-interleaved session; older percentages are not carried forward across the
-current kernel and SilentFerret changes.
+interleaved session.

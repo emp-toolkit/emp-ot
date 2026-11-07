@@ -18,12 +18,13 @@
 // ===== Per-k chunk-size rationale =====
 //
 // kChunkBlocks (chunk_blocks_for<k>() in the header; values live in
-// tuning.h — currently 64 for k=2/4 and 128 for k=8, selected by
+// tuning.h — 64 for k=2/4 and 128 for k=8, selected by
 // per-arch sweeps; see tuning.h for the cache-pressure rationale).
 //
-// Ferret's bootstrap instantiates SoftSpoken<8, 580> so its
-// one-shot ~74k base-COT request fits in a single chunk instead of
-// overproducing the default 131,072-OT chunk and shipping ~107 KB of
+// Ferret's bootstrap instantiates SoftSpoken<8, kChunkBlocks> with
+// tuning::softspoken_ferret_bootstrap_chunk_blocks, sized so the smallest
+// set's one-shot base-COT request (ferret_b9.M) fits in a single chunk
+// instead of overshooting it by most of a default-size chunk and shipping
 // unused PPRF planes over the wire.
 //
 // ===== Streaming pipeline =====
@@ -733,7 +734,7 @@ void SoftSpoken<k, kChunkBlocks>::combine_recv_chunk(block* out, const block* u_
 template class SoftSpoken<2>;
 template class SoftSpoken<4>;
 template class SoftSpoken<8>;
-// Smaller-chunk variant for Ferret::bootstrap_base_cots_.
+// Bootstrap-sized chunk variant for Ferret::bootstrap_.
 template class SoftSpoken<8, emp::tuning::softspoken_ferret_bootstrap_chunk_blocks>;
 
 } // namespace emp

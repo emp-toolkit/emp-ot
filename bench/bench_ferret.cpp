@@ -1,5 +1,5 @@
 // Ferret RCOT throughput bench. Reports MOT/s and B/COT for each LPN
-// parameter set {b11, b12, b13} × {semi, mali}. Two-party via `run`.
+// parameter set {b9, b10, b11, b12, b13} × {semi, mali}. Two-party via `run`.
 //
 // Timing only: each row builds a Ferret instance, drives one rcot() call
 // through time_rcot, and prints throughput plus the per-COT wire bytes.
@@ -43,6 +43,10 @@ int main(int argc, char** argv) {
     auto io = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);
 
     cout << "# bench_ferret: length=" << length << endl;
+    bench_one(io.get(), party, length, /*malicious=*/false, "b9",  tuning::ferret_b9);
+    bench_one(io.get(), party, length, /*malicious=*/true,  "b9",  tuning::ferret_b9);
+    bench_one(io.get(), party, length, /*malicious=*/false, "b10", tuning::ferret_b10);
+    bench_one(io.get(), party, length, /*malicious=*/true,  "b10", tuning::ferret_b10);
     bench_one(io.get(), party, length, /*malicious=*/false, "b11", tuning::ferret_b11);
     bench_one(io.get(), party, length, /*malicious=*/true,  "b11", tuning::ferret_b11);
     bench_one(io.get(), party, length, /*malicious=*/false, "b12", tuning::ferret_b12);

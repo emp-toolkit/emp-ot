@@ -14,7 +14,7 @@
 namespace emp {
 
 // Default base OT for Ferret. Forwarded into the inner SoftSpoken<8>
-// bootstrap (or the inner ferret_b10 in the tiered-bootstrap path).
+// bootstrap (or the inner ferret_b9 in the tiered-bootstrap path).
 // Change here to swap; OTExtension's contract just needs any
 // malicious-secure (when malicious=true) OT.
 using FerretBaseOT = CSW;
@@ -110,10 +110,10 @@ public:
 
 	// `base_ot` is forwarded to the internal SoftSpoken<8> bootstrap.
 	// Default (nullptr) → the base allocates a CSW. The optional final
-	// parameter selects the Ferret LPN tuning.
+	// parameter selects the Ferret LPN parameter set (default ferret_b12).
 	Ferret(int party, IOChannel *io, bool malicious = true,
 			std::unique_ptr<OT> base_ot = nullptr,
-			PrimalLPNParameter param = tuning::ferret_b13);
+			PrimalLPNParameter param = tuning::ferret_b12);
 
 	~Ferret() override;
 
@@ -127,7 +127,7 @@ public:
 	// for outer protocols that deliberately need identical receiver-choice
 	// patterns across otherwise domain-separated Ferret instances. Ferret
 	// domain-separates the root by its LPN parameters, including for a nested
-	// b10 bootstrap.
+	// b9 bootstrap.
 	void set_lpn_matrix_seed(const block &seed);
 
 	// StreamingExtension contract. Each next() produces exactly

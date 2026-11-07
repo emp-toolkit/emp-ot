@@ -52,7 +52,7 @@ public:
 	// no pool). `param` selects the Ferret LPN tuning and `base_ot` overrides
 	// the bootstrap OT.
 	SilentFerret(int party, IOChannel *io, bool malicious = true,
-	             PrimalLPNParameter param = tuning::ferret_b13,
+	             PrimalLPNParameter param = tuning::ferret_b12,
 	             std::unique_ptr<OT> base_ot = nullptr,
 	             int n_threads = 1);
 	~SilentFerret() override;
@@ -65,8 +65,8 @@ public:
 	void begin() override;
 
 	// Prepaid begin: prepare enough rounds that up to `n_ots` COTs can be
-	// drawn with NO wire I/O. All correction traffic and all K malicious
-	// checks happen here. K = ceil(n_ots / cots_per_round()). After this,
+	// drawn with NO wire I/O. All correction traffic and the one batched
+	// malicious check happen here. K = ceil(n_ots / cots_per_round()). After this,
 	// produce up to prepared_capacity() COTs via next() / next_n() / run()
 	// (sequential, auto-rolls rounds wire-free), next_chunks_parallel()
 	// (cursor-ordered, auto-rolls, internally threaded), or produce_range()
