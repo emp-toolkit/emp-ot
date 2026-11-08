@@ -228,31 +228,54 @@ constexpr int softspoken_chunk_blocks() {
 // Compile-time cap for the chunk-blocks template parameter. Sizes
 // scratch buffers that get reused across chunks.
 inline constexpr int softspoken_chunk_blocks_max = 1024;
-// When SoftSpoken is nested inside Ferret's bootstrap, it runs
-// against a smaller M (~74k base COTs for b10) so the default
-// 1024-block chunk over-produces. 580 blocks = 74,240 OTs/chunk,
-// sized to fit b10.M in a single SoftSpoken chunk.
-inline constexpr int softspoken_ferret_bootstrap_chunk_blocks = 580;
+// When SoftSpoken is nested inside Ferret's bootstrap it serves the
+// smallest set's base-COT request (ferret_b9.M). The default chunk would
+// overshoot that request by most of a chunk and ship unused PPRF planes,
+// so the bootstrap uses its own chunk size, defined below after the
+// parameter sets (softspoken_ferret_bootstrap_chunk_blocks).
 
 // ===== Ferret =====
-// Bootstrap nesting threshold: if param.M > this * ferret_b10.M,
-// supply the round via a nested b10 instance (which itself uses
-// SoftSpoken on ~74k base COTs) instead of running SoftSpoken
-// directly against the larger param.M. Below the threshold, the
-// cost is small enough that one level is cheaper than two.
+// Bootstrap nesting threshold: if param.M > this * ferret_b9.M, supply
+// the round via a nested ferret_b9 instance (which itself runs
+// SoftSpoken against its own small M) instead of running SoftSpoken
+// directly against the larger param.M.
 inline constexpr int ferret_bootstrap_nest_factor = 2;
 
 // ===== Ferret LPN parameters =====
-// Selected to give ~128-bit security against the published
-// regular-LPN attacks (Gauss / SD-ISD / BJMM / hybrid / esser /
-// agb2) per the lpnestimator. The hybrid attack is the binding
-// constraint; it gets easier with larger N at fixed k, so each t
-// is the largest value the (logk, tree_depth) pair admits at the
-// 128-bit floor.
-inline constexpr PrimalLPNParameter ferret_b13 = PrimalLPNParameter(1900, 19, 13); // N = 15,564,800
-inline constexpr PrimalLPNParameter ferret_b12 = PrimalLPNParameter(1520, 18, 12); // N =  6,225,920
-inline constexpr PrimalLPNParameter ferret_b11 = PrimalLPNParameter(1170, 17, 11); // N =  2,396,160
-inline constexpr PrimalLPNParameter ferret_b10 = PrimalLPNParameter( 850, 16, 10); // N =    870,400
+// SECURITY (not tunable). PrimalLPNParameter(t, logk, tree_depth) fixes
+// a primal regular-LPN instance per round: dimension k = 2^logk (the LPN
+// table, 16·k bytes), N = t·2^tree_depth samples, noise weight t with one
+// noisy coordinate per block of 2^tree_depth. Every set keeps each attack
+// counted in docs/lpn-security.md — the lpnestimator.com routines, the XFL
+// and WXL algorithms of Furue–Aikawa (eprint 2026/2470), WXL over the sparse
+// rows of this 10-local matrix, and elimination on the samples inside a
+// peeled coordinate subset — at 141 bits or more, a 10% margin
+// over the 128-bit target, for the binary instance (Ferret / SilentFerret)
+// and for the large-field instance (FpVOLE) alike, so one set serves both.
+// The estimates do not cover F2kVOLE's LPN stage. The family keeps
+// logk − tree_depth = 7, and t is the largest multiple of 100 that holds
+// the floor in both fields. Correction traffic is tree_depth·128 /
+// 2^tree_depth bits per LPN output, slightly more per user COT because
+// the refill trees are not user-visible; t mainly sets the round size. The
+// family stops at the 16 MiB table: a 32 MiB table falls off the
+// 32 MiB-per-CCX L3 of Zen 5. Derivation and attack costs: README "LPN
+// security" and docs/lpn-security.md. Both parties must use the same set —
+// it shapes the transcript.
+//                                                                 table     N per round
+inline constexpr PrimalLPNParameter ferret_b13 = PrimalLPNParameter(4500, 20, 13); // 16 MiB  36,864,000
+inline constexpr PrimalLPNParameter ferret_b12 = PrimalLPNParameter(4200, 19, 12); //  8 MiB  17,203,200 (default)
+inline constexpr PrimalLPNParameter ferret_b11 = PrimalLPNParameter(3800, 18, 11); //  4 MiB   7,782,400
+inline constexpr PrimalLPNParameter ferret_b10 = PrimalLPNParameter(2800, 17, 10); //  2 MiB   2,867,200
+inline constexpr PrimalLPNParameter ferret_b9  = PrimalLPNParameter(2400, 16,  9); //  1 MiB   1,228,800
+
+// AGREEMENT (not tunable): SoftSpoken chunk for Ferret's direct
+// bootstrap, in 128-OT blocks — the smallest set's base-COT request
+// rounded up to whole blocks, so ferret_b9 bootstraps in one chunk with
+// under one block to spare (ferret_b10, the other set below the nesting
+// threshold, takes two).
+inline constexpr int softspoken_ferret_bootstrap_chunk_blocks =
+    static_cast<int>((ferret_b9.M + 127) / 128);
+static_assert(softspoken_ferret_bootstrap_chunk_blocks <= softspoken_chunk_blocks_max);
 
 // ===== LPN encoder (LpnF2) =====
 // SECURITY (not tunable): XOR positions per LPN output (the "d" of
@@ -263,7 +286,7 @@ inline constexpr int lpn_d = 10;
 // in-flight kk loads pipelined, but pushes kk farther from the
 // load-queue sweet spot. Output-identical across values ONLY when the
 // batch divides every production fold length (Ferret/sVOLE lengths are
-// 2^tree_depth, so powers of two <= 2^10 are safe; the candidate set
+// 2^tree_depth, so powers of two <= 2^9 are safe; the candidate set
 // {16, 32, 64} also keeps M*d divisible by 4, i.e. no per-batch
 // randomness waste). test_tuning_invariance enforces both properties.
 #ifndef EMP_TUNE_LPN_BATCH_M

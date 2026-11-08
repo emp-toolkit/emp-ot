@@ -97,7 +97,7 @@ static void run_row(CCRH& ccrh, block* raw_in, block* raw_out,
 }
 
 int main() {
-    // Depths probed: ferret production is d=13; smaller depths cover
+    // Depths probed: ferret production is d=9..13 (default 12); smaller depths cover
     // softspoken (k ∈ {2, 4, 8}, but d ≤ 8 has too few leaves to dwarf
     // build/loop overhead — start at d=8) and a long-tail check at d=14.
     const int depths[] = {8, 10, 12, 13, 14};

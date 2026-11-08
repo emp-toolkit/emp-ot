@@ -43,8 +43,8 @@ void check_triple(uint64_t delta, const uint64_t *val, const uint64_t *mac,
 }
 
 // Small fixed parameter set so CI finishes quickly regardless of
-// NDEBUG. The largest-point stress coverage lives in bench_fp_vole.
-static constexpr auto kSvoleParam   = tuning::ferret_b11;
+// NDEBUG. The default-point stress coverage lives in bench_fp_vole.
+static constexpr auto kSvoleParam   = tuning::ferret_b9;
 static constexpr int  kOneshotIters = 2;
 
 // Streaming-path exercise: begin → many next → end.

@@ -1,6 +1,6 @@
 // SilentFerret RCOT throughput: all wire traffic at begin(), wire-free
 // next()/end(). Reports one-shot rcot() throughput (MOTps) and the per-COT
-// wire bytes in each direction across the b11/b13 params in semi-honest and
+// wire bytes in each direction across the b10/b12 params in semi-honest and
 // malicious modes. Also reports an end-to-end line (bench_e2e) that times
 // begin() + parallel-extend + end() in a single window with BOTH begin_threads
 // and online_threads engaged, so the offline (base OTs + begin wire traffic)
@@ -67,7 +67,7 @@ static void bench_e2e(NetIO* io, int party, int64_t length, bool malicious,
 int main(int argc, char** argv) {
     int length_log, port, party;
 #ifdef NDEBUG
-    constexpr int default_length_log = 22;   // > b11 round budget → rollover
+    constexpr int default_length_log = 22;   // > b10 round budget → bench_e2e b10 rolls over
 #else
     constexpr int default_length_log = 14;
 #endif
@@ -92,15 +92,15 @@ int main(int argc, char** argv) {
          << " begin_threads=" << begin_threads
          << " online_threads=" << online_threads << endl;
 
-    bench_one(io.get(), party, length, /*malicious=*/false, "b11", tuning::ferret_b11, begin_threads);
-    bench_one(io.get(), party, length, /*malicious=*/true,  "b11", tuning::ferret_b11, begin_threads);
-    bench_one(io.get(), party, length, /*malicious=*/false, "b13", tuning::ferret_b13, begin_threads);
-    bench_one(io.get(), party, length, /*malicious=*/true,  "b13", tuning::ferret_b13, begin_threads);
+    bench_one(io.get(), party, length, /*malicious=*/false, "b10", tuning::ferret_b10, begin_threads);
+    bench_one(io.get(), party, length, /*malicious=*/true,  "b10", tuning::ferret_b10, begin_threads);
+    bench_one(io.get(), party, length, /*malicious=*/false, "b12", tuning::ferret_b12, begin_threads);
+    bench_one(io.get(), party, length, /*malicious=*/true,  "b12", tuning::ferret_b12, begin_threads);
 
-    bench_e2e(io.get(), party, length, /*malicious=*/false, "b11", tuning::ferret_b11, begin_threads, online_threads);
-    bench_e2e(io.get(), party, length, /*malicious=*/true,  "b11", tuning::ferret_b11, begin_threads, online_threads);
-    bench_e2e(io.get(), party, length, /*malicious=*/false, "b13", tuning::ferret_b13, begin_threads, online_threads);
-    bench_e2e(io.get(), party, length, /*malicious=*/true,  "b13", tuning::ferret_b13, begin_threads, online_threads);
+    bench_e2e(io.get(), party, length, /*malicious=*/false, "b10", tuning::ferret_b10, begin_threads, online_threads);
+    bench_e2e(io.get(), party, length, /*malicious=*/true,  "b10", tuning::ferret_b10, begin_threads, online_threads);
+    bench_e2e(io.get(), party, length, /*malicious=*/false, "b12", tuning::ferret_b12, begin_threads, online_threads);
+    bench_e2e(io.get(), party, length, /*malicious=*/true,  "b12", tuning::ferret_b12, begin_threads, online_threads);
 
     return 0;
 }

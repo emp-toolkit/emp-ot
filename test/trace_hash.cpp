@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
 
     // Lengths: base OTs are slow per OT (public-key crypto), so 128
     // is plenty. RCOT stress is large enough to trigger Ferret's
-    // per-round rollover (~1M RCOTs for b11) so the chi-fold path is
+    // per-round rollover (two b9 rounds, ~2.3M RCOTs) so the chi-fold path is
     // exercised; small enough that IKNP/SoftSpoken finish quickly.
     // Debug builds use ~16× smaller lengths so the suite finishes
     // in a reasonable CI window; wire-trace baseline in README.md is
@@ -142,8 +142,8 @@ int main(int argc, char** argv) {
     // (a refactor that breaks it shows the two rows diverging). One round is
     // SilentFerret::cots_per_round() == (t - refill_trees) << tree_depth.
     const int64_t ferret_cpr =
-        (tuning::ferret_b11.t - tuning::ferret_b11.refill_trees)
-        << tuning::ferret_b11.tree_depth;
+        (tuning::ferret_b9.t - tuning::ferret_b9.refill_trees)
+        << tuning::ferret_b9.tree_depth;
 #ifdef NDEBUG
     const int64_t ferret_len = ferret_cpr * 2;   // 2 rounds → exercises rollover
 #else
@@ -190,18 +190,18 @@ int main(int argc, char** argv) {
                         new SoftSpoken<8>(party, x, m));
                 }, mali);
         });
-        measure(party, anchor.get(), "Ferret(b11) " + mode, rcot_sf, [&](NetIO* io){
+        measure(party, anchor.get(), "Ferret(b9) " + mode, rcot_sf, [&](NetIO* io){
             run_rcot(io, party, ferret_len,
                 [&](IOChannel* x, bool m) {
                     return std::unique_ptr<Ferret>(
-                        new Ferret(party, x, m, nullptr, tuning::ferret_b11));
+                        new Ferret(party, x, m, nullptr, tuning::ferret_b9));
                 }, mali);
         });
-        measure(party, anchor.get(), "SilentFerret(b11) " + mode, rcot_sf, [&](NetIO* io){
+        measure(party, anchor.get(), "SilentFerret(b9) " + mode, rcot_sf, [&](NetIO* io){
             run_rcot(io, party, ferret_len,
                 [&](IOChannel* x, bool m) {
                     return std::unique_ptr<SilentFerret>(
-                        new SilentFerret(party, x, m, tuning::ferret_b11));
+                        new SilentFerret(party, x, m, tuning::ferret_b9));
                 }, mali);
         });
         measure(party, anchor.get(), "F2kVOLE " + mode, f2k_sf, [&](NetIO* io){

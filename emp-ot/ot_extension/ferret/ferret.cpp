@@ -150,13 +150,13 @@ void Ferret::end() {
 // first begin() then swaps next_ → curr_).
 //
 // Tiered source: when param.M is large (b11 / b12 / b13), nest a
-// ferret_b10 instance under SoftSpoken<8> so the expensive SoftSpoken
-// extend only runs against b10's small M (~74k base COTs) instead of
-// the full param.M, cutting bootstrap bytes by ~7×. One round of b10
-// produces t·2^d = 870k RCOTs which exceeds every other param's M, so
-// a single b10 invocation suffices. b10's inner bootstrap sees M=74k,
-// below the threshold, and drops straight to SoftSpoken — at most one
-// level of nesting.
+// ferret_b9 instance under SoftSpoken<8> so the expensive SoftSpoken
+// extend only runs against b9's small M (~0.1M base COTs) instead of
+// the full param.M, cutting bootstrap bytes severalfold. One round of
+// b9 produces (t - refill_trees)·2^9 ≈ 1.1M RCOTs, which exceeds every
+// other param's M, so a single b9 invocation suffices. b9's inner
+// bootstrap sees its own small M, below the threshold, and drops
+// straight to SoftSpoken — at most one level of nesting.
 //
 // FS transcript enabled before either path; in malicious mode it binds the
 // per-tree chi seeds pulled by MPCOT. Unless explicitly overridden, the public
@@ -186,16 +186,17 @@ void Ferret::bootstrap_() {
 		src->rcot(carry_next_.data(), param.M);
 	};
 
-	if (param.M > tuning::ferret_bootstrap_nest_factor * tuning::ferret_b10.M) {
-		Ferret b10(party, io, /*malicious=*/malicious,
-		           std::move(base_ot), tuning::ferret_b10);
+	if (param.M > tuning::ferret_bootstrap_nest_factor * tuning::ferret_b9.M) {
+		Ferret b9(party, io, /*malicious=*/malicious,
+		          std::move(base_ot), tuning::ferret_b9);
 		if (lpn_matrix_seed_overridden_)
-			b10.set_lpn_matrix_seed(lpn_matrix_seed_root_);
-		pump(&b10);
+			b9.set_lpn_matrix_seed(lpn_matrix_seed_root_);
+		pump(&b9);
 	} else {
-		// kChunkBlocks sized so b10.M (~74k) fits in a single
-		// SoftSpoken chunk — default 1024-block chunk would
-		// overproduce ~131k OTs and ship unused overhead on the wire.
+		// kChunkBlocks sized so b9.M fits in a single SoftSpoken chunk
+		// (b10, the other direct-bootstrap set, takes two) — the default
+		// chunk would overshoot b9.M by most of a chunk and ship unused
+		// PPRF planes on the wire.
 		SoftSpoken<8, tuning::softspoken_ferret_bootstrap_chunk_blocks>
 		    ssp(party, io, /*malicious=*/malicious, std::move(base_ot));
 		pump(&ssp);

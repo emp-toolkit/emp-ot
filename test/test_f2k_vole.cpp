@@ -37,7 +37,7 @@ void check_triple(const block delta,
 
 // CI uses a smaller Ferret parameter set and few iterations so the suite
 // finishes fast regardless of build mode.
-static constexpr auto kSvoleParam   = tuning::ferret_b11;
+static constexpr auto kSvoleParam   = tuning::ferret_b9;
 static constexpr int  kOneshotIters = 2;
 
 // Differential check for the carrier's strided chi·mac fold. The reference

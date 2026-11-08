@@ -5,8 +5,9 @@
 // Each row drives a begin → next loop into a reusable chunk_size()-sized
 // scratch buffer and discards the generated blocks. This keeps memory flat
 // regardless of how many OTs the row runs. The requested length defaults to
-// 2^25, then snaps to a whole number of b13 rounds (30,015,488 OTs at the
-// Release default) so Ferret and SilentFerret cover the same round geometry
+// 2^25, then snaps to a whole number of rounds of the default set (two
+// ferret_b12 rounds, 33,251,328 OTs, at the Release default) so Ferret and
+// SilentFerret cover the same round geometry
 // and ship the same correction traffic. SilentFerret is the one
 // exception to pure streaming: it prepays every round in begin(eff_len) (all
 // correction traffic up front) and then draws wire-free -- its defining mode.
@@ -81,16 +82,16 @@ int main(int argc, char** argv) {
 #else
     constexpr int default_length_log = 12;
 #endif
-    constexpr auto ferret_param = tuning::ferret_b13;
-    constexpr const char *ferret_param_name = "b13";
+    constexpr auto ferret_param = tuning::ferret_b12;
+    constexpr const char *ferret_param_name = "b12";
     if (argc <= 2) length = int64_t{1} << default_length_log;
     else           length = int64_t{1} << atoi(argv[2]);
 
     // SilentFerret prepays complete rounds in begin(length), whereas Ferret
     // streams one tree at a time. Use one shared whole-round length for every
     // row so the two implementations have identical output/correction
-    // geometry. b13 is divisible by every current chunk size, so all rows
-    // have equal n.
+    // geometry; the other rows round it down to their own chunk size (less
+    // than one chunk apart).
     length = snap_to_ferret_rounds(length, ferret_param);
 
     party = parse_party(argv);

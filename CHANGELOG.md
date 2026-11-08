@@ -3,6 +3,28 @@
 Notable changes to emp-ot. Versions are the git tags. CMake package
 metadata is numeric (see the README's version guidance).
 
+## Unreleased
+
+### Security
+
+- Ferret LPN parameter sets `ferret_b9`–`ferret_b13` (default `ferret_b12`),
+  selected so that every counted attack costs at least 2¹⁴¹, a 10% margin, for the
+  binary instance and for the large-field instance: the lpnestimator.com routines,
+  the XFL and WXL algorithms of Furue–Aikawa (eprint 2026/2470), and WXL over the
+  sparse rows of the 10-local matrix, and elimination on the samples inside a greedily
+  peeled coordinate subset (`docs/lpn-security.md` §3). Tables of 1–16 MiB
+  (`ferret_b10`–`ferret_b13` now denote twice the table they did in
+  `v1.0.0-alpha.1`; `ferret_b9` is new), one tree level shallower at every table size
+  (`logk − tree_depth = 7`), about 1.8× the correction traffic per COT at the same
+  table. The `v1.0.0-alpha.1` sets `ferret_b10`–`ferret_b13` (128.1–128.6 bits under
+  the estimator, 111.3–120.6 under sparse WXL) are removed. The sets shape the
+  transcript: both parties must run the same release; `test/trace_hash.baseline` is
+  regenerated. The Ferret bootstrap and the sVOLE pre-stage nest through `ferret_b9`,
+  and the bootstrap SoftSpoken chunk follows `ferret_b9.M`. The README gains an *LPN
+  security* section; the assumption, the sets and how they were chosen are in
+  `docs/lpn-security.md`, and `tools/lpn_security.py` reproduces the Furue–Aikawa,
+  sparse-WXL and restricted-ISD costs for any `(N, k, t)`. The estimates do not cover `F2kVOLE`'s LPN stage.
+
 ## v1.0.0-alpha.1
 
 First tagged alpha of the 1.0 development line, pairing with emp-tool

@@ -20,7 +20,14 @@ function(add_test_case_with_run name)
              WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
     # The harness times out at 120 seconds by default; leave enough time for
     # it to terminate and reap both party process groups before CTest intervenes.
-    set_tests_properties(${name} PROPERTIES TIMEOUT 130)
+    # Unoptimized and instrumented builds get longer: one round of the smallest
+    # LPN set is 1.2M outputs, at a small fraction of Release speed.
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set_tests_properties(${name} PROPERTIES TIMEOUT 130)
+    else()
+        set_tests_properties(${name} PROPERTIES TIMEOUT 310
+                             ENVIRONMENT "EMP_RUN_TIMEOUT=300")
+    endif()
 endfunction()
 
 # Shell-level regression coverage for the two-party process supervisor itself.

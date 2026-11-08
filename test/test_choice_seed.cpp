@@ -1,6 +1,6 @@
 // Determinism check for set_choice_seed.
 //
-// For each RCOT backend (IKNP / SoftSpoken<8> / Ferret(b13)), runs the
+// For each RCOT backend (IKNP / SoftSpoken<8> / Ferret(b12)), runs the
 // protocol twice end-to-end. Receiver seeds choice_prg with the SAME
 // known block on both runs via set_choice_seed; everything else
 // (Δ on the sender, base-OT keys, internal PRGs) is freshly random.
@@ -99,10 +99,10 @@ int main(int argc, char** argv) {
         return std::make_unique<SoftSpoken<8>>(party, io.get(), /*malicious=*/true);
     });
 
-    check_one(io.get(), party, "Ferret(b13) semi", seed, [&]{
+    check_one(io.get(), party, "Ferret(b12) semi", seed, [&]{
         return std::make_unique<Ferret>(party, io.get(), /*malicious=*/false);
     });
-    check_one(io.get(), party, "Ferret(b13) mali", seed, [&]{
+    check_one(io.get(), party, "Ferret(b12) mali", seed, [&]{
         return std::make_unique<Ferret>(party, io.get(), /*malicious=*/true);
     });
 

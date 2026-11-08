@@ -391,18 +391,18 @@ int main(int argc, char** argv) {
     cout << "# test_silentferret: threads=" << n_threads << endl;
 
     // Every LPN size drives identical SilentFerret logic and differs only in
-    // scale (a b13 round is ~15M COTs). Release sweeps the shipped sizes;
+    // scale (a b12 round is ~17M COTs). Release sweeps a small and the default size;
     // Debug — unoptimized, two-party, bounded by the harness timeout on slow
     // runners — runs the single smallest size as a smoke test. Both parties
     // compile the same lists, so they stay in lockstep.
 #ifdef NDEBUG
-    const PrimalLPNParameter sweep_sizes[]   = {tuning::ferret_b11, tuning::ferret_b13};
-    const PrimalLPNParameter consume_sizes[] = {tuning::ferret_b10, tuning::ferret_b11};
-    const PrimalLPNParameter comm_sizes[]    = {tuning::ferret_b10, tuning::ferret_b11};
+    const PrimalLPNParameter sweep_sizes[]   = {tuning::ferret_b10, tuning::ferret_b12};
+    const PrimalLPNParameter consume_sizes[] = {tuning::ferret_b9, tuning::ferret_b10};
+    const PrimalLPNParameter comm_sizes[]    = {tuning::ferret_b9, tuning::ferret_b10};
 #else
-    const PrimalLPNParameter sweep_sizes[]   = {tuning::ferret_b10};
-    const PrimalLPNParameter consume_sizes[] = {tuning::ferret_b10};
-    const PrimalLPNParameter comm_sizes[]    = {tuning::ferret_b10};
+    const PrimalLPNParameter sweep_sizes[]   = {tuning::ferret_b9};
+    const PrimalLPNParameter consume_sizes[] = {tuning::ferret_b9};
+    const PrimalLPNParameter comm_sizes[]    = {tuning::ferret_b9};
 #endif
 
     // Single-round produce paths: basic, threaded, and incremental next_n.

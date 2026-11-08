@@ -180,7 +180,7 @@ are Fiat–Shamir transcript digests under the build's FS hash; this
 table assumes the default `sha256` — a stack built with emp-tool's
 `EMP_FS_HASH=blake3` produces a different, internally consistent set.)
 
-`Ferret(b11)` and `SilentFerret(b11)` are run over a whole number of
+`Ferret(b9)` and `SilentFerret(b9)` are run over a whole number of
 SilentFerret rounds, where the two are **wire-identical by design**
 (SilentFerret only changes *when* the correction traffic is sent, not
 the bytes). Their rows must stay equal in both modes; a divergence
@@ -194,17 +194,17 @@ BMM                    send=8355635dc112e02f recv=cfefe9ecf658a4cf
 IKNP semi              send=ac441b93d05b591e recv=c861d33efcc306b2
 SoftSpoken<2> semi     send=c09818e2edddfcd6 recv=53f9e440f7df41f1
 SoftSpoken<8> semi     send=c09818e2edddfcd6 recv=6bda77ca7c0f9037
-Ferret(b11) semi       send=1f2d87e222bc509a recv=31f4d61323bea622
-SilentFerret(b11) semi send=1f2d87e222bc509a recv=31f4d61323bea622
-F2kVOLE semi           send=b3f5ce46fb1ab13d recv=0a7d75d69804b3ca
-FpVOLE semi            send=5bdf7f4cab96398a recv=30fa025221220ae8
+Ferret(b9) semi        send=61a8e9d7b5ef0120 recv=e1419dca8a5a1000
+SilentFerret(b9) semi  send=61a8e9d7b5ef0120 recv=e1419dca8a5a1000
+F2kVOLE semi           send=ee515d46efe3f373 recv=1ab0439f87e0906d
+FpVOLE semi            send=c31526fde2f1a1be recv=16fc21a2a8f476bc
 IKNP mali              send=ac441b93d05b591e recv=98125593b26d3b02
 SoftSpoken<2> mali     send=c09818e2edddfcd6 recv=a549bba02e32f2a1
 SoftSpoken<8> mali     send=c09818e2edddfcd6 recv=b8690d0258534cc0
-Ferret(b11) mali       send=8f7e58077aa1d35f recv=74b34e5043665231
-SilentFerret(b11) mali send=8f7e58077aa1d35f recv=74b34e5043665231
-F2kVOLE mali           send=639b25364bcf3e8d recv=881af7fc8a3ad07c
-FpVOLE mali            send=efdc33076a565743 recv=dc3bd67a79aeeeae
+Ferret(b9) mali        send=9f80a85e51acdd5f recv=3fd3e978860ca5af
+SilentFerret(b9) mali  send=9f80a85e51acdd5f recv=3fd3e978860ca5af
+F2kVOLE mali           send=d26a0ee238471b2a recv=7fe6b69267149cf3
+FpVOLE mali            send=beb0eb542fd0f24d recv=c3eeed507da2b6a4
 ```
 
 ## Usage
@@ -331,11 +331,12 @@ SoftSpoken<4>   ote2(party, io.get(), /*malicious=*/true,
                      std::make_unique<CSW>(io.get()));      // k=4
 Ferret          ote3(party, io.get(), /*malicious=*/true,
                      std::make_unique<CSW>(io.get()),
-                     tuning::ferret_b13);
+                     tuning::ferret_b12);
 ```
 
 Ferret's final LPN parameter is optional and defaults to
-`tuning::ferret_b13`. By default its public LPN matrix is derived from the
+`tuning::ferret_b12` (the sets and their security are documented in the
+*LPN security* section). By default its public LPN matrix is derived from the
 transcript session id. An outer protocol that needs identical receiver-choice
 patterns across several separately domain-separated Ferret instances may call
 `set_lpn_matrix_seed(root)` on both roles before bootstrap; the transcript ids
@@ -405,10 +406,11 @@ ote.end();                         // close it (e.g. in your dtor)
 This matters because `rcot(data, num)` opens and closes a session per
 call, so the per-round end-work (refill trees + the malicious chi-fold
 check) is paid every `chunk_size()` COTs. `next_n` keeps one session
-open, amortizing that over the whole stream. In a malicious b13 Ferret
-benchmark matching emp-zk's one-COT-per-AND-gate consumption shape,
-1,048,576 calls were 36.9× faster (slower-party median of 5) and used
-45.2× less wire this way than with `rcot(_, 1)` in a loop.
+open, amortizing that over the whole stream. In a malicious `Ferret`
+benchmark at the default set matching emp-zk's one-COT-per-AND-gate
+consumption shape (the two-box setup of the Performance section),
+1,048,576 one-COT calls were 72× faster (slower-party median of 5) and
+used 92× less wire this way than with `rcot(_, 1)` in a loop.
 `next_n` is mutually exclusive with `run()`/`rcot()` on the same
 instance (both touch the same leftover buffer).
 
@@ -467,8 +469,8 @@ corresponding `produce_range()` output and remain wire-free after `begin()`.
 Two AWS `m8a.8xlarge` (AMD EPYC 9R45, Zen 5) in a cluster placement
 group, us-east-1, Ubuntu 22.04, GCC 11.4, OpenSSL 3.0.2,
 `-march=native`. The two parties run on separate instances over the
-AWS private network; the link measured 9.50–9.53 Gbps single-flow /
-0.10–0.11 ms RTT (iperf3 and ping archived with the results). Release
+AWS private network; the link measured 9.46–9.54 Gbps single-flow /
+0.12–0.18 ms RTT (iperf3 and ping archived with the results). Release
 build with one final-source auto-tuner result frozen across both hosts;
 bench output buffers are pre-faulted.
 
@@ -480,52 +482,85 @@ send/recv bytes are deterministic).
 | Protocol     | Time   |  Send B |  Recv B | Security                                     |
 |--------------|-------:|--------:|--------:|----------------------------------------------|
 | `CO`       |  10 ms |   4,165 |   8,832 | semi-honest                                  |
-| `CSW`      | 9.4 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
+| `CSW`      | 9.5 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `PVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `BMM`      |  11 ms | 196,608 | 106,496 | malicious-secure, post-quantum (over ML-KEM-512 internals) |
+| `BMM`      |  14 ms | 196,608 | 106,496 | malicious-secure, post-quantum (over ML-KEM-512 internals) |
 
 ### OT extensions (RCOT throughput)
 
-Length 30,015,488 OTs (exactly two b13 rounds; ~30M), single-threaded
-(one thread per party; `SilentFerret`'s `begin()` expansion pool
-disabled). `MOT/s` is the median of 9 runs, the slower of the two
-parties per run; `bits/RCOT`
-(total wire bytes, both directions — deterministic) includes the
-one-time base-OT bootstrap amortised over the length. Observed: the
-`IKNP` and `SoftSpoken<2>` rows, plus semi-honest `SoftSpoken<4>`, ran
-at 91–98% of the measured link rate; the remaining rows were CPU-bound.
-Analysis of what binds each configuration is in
+Length 33,251,328 OTs (exactly two `ferret_b12` rounds; ~33M; `SoftSpoken<8>`
+rounds down to whole chunks, 33,243,136), single-threaded (one thread per
+party; `SilentFerret`'s `begin()` expansion pool disabled). `MOT/s` is the
+median of 9 runs, the slower of the two parties per run; `bits/RCOT` (total
+wire bytes, both directions — deterministic) includes the one-time base-OT
+bootstrap amortised over the length. Observed: the `IKNP` and `SoftSpoken<2>`
+rows, plus semi-honest `SoftSpoken<4>`, ran at 89–98% of the measured
+link rate; the remaining rows were CPU-bound. Analysis of what binds each configuration is in
 [`docs/performance-tuning.md`](docs/performance-tuning.md).
 
 | Protocol         | Mode      | bits/RCOT | MOT/s |
 |------------------|-----------|----------:|------:|
 | `IKNP`           | semi      |       127 |    73 |
 | `IKNP`           | malicious |       127 |    73 |
-| `SoftSpoken<2>`  | semi      |        63 |   144 |
-| `SoftSpoken<2>`  | malicious |        63 |   137 |
-| `SoftSpoken<4>`  | semi      |        31 |   280 |
-| `SoftSpoken<4>`  | malicious |        31 |   195 |
-| `SoftSpoken<8>`  | semi      |        15 |    75 |
-| `SoftSpoken<8>`  | malicious |        15 |    70 |
-| `Ferret`         | semi      |      0.28 |   124 |
-| `Ferret`         | malicious |      0.28 |   111 |
-| `SilentFerret`   | semi      |      0.28 |   116 |
-| `SilentFerret`   | malicious |      0.28 |   103 |
+| `SoftSpoken<2>`  | semi      |        63 |   145 |
+| `SoftSpoken<2>`  | malicious |        63 |   135 |
+| `SoftSpoken<4>`  | semi      |        31 |   282 |
+| `SoftSpoken<4>`  | malicious |        31 |   188 |
+| `SoftSpoken<8>`  | semi      |        15 |    73 |
+| `SoftSpoken<8>`  | malicious |        15 |    69 |
+| `Ferret`         | semi      |      0.48 |   112 |
+| `Ferret`         | malicious |      0.48 |   102 |
+| `SilentFerret`   | semi      |      0.48 |   114 |
+| `SilentFerret`   | malicious |      0.48 |   102 |
 
 `IKNP` and `SoftSpoken<k>` traffic is one-direction (127 and
 `128/k − 1` bits/RCOT). The `Ferret` and `SilentFerret` rows use the
-default `ferret_b13` parameter set and are measured over two complete
-rounds. Their correction traffic is identical, and their semi-honest
-total traffic matches exactly. Malicious SilentFerret batches the two
-per-round checks into one, saving 48 bytes total (about 0.000013
-bits/RCOT), so both still round to 0.28 bits/RCOT. The no-argument,
-one-round-at-a-time wire equivalence remains pinned by the trace table
-above. `ferret_b11` measured 124 MOT/s at 0.81 bits/RCOT on the same
-setup. The measured `SilentFerret` rows' `next()` calls are wire-free
-(all traffic is in `begin(n_ots)`).
+default `ferret_b12` parameter set and are measured over two complete
+rounds; the steady-state correction traffic is 0.388 bits/RCOT and the
+rest is the amortised bootstrap. Their correction traffic is identical,
+and their semi-honest total traffic matches exactly. Malicious
+SilentFerret batches the two per-round checks into one, saving 48 bytes
+total (about 0.000012 bits/RCOT), so both still round to 0.48 bits/RCOT.
+The no-argument, one-round-at-a-time wire equivalence remains pinned by
+the trace table above. The measured
+`SilentFerret` rows' `next()` calls are wire-free (all traffic is in
+`begin(n_ots)`).
 
 `COT`, `ROT`, `OT` flavors layer one MITCCRH pass (and, for
 chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.
+
+## LPN security
+
+`Ferret`, `SilentFerret`, `F2kVOLE` and `FpVOLE` rest on **primal LPN with regular noise
+over a 10-local code**. Each round's samples `u = x·A + e` are assumed indistinguishable
+from uniform, where the secret `x ∈ F^k` is uniform, each column of the public matrix `A`
+sums `d = 10` pseudorandom rows (Alekhnovich, FOCS 2003), and the noise `e` has exactly
+one nonzero entry per block of `2^tree_depth`. The field is F₂ for `Ferret` and
+`SilentFerret` and F_p with p = 2⁶¹ − 1 for `FpVOLE`. Malicious mode adds the static
+leakage of Ferret (CCS 2020, eprint 2020/924), one selective-failure query per round.
+
+`PrimalLPNParameter(t, logk, tree_depth)` fixes the instance: dimension `k = 2^logk`
+(the LPN table, `16·k` bytes) and `t` noise blocks of `2^tree_depth` samples each. The
+shipped sets are `tuning::ferret_b9` … `tuning::ferret_b13` in
+[`emp-ot/tuning.h`](emp-ot/tuning.h). Select one with the `param` constructor argument;
+both parties must use the same set, because it shapes the transcript.
+
+| Set | `(t, logk, tree_depth)` | table | bits/COT | lowest attack cost (bits) |
+|---|---|---:|---:|---:|
+| `ferret_b9` | (2400, 16, 9) | 1 MiB | 2.42 | 144.2 |
+| `ferret_b10` | (2800, 17, 10) | 2 MiB | 1.32 | 141.3 |
+| `ferret_b11` | (3800, 18, 11) | 4 MiB | 0.716 | 142.8 |
+| `ferret_b12` (default) | (4200, 19, 12) | 8 MiB | 0.388 | 141.2 |
+| `ferret_b13` | (4500, 20, 13) | 16 MiB | 0.209 | 141.4 |
+
+**Security level: 128 bits.** Every set keeps every attack we count at 141 bits or more, in
+F₂ and in the large field, a 10% margin; bits/COT is the steady-state correction traffic.
+The binding attack on every set is a sparse-row variant of WXL from this project, which is
+not peer-reviewed. These are time-only estimates against known attacks, not guarantees, and
+they do not cover `F2kVOLE`'s LPN stage. [`docs/lpn-security.md`](docs/lpn-security.md)
+has the details: the counted attacks, the papers used and not used, the full cost tables,
+what the estimates do not cover, and how to reproduce them and evaluate a custom set with
+[`tools/lpn_security.py`](tools/lpn_security.py) and the estimator.
 
 ## Security
 
@@ -538,6 +573,12 @@ chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.
   near 2⁻⁶¹ and the bootstrap's polynomial check near 2⁻⁴⁵ at the
   shipped size; the 61-bit Δ caps key-guessing near 2⁻⁶¹. `F2kVOLE`
   works over GF(2¹²⁸).
+- **LPN parameters.** `Ferret`, `SilentFerret`, `F2kVOLE` and `FpVOLE` rest on
+  primal LPN with regular noise. The shipped sets put every counted attack at
+  141 bits or more, a 10% margin over the 128-bit target, for the binary
+  instance and for the large-field instance of `FpVOLE` (*LPN security*
+  section). The binding attack is a sparse-row variant of WXL from this project,
+  which is not peer-reviewed. The estimates do not cover `F2kVOLE`'s LPN stage.
 - The malicious-mode OT extensions realize **selective-abort**-style
   functionalities: an adversary may make selective guesses that the
   consistency checks catch with overwhelming probability, and streaming

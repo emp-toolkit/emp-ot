@@ -157,16 +157,16 @@ int main(int argc, char** argv) {
         return std::unique_ptr<OTExtension>(new SoftSpoken<8>(
             party, io, /*malicious=*/true, std::make_unique<BMM>(io)));
     }, (SoftSpoken<8>::n - 1) * 2 * static_cast<int64_t>(sizeof(block)));
-    with_sibling(party, anchor.get(), "Ferret(b11)", [&](IOChannel* io) {
+    with_sibling(party, anchor.get(), "Ferret(b9)", [&](IOChannel* io) {
         return std::unique_ptr<OTExtension>(
             new Ferret(party, io, /*malicious=*/true, nullptr,
-                       tuning::ferret_b11));
+                       tuning::ferret_b9));
     });
-    with_sibling(party, anchor.get(), "SilentFerret(b11)",
+    with_sibling(party, anchor.get(), "SilentFerret(b9)",
                  [&](IOChannel* io) {
         return std::unique_ptr<OTExtension>(
             new SilentFerret(party, io, /*malicious=*/true,
-                             tuning::ferret_b11));
+                             tuning::ferret_b9));
     });
 
     return 0;
