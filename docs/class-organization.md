@@ -176,9 +176,11 @@ struct AuthValueXxx {
   static void accumulate_VW(F& acc, const F* chi,
                             const AuthValueXxx* leaves, int64_t n);
 
-  // LPN ops (for Lpn<AuthValueXxx, d>)
+  // LPN ops (for Lpn<AuthValueXxx, d>): unit matrix entries ...
   static constexpr int kLpnSafeAddsPerReduce;
   static void auth_add_into / auth_partial_reduce / auth_final_reduce;
+  // ... or a GF(2^128) coefficient per entry ({block val; block mac;} only)
+  static constexpr bool kLpnCoefficients = true;
 
   // cGGM leaf to element
   static AuthValueXxx auth_from_block(block leaf);
@@ -196,7 +198,7 @@ There are three concrete carriers:
 | Carrier            | Lives in                  | F        | val | mac | Traits |
 |--------------------|---------------------------|----------|-----|-----|--------|
 | `AuthValueFerret`  | `ot_extension/ferret/ferret.h` | `block`  | no  | yes | `kHasSecretSum=false`, `kClearLeafLSB=true`, `F2kPacked` |
-| `AuthValueF2k`     | `svole/f2k_vole.h`        | `block`  | yes | yes | `kHasSecretSum=true`,  `kClearLeafLSB=false`, `FTyped` |
+| `AuthValueF2k`     | `svole/f2k_vole.h`        | `block`  | yes | yes | `kHasSecretSum=true`,  `kClearLeafLSB=false`, `FTyped`, `kLpnCoefficients` |
 | `AuthValueFp`      | `svole/fp_vole.h`         | `uint64` | yes | yes | `kHasSecretSum=true`,  `kClearLeafLSB=false`, `FTyped` |
 
 Ferret's carrier is unusual: it's a single `block mac` field
@@ -250,10 +252,17 @@ using MPCOT_Receiver = MultiPointGadgetReceiver<AuthValueFerret>;
 that turns the sparse output of the multi-point gadget into a dense
 correlation. It's templated on the carrier; the carrier provides
 `auth_add_into / auth_partial_reduce / auth_final_reduce` and the
-`kLpnSafeAddsPerReduce` integer that controls reduce frequency. Its
-`compute_slice_sink` variant consumes the identical PRG range and produces
-the identical finalized values as `compute_slice`, but delivers them to a
-caller-supplied sink instead of storing them back to the initial buffer.
+`kLpnSafeAddsPerReduce` integer that controls reduce frequency. A carrier
+that declares `kLpnCoefficients` (`AuthValueF2k`) instead gets its own
+pseudorandom GF(2^128) element on every matrix entry: rows are folded four
+at a time with emp-tool's `vector_inn_prdt_sum_red_x4`, one reduction per
+output, and a party whose val half is zero (the Δ-holder) folds the mac half
+only (`fold_mac_only`). The coefficients come from the same PRG stream as
+the indices, laid out per group of four rows, so outputs do not depend on the
+tuned batch size. The `compute_slice_sink` variant (unit-entry carriers)
+consumes the identical PRG range and produces the identical finalized values
+as `compute_slice`, but delivers them to a caller-supplied sink instead of
+storing them back to the initial buffer.
 
 `namespace emp::cggm` (in `common/cggm.h`) is the Half-Tree cGGM tree
 build/eval. It's a free-function namespace, no class, no

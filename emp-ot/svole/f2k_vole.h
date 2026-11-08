@@ -3,7 +3,6 @@
 
 #include "emp-ot/common/mp_gadget.h"   // ChiFoldFlavor + MultiPointGadget AuthValue contract
 #include "emp-ot/svole/svole.h"
-#include <limits>
 
 // F_2 ⊂ F_{2^128} sVOLE: AuthValueF2k carrier + F2kVOLE alias over
 // the generic Svole<AuthValue>. Bootstrap is Galois packing of
@@ -96,17 +95,9 @@ struct AuthValueF2k {
   }
 
   // -------- LPN ops (Lpn<AuthValueF2k, 10>) --------
-  // F_2 is XOR-only — no carry concern, so partial/final reduce are
-  // no-ops and the LPN can fold all d adds in one batch.
-  static constexpr int kLpnSafeAddsPerReduce =
-      std::numeric_limits<int>::max();
-  static inline void auth_add_into(AuthValueF2k& acc,
-                                   const AuthValueF2k& x) {
-    acc.val = acc.val ^ x.val;
-    acc.mac = acc.mac ^ x.mac;
-  }
-  static inline void auth_partial_reduce(AuthValueF2k&) {}
-  static inline void auth_final_reduce  (AuthValueF2k&) {}
+  // Every LPN matrix entry is a pseudorandom GF(2^128) element rather than
+  // 0/1 (see lpn.h), applied to val and mac alike.
+  static constexpr bool kLpnCoefficients = true;
 
   // -------- Svole protocol hooks --------
 

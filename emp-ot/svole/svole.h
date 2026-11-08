@@ -110,6 +110,10 @@ public:
     }
     lpn_ = std::make_unique<Lpn<AuthValue, 10>>(param.k);
     lpn_->reseed(zero_block);
+    // A coefficient LPN folds val and mac separately, and the Δ-holder's val
+    // half is zero throughout, so it folds mac only.
+    if constexpr (lpn_has_coefficients<AuthValue>)
+      if (is_delta_holder()) lpn_->fold_mac_only();
 
     const int64_t carry_blocks =
         param.refill_trees * (int64_t{1} << param.tree_depth);

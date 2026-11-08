@@ -82,11 +82,13 @@ struct AuthValueXxx {
   static void accumulate_VW(F& VW_slot, const F* chi,
                             const AuthValueXxx* leaves, int64_t sz);
 
-  // (g) LPN ops (for Lpn<AuthValueXxx, 10>)
+  // (g) LPN ops (for Lpn<AuthValueXxx, 10>): unit matrix entries ...
   static constexpr int kLpnSafeAddsPerReduce;
   static void auth_add_into(AuthValueXxx&, const AuthValueXxx&);
   static void auth_partial_reduce(AuthValueXxx&);
   static void auth_final_reduce  (AuthValueXxx&);
+  // ... or, for a {block val; block mac;} carrier over GF(2^128):
+  static constexpr bool kLpnCoefficients = true;
 
   // (h) sVOLE protocol hooks  (only if used with Svole<>)
   static constexpr int delta_holder_party();
@@ -141,7 +143,10 @@ Notes:
   calls between `auth_partial_reduce`s. For F_2 (XOR-only, no carry)
   set it to `INT_MAX`. For Mersenne F_p (~8-add carry budget) it's 5,
   giving a 5+5 split with d=10. `auth_partial_reduce` / `auth_final_reduce`
-  are no-ops on XOR fields and real reductions on F_p.
+  are no-ops on XOR fields and real reductions on F_p. A GF(2^128) carrier
+  declares `kLpnCoefficients` instead and supplies none of these: `Lpn`
+  then multiplies every entry by its own pseudorandom field element (see
+  `common/lpn.h`), and `Svole<>` has the Δ-holder fold its mac half only.
 
 - **(h) sVOLE hooks.** Only needed if the carrier is plugged into
   `Svole<>`. RCOT-only carriers (like `AuthValueFerret`) skip this.

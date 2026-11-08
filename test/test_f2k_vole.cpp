@@ -14,6 +14,13 @@ void check_triple(const block delta,
                   int64_t size,
                   NetIO *io) {
   if (party == BOB) {
+    // BOB holds Δ, so its val half is zero (its LPN folds mac only).
+    for (int64_t i = 0; i < size; ++i) {
+      if (memcmp(&x[i], &zero_block, sizeof(block)) != 0) {
+        std::cout << "Δ-holder val nonzero at index: " << i << std::endl;
+        abort();
+      }
+    }
     io->send_data(&delta, sizeof(block));
     io->send_data(y, size * sizeof(block));
     io->flush();

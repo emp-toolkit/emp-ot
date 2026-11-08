@@ -196,14 +196,14 @@ SoftSpoken<2> semi     send=c09818e2edddfcd6 recv=53f9e440f7df41f1
 SoftSpoken<8> semi     send=c09818e2edddfcd6 recv=6bda77ca7c0f9037
 Ferret(b9) semi        send=61a8e9d7b5ef0120 recv=e1419dca8a5a1000
 SilentFerret(b9) semi  send=61a8e9d7b5ef0120 recv=e1419dca8a5a1000
-F2kVOLE semi           send=ee515d46efe3f373 recv=1ab0439f87e0906d
+F2kVOLE semi           send=ee515d46efe3f373 recv=fc5d74f7a1820fe0
 FpVOLE semi            send=c31526fde2f1a1be recv=16fc21a2a8f476bc
 IKNP mali              send=ac441b93d05b591e recv=98125593b26d3b02
 SoftSpoken<2> mali     send=c09818e2edddfcd6 recv=a549bba02e32f2a1
 SoftSpoken<8> mali     send=c09818e2edddfcd6 recv=b8690d0258534cc0
 Ferret(b9) mali        send=9f80a85e51acdd5f recv=3fd3e978860ca5af
 SilentFerret(b9) mali  send=9f80a85e51acdd5f recv=3fd3e978860ca5af
-F2kVOLE mali           send=d26a0ee238471b2a recv=7fe6b69267149cf3
+F2kVOLE mali           send=24edbdabab5f54de recv=5a4142543ee77a29
 FpVOLE mali            send=beb0eb542fd0f24d recv=c3eeed507da2b6a4
 ```
 
@@ -536,7 +536,8 @@ over a 10-local code**. Each round's samples `u = x·A + e` are assumed indistin
 from uniform, where the secret `x ∈ F^k` is uniform, each column of the public matrix `A`
 sums `d = 10` pseudorandom rows (Alekhnovich, FOCS 2003), and the noise `e` has exactly
 one nonzero entry per block of `2^tree_depth`. The field is F₂ for `Ferret` and
-`SilentFerret` and F_p with p = 2⁶¹ − 1 for `FpVOLE`. Malicious mode adds the static
+`SilentFerret` and F_p with p = 2⁶¹ − 1 for `FpVOLE`; `F2kVOLE` works over GF(2¹²⁸) and
+scales each of a column's rows by its own pseudorandom field element. Malicious mode adds the static
 leakage of Ferret (CCS 2020, eprint 2020/924), one selective-failure query per round.
 
 `PrimalLPNParameter(t, logk, tree_depth)` fixes the instance: dimension `k = 2^logk`
@@ -556,8 +557,8 @@ both parties must use the same set, because it shapes the transcript.
 **Security level: 128 bits.** Every set keeps every attack we count at 141 bits or more, in
 F₂ and in the large field, a 10% margin; bits/COT is the steady-state correction traffic.
 The binding attack on every set is a sparse-row variant of WXL from this project, which is
-not peer-reviewed. These are time-only estimates against known attacks, not guarantees, and
-they do not cover `F2kVOLE`'s LPN stage. [`docs/lpn-security.md`](docs/lpn-security.md)
+not peer-reviewed. These are time-only estimates against known attacks, not guarantees;
+the large-field figures cover `FpVOLE` and `F2kVOLE`. [`docs/lpn-security.md`](docs/lpn-security.md)
 has the details: the counted attacks, the papers used and not used, the full cost tables,
 what the estimates do not cover, and how to reproduce them and evaluate a custom set with
 [`tools/lpn_security.py`](tools/lpn_security.py) and the estimator.
@@ -576,9 +577,9 @@ what the estimates do not cover, and how to reproduce them and evaluate a custom
 - **LPN parameters.** `Ferret`, `SilentFerret`, `F2kVOLE` and `FpVOLE` rest on
   primal LPN with regular noise. The shipped sets put every counted attack at
   141 bits or more, a 10% margin over the 128-bit target, for the binary
-  instance and for the large-field instance of `FpVOLE` (*LPN security*
-  section). The binding attack is a sparse-row variant of WXL from this project,
-  which is not peer-reviewed. The estimates do not cover `F2kVOLE`'s LPN stage.
+  instance and for the large-field instances of `FpVOLE` and `F2kVOLE` (*LPN
+  security* section). The binding attack is a sparse-row variant of WXL from this
+  project, which is not peer-reviewed.
 - The malicious-mode OT extensions realize **selective-abort**-style
   functionalities: an adversary may make selective guesses that the
   consistency checks catch with overwhelming probability, and streaming

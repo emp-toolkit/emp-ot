@@ -8,7 +8,8 @@
 // Knobs covered:
 //   1. sfvole butterfly tile T          (T in {8, 16, 32})
 //   2. cGGM expand tile                 (Tile in {4, 8, 64}, both LSB modes)
-//   3. LPN batch M                      (M in {16, 32, 64})
+//   3. LPN batch M                      (M in {16, 32, 64}; unit-entry and
+//                                        GF(2^128)-coefficient carriers)
 //   4. COT chosen-input MITCCRH tile    (BatchSize in {4, 8, 16})
 //
 // Single-process (no IO / no `run`).
@@ -199,6 +200,55 @@ static void test_lpn_batches() {
 	check("lpn batch M {16,32,64} + sink: fold + PRG cursor", ok);
 }
 
+// The GF(2^128) coefficient carrier draws its randomness per group of four
+// rows, so every batch size gives the same outputs and PRG cursor, at the
+// production length and at a ragged one, in both fold modes (val + mac, and
+// the Δ-holder's mac only).
+static void test_lpn_batches_f2k() {
+	constexpr int logk = 17;
+	constexpr int64_t kk = int64_t{1} << logk;
+	PRG prg;
+	vector<AuthValueF2k> pre(kk);
+	prg.random_block(reinterpret_cast<block*>(pre.data()), 2 * kk);
+	block seed;
+	prg.random_block(&seed, 1);
+
+	bool ok = true;
+	for (int64_t n : {int64_t{8192}, int64_t{8192 + 6}}) {
+		vector<AuthValueF2k> base(n);
+		prg.random_block(reinterpret_cast<block*>(base.data()), 2 * n);
+		for (bool mac_only : {false, true}) {
+			Lpn<AuthValueF2k, 10> lpn((int)kk);
+			if (mac_only) lpn.fold_mac_only();
+			auto fold = [&](auto m_tag, vector<AuthValueF2k>& out, uint64_t* pos) {
+				out = base;
+				PRG p(&seed);
+				constexpr int M2 = decltype(m_tag)::value;
+				lpn.compute_slice_as<M2>(p, out.data(), pre.data(), n);
+				*pos = p.position();
+			};
+			vector<AuthValueF2k> ref, got;
+			uint64_t pos_ref, pos_got;
+			fold(integral_constant<int, 32>{}, ref, &pos_ref);
+			ok = ok && pos_ref == lpn.blocks_per_chunk(n);
+			fold(integral_constant<int, 16>{}, got, &pos_got);
+			ok = ok && blocks_equal(reinterpret_cast<block*>(ref.data()),
+			                        reinterpret_cast<block*>(got.data()), 2 * n)
+			        && pos_got == pos_ref;
+			fold(integral_constant<int, 64>{}, got, &pos_got);
+			ok = ok && blocks_equal(reinterpret_cast<block*>(ref.data()),
+			                        reinterpret_cast<block*>(got.data()), 2 * n)
+			        && pos_got == pos_ref;
+			// Beyond 64 rows a draw is capped at 16 groups.
+			fold(integral_constant<int, 512>{}, got, &pos_got);
+			ok = ok && blocks_equal(reinterpret_cast<block*>(ref.data()),
+			                        reinterpret_cast<block*>(got.data()), 2 * n)
+			        && pos_got == pos_ref;
+		}
+	}
+	check("lpn batch M {16,32,64,512}, f2k coefficients: fold + PRG cursor", ok);
+}
+
 // ---- 4. COT chosen-input MITCCRH tile -------------------------------
 // Reproduce COT::send's hashing pattern (H=2 pads per OT) and recv's
 // (H=1) at BatchSize {4, 8, 16} over the same gid stream; the resulting
@@ -248,6 +298,7 @@ int main() {
 	test_cggm_tiles<false>("softspoken flavor (keep LSB)");
 	test_cggm_tiles<true>("ferret flavor (clear LSB)");
 	test_lpn_batches();
+	test_lpn_batches_f2k();
 	test_mitccrh_tiles<2>("sender pattern (H=2)");
 	test_mitccrh_tiles<1>("receiver pattern (H=1)");
 	if (failures) {

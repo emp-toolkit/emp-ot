@@ -23,7 +23,18 @@ metadata is numeric (see the README's version guidance).
   and the bootstrap SoftSpoken chunk follows `ferret_b9.M`. The README gains an *LPN
   security* section; the assumption, the sets and how they were chosen are in
   `docs/lpn-security.md`, and `tools/lpn_security.py` reproduces the Furue–Aikawa,
-  sparse-WXL and restricted-ISD costs for any `(N, k, t)`. The estimates do not cover `F2kVOLE`'s LPN stage.
+  sparse-WXL and restricted-ISD costs for any `(N, k, t)`.
+- `F2kVOLE`: every entry of the LPN matrix is a pseudorandom GF(2¹²⁸) element
+  instead of 0/1, applied to the val and mac halves alike (`common/lpn.h`; a carrier
+  opts in with `kLpnCoefficients`). The coefficients come from the same public PRG
+  stream as the indices, so both parties derive them locally and nothing extra is
+  sent. Rows are folded four at a time with emp-tool's `vector_inn_prdt_sum_red_x4`,
+  and the Δ-holder folds its mac half only. `F2kVOLE` outputs and transcripts change:
+  both parties must upgrade together, and the `F2kVOLE` rows of
+  `test/trace_hash.baseline` are regenerated. `Ferret`, `SilentFerret` and `FpVOLE`
+  are unchanged. With the coefficients, `F2kVOLE`'s LPN stage is a large-field
+  instance, and the large-field figures above cover it. Needs an emp-tool with
+  `vector_inn_prdt_sum_red_x4`.
 
 ## v1.0.0-alpha.1
 

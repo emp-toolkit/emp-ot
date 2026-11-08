@@ -251,8 +251,8 @@ inline constexpr int ferret_bootstrap_nest_factor = 2;
 // rows of this 10-local matrix, and elimination on the samples inside a
 // peeled coordinate subset — at 141 bits or more, a 10% margin
 // over the 128-bit target, for the binary instance (Ferret / SilentFerret)
-// and for the large-field instance (FpVOLE) alike, so one set serves both.
-// The estimates do not cover F2kVOLE's LPN stage. The family keeps
+// and for the large-field instances (FpVOLE, and F2kVOLE with its per-entry
+// GF(2^128) coefficients) alike, so one set serves all. The family keeps
 // logk − tree_depth = 7, and t is the largest multiple of 100 that holds
 // the floor in both fields. Correction traffic is tree_depth·128 /
 // 2^tree_depth bits per LPN output, slightly more per user COT because

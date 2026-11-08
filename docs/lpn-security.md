@@ -23,7 +23,9 @@ are assumed indistinguishable from uniform given the public matrix `A`, where:
 - `x ∈ F^k` is a uniform secret.
 - `A` has `k` rows and `N` columns. Each column sums `d = 10` pseudorandom rows,
   drawn with replacement, so over F₂ its weight is even and at most 10. This is a
-  10-local linear code: Alekhnovich's sparse-matrix LPN assumption (FOCS 2003).
+  10-local linear code: Alekhnovich's sparse-matrix LPN assumption (FOCS 2003). For
+  `F2kVOLE` each of those rows is first scaled by its own pseudorandom GF(2¹²⁸)
+  element.
 - `e ∈ F^N` is regular: the `N` coordinates split into `t` blocks of
   `2^tree_depth`, and each block has exactly one noisy entry at a uniform
   position, with value 1 over F₂ and a uniform field element otherwise.
@@ -32,9 +34,12 @@ In syndrome form this is the regular syndrome decoding (RSD) problem of the atta
 literature, with `n = N`, `h = t` and block size `β = 2^tree_depth`. The target is
 128 bits.
 
-The field `F` is F₂ for `Ferret` and `SilentFerret`, and F_p with p = 2⁶¹ − 1 for
-`FpVOLE`, where a repeated row gives the coefficient 2. This page does not cover
-`F2kVOLE`'s LPN stage.
+The field `F` is F₂ for `Ferret` and `SilentFerret`, F_p with p = 2⁶¹ − 1 for
+`FpVOLE`, where a repeated row gives the coefficient 2, and GF(2¹²⁸) for `F2kVOLE`,
+with the per-entry coefficients above. Over GF(2¹²⁸), 0/1 entries would let the
+instance split into 128 binary instances, one per bit plane, sharing one noise
+support; F_p has no such planes. The large-field figures cover `FpVOLE` and `F2kVOLE`
+alike.
 
 Semi-honest mode is plain regular LPN. Malicious mode is the "LPN with static
 leakage" of Ferret (CCS 2020, eprint 2020/924, Def. 4): once per round (once per prepaid batch for
@@ -81,8 +86,7 @@ previous round's LPN in every later round.
 | `ferret_b13` | 16 MiB | 4,500 | 20 | 13 | 36,864,000 | 1,107,204 | 35,749,888 | 0.209 | 141.4 |
 
 Bits/COT is the steady-state cGGM correction traffic. "Lowest cost" is the minimum
-over every attack counted in §3, in both fields; §3 has the full tables. `F2kVOLE`
-is outside this table.
+over every attack counted in §3, in both fields; §3 has the full tables.
 
 In the code:
 
@@ -91,7 +95,7 @@ In the code:
 | The five sets | `tuning::ferret_b9` … `tuning::ferret_b13` in [`emp-ot/tuning.h`](../emp-ot/tuning.h) |
 | `PrimalLPNParameter`, its derived `k`, `M`, `refill_trees`, and `validate_primal_lpn_parameter` | [`emp-ot/tuning.h`](../emp-ot/tuning.h) |
 | `d = 10` | `tuning::lpn_d` in [`emp-ot/tuning.h`](../emp-ot/tuning.h) |
-| The matrix: `idx = r & (k−1)` from an AES-CTR PRG | `Lpn` in [`emp-ot/common/lpn.h`](../emp-ot/common/lpn.h) |
+| The matrix: `idx = r & (k−1)` from an AES-CTR PRG; for `F2kVOLE`, one GF(2¹²⁸) coefficient block per entry from the same stream | `Lpn` in [`emp-ot/common/lpn.h`](../emp-ot/common/lpn.h) |
 | The matrix seed: `RO("emp-ot:ferret:lpn-seed", sid)`, or the `set_lpn_matrix_seed` root bound to `(t, logk, tree_depth)`; a fixed public constant for sVOLE | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h) |
 | The noise: tree `i` owns block `i`, and its one nonzero entry sits at the bit-reversed cGGM puncture point, the complement of the receiver's base-COT choice bits for that tree | [`emp-ot/common/mp_gadget.h`](../emp-ot/common/mp_gadget.h) |
 | The round loop and the slot layout of `M` | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp) |
