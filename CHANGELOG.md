@@ -32,9 +32,18 @@ metadata is numeric (see the README's version guidance).
   and the Δ-holder folds its mac half only. `F2kVOLE` outputs and transcripts change:
   both parties must upgrade together, and the `F2kVOLE` rows of
   `test/trace_hash.baseline` are regenerated. `Ferret`, `SilentFerret` and `FpVOLE`
-  are unchanged. With the coefficients, `F2kVOLE`'s LPN stage is a large-field
-  instance, and the large-field figures above cover it. Needs an emp-tool with
-  `vector_inn_prdt_sum_red_x4`.
+  keep their unit-entry matrices. With the coefficients, `F2kVOLE`'s LPN stage is a
+  large-field instance, and the large-field figures above cover it. Needs an emp-tool
+  with `vector_inn_prdt_sum_red_x4`.
+- `F2kVOLE` / `FpVOLE`: the mask of the round-final malicious check, carry slot `t`, is
+  no longer also coordinate 0 of the round's LPN secret. The LPN now reads slots
+  `t + 1` to `t + k`, which were already carried, so the check value `x*`, sent in the
+  clear, is one-time padded; before, it gave the Δ-holder one linear equation tying
+  that coordinate to the round's noise. Both protocols' outputs change in both modes,
+  so both parties must upgrade together. `test/trace_hash` gains `F2kVOLE(b9)` and
+  `FpVOLE(b9)` rows that run two whole rounds, because an sVOLE round's LPN output
+  reaches the wire only through the next round; the baseline is regenerated.
+  `Ferret` is unaffected.
 
 ## v1.0.0-alpha.1
 

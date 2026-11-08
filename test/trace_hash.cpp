@@ -65,8 +65,9 @@ static void run_rcot(NetIO* io, int party, int64_t length, Make make,
 // carrier-provided default Δ on the holder before bootstrap.
 template <typename SVole, typename DeltaSetter>
 static void run_svole(NetIO* io, int party, int64_t length,
-                      bool malicious, DeltaSetter set_holder_delta) {
-    SVole sv(party, io, malicious);
+                      bool malicious, DeltaSetter set_holder_delta,
+                      PrimalLPNParameter param = tuning::ferret_b12) {
+    SVole sv(party, io, malicious, param);
     if (sv.is_delta_holder()) set_holder_delta(sv);
     using AV = typename SVole::AuthValue;
     AV* b = new AV[length];
@@ -150,6 +151,16 @@ int main(int argc, char** argv) {
     const int64_t ferret_len = ferret_cpr;       // 1 round (smaller for CI)
 #endif
 
+    // An sVOLE round's LPN output first reaches the wire when the next
+    // round's trees consume it, so the b9 sVOLE rows run two whole rounds
+    // (an sVOLE round has the same (t - refill_trees) << tree_depth outputs).
+    // The default-set rows run part of one round. The b9 rows feed only the
+    // Release baseline, so Debug skips them: there they would mostly re-run
+    // the bootstraps above at several times the cost.
+#ifdef NDEBUG
+    const int64_t svole_b9_len = ferret_cpr * 2;
+#endif
+
     // FS send_first conventions per protocol family:
     //   RCOT extensions: is_ot_sender() = (party == ALICE).
     //   F2kVOLE: is_delta_holder() = (party == BOB).
@@ -214,6 +225,16 @@ int main(int argc, char** argv) {
             run_svole<FpVOLE<>>(io, party, svole_len, mali,
                 [](auto&){ /* no-op: keep auto Δ */ });
         });
+#ifdef NDEBUG
+        measure(party, anchor.get(), "F2kVOLE(b9) " + mode, f2k_sf, [&](NetIO* io){
+            run_svole<F2kVOLE<>>(io, party, svole_b9_len, mali,
+                [](auto&){ /* no-op: keep auto Δ */ }, tuning::ferret_b9);
+        });
+        measure(party, anchor.get(), "FpVOLE(b9) " + mode, fp_sf, [&](NetIO* io){
+            run_svole<FpVOLE<>>(io, party, svole_b9_len, mali,
+                [](auto&){ /* no-op: keep auto Δ */ }, tuning::ferret_b9);
+        });
+#endif
     }
     return 0;
 }

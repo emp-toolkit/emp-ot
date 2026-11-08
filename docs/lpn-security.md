@@ -98,7 +98,7 @@ In the code:
 | The matrix: `idx = r & (k−1)` from an AES-CTR PRG; for `F2kVOLE`, one GF(2¹²⁸) coefficient block per entry from the same stream | `Lpn` in [`emp-ot/common/lpn.h`](../emp-ot/common/lpn.h) |
 | The matrix seed: `RO("emp-ot:ferret:lpn-seed", sid)`, or the `set_lpn_matrix_seed` root bound to `(t, logk, tree_depth)`; a fixed public constant for sVOLE | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h) |
 | The noise: tree `i` owns block `i`, and its one nonzero entry sits at the bit-reversed cGGM puncture point, the complement of the receiver's base-COT choice bits for that tree | [`emp-ot/common/mp_gadget.h`](../emp-ot/common/mp_gadget.h) |
-| The round loop and the slot layout of `M` | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp) |
+| The round loop and the slot layout of `M` | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h) |
 | Choosing a set: the `param` constructor argument, `ferret_b12` by default | [`ferret.h`](../emp-ot/ot_extension/ferret/ferret.h), [`silent_ferret.h`](../emp-ot/ot_extension/ferret/silent_ferret.h), [`svole.h`](../emp-ot/svole/svole.h) |
 
 Three quantities follow from the smallest set, and `tuning.h` derives the first two
@@ -455,13 +455,11 @@ These were read and do not set any parameter here.
 
 In malicious mode the `F2kVOLE`/`FpVOLE` receiver answers the round-final
 chi-fold check with `x* = Σ_i β_i·χ_{α_i} + x₀` in the clear (`mp_gadget.h`,
-typed check). The mask `x₀` is carry slot `t`; `svole.h` also folds slot `t` as coordinate 0
-of the round's LPN secret (`t + k + 1` slots are carried and slot `t + k` is
-never read). The Δ-holder therefore learns one F-linear equation on
-`(x₀, e)` per round — no output, position or value — so the round rests on
-regular LPN(N, k, t) given one public affine equation linking `x₀` and `e`, not on an
-independent one-time mask. Cost difference when `x₀` is eliminated, at `k − 1`: under 0.01 bits for sparse WXL.
-`Ferret` masks its check with the 128 dedicated check COTs.
+typed check). The mask `x₀` is carry slot `t`, and nothing else reads it: of the
+`t + k + 1` carried slots, `0` to `t − 1` seed the trees and `t + 1` to `t + k` are
+the round's LPN secret (`svole.h`). `x*` is therefore one-time padded, and the
+check reveals only whether it passed, the selective-failure query of §1. `Ferret`
+masks its check with the 128 dedicated check COTs.
 
 ## 6. Parameter sets by release
 

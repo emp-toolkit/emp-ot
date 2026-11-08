@@ -38,9 +38,10 @@ namespace emp {
 // Round geometry, derived from PrimalLPNParameter (shared with Ferret
 // and with both F2k / F_p sVOLE).
 //   n = t * 2^tree_depth        (trees this round, total LPN-folded outputs)
-//   M = t + k + 1               (carry-over to next round: MPFSS reads t,
-//                                 LPN reads k, +1 for the malicious
-//                                 chi-fold pseudo-triple)
+//   M = t + k + 1               (carry-over to next round: slots [0, t)
+//                                 seed the trees, slot t masks the
+//                                 malicious chi-fold check, and slots
+//                                 [t+1, t+k] are the LPN secret)
 inline constexpr int64_t svole_n(const PrimalLPNParameter &p) {
   return p.t * (int64_t{1} << p.tree_depth);
 }
@@ -257,15 +258,16 @@ private:
       dst[alpha].val = carry_curr_[tree_idx_].val;
     }
 
-    // LPN slice folds the secret (carry_curr_[t..t+k]) into dst's chunk
-    // entries. Slot t is dual-use as both the chi-fold triple and the
-    // LPN secret's first element — both reads see authenticated
-    // triples, which is all the protocol requires.
-    lpn_->compute_slice(dst, carry_curr_.data() + tt, chunk);
+    // LPN slice folds the secret (carry_curr_[t+1 .. t+k]) into dst's
+    // chunk entries. Slot t is not part of it: it masks the round-final
+    // check, whose x* is sent in the clear, so it must not appear anywhere
+    // else.
+    lpn_->compute_slice(dst, carry_curr_.data() + tt + 1, chunk);
 
     tree_idx_++;
   }
 
+  // Round-final chi-fold check, masked by carry slot t (used nowhere else).
   void inner_run_end_() {
     if (is_delta_holder()) {
       gadget_send_->run_end_typed(carry_curr_[param.t]);

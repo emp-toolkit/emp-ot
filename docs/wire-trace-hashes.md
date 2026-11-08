@@ -115,6 +115,11 @@ A hash change is not automatically bad. There are three categories:
 
 - **Memory-only refactors.** If you change how leaves are stored on
   the local side but not how they're sent, hashes stay the same.
+- **Outputs that never reach the wire.** A digest covers bytes sent,
+  so an extension's outputs count only where later messages depend on
+  them. An sVOLE round's LPN output first feeds the next round's
+  trees: the `F2kVOLE(b9)` / `FpVOLE(b9)` rows run two whole rounds
+  for this, while the default-set sVOLE rows run part of one.
 - **Non-deterministic protocol behavior.** With `EMP_TEST_MODE=0`,
   every run differs — the test mode is the only thing that makes
   hashes reproducible.
