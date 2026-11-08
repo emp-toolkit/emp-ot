@@ -49,6 +49,15 @@ inline constexpr int64_t svole_M(const PrimalLPNParameter &p) {
   return p.t + p.k + 1;
 }
 
+// Public LPN-matrix seed of one sVOLE amplifier, derived as Ferret derives
+// its own: RO(domain, sid). Both parties compute it locally from the shared
+// session id, so it needs no wire exchange. The domain names the protocol and
+// the amplifier, so protocols sharing a sid, and FpVOLE's main and pre-stage
+// matrices, draw independent matrices.
+inline block svole_lpn_seed(std::string_view domain, block sid) {
+  return RO(domain, sid).squeeze_block();
+}
+
 // =================================================================
 // Svole<AuthValue> — unified sVOLE class for F_2^k and F_p.
 // =================================================================
@@ -69,8 +78,9 @@ public:
 
   // Session id for this VOLE instance (default the zero id). Svole is not
   // an OT, so it carries its own SessionID; set via set_sid before the first
-  // begin()/run(), and it is propagated as a derived child sid to the
-  // inner Ferret (and, on the F2k path, to the nested bootstrap Svole).
+  // begin()/run(). It seeds the public LPN matrix, and it is propagated as a
+  // derived child sid to the inner Ferret (and, on the F2k path, to the
+  // nested bootstrap Svole).
   SessionID sid;
   void set_sid(SessionID s) {
     expecting(!this->setup_done, "set_sid: bootstrap already fired");
@@ -110,7 +120,6 @@ public:
       gadget_recv_->set_malicious();
     }
     lpn_ = std::make_unique<Lpn<AuthValue, 10>>(param.k);
-    lpn_->reseed(zero_block);
     // A coefficient LPN folds val and mac separately, and the Δ-holder's val
     // half is zero throughout, so it folds mac only.
     if constexpr (lpn_has_coefficients<AuthValue>)
@@ -217,6 +226,9 @@ private:
     // Session-separate the inner Ferret before it bootstraps (its rcot is
     // first consumed inside Bootstrap::run / inner_run_begin_).
     base_ferret_->set_sid(sid.derive());
+    // One-shot per-instance LPN matrix, seeded now that sid is final. Later
+    // rounds let lpn_'s PRG state advance naturally through compute_slice.
+    lpn_->reseed(svole_lpn_seed(AuthValue::kLpnSeedDomain, sid.value()));
     AuthValue::Bootstrap::run(*this);
     this->setup_done = true;
   }

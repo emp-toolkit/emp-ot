@@ -111,11 +111,24 @@ void test_streaming(NetIO *io, int svole_party) {
   vtriple.end();
 }
 
+// The public LPN matrix is seeded with RO(domain, sid) of the sid set
+// before bootstrap (svole.h).
+static void check_lpn_seed(block key, const char *domain, block sid) {
+  const block want = svole_lpn_seed(domain, sid);
+  if (!cmpBlock(&key, &want, 1)) {
+    std::cout << "LPN seed is not RO(domain, sid)" << std::endl;
+    abort();
+  }
+}
+
 // One-shot path: run(out, num) with chunk-aligned num. ram-zk uses
-// the same shape with `num = chunk_aligned_buf_sz()`.
+// the same shape with `num = chunk_aligned_buf_sz()`. Runs under a
+// non-default session id.
 void test_oneshot(NetIO *io, int svole_party) {
   F2kVOLE<AuthValueF2k> vtriple(svole_party, io,
                                 /*malicious=*/true, kSvoleParam);
+  const block sid = makeBlock(0x66326b766f6c652dULL, 0x6f6e6573686f742dULL);
+  vtriple.set_sid(SessionID(sid));
   const block Delta = (svole_party == BOB) ? vtriple.delta() : zero_block;
 
   const int64_t per_round = vtriple.chunk_aligned_buf_sz();
@@ -130,6 +143,7 @@ void test_oneshot(NetIO *io, int svole_party) {
     }
     check_triple(Delta, buf_x.data(), buf_yz.data(), per_round, io);
   }
+  check_lpn_seed(vtriple.lpn_->prg_key(), AuthValueF2k::kLpnSeedDomain, sid);
 }
 
 int main(int argc, char **argv) {

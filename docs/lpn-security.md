@@ -96,7 +96,7 @@ In the code:
 | `PrimalLPNParameter`, its derived `k`, `M`, `refill_trees`, and `validate_primal_lpn_parameter` | [`emp-ot/tuning.h`](../emp-ot/tuning.h) |
 | `d = 10` | `tuning::lpn_d` in [`emp-ot/tuning.h`](../emp-ot/tuning.h) |
 | The matrix: `idx = r & (k−1)` from an AES-CTR PRG; for `F2kVOLE`, one GF(2¹²⁸) coefficient block per entry from the same stream | `Lpn` in [`emp-ot/common/lpn.h`](../emp-ot/common/lpn.h) |
-| The matrix seed: `RO("emp-ot:ferret:lpn-seed", sid)`, or the `set_lpn_matrix_seed` root bound to `(t, logk, tree_depth)`; a fixed public constant for sVOLE | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h) |
+| The matrix seed: `RO("emp-ot:ferret:lpn-seed", sid)`, or the `set_lpn_matrix_seed` root bound to `(t, logk, tree_depth)`; `RO("emp-ot:f2kvole:lpn-seed", sid)` and `RO("emp-ot:fpvole:lpn-seed", sid)` for sVOLE, and `RO("emp-ot:fpvole:pre-lpn-seed", sid)` for `FpVOLE`'s pre-stage | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h), [`fp_vole.h`](../emp-ot/svole/fp_vole.h) |
 | The noise: tree `i` owns block `i`, and its one nonzero entry sits at the bit-reversed cGGM puncture point, the complement of the receiver's base-COT choice bits for that tree | [`emp-ot/common/mp_gadget.h`](../emp-ot/common/mp_gadget.h) |
 | The round loop and the slot layout of `M` | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h) |
 | Choosing a set: the `param` constructor argument, `ferret_b12` by default | [`ferret.h`](../emp-ot/ot_extension/ferret/ferret.h), [`silent_ferret.h`](../emp-ot/ot_extension/ferret/silent_ferret.h), [`svole.h`](../emp-ot/svole/svole.h) |

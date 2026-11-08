@@ -44,6 +44,15 @@ metadata is numeric (see the README's version guidance).
   `FpVOLE(b9)` rows that run two whole rounds, because an sVOLE round's LPN output
   reaches the wire only through the next round; the baseline is regenerated.
   `Ferret` is unaffected.
+- `F2kVOLE` / `FpVOLE`: the public LPN matrix is seeded from the session id, as
+  `Ferret`'s is: `RO("emp-ot:f2kvole:lpn-seed", sid)` / `RO("emp-ot:fpvole:lpn-seed",
+  sid)`, and `RO("emp-ot:fpvole:pre-lpn-seed", sid)` for `FpVOLE`'s pre-stage, derived
+  locally by both parties at bootstrap. Before, every instance used the seed
+  `zero_block`, so all sessions shared one matrix, and an instance's main and nested or
+  pre-stage matrices read one PRG stream at different `k` (their indices agreed mod the
+  smaller `k`). Callers that never call `set_sid` still share one matrix per protocol;
+  distinct sids give distinct matrices. Both protocols' outputs change; the sVOLE rows
+  of `test/trace_hash.baseline` are regenerated.
 
 ## v1.0.0-alpha.1
 

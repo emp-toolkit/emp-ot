@@ -91,6 +91,7 @@ struct AuthValueXxx {
   static constexpr bool kLpnCoefficients = true;
 
   // (h) sVOLE protocol hooks  (only if used with Svole<>)
+  static constexpr char kLpnSeedDomain[];
   static constexpr int delta_holder_party();
   static F resolve_delta(Ferret*);
   static void on_set_delta(F, Ferret*);
@@ -150,6 +151,9 @@ Notes:
 
 - **(h) sVOLE hooks.** Only needed if the carrier is plugged into
   `Svole<>`. RCOT-only carriers (like `AuthValueFerret`) skip this.
+  - `kLpnSeedDomain` is the RO domain of the public LPN-matrix seed,
+    `RO(kLpnSeedDomain, sid)`, e.g. `"emp-ot:f2kvole:lpn-seed"`. Give each
+    protocol its own, so protocols that share a sid get independent matrices.
   - `delta_holder_party()` returns `ALICE` or `BOB` — which party
     holds Δ at the outer-protocol level. For F_2k convention is BOB;
     for F_p it's ALICE. The choice flows through to the inner-Ferret

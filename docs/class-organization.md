@@ -152,6 +152,11 @@ Svole<AuthValue> : public StreamingExtension<AuthValue>
 `Svole<AuthValueF2k>` and `Svole<AuthValueFp>` respectively (each takes
 a carrier parameter, so callers write `F2kVOLE<>` / `FpVOLE<>`).
 
+Like Ferret, Svole derives its public LPN matrix from the session id:
+`svole_lpn_seed(AuthValue::kLpnSeedDomain, sid)` = `RO(domain, sid)`, installed
+once at bootstrap after `set_sid`. `FpVOLE`'s pre-stage matrix uses its own
+domain, and the nested `F2kVOLE` bootstrap instance gets a derived child sid.
+
 ## The carrier (AuthValueXxx) is the protocol description
 
 `Svole`, `MultiPointGadget`, and `Lpn` are all templated on the
@@ -186,6 +191,7 @@ struct AuthValueXxx {
   static AuthValueXxx auth_from_block(block leaf);
 
   // sVOLE-specific (Svole<AuthValue> only)
+  static constexpr char kLpnSeedDomain[];           // RO domain of the matrix seed
   static constexpr int delta_holder_party();
   static F resolve_delta(Ferret*);
   static void on_set_delta(F, Ferret*);

@@ -102,6 +102,11 @@ struct alignas(16) AuthValueFp {
 
   // -------- Svole protocol hooks --------
 
+  // Domains of the public LPN-matrix seeds RO(domain, sid) (svole.h): the
+  // main rounds, and the bootstrap's pre-stage.
+  static constexpr char kLpnSeedDomain[]    = "emp-ot:fpvole:lpn-seed";
+  static constexpr char kPreLpnSeedDomain[] = "emp-ot:fpvole:pre-lpn-seed";
+
   // F_p convention: ALICE is the Δ-holder externally.
   static constexpr int delta_holder_party() { return ALICE; }
 
@@ -165,7 +170,7 @@ struct alignas(16) AuthValueFp {
       MultiPointGadgetReceiver<AuthValueFp> pre_recv(
           pre_param.t, pre_param.tree_depth, svole.io_);
       Lpn<AuthValueFp, 10> pre_lpn(pre_param.k);
-      pre_lpn.reseed(zero_block);
+      pre_lpn.reseed(svole_lpn_seed(kPreLpnSeedDomain, svole.sid.value()));
       pre_send.sid = svole.sid.value();
       pre_recv.sid = svole.sid.value();
       if (svole.malicious) {

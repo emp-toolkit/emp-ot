@@ -101,6 +101,9 @@ struct AuthValueF2k {
 
   // -------- Svole protocol hooks --------
 
+  // Domain of the public LPN-matrix seed RO(domain, sid) (svole.h).
+  static constexpr char kLpnSeedDomain[] = "emp-ot:f2kvole:lpn-seed";
+
   // F_2k convention: BOB is the Δ-holder externally.
   static constexpr int delta_holder_party() { return BOB; }
 

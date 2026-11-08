@@ -108,7 +108,8 @@ first session. Preconditions on these configuration APIs use
   bootstrap. It leaves the transcript sid independent while explicitly sharing
   the public LPN matrix where an outer protocol requires matching choice
   patterns across instances.
-- OT-extension and sVOLE `set_sid` must run before bootstrap.
+- OT-extension and sVOLE `set_sid` must run before bootstrap; Ferret and
+  sVOLE also seed their public LPN matrix from it.
 - sVOLE `set_delta` is Δ-holder-only and pre-bootstrap; reading
   `delta()` is Δ-holder-only. The F2k carrier additionally requires
   Δ's least-significant bit to be one. Fp instead requires a canonical

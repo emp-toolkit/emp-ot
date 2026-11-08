@@ -74,10 +74,23 @@ void test_streaming(NetIO *io, int svole_party) {
   vtriple.end();
 }
 
-// One-shot path: run(out, num) with chunk-aligned num.
+// The public LPN matrix is seeded with RO(domain, sid) of the sid set
+// before bootstrap (svole.h).
+static void check_lpn_seed(block key, const char *domain, block sid) {
+  const block want = svole_lpn_seed(domain, sid);
+  if (!cmpBlock(&key, &want, 1)) {
+    std::cout << "LPN seed is not RO(domain, sid)" << std::endl;
+    abort();
+  }
+}
+
+// One-shot path: run(out, num) with chunk-aligned num. Runs under a
+// non-default session id.
 void test_oneshot(NetIO *io, int svole_party) {
   FpVOLE<AuthValueFp> vtriple(svole_party, io,
                               /*malicious=*/true, kSvoleParam);
+  const block sid = makeBlock(0x6670766f6c652d6fULL, 0x6e6573686f742d73ULL);
+  vtriple.set_sid(SessionID(sid));
   uint64_t Delta = 0;
   if (svole_party == ALICE) Delta = vtriple.delta();
 
@@ -93,6 +106,7 @@ void test_oneshot(NetIO *io, int svole_party) {
     }
     check_triple(Delta, buf_val.data(), buf_mac.data(), per_round, io);
   }
+  check_lpn_seed(vtriple.lpn_->prg_key(), AuthValueFp::kLpnSeedDomain, sid);
 }
 
 int main(int argc, char **argv) {
