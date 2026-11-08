@@ -425,8 +425,13 @@ These were read and do not set any parameter here.
   information-set decoding. The estimator's ISD routines cost 212 bits or more on these sets,
   more than 60 bits above the floor, so these were not evaluated separately.
 - **Agrawal, Bagchi, Kumar**, *Algorithms for Sparse LWE and LPN with Small Secrets* (eprint
-  2026/1550). Sample–time tradeoffs for sparse LPN with small secrets; only the abstract was read,
-  and it was not evaluated on these sets.
+  2026/1550). Distinguishers for sparse LWE and LPN over Z_q whose secret has ℓ∞ norm at most
+  `B`, built on short linear dependencies among the sparse rows, found by walks on a Kikuchi
+  graph. For LPN noise they run in about `(8πBk/ε)^(l(1/2+ε))` time given about
+  `(q − 1)^⌊d/2⌋ · (Ck/l)^⌈d/2⌉ · l log(Bk)` samples, or `(Ck/l)^d · l log(Bk)` samples, for a
+  free parameter `l`. At `d = 10` and the `N/k` of 19–35 here, these need `l` of at least `0.84·k`
+  and `0.93·k` even with `C = 1`, so the time is exponential in `k`. Over F_p the secret is
+  uniform, so `B` is about `p/2`, and the first bound also carries a factor `(p − 1)^5`.
 
 ## 4. What these estimates do not cover
 
