@@ -449,7 +449,8 @@ sVOLE: `is_delta_holder()`).
 
 ### 5b. Update the README baseline
 
-After verifying with `EMP_TEST_MODE=1 ./run ./build/trace_hash`, paste
+After verifying with `./run ./build-tm/trace_hash` in a test-mode tree
+([wire-trace-hashes.md](wire-trace-hashes.md)), paste
 the new line into the `### Wire-trace hashes` table in
 [`README.md`](../README.md). This is the baseline future refactors
 compare against.

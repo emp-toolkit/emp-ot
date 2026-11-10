@@ -48,6 +48,47 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  # Test mode: emp-tool built with -DEMP_TEST_MODE=ON (deterministic, INSECURE
+  # randomness) exports the setting to this tree, which then also registers
+  # the trace_hash_baseline wire-format gate. Release only: the baseline is a
+  # Release artifact.
+  test-mode:
+    name: Test mode (Ubuntu, Release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read emp-tool ref
+        id: dep
+        run: echo "ref=$(cat .github/workflows/emp-tool.dep)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and install emp-tool sibling (test mode)
+        run: |
+          git clone --depth 1 --branch "${{ steps.dep.outputs.ref }}" \
+            https://github.com/emp-toolkit/emp-tool.git "$RUNNER_TEMP/emp-tool"
+          cmake -S "$RUNNER_TEMP/emp-tool" -B "$RUNNER_TEMP/emp-tool/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/emp-tool-install" \
+            -DEMP_TOOL_NATIVE_ARCH=OFF \
+            -DEMP_TOOL_BUILD_TESTS=OFF \
+            -DEMP_TEST_MODE=ON
+          cmake --build "$RUNNER_TEMP/emp-tool/build" -j
+          cmake --install "$RUNNER_TEMP/emp-tool/build"
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DEMP_OT_AUTO_TUNE=OFF
+          -DCMAKE_PREFIX_PATH=${{ runner.temp }}/emp-tool-install
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
   # AddressSanitizer + UndefinedBehaviorSanitizer. One Ubuntu leg (LSan is
   # Linux-only); RelWithDebInfo for line numbers without Debug's slowdown.
   # The emp-tool dep is rebuilt with the same flags so coverage extends into

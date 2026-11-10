@@ -5,10 +5,11 @@
 // independent FS transcripts — the hashes depend only on that one
 // protocol's wire bytes.
 //
-// Refactor verification:
-//   EMP_TEST_MODE=1 ./run ./build/trace_hash > before.txt
+// Refactor verification, in a Release tree configured against an emp-tool
+// built with -DEMP_TEST_MODE=ON (docs/wire-trace-hashes.md):
+//   ./run ./build-tm/trace_hash > before.txt
 //   <apply refactor>
-//   EMP_TEST_MODE=1 ./run ./build/trace_hash > after.txt
+//   ./run ./build-tm/trace_hash > after.txt
 //   diff before.txt after.txt    # must be empty for wire-equivalence
 //
 // The runner script invokes the binary on both parties; each party's
@@ -35,7 +36,7 @@ static void measure(int party, NetIO* anchor, const string& name,
     // Start every protocol from the same deterministic seed state, so its
     // trace hash is independent of which protocols ran before it. The table
     // is order-independent: a protocol can be added or reordered without
-    // disturbing the others' digests. (No-op effect outside EMP_TEST_MODE.)
+    // disturbing the others' digests. (No effect outside a test-mode build.)
     reset_test_seed_counter();
     auto io = anchor->make_sibling();
     io->enable_fs(send_first);
@@ -104,8 +105,8 @@ int main(int argc, char** argv) {
     party = parse_party(argv);
     port = peer_port();
     if (!is_test_mode())
-        cerr << "trace_hash: EMP_TEST_MODE not set; hashes "
-                "will be non-deterministic\n";
+        cerr << "trace_hash: not a test-mode build (emp-tool -DEMP_TEST_MODE=ON); "
+                "hashes will be non-deterministic\n";
 
     // One quiet anchor connection for the whole run; every measured
     // protocol gets a fresh sibling channel off its shared listener.

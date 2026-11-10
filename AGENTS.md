@@ -67,22 +67,26 @@ cmake --build build -j --target test_f2k_vole
 ./run ./build/test_f2k_vole
 ```
 
-### Deterministic mode (`EMP_TEST_MODE=1`)
+### Deterministic mode (test-mode build)
 
-emp-tool's test-mode hook swaps every randomness source for a
-counter-derived deterministic stream — same inputs, same wire bytes
-across runs and across machines. Required for the wire-trace gate
-and for any byte-equivalence diagnostics:
+An emp-tool built with `-DEMP_TEST_MODE=ON` swaps every randomness
+source for a counter-derived deterministic stream — same inputs, same
+wire bytes across runs and across machines. emp-tool exports the setting
+to everything built against it, so the deterministic tree is a separate
+Release build (`build-tm`) configured against a test-mode emp-tool
+install; [docs/wire-trace-hashes.md](docs/wire-trace-hashes.md) has the
+commands. Required for the wire-trace gate and for any byte-equivalence
+diagnostics:
 
 ```bash
-EMP_TEST_MODE=1 ./run ./build/trace_hash | grep '^[A-Za-z(]' > /tmp/before.txt
-# … apply a change, rebuild …
-EMP_TEST_MODE=1 ./run ./build/trace_hash | grep '^[A-Za-z(]' > /tmp/after.txt
+./run ./build-tm/trace_hash | grep '^[A-Za-z(]' > /tmp/before.txt
+# … apply a change, rebuild build-tm …
+./run ./build-tm/trace_hash | grep '^[A-Za-z(]' > /tmp/after.txt
 diff /tmp/before.txt /tmp/after.txt    # must be empty for wire-equivalence
 ```
 
-Without `EMP_TEST_MODE=1`, the hashes are non-deterministic and the
-diff is meaningless. See [docs/wire-trace-hashes.md](docs/wire-trace-hashes.md)
+In a normal build the hashes are non-deterministic and the diff is
+meaningless. See [docs/wire-trace-hashes.md](docs/wire-trace-hashes.md)
 for the full workflow and the README baseline.
 
 ### Build flavors
@@ -125,8 +129,8 @@ from a subdoc.
 
 - **Wire-trace check before *and* after any change that could touch
   bytes on the wire.** Run
-  `EMP_TEST_MODE=1 ./run ./build/trace_hash | grep '^[A-Za-z(]' > /tmp/<phase>.txt`
-  before the change, again after, and `diff` them. Empty diff means
+  `./run ./build-tm/trace_hash | grep '^[A-Za-z(]' > /tmp/<phase>.txt`
+  in the test-mode tree before the change, again after, and `diff` them. Empty diff means
   the wire is preserved. Any change to the protocol's wire format —
   even an algebraically equivalent reordering — must be intentional
   and update the baseline table in [README.md](README.md). See
