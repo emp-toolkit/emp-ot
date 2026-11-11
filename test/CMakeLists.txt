@@ -72,10 +72,13 @@ add_test_case_with_run(test_extension_check)
 add_test_case_with_run(trace_equiv)
 add_test_case_with_run(trace_hash)
 
-# Wire-format gate: diff trace_hash's deterministic (EMP_TEST_MODE) digests
-# against the checked-in baseline. Release-only — trace_hash's NDEBUG-gated
-# lengths make Debug digests differ, so the baseline is a Release artifact.
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
+# Wire-format gate: diff trace_hash's digests against the checked-in baseline.
+# The digests are deterministic only in a test-mode build — emp-tool configured
+# with -DEMP_TEST_MODE=ON, which it exports as a compile definition on its
+# target — and the baseline is a Release artifact: trace_hash's NDEBUG-gated
+# lengths make Debug digests differ. Any other tree skips the gate.
+get_target_property(_emp_tool_defs emp-tool::emp-tool INTERFACE_COMPILE_DEFINITIONS)
+if(CMAKE_BUILD_TYPE STREQUAL "Release" AND "EMP_TEST_MODE" IN_LIST _emp_tool_defs)
     add_test(NAME trace_hash_baseline
              COMMAND /bin/bash ${PROJECT_SOURCE_DIR}/test/trace_hash_baseline.sh
                                ${PROJECT_SOURCE_DIR}/run

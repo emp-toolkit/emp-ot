@@ -2,13 +2,14 @@
 //
 // Runs IKNP semi-honest RCOT under TraceIO, dumping every wire byte
 // to <prefix>.alice.{send,recv} (Alice) or <prefix>.bob.{send,recv}
-// (Bob). Two-party via the `run` script. Determinism comes from
-// EMP_TEST_MODE=1 — without it, OS randomness is used and traces
-// will differ run-to-run.
+// (Bob). Two-party via the `run` script. Determinism needs a test-mode
+// build (emp-tool configured with -DEMP_TEST_MODE=ON and this tree
+// built against it); otherwise OS randomness is used and traces differ
+// run-to-run.
 //
-// Usage:
-//   EMP_TEST_MODE=1 ./run ./build/trace_equiv before
-//   EMP_TEST_MODE=1 ./run ./build/trace_equiv after
+// Usage, from such a tree:
+//   ./run ./build-tm/trace_equiv before
+//   ./run ./build-tm/trace_equiv after
 //   diff before.alice.send after.alice.send   # must be empty
 //   diff before.alice.recv after.alice.recv   # must be empty
 //   diff before.bob.send   after.bob.send     # must be empty
@@ -17,8 +18,8 @@
 // Used to verify that an optimization / refactor doesn't change the
 // observable wire bytes. The test mode flips both PRG default-
 // construction and ECGroup::rand_scalar (the only OpenSSL-randomness
-// site) to deterministic streams, so two runs of the same code at
-// the same EMP_TEST_MODE setting produce byte-identical wires.
+// site) to deterministic streams, so two runs of the same code in
+// the same test-mode build produce byte-identical wires.
 #include "emp-ot/emp-ot.h"
 #include "emp-tool/emp-tool.h"
 #include "test/test.h"
@@ -47,7 +48,8 @@ int main(int argc, char** argv) {
     const int64_t length = (1LL << length_log) + 101;
 
     if (!is_test_mode()) {
-        cerr << "trace_equiv: EMP_TEST_MODE not set; traces will be non-deterministic\n";
+        cerr << "trace_equiv: not a test-mode build (emp-tool -DEMP_TEST_MODE=ON); "
+                "traces will be non-deterministic\n";
     }
 
     auto under = (party == ALICE) ? NetIO::listen(port) : NetIO::connect(peer_ip(), port);

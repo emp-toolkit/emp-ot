@@ -140,14 +140,16 @@ from a reset deterministic seed state, so the digests are
 *order-independent*: adding or reordering a protocol changes only its
 own row. Refactors that leave the wire bytes untouched leave the hashes
 untouched; refactors that *do* change the wire are visible as a
-single-line diff. The `trace_hash_baseline` ctest (Release) runs this
-deterministically (`EMP_TEST_MODE=1`) and diffs the checked-in
-`test/trace_hash.baseline`, so a wire-format change fails CI. See
+single-line diff. The digests are deterministic only in a test-mode
+build: a Release tree configured against an emp-tool built with
+`-DEMP_TEST_MODE=ON`. Such a tree registers the `trace_hash_baseline`
+ctest, which diffs the checked-in `test/trace_hash.baseline`, and CI runs
+one, so a wire-format change fails CI. See
 [`docs/wire-trace-hashes.md`](docs/wire-trace-hashes.md) for the full
 workflow.
 
 ```
-$ EMP_TEST_MODE=1 ./run ./build/trace_hash | grep 'send='
+$ ./run ./build-tm/trace_hash | grep 'send='    # build-tm: test-mode Release tree
 ```
 
 ### Profiling the SoftSpoken pipeline (off by default)
