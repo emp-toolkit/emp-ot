@@ -3,7 +3,12 @@
 Notable changes to emp-ot. Versions are the git tags. CMake package
 metadata is numeric (see the README's version guidance).
 
-## Unreleased
+## v1.0.0-alpha.2
+
+Second alpha of the 1.0 development line, pairing with emp-tool
+`v1.0.0-alpha.2`, which it requires (`F2kVOLE` uses its
+`vector_inn_prdt_sum_red_x4`). The Ferret, sVOLE and `BMM` transcripts change, so
+both parties must upgrade together.
 
 ### Security
 
@@ -53,6 +58,40 @@ metadata is numeric (see the README's version guidance).
   smaller `k`). Callers that never call `set_sid` still share one matrix per protocol;
   distinct sids give distinct matrices. Both protocols' outputs change; the sVOLE rows
   of `test/trace_hash.baseline` are regenerated.
+- `BMM` base OT: every OT index `i` derives its own CRS matrix `A_i` from
+  `(sid, i)`, where one matrix served every index, and the 128-bit OT string is
+  carried directly in the first half of the PKE's 256-bit message instead of
+  under a hash pad, so the sender sends 1,536 bytes per OT instead of 1,568. The
+  transcript changes; the `BMM` row of `test/trace_hash.baseline` is regenerated.
+
+### Added
+
+- Counted OT streams: `begin(n_ots)` records an upper bound on the session's
+  coming `next_n()` draws, so a backend can shrink its last production unit, and
+  `check()` certifies every chunk generated since `begin()` or the previous
+  `check()` while keeping the session open. IKNP, SoftSpoken and Ferret track the
+  per-chunk checks; `SilentFerret` certifies in `begin()`, so its `check()` does
+  nothing. The first `check()` also runs CSW's deferred base-OT extraction check.
+- `SilentFerret` range reducers: an LPN sink path that computes the current
+  round's COT XORs with one tree of scratch, and a fused path that skips storing
+  the finalized outputs.
+- `Ferret::set_lpn_matrix_seed(seed)`, called before bootstrap, seeds the LPN
+  matrix independently of the transcript's session id. By default the seed is
+  still derived from the session id.
+
+### Changed
+
+- `Ferret`'s constructor takes the injectable base OT before the optional LPN
+  parameter, as `IKNP` and `SoftSpoken` do:
+  `Ferret(party, io, malicious, base_ot, param)`, where `v1.0.0-alpha.1` had
+  `param` before `base_ot`. A caller that passed a parameter set positionally
+  must pass the base OT (or `nullptr`) first. `SilentFerret` keeps its order.
+- The wire-format gate `trace_hash_baseline` runs only in a Release tree
+  configured against an emp-tool built with `-DEMP_TEST_MODE=ON`, since emp-tool's
+  deterministic test mode is now a build option; CI gains a test-mode job that
+  runs it.
+- `./run` uses `EMP_PORT` when set and 12345 otherwise, and `ctest` gives each
+  two-party test its own ports from 21000 up.
 
 ## v1.0.0-alpha.1
 

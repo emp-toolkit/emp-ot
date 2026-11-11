@@ -11,17 +11,14 @@
 >   tag [`0.3.0`](https://github.com/emp-toolkit/emp-ot/releases/tag/0.3.0)
 >   or branch [`v0.3.x`](https://github.com/emp-toolkit/emp-ot/tree/v0.3.x).
 >   Bug fixes and security patches will be backported to `v0.3.x`.
-> - **New projects, or willing to migrate: use `v1.0.0-alpha.1`** —
->   tag [`v1.0.0-alpha.1`](https://github.com/emp-toolkit/emp-ot/releases/tag/v1.0.0-alpha.1),
->   the first alpha of the 1.0 line. New SoftSpoken butterfly kernel with
->   rounds 0-2 fused into AES generation at k=8 (eight leaves' Davies-Meyer
->   outputs folded through three halving levels in-register; cross-platform
->   via emp-tool's AesLane abstraction over VAES-512 / VAES-256 / AES-NI /
->   NEON), post-quantum `BMM` base OT, reorganized base OTs and extensions,
->   the wire-equivalence framework from emp-tool. The API may change between
->   alpha tags and before the final `1.0.0`, so pin to a tag. Pairs with
->   emp-tool `v1.0.0-alpha.1` (the CMake package floor is `1.0`; see the
->   Security section below for scope and limitations).
+> - **New projects, or willing to migrate: use `v1.0.0-alpha.2`** —
+>   tag [`v1.0.0-alpha.2`](https://github.com/emp-toolkit/emp-ot/releases/tag/v1.0.0-alpha.2),
+>   the second alpha of the 1.0 line. It pairs with, and requires, emp-tool
+>   `v1.0.0-alpha.2`. Do not use `v1.0.0-alpha.1`: its Ferret LPN parameter
+>   sets reach only 111–121 bits against sparse WXL (see the CHANGELOG). The
+>   API may change between alpha tags and before the final `1.0.0`, so pin to
+>   a tag (the CMake package floor is `1.0`; see the Security section below for
+>   scope and limitations).
 
 State-of-the-art OT implementations on top of [emp-tool](https://github.com/emp-toolkit/emp-tool):
 four ordinary base OTs (`CO`, `PVW`, `CSW`, `BMM`), IKNP and
