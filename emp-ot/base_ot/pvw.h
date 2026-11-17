@@ -38,6 +38,7 @@ class PVW: public OT { public:
 	// via OT::set_sid after construction). Both parties derive identical,
 	// non-DH points from the shared sid.
 	void ensure_crs_() {
+		fix_sid_();
 		if (crs_ready_) return;
 		static const char *labels[4] = {
 			"CRS g0 for C:PeiVaiWat08",

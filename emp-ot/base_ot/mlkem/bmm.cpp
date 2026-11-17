@@ -137,6 +137,7 @@ BMM::BMM(IOChannel* io_) { this->io = io_; }
 void BMM::recv(block* data, const bool* b, int64_t length) {
     expect_ot_args(length, data, b,
                    "BMM::recv: invalid length or null buffer");
+    fix_sid_();
     // Per-OT payloads are wider than a block; kSendBytesPerOT is the larger
     // element size, so this bound covers both byte-count products below.
     expecting(length <= std::numeric_limits<int64_t>::max() / kSendBytesPerOT,
@@ -238,6 +239,7 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
 void BMM::send(const block* data0, const block* data1, int64_t length) {
     expect_ot_args(length, data0, data1,
                    "BMM::send: invalid length or null buffer");
+    fix_sid_();
     // Per-OT payloads are wider than a block; kSendBytesPerOT is the larger
     // element size, so this bound covers both byte-count products below.
     expecting(length <= std::numeric_limits<int64_t>::max() / kSendBytesPerOT,

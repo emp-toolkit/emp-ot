@@ -35,9 +35,8 @@ int main(int argc, char **argv) {
 		run_one("PVW", &pvw, io.get(), party, length);
 	}
 	{
-		// CSW / BMM take a sid via set_sid(); without it they default to
-		// zero_block. The test sets a deterministic sid so the cross-party
-		// transcripts match exactly.
+		// CSW and BMM set their sid explicitly, covering set_sid(); CO and
+		// PVW above take the channel's next session id at first use.
 		block sid = makeBlock(0xCAFEBABE12345678ULL, 0xDEADBEEFFACEFEEDULL);
 		CSW csw(io.get());
 		csw.set_sid(sid);

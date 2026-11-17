@@ -106,6 +106,7 @@ public:
 		          "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
 		expect_ot_args(length, data0, data1,
 		               "CSW::send_core: invalid length or null buffer");
+		fix_sid_();
 		length_ = length;
 
 		// Round 1 (R→S): receive seed, {B_i}.
@@ -185,6 +186,7 @@ public:
 		          "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
 		expect_ot_args(length, data, b,
 		               "CSW::recv_core: invalid length or null buffer");
+		fix_sid_();
 		length_ = length;
 		b_copy_.resize(length);
 		for (int64_t i = 0; i < length; ++i) b_copy_[i] = b[i] ? 1 : 0;

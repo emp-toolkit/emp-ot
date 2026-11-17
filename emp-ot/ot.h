@@ -36,14 +36,30 @@ public:
 	// mirroring is_malicious_secure().
 	virtual bool supports_deferred_check() const { return false; }
 
-	// Per-session domain separator, default the zero id. Extensions forward a
-	// derived child sid to their base OT (see OTExtension); callers may set a
-	// session-unique value before first use, but are not required to. The
-	// SessionID ctor is implicit, so set_sid(some_block) still works.
-	virtual void set_sid(SessionID s) { sid = s; }
+	// Per-session domain separator. A sid set before the first use is kept.
+	// Otherwise the first use takes the channel's next session id
+	// (IOChannel::next_session_id()), or keeps the zero id on a channel without
+	// a session root. First uses come in the order the parties run their
+	// protocols, which both ends already share, so both draw the same ids.
+	// Extensions forward a derived child sid to their base OT before it runs
+	// (see OTExtension), so only a top-level object draws from its channel.
+	// The SessionID ctor is implicit, so set_sid(some_block) still works.
+	virtual void set_sid(SessionID s) {
+		sid = s;
+		sid_fixed_ = true;
+	}
+	const SessionID &session_id() const { return sid; }
 protected:
+	// Fix the sid at the first use, as set_sid() describes; later calls do
+	// nothing.
+	void fix_sid_() {
+		if (sid_fixed_) return;
+		if (io != nullptr && io->has_session_root()) set_sid(io->next_session_id());
+		sid_fixed_ = true;
+	}
 	IOChannel * io = nullptr;
 	SessionID sid;
+	bool sid_fixed_ = false;
 };
 
 // Correlated OT (sender's two messages differ by a fixed Δ). Subclasses

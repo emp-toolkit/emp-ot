@@ -324,6 +324,9 @@ the first call:
 ```cpp
 void MyIKNP::send_begin_() {
     if (!setup_done) {
+        // fix the session id first: unless set_sid() ran, this takes the
+        // channel's next session id and forwards a child to base_ot
+        fix_sid_();
         // run the bootstrap: base_ot->send/recv, seed PRGs, etc.
         // (use `delta_bool[]` for Δ-side, `choice_prg` for choice-bit
         // side — both are inherited from OTExtension)

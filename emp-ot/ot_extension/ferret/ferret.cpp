@@ -163,6 +163,7 @@ void Ferret::end() {
 // LPN matrix seed is derived once from the SID for this Ferret instance.
 void Ferret::bootstrap_() {
 	if (setup_done) return;
+	fix_sid_();
 	if (!io->fs_enabled())
 		io->enable_fs(/*send_first=*/is_ot_sender());
 

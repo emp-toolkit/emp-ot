@@ -5,7 +5,9 @@
 // known block on both runs via set_choice_seed; everything else
 // (Δ on the sender, base-OT keys, internal PRGs) is freshly random.
 // After both runs, the receiver's LSBs (= choice bits) must be
-// byte-identical across the two runs.
+// byte-identical across the two runs. Ferret's two runs also share one
+// session id: its choice bits follow its public LPN matrix, which the id
+// seeds, and each run would otherwise take the channel's next id.
 //
 // Two-party via the `run` script.
 #include "emp-ot/emp-ot.h"
@@ -99,11 +101,17 @@ int main(int argc, char** argv) {
         return std::make_unique<SoftSpoken<8>>(party, io.get(), /*malicious=*/true);
     });
 
+    const block ferret_sid =
+        makeBlock(0x6665727265742d73ULL, 0x69642d70696e6e65ULL);
     check_one(io.get(), party, "Ferret(b12) semi", seed, [&]{
-        return std::make_unique<Ferret>(party, io.get(), /*malicious=*/false);
+        auto ot = std::make_unique<Ferret>(party, io.get(), /*malicious=*/false);
+        ot->set_sid(ferret_sid);
+        return ot;
     });
     check_one(io.get(), party, "Ferret(b12) mali", seed, [&]{
-        return std::make_unique<Ferret>(party, io.get(), /*malicious=*/true);
+        auto ot = std::make_unique<Ferret>(party, io.get(), /*malicious=*/true);
+        ot->set_sid(ferret_sid);
+        return ot;
     });
 
     const block matrix_seed =

@@ -49,6 +49,7 @@ void IKNP::end() {
 // which gives the desired q_i ⊕ t_i = s_i · r per row.
 void IKNP::send_begin_() {
 	if (!setup_done) {
+		fix_sid_();
 		// Sender bootstrap: feed delta_bool[1..127] into base_ot->recv,
 		// reseed G0[1..127] from the received keys. delta_bool[] is the
 		// Δ bool mirror maintained by the base (bit_0 = 1 invariant
@@ -156,6 +157,7 @@ void IKNP::combine_send(block *out) {
 
 void IKNP::recv_begin_() {
 	if (!setup_done) {
+		fix_sid_();
 		// Receiver bootstrap: sample (k0, k1) ← PRG, base_ot->send,
 		// reseed G0/G1. The base-class choice_prg supplies the per-
 		// chunk r vector at recv_next_; outer protocols can

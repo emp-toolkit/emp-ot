@@ -76,16 +76,21 @@ public:
   IOChannel *io_;
   F delta_value_;
 
-  // Session id for this VOLE instance (default the zero id). Svole is not
-  // an OT, so it carries its own SessionID; set via set_sid before the first
-  // begin()/run(). It seeds the public LPN matrix, and it is propagated as a
-  // derived child sid to the inner Ferret (and, on the F2k path, to the
-  // nested bootstrap Svole).
+  // Session id for this VOLE instance. Svole is not an OT, so it carries its
+  // own SessionID, fixed as an OT's is (ot.h): a sid set via set_sid before
+  // the first begin()/run() is kept; otherwise bootstrap takes the channel's
+  // next session id, or keeps the zero id on a channel without a session root.
+  // It seeds the public LPN matrix, and it is propagated as a derived child
+  // sid to the inner Ferret (and, on the F2k path, to the nested bootstrap
+  // Svole).
   SessionID sid;
+  bool sid_fixed_ = false;
   void set_sid(SessionID s) {
     expecting(!this->setup_done, "set_sid: bootstrap already fired");
     sid = s;
+    sid_fixed_ = true;
   }
+  const SessionID &session_id() const { return sid; }
 
   // Ping-pong carry-over buffers. Size = `refill_trees * 2^tree_depth`
   // to mirror Ferret's slack-tolerant pattern: refill trees in
@@ -223,6 +228,8 @@ private:
     if (this->setup_done) return;
     if (!io_->fs_enabled())
       io_->enable_fs(/*send_first=*/is_delta_holder());
+    if (!sid_fixed_ && io_->has_session_root()) sid = io_->next_session_id();
+    sid_fixed_ = true;
     // Session-separate the inner Ferret before it bootstraps (its rcot is
     // first consumed inside Bootstrap::run / inner_run_begin_).
     base_ferret_->set_sid(sid.derive());

@@ -191,28 +191,28 @@ rounds, so they cover it; the `F2kVOLE` and `FpVOLE` rows run part of one
 round at the default set.
 
 ```
-CO                     send=d698630b93938c23 recv=d9c1fafc2be169a6
-CSW                    send=0c2796685cfc7b91 recv=51c6e689429102d6
-PVW                    send=49680c637b810195 recv=c5631a7f473a0998
-BMM                    send=8355635dc112e02f recv=cfefe9ecf658a4cf
-IKNP semi              send=ac441b93d05b591e recv=c861d33efcc306b2
-SoftSpoken<2> semi     send=c09818e2edddfcd6 recv=53f9e440f7df41f1
-SoftSpoken<8> semi     send=c09818e2edddfcd6 recv=6bda77ca7c0f9037
-Ferret(b9) semi        send=61a8e9d7b5ef0120 recv=e1419dca8a5a1000
-SilentFerret(b9) semi  send=61a8e9d7b5ef0120 recv=e1419dca8a5a1000
-F2kVOLE semi           send=ee515d46efe3f373 recv=cbd2cd7b5b5bb106
-FpVOLE semi            send=ca95bd84e10572e4 recv=16fc21a2a8f476bc
-F2kVOLE(b9) semi       send=147359b704551dd7 recv=cbe31080cd313053
-FpVOLE(b9) semi        send=903ff3e798419b83 recv=16fc21a2a8f476bc
-IKNP mali              send=ac441b93d05b591e recv=98125593b26d3b02
-SoftSpoken<2> mali     send=c09818e2edddfcd6 recv=a549bba02e32f2a1
-SoftSpoken<8> mali     send=c09818e2edddfcd6 recv=b8690d0258534cc0
-Ferret(b9) mali        send=9f80a85e51acdd5f recv=3fd3e978860ca5af
-SilentFerret(b9) mali  send=9f80a85e51acdd5f recv=3fd3e978860ca5af
-F2kVOLE mali           send=c83168efc402d073 recv=4c7ce6adb04cec4d
-FpVOLE mali            send=8cdaa5070aefe72c recv=c82381daaab96460
-F2kVOLE(b9) mali       send=128a6cf20451f51f recv=402424a76cfd1415
-FpVOLE(b9) mali        send=24b10d4965eaddf3 recv=350b30d48b240922
+CO                     send=f2f89068a7816fb0 recv=d9c1fafc2be169a6
+CSW                    send=49ac68903b0455d2 recv=682f47c8b14c6ce3
+PVW                    send=29c86c1a3e9ca181 recv=9b84ed820cbcacb7
+BMM                    send=29c79a292dcb6804 recv=a36fb2f0a8d131b5
+IKNP semi              send=64ab400fca07301b recv=fd6b181b569e486d
+SoftSpoken<2> semi     send=e977a5ebf0042068 recv=0e756d29750968fb
+SoftSpoken<8> semi     send=e977a5ebf0042068 recv=6683f1726a4fde3c
+Ferret(b9) semi        send=47b98b35d6054a06 recv=495172df6db694a3
+SilentFerret(b9) semi  send=47b98b35d6054a06 recv=495172df6db694a3
+F2kVOLE semi           send=80e4d2e92b6d990a recv=79a6fd98317b4f7a
+FpVOLE semi            send=b4623cdffe9191ad recv=13fc5ae1866c3376
+F2kVOLE(b9) semi       send=4e785bc8b78e48ba recv=f8a89e21cf80f424
+FpVOLE(b9) semi        send=269d07e14088dfd3 recv=13fc5ae1866c3376
+IKNP mali              send=64ab400fca07301b recv=70011110a3433ad5
+SoftSpoken<2> mali     send=e977a5ebf0042068 recv=70d9a989cf7a2d80
+SoftSpoken<8> mali     send=e977a5ebf0042068 recv=e5ac931f4d1bb5bc
+Ferret(b9) mali        send=d8831b86e4c0c321 recv=c336e36df79535f7
+SilentFerret(b9) mali  send=d8831b86e4c0c321 recv=c336e36df79535f7
+F2kVOLE mali           send=6d60e7c7c41e6965 recv=0c02be48027eb91c
+FpVOLE mali            send=42cccb5de3c37a42 recv=cc4efa45d401134d
+F2kVOLE(b9) mali       send=fd38ec7df8cd24f4 recv=e21bad7428d95ec6
+FpVOLE(b9) mali        send=6e52157db0cc4b7e recv=8faa1a473c08a57a
 ```
 
 ## Usage
@@ -344,8 +344,13 @@ Ferret          ote3(party, io.get(), /*malicious=*/true,
 
 Ferret's final LPN parameter is optional and defaults to
 `tuning::ferret_b12` (the sets and their security are documented in the
-*LPN security* section). By default its public LPN matrix is derived from the
-transcript session id. An outer protocol that needs identical receiver-choice
+*LPN security* section). By default its public LPN matrix is derived from its
+session id. Every OT, OT extension and sVOLE has one: unless `set_sid()` set it
+before the object's first use, that first use takes the channel's next session
+id (emp-tool's `IOChannel::next_session_id()`), so the top-level objects of a
+protocol are session-separated with no setup, and nested objects get children
+of their parent's id. On a channel without a session root the id stays zero.
+An outer protocol that needs identical receiver-choice
 patterns across several separately domain-separated Ferret instances may call
 `set_lpn_matrix_seed(root)` on both roles before bootstrap; the transcript ids
 remain distinct, and Ferret domain-separates the root by its LPN parameters.
