@@ -18,6 +18,7 @@ class CO: public OT { public:
 	void send(const block* data0, const block* data1, int64_t length) override {
 		expect_ot_args(length, data0, data1,
 		               "CO::send: invalid length or null buffer");
+		fix_sid_();
 		block res[2];
 		std::vector<Point> B(length);
 		std::vector<Point> BA(length);
@@ -44,6 +45,7 @@ class CO: public OT { public:
 	void recv(block* data, const bool* b, int64_t length) override {
 		expect_ot_args(length, data, b,
 		               "CO::recv: invalid length or null buffer");
+		fix_sid_();
 		std::vector<Scalar> bb(length);
 		std::vector<Point> B(length);
 		std::vector<Point> As(length);

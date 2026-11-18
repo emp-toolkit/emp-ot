@@ -107,7 +107,7 @@ public:
     // that nested instance in their bootstrap path.)
     void set_sid(SessionID s) override {
         expecting(!setup_done, "set_sid: bootstrap already fired");
-        sid = s;
+        OT::set_sid(s);
         base_ot->set_sid(sid.derive());
     }
 

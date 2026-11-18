@@ -3,6 +3,21 @@
 Notable changes to emp-ot. Versions are the git tags. CMake package
 metadata is numeric (see the README's version guidance).
 
+## Unreleased
+
+### Changed
+
+- An OT, OT extension or sVOLE whose session id was not set with `set_sid()`
+  takes its channel's next session id (emp-tool's
+  `IOChannel::next_session_id()`) at its first use, instead of the zero id.
+  First uses come in the order the parties run their protocols, so both draw
+  the same ids; nested objects still get derived children of their parent's
+  id, and on a channel without a session root the id stays zero. Every
+  session-bound derivation (base-OT key derivation and reference points, LPN
+  matrices, check hashes) now differs per session, so transcripts change and
+  both parties must upgrade together. `session_id()` reads an OT's or
+  sVOLE's id. Requires emp-tool's channel session ids.
+
 ## v1.0.0-alpha.2
 
 Second alpha of the 1.0 development line, pairing with emp-tool

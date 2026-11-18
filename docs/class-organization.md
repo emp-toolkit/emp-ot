@@ -121,7 +121,8 @@ one unified body each, and the per-tree helpers
 (`bootstrap_/inner_run_begin_/process_one_tree_/inner_run_end_/run_refill_`)
 party-dispatch internally.
 
-Ferret normally derives its public LPN matrix from the transcript session id.
+Ferret normally derives its public LPN matrix from its session id: the one
+set with `set_sid`, or else the channel's next session id, taken at bootstrap.
 `set_lpn_matrix_seed` is the narrow exception for an outer protocol that needs
 several otherwise domain-separated Ferret instances to expose one identical
 receiver-choice pattern. Both roles set the same root before bootstrap; Ferret
@@ -154,7 +155,8 @@ a carrier parameter, so callers write `F2kVOLE<>` / `FpVOLE<>`).
 
 Like Ferret, Svole derives its public LPN matrix from the session id:
 `svole_lpn_seed(AuthValue::kLpnSeedDomain, sid)` = `RO(domain, sid)`, installed
-once at bootstrap after `set_sid`. `FpVOLE`'s pre-stage matrix uses its own
+once at bootstrap, after the session id is fixed (the one set with `set_sid`, or
+else the channel's next session id). `FpVOLE`'s pre-stage matrix uses its own
 domain, and the nested `F2kVOLE` bootstrap instance gets a derived child sid.
 
 ## The carrier (AuthValueXxx) is the protocol description

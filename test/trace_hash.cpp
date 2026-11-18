@@ -51,12 +51,19 @@ static void measure(int party, NetIO* anchor, const string& name,
     }
 }
 
+// Every protocol runs under this one session id. Left to the default, an
+// object would take its channel's next session id, and each row's sibling
+// channel takes its root from the anchor's next one, so a row's digests would
+// depend on how many rows ran before it.
+static const block kTraceSid = makeBlock(0x74726163652d6861ULL, 0x73682d7369640000ULL);
+
 // RCOT runner. Constructed inside body() so each protocol gets a
 // fresh OT object too (just like a real caller would).
 template <typename Make>
 static void run_rcot(NetIO* io, int party, int64_t length, Make make,
                      bool malicious) {
     auto ot = make(io, malicious);
+    ot->set_sid(kTraceSid);
     block* b = new block[length];
     ot->rcot(b, length);
     delete[] b;
@@ -69,6 +76,7 @@ static void run_svole(NetIO* io, int party, int64_t length,
                       bool malicious, DeltaSetter set_holder_delta,
                       PrimalLPNParameter param = tuning::ferret_b12) {
     SVole sv(party, io, malicious, param);
+    sv.set_sid(kTraceSid);
     if (sv.is_delta_holder()) set_holder_delta(sv);
     using AV = typename SVole::AuthValue;
     AV* b = new AV[length];
@@ -80,6 +88,7 @@ static void run_svole(NetIO* io, int party, int64_t length,
 template <typename BaseOT>
 static void run_base_ot(NetIO* io, int party, int64_t length) {
     BaseOT ot(io);
+    ot.set_sid(kTraceSid);
     if (party == ALICE) {
         std::vector<block> m0(length), m1(length);
         for (int64_t i = 0; i < length; ++i) {

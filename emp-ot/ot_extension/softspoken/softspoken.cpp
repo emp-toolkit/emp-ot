@@ -110,6 +110,7 @@ SoftSpoken<k, kChunkBlocks>::SoftSpoken(OTExtension::CloneInit ci,
     this->Delta = parent.Delta;
     std::memcpy(this->delta_bool, parent.delta_bool, sizeof(this->delta_bool));
     this->sid = parent.sid;               // frozen post-bootstrap; unused on a clone
+    this->sid_fixed_ = true;
     this->setup_done = true;              // clone skips bootstrap
     lane_salt_ = lane_salt;
     // Own malicious-check FS transcript on this lane's channel, guarded (mirrors
@@ -122,6 +123,7 @@ SoftSpoken<k, kChunkBlocks>::SoftSpoken(OTExtension::CloneInit ci,
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::bootstrap_send_() {
+    this->fix_sid_();
     // Δ = α_0 + α_1·X + … + α_{n-1}·X^{n-1} over F_{2^k}: α_i is the
     // i-th k-bit slice of Δ (bit m of α_i = delta_bool[i*k + m]). α_i is
     // the sub-VOLE field element; the butterfly indexes leaves[x] by it.
@@ -183,6 +185,7 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_send_() {
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
+    this->fix_sid_();
     // Build n GGM trees and ship the per-level XOR sums via base OT.
     // Each tree gets a fresh Δ and root; K0[h] = level-(h+1) left-side
     // XOR-sum, K1[h] = K0[h] ⊕ Δ (leveled correlation, paper §2.2).
