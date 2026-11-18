@@ -2,6 +2,7 @@
 #define EMP_OT_MP_GADGET_H__
 
 #include "emp-ot/common/cggm.h"
+#include "emp-ot/ot.h"       // fs_challenge
 #include "emp-ot/tuning.h"   // kConsistCheckCotNum
 #include <emp-tool/emp-tool.h>
 #include <algorithm>
@@ -91,7 +92,7 @@ public:
   using F = typename AuthValue::F;
 
   IOChannel *io;
-  block     sid = zero_block;   // set by the owner; bound into the check RO
+  block     sid = zero_block;   // set by the owner; binds chi seeds + checks
   bool      is_malicious = false;
   int64_t   tree_n;
   int64_t   tree_depth;
@@ -139,8 +140,8 @@ public:
   //      auth_from_block converts.
   //   2. c[j] = base_i[j] XOR K0[j] (correction shipped to receiver).
   //   3. If kHasSecretSum: secret_sum = gamma_i − Σ mac (shipped).
-  //   4. Malicious: chi seed from FS transcript; expand_chi; VW
-  //      accumulation.
+  //   4. Malicious: chi seed from the FS transcript and sid
+  //      (fs_challenge); expand_chi; VW accumulation.
   //
   // gamma_i is the per-tree carrier (sVOLE carry_curr_[tree_idx].mac).
   // For Ferret-style policies (kHasSecretSum=false) it is unused;
@@ -175,7 +176,7 @@ public:
     io->flush();
 
     if (is_malicious) {
-      block chi_seed = io->get_digest();
+      block chi_seed = fs_challenge(io, sid);
       AuthValue::expand_chi(chi_seed, chi.data(), leave_n);
       AuthValue::accumulate_VW(consist_check_VW[tree_idx], chi.data(),
                                leaves_i, leave_n);
@@ -237,7 +238,7 @@ public:
       for (int s = 0; s < B; ++s) {
         const int64_t i = b0 + s;
         io->send_block(c_scratch_.data() + i * tree_depth, tree_depth);
-        if (is_malicious) chi_seeds[s] = io->get_digest();
+        if (is_malicious) chi_seeds[s] = fs_challenge(io, sid);
       }
       // In malicious mode the receiver must evaluate these trees for its chi
       // fold. Flush coarse waves so that work overlaps our VW fold instead of
@@ -372,7 +373,7 @@ public:
   using F = typename AuthValue::F;
 
   IOChannel *io;
-  block     sid = zero_block;   // set by the owner; bound into the check RO
+  block     sid = zero_block;   // set by the owner; binds chi seeds + checks
   bool      is_malicious = false;
   int64_t   tree_n;
   int64_t   tree_depth;
@@ -468,7 +469,7 @@ public:
     }
 
     if (is_malicious) {
-      block chi_seed = io->get_digest();
+      block chi_seed = fs_challenge(io, sid);
       AuthValue::expand_chi(chi_seed, chi.data(), leave_n);
       consist_check_chi_alpha[tree_idx] = chi[rev];
       AuthValue::accumulate_VW(consist_check_VW[tree_idx], chi.data(),
@@ -521,7 +522,7 @@ public:
       for (int s = 0; s < B; ++s) {
         const int64_t i = b0 + s;
         io->recv_block(c_out + i * tree_depth, tree_depth);
-        if (is_malicious) chi_seeds[s] = io->get_digest();
+        if (is_malicious) chi_seeds[s] = fs_challenge(io, sid);
       }
       // (2) eval + α-fill (+ malicious chi_alpha / VW) — parallel.
       mp_parallel_for(pool, B, [&](int s) {

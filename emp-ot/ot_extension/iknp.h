@@ -23,8 +23,9 @@ using IKNPBaseOT = CSW;
  * Streaming Fiat-Shamir: each next() derives a per-chunk chi seed by
  * snapshotting the IOChannel FS transcript (io->get_digest()) after
  * the chunk's u-matrix bytes have crossed the wire — they are absorbed
- * automatically by send_data/recv_data, no per-row puts needed. The
- * chunk's packed F_{2^128} elements fold into running accumulators
+ * automatically by send_data/recv_data, no per-row puts needed — and
+ * binding it to the session id (fs_challenge in ot.h). The chunk's
+ * packed F_{2^128} elements fold into running accumulators
  * (check_q on the sender, check_t / check_x on the receiver) right
  * after sse_trans, while `out` is still cache-hot. end() runs a final
  * 128-OT chunk (folded with chi from the same continuing transcript)

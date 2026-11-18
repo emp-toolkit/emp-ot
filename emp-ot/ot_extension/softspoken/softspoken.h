@@ -79,7 +79,8 @@ public:
     // lane is an independent keystream domain over the shared leaves; a
     // duplicate/zero salt silently reuses a lane's COTs, so the caller must
     // allocate salts as a dense index (salt = lane index) from one source of
-    // truth. For cross-peer choice consistency the caller must ALSO make the
+    // truth. The lane's session id is a hash of this instance's sid and the
+    // salt. For cross-peer choice consistency the caller must ALSO make the
     // [0,length) partition and salt a pure function of the lane index (never of
     // peer identity). This parent, and every `new_io`, must outlive the clone.
     std::unique_ptr<SoftSpoken> clone_lane(IOChannel* new_io, uint16_t lane_salt) const {

@@ -17,6 +17,24 @@ metadata is numeric (see the README's version guidance).
   matrices, check hashes) now differs per session, so transcripts change and
   both parties must upgrade together. `session_id()` reads an OT's or
   sVOLE's id. Requires emp-tool's channel session ids.
+- Four session-id fixes. The malicious-mode Fiat-Shamir challenges (the chi
+  seeds of `IKNP`, `SoftSpoken` and the multi-point gadget that `Ferret`,
+  `SilentFerret`, `F2kVOLE` and `FpVOLE` run) hash the transcript digest with
+  the session id of the object running the check, `RO("emp-ot:fs-challenge",
+  sid)`, instead of using the digest alone. `Ferret::set_sid` no longer gives
+  the base OT a child id, which the bootstrap overwrote when it handed the
+  base OT to a nested extension; the base OT's id is now set once, by the
+  extension that runs it, and `Ferret` no longer keeps a pointer to the base
+  OT it hands over. `FpVOLE`'s pre-stage gadgets take their own derived child
+  id instead of sharing the main gadgets' id. A `SoftSpoken::clone_lane` lane
+  takes its own id, hashed from its parent's id and its salt, instead of a
+  copy of its parent's. Every malicious-mode OT-extension and sVOLE
+  transcript changes, and so do semi-honest `Ferret`, `SilentFerret` and
+  sVOLE transcripts whenever the object has a session id (set, or taken from
+  the channel), since their base OT now runs under a different derived id;
+  base-OT transcripts and semi-honest `IKNP` and `SoftSpoken` transcripts are
+  unchanged. Both parties must upgrade together, and
+  `test/trace_hash.baseline` is regenerated.
 
 ## v1.0.0-alpha.2
 

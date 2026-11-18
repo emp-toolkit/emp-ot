@@ -34,9 +34,10 @@ class PVW: public OT { public:
 
 	PVW(IOChannel* io_) { this->io = io_; }
 
-	// Derive the CRS lazily on first use so it binds the session id (set
-	// via OT::set_sid after construction). Both parties derive identical,
-	// non-DH points from the shared sid.
+	// Derive the CRS lazily on first use so it binds the session id (the one
+	// set via OT::set_sid before first use, else the channel's next session
+	// id, which fix_sid_ takes here). Both parties derive identical, non-DH
+	// points from the shared sid.
 	void ensure_crs_() {
 		fix_sid_();
 		if (crs_ready_) return;

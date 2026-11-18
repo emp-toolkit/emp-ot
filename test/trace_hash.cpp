@@ -33,10 +33,11 @@ using namespace std;
 template <typename Body>
 static void measure(int party, NetIO* anchor, const string& name,
                     bool send_first, Body&& body) {
-    // Start every protocol from the same deterministic seed state, so its
-    // trace hash is independent of which protocols ran before it. The table
-    // is order-independent: a protocol can be added or reordered without
-    // disturbing the others' digests. (No effect outside a test-mode build.)
+    // Start every protocol from the same deterministic seed state; with the
+    // runners pinning kTraceSid (below), its trace hash is independent of
+    // which protocols ran before it. The table is order-independent: a
+    // protocol can be added or reordered without disturbing the others'
+    // digests. (The seed reset has no effect outside a test-mode build.)
     reset_test_seed_counter();
     auto io = anchor->make_sibling();
     io->enable_fs(send_first);

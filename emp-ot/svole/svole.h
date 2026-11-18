@@ -80,9 +80,11 @@ public:
   // own SessionID, fixed as an OT's is (ot.h): a sid set via set_sid before
   // the first begin()/run() is kept; otherwise bootstrap takes the channel's
   // next session id, or keeps the zero id on a channel without a session root.
-  // It seeds the public LPN matrix, and it is propagated as a derived child
-  // sid to the inner Ferret (and, on the F2k path, to the nested bootstrap
-  // Svole).
+  // It seeds the public LPN matrix and binds the gadgets' checks and
+  // challenges, and it is propagated as a derived child sid to the inner
+  // Ferret and to the bootstrap: on the F2k path to the nested bootstrap
+  // Svole; on the Fp path to the COPE base OT and then to the pre-stage
+  // gadgets.
   SessionID sid;
   bool sid_fixed_ = false;
   void set_sid(SessionID s) {

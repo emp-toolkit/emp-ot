@@ -146,9 +146,12 @@ struct alignas(16) AuthValueFp {
       //   Base_svole produces (1 + t_pre + k_pre) seed pairs.
       const int64_t triple_n = 1 + pre_param.t + pre_param.k;
       std::vector<AuthValueFp> seed_pairs(triple_n);
-      // Derived child sid for the COPE base CO — computed once (same
-      // counter tick on both parties) and passed to whichever role runs.
+      // Derived child sids, each computed once (same counter ticks on both
+      // parties) and passed to whichever role runs: one for the COPE base
+      // CO, then one for the pre-stage gadgets, whose checks and challenges
+      // must not share the main gadgets' sid.
       const block bv_sid = svole.sid.derive().value();
+      const block pre_sid = svole.sid.derive().value();
       if (svole.is_delta_holder()) {
         Base_svole<AuthValueFp> bv(ALICE, svole.io_, bv_sid,
                                    (__uint128_t)svole.delta_value_);
@@ -171,8 +174,8 @@ struct alignas(16) AuthValueFp {
           pre_param.t, pre_param.tree_depth, svole.io_);
       Lpn<AuthValueFp, 10> pre_lpn(pre_param.k);
       pre_lpn.reseed(svole_lpn_seed(kPreLpnSeedDomain, svole.sid.value()));
-      pre_send.sid = svole.sid.value();
-      pre_recv.sid = svole.sid.value();
+      pre_send.sid = pre_sid;
+      pre_recv.sid = pre_sid;
       if (svole.malicious) {
         pre_send.set_malicious();
         pre_recv.set_malicious();

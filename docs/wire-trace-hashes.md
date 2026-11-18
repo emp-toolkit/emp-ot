@@ -13,10 +13,15 @@ transcript over a sibling channel taken from one anchor `NetIO` per
 protocol.
 
 Each protocol is measured from a **reset deterministic seed state**
-(`reset_test_seed_counter()` before each one), so its digest depends
-only on that protocol's own bytes — not on which protocols ran
-before it. The table is order-independent: you can add or reorder a
-protocol and only its own row changes.
+(`reset_test_seed_counter()` before each one) and under **one pinned
+session id**, `kTraceSid`, which every row sets with `set_sid()` on each
+top-level object before its first use. Unpinned, an object would take
+its channel's next session id, and each row's sibling channel takes its
+session root from the anchor's next one, so a row's ids, and with them
+its digests, would depend on how many rows ran before it. With both, a
+protocol's digest depends only on that protocol's own bytes — not on
+which protocols ran before it. The table is order-independent: you can
+add or reorder a protocol and only its own row changes.
 
 If your refactor doesn't change any wire bytes, the digests stay
 exactly the same. If they change, the protocol's wire format
@@ -154,9 +159,11 @@ If you add a new protocol or want to test a new parameter combination:
 1. Add a `measure(party, anchor, "<name>", <send_first>, [&](NetIO* io){
    run_*(io, party, length, ...); });` line in `trace_hash.cpp`
    (`anchor` is the shared `NetIO*` from which `measure()` takes a sibling
-   channel). It can go anywhere — `measure()` resets the seed state per
-   protocol, so the table is order-independent and the existing rows are
-   unaffected.
+   channel). The `run_*` body must call `set_sid(kTraceSid)` on every
+   top-level object it builds, before that object's first use, as the
+   existing runners do. The line can then go anywhere — `measure()`
+   resets the seed state per protocol and the pinned sid fixes the ids, so
+   the table is order-independent and the existing rows are unaffected.
 2. Pick `send_first` to match what the protocol's internal `enable_fs`
    would have used — the protocol's `if (!io->fs_enabled())
    enable_fs(<convention>)` should be a no-op when our pre-enable

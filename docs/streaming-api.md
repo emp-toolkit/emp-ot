@@ -431,10 +431,12 @@ exactly one party with `send_first=true` (the other passes false).
 Streaming extensions use FS in two ways:
 
 1. **Per-protocol chi seeds.** Inside a malicious-mode `next` /
-   `end`, the gadget snapshots `io->get_digest()` to derive
+   `end`, the gadget snapshots `io->get_digest()` and binds it to
+   the object's session id (`fs_challenge` in `ot.h`) to derive
    chi vectors. The digest is computed deterministically from the
-   wire bytes both parties have observed, so both parties get the
-   same chi vector without an extra round of communication.
+   wire bytes both parties have observed, and both parties hold the
+   same sid, so both get the same chi vector without an extra round
+   of communication.
 
 2. **Diagnostic per-direction digests.** `io->get_send_digest()`
    and `io->get_recv_digest()` return the running digest (SHA-256 by

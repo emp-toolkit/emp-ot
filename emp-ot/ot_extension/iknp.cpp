@@ -136,11 +136,11 @@ void IKNP::send_next_(block *out) {
 
 // Sender-side fold: pack each 128-block chunk of `out` into Q_i and
 // accumulate chi_i · Q_i into check_q. `out` is cache-hot from
-// sse_trans. The chi seed is the IOChannel FS digest snapshot taken
-// after this chunk's u-matrix bytes have been recv'd (and absorbed by
-// FS).
+// sse_trans. The chi seed is fs_challenge over the sid and the IOChannel
+// FS digest snapshot taken after this chunk's u-matrix bytes have been
+// recv'd (and absorbed by FS).
 void IKNP::combine_send(block *out) {
-	block seed = io->get_digest();
+	block seed = fs_challenge(io, sid.value());
 	PRG chiPRG(&seed);
 	constexpr int64_t chunks = block_size / 128;
 	block chi[chunks];
@@ -240,11 +240,11 @@ void IKNP::recv_next_(block *out) {
 // Receiver-side fold: pack each 128-block chunk of `out` into T_i,
 // take R_i = r[i] (the bit-packed choice block for chunk i), and
 // accumulate chi_i · T_i into check_t and chi_i · R_i into check_x.
-// Chi seed is the IOChannel FS digest, same snapshot point as the
-// sender (after this chunk's u-matrix bytes crossed the wire) so
+// Chi seed is fs_challenge over the same sid and FS digest snapshot as
+// the sender's (after this chunk's u-matrix bytes crossed the wire), so
 // per-chunk chi values match.
 void IKNP::combine_recv(block *out, block *r) {
-	block seed = io->get_digest();
+	block seed = fs_challenge(io, sid.value());
 	PRG chiPRG(&seed);
 	constexpr int64_t chunks = block_size / 128;
 	block chi[chunks];
