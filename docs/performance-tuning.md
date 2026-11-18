@@ -196,11 +196,10 @@ k=4 are swept-but-informational-only — see the policy note below —
 and only k=8 is emission-eligible), `cggm_tile`, `lpn_batch_m` (candidates
 {16,32,64} only: they divide every production fold length and keep M·d
 word-aligned, which the invariance test enforces), and
-`cot_chosen_input_tile` (swept-but-informational-only: it sizes `COT`'s
-`MITCCRH` member, so an override would change the layout of every COT
-descendant across differently-configured translation units — an ABI
-break — and it has not beaten its noise band on any measured host; the
-value is pinned as a plain constexpr in `tuning.h`).
+`cot_chosen_input_tile` (swept-but-informational-only: a `MITCCRH`
+call runs under one key, so the tile stops at 2^ReuseShift = 8, and it
+has not beaten its noise band on any measured host; the value is pinned
+as a plain constexpr in `tuning.h`).
 
 ### Validation against exhaustive search
 

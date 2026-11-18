@@ -132,18 +132,16 @@ inline constexpr int64_t iknp_chunk_ots = 2048;
 
 // ===== COT chosen-input wrapper (emp-ot/ot.h) =====
 // LOCAL (pinned, not tuner-managed): MITCCRH tile size — this many OT
-// outputs hashed per ParaEnc<1, N> AES-NI call inside COT::send /
-// COT::recv / send_rot / recv_rot. 8 keeps round-keys + plaintexts
-// register-resident on x86 AVX-512 and aarch64 NEON. LOCAL because
-// MITCCRH keys derive from the running gid (bucketed by ReuseShift), so
-// the OT-index -> key map and the pad byte stream are identical for
-// every tile; only the call granularity changes (test_tuning_invariance
-// asserts this). Pinned rather than macro-guarded because this is the
-// one knob that shapes a class layout — COT's MITCCRH<ot_bsize> member —
-// so an override would change the ABI of every COT descendant across
-// differently-configured translation units, and no measured host has
-// beaten the default beyond noise (`make tune` still sweeps it for the
-// record).
+// outputs hashed per MITCCRH call (one ParaEnc<1, N> AES-NI call) inside
+// COT::send / COT::recv / send_rot / recv_rot. 8 keeps round-keys +
+// plaintexts register-resident on x86 AVX-512 and aarch64 NEON. LOCAL
+// because MITCCRH keys derive from the running gid (bucketed by
+// ReuseShift), so the OT-index -> key map and the pad byte stream are
+// identical for every power-of-two tile; only the call granularity changes
+// (test_tuning_invariance asserts this). A MITCCRH call runs under one
+// key, so the tile is at most 2^ReuseShift = 8. Pinned: no measured host
+// has beaten the default beyond noise (`make tune` still sweeps it for
+// the record).
 inline constexpr int64_t cot_chosen_input_tile = 8;
 
 // ===== cGGM tree expand (emp-ot/common/cggm.h) =====

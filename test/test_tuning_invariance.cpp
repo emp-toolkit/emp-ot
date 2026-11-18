@@ -10,7 +10,7 @@
 //   2. cGGM expand tile                 (Tile in {4, 8, 64}, both LSB modes)
 //   3. LPN batch M                      (M in {16, 32, 64}; unit-entry and
 //                                        GF(2^128)-coefficient carriers)
-//   4. COT chosen-input MITCCRH tile    (BatchSize in {4, 8, 16})
+//   4. COT chosen-input MITCCRH tile    (tile in {1, 2, 4, 8})
 //
 // Single-process (no IO / no `run`).
 #include "emp-ot/emp-ot.h"
@@ -251,13 +251,14 @@ static void test_lpn_batches_f2k() {
 
 // ---- 4. COT chosen-input MITCCRH tile -------------------------------
 // Reproduce COT::send's hashing pattern (H=2 pads per OT) and recv's
-// (H=1) at BatchSize {4, 8, 16} over the same gid stream; the resulting
-// pad sequences must be identical (keys are gid-bucketed, so the
-// OT-index -> key map does not see the tile).
+// (H=1) at every tile a MITCCRH call can take -- the powers of two up to
+// one 8-gid bucket -- over the same stream; the resulting pad sequences
+// must be identical (each call takes the next run of gids, so the
+// OT-index -> gid -> key map does not see the tile).
 template <int B, int H>
 static void run_mitccrh_pattern(block S, const block* in, int64_t n_ot,
                                 block* out) {
-	MITCCRH<B> m;
+	MITCCRH<> m;
 	m.setS(S);
 	block pad[2 * B];
 	for (int64_t i = 0; i < n_ot; i += B) {
@@ -272,7 +273,7 @@ static void run_mitccrh_pattern(block S, const block* in, int64_t n_ot,
 
 template <int H>
 static void test_mitccrh_tiles(const char* mode) {
-	constexpr int64_t n_ot = 100;   // not a multiple of any tile: tail exercised
+	constexpr int64_t n_ot = 100;   // not a multiple of 8: the last tile-8 call is partial
 	PRG prg;
 	BlockVec in(H * n_ot), ref(H * n_ot), got(H * n_ot);
 	prg.random_block(in.data(), H * n_ot);
@@ -283,11 +284,13 @@ static void test_mitccrh_tiles(const char* mode) {
 	bool ok = true;
 	run_mitccrh_pattern<4, H>(S, in.data(), n_ot, got.data());
 	ok = ok && blocks_equal(ref.data(), got.data(), H * n_ot);
-	run_mitccrh_pattern<16, H>(S, in.data(), n_ot, got.data());
+	run_mitccrh_pattern<2, H>(S, in.data(), n_ot, got.data());
+	ok = ok && blocks_equal(ref.data(), got.data(), H * n_ot);
+	run_mitccrh_pattern<1, H>(S, in.data(), n_ot, got.data());
 	ok = ok && blocks_equal(ref.data(), got.data(), H * n_ot);
 
 	char tag[64];
-	snprintf(tag, sizeof(tag), "mitccrh tile {4,8,16}: %s", mode);
+	snprintf(tag, sizeof(tag), "mitccrh tile {1,2,4,8}: %s", mode);
 	check(tag, ok);
 }
 
