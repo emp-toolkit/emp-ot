@@ -259,7 +259,7 @@ static Candidate cot_tile_candidate(bool is_default) {
 	c.is_default = is_default;
 	c.units = double(n_ot);
 	c.fn = [=]() {
-		MITCCRH<B> m;
+		MITCCRH<> m;
 		m.setS(S);
 		block pad[2 * B];
 		for (int64_t i = 0; i < n_ot; i += B) {
@@ -415,19 +415,15 @@ int main(int argc, char** argv) {
 		verdicts.push_back(sweep("cggm_tile x lpn_M (ns/leaf, tree+fold)", c));
 	}
 	{
-		// Swept for the record but NEVER auto-emitted: the tile sizes COT's
-		// MITCCRH member, so an override changes the layout of every COT
-		// descendant — an ABI break between differently-configured TUs. It
-		// is pinned in tuning.h; no measured host has beaten the default
-		// beyond noise. Re-open the override channel only together with an
-		// ABI-neutral dispatch design.
+		// Swept for the record but NEVER auto-emitted: the tile is pinned in
+		// tuning.h, and no measured host has beaten the default beyond
+		// noise. A MITCCRH call runs under one key, so tiles stop at
+		// 2^ReuseShift = 8.
 		vector<Candidate> c = {cot_tile_candidate<8>(true),
-		                       cot_tile_candidate<4>(false),
-		                       cot_tile_candidate<16>(false)};
+		                       cot_tile_candidate<4>(false)};
 		Verdict v = sweep("cot_tile (ns/OT, H=2)", c);
 		if (!v.define.empty()) {
-			v.note += "  [informational only -- cot tile is pinned in tuning.h"
-			          " (sizes COT's MITCCRH member; ABI)]";
+			v.note += "  [informational only -- cot tile is pinned in tuning.h]";
 			v.define.clear();
 		}
 		verdicts.push_back(v);

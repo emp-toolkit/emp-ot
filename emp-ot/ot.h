@@ -94,7 +94,7 @@ class COT : public OT { public:
 		block s;prg.random_block(&s, 1);
 		io->send_block(&s,1);
 		mitccrh.setS(s);
-		block pad[2*ot_bsize];
+		block pad[2*ot_bsize] = {};
 		for(int64_t i = 0; i < length; i+=ot_bsize) {
 			for(int64_t j = i; j < std::min(i+ot_bsize, length); ++j) {
 				pad[2*(j-i)] = data[j];
@@ -118,7 +118,7 @@ class COT : public OT { public:
 		mitccrh.setS(s);
 
 		block res[2*ot_bsize];
-		block pad[ot_bsize];
+		block pad[ot_bsize] = {};
 		for(int64_t i = 0; i < length; i+=ot_bsize) {
 			memcpy(pad, data+i, std::min(ot_bsize,length-i)*sizeof(block));
 			mitccrh.hash<ot_bsize, 1>(pad);
@@ -138,7 +138,7 @@ class COT : public OT { public:
 		mitccrh.setS(s);
 		io->flush();
 
-		block pad[ot_bsize*2];
+		block pad[ot_bsize*2] = {};
 		for(int64_t i = 0; i < length; i+=ot_bsize) {
 			for(int64_t j = i; j < std::min(i+ot_bsize, length); ++j) {
 				pad[2*(j-i)] = data0[j];
@@ -159,7 +159,7 @@ class COT : public OT { public:
 		block s;
 		io->recv_block(&s,1);
 		mitccrh.setS(s);
-		block pad[ot_bsize];
+		block pad[ot_bsize] = {};
 		for(int64_t i = 0; i < length; i+=ot_bsize) {
 			memcpy(pad, data+i, std::min(ot_bsize,length-i)*sizeof(block));
 			mitccrh.hash<ot_bsize, 1>(pad);
@@ -169,10 +169,13 @@ class COT : public OT { public:
 	
 private:
 	// Tile size for the chosen-input MITCCRH wrapper: each tile hashes
-	// `ot_bsize` COT outputs in one ParaEnc<1, ot_bsize> AES-NI call.
-	// Value lives in tuning.h; see cot_chosen_input_tile for rationale.
+	// `ot_bsize` COT outputs in one MITCCRH call, under one key, as one
+	// ParaEnc<1, ot_bsize> AES-NI call. Value lives in tuning.h; see
+	// cot_chosen_input_tile for rationale. A short last tile still hashes
+	// all ot_bsize lanes (the outputs of the unused ones are dropped), so the
+	// pad buffers start zeroed.
 	static constexpr int64_t ot_bsize = tuning::cot_chosen_input_tile;
-	MITCCRH<ot_bsize> mitccrh;
+	MITCCRH<> mitccrh;
 protected:
 	PRG prg;
 };
