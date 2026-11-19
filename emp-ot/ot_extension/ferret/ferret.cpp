@@ -90,6 +90,13 @@ void Ferret::set_delta(const bool *bits) {
 	gadget_send_->set_cggm_delta(this->Delta);
 }
 
+// Pre-bootstrap only. Nothing goes to base_ot here; bootstrap_ hands it to
+// the nested source along with a derived child sid (see ferret.h).
+void Ferret::set_sid(SessionID s) {
+	expecting(!setup_done, "set_sid: bootstrap already fired");
+	OT::set_sid(s);
+}
+
 void Ferret::set_lpn_matrix_seed(const block &seed) {
 	expecting(!setup_done,
 		"Ferret::set_lpn_matrix_seed: bootstrap already fired");
@@ -187,6 +194,10 @@ void Ferret::bootstrap_() {
 		src->rcot(carry_next_.data(), param.M);
 	};
 
+	// base_ot moves into the nested source below, which runs it (including
+	// any deferred base-OT check) and destroys it on return. Clear csw_base_,
+	// this instance's CSW view of it, so no dangling alias remains.
+	csw_base_ = nullptr;
 	if (param.M > tuning::ferret_bootstrap_nest_factor * tuning::ferret_b9.M) {
 		Ferret b9(party, io, /*malicious=*/malicious,
 		          std::move(base_ot), tuning::ferret_b9);

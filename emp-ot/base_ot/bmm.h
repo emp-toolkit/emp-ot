@@ -65,9 +65,10 @@ public:
     // public keys) in the random-oracle model.
     bool is_malicious_secure() const override { return true; }
 
-    // sid is the inherited OT::sid (default zero_block); set via OT::set_sid
-    // before first use. Together with the OT index, it seeds the per-OT matrix
-    // expansion and the H/Ĥ oracles. io is the inherited OT::io (set in the ctor).
+    // sid is the inherited OT::sid: the one set via OT::set_sid before first
+    // use, else the channel's next session id, taken at first use (ot.h).
+    // Together with the OT index, it seeds the per-OT matrix expansion and the
+    // H/Ĥ oracles. io is the inherited OT::io (set in the ctor).
     explicit BMM(IOChannel* io_);
     ~BMM() override = default;
 

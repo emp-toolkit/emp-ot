@@ -121,6 +121,13 @@ public:
 	// sender-side mpcot state. Pre-bootstrap only.
 	void set_delta(const bool *bits) override;
 
+	// Set the session id, pre-bootstrap. Unlike OTExtension::set_sid this
+	// forwards nothing to base_ot: the bootstrap moves base_ot into a nested
+	// extension (SoftSpoken<8>, or a nested ferret_b9 that moves it on to its
+	// own SoftSpoken<8>) under a derived child sid, and the SoftSpoken<8>
+	// that runs the base OT sets the base OT's sid, once.
+	void set_sid(SessionID s) override;
+
 	// Override the public LPN-matrix seed root independently of the
 	// transcript session id. Both roles must supply the same root before
 	// bootstrap. The default remains a matrix derived from `sid`; this hook is

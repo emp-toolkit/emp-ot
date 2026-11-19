@@ -133,9 +133,11 @@ kernels.
 `test/trace_hash.cpp` runs the covered protocols under a sibling
 channel off one anchor `NetIO` with Fiat-Shamir enabled and prints one
 SHA-256 digest per direction per protocol. Each protocol is measured
-from a reset deterministic seed state, so the digests are
-*order-independent*: adding or reordering a protocol changes only its
-own row. Refactors that leave the wire bytes untouched leave the hashes
+from a reset deterministic seed state and under one pinned session id,
+`kTraceSid`, which every row sets before its objects' first use, so the
+digests are *order-independent*: adding or reordering a protocol
+changes only its own row (a new row must pin `kTraceSid` too).
+Refactors that leave the wire bytes untouched leave the hashes
 untouched; refactors that *do* change the wire are visible as a
 single-line diff. The digests are deterministic only in a test-mode
 build: a Release tree configured against an emp-tool built with
@@ -198,21 +200,21 @@ BMM                    send=29c79a292dcb6804 recv=a36fb2f0a8d131b5
 IKNP semi              send=64ab400fca07301b recv=fd6b181b569e486d
 SoftSpoken<2> semi     send=e977a5ebf0042068 recv=0e756d29750968fb
 SoftSpoken<8> semi     send=e977a5ebf0042068 recv=6683f1726a4fde3c
-Ferret(b9) semi        send=47b98b35d6054a06 recv=495172df6db694a3
-SilentFerret(b9) semi  send=47b98b35d6054a06 recv=495172df6db694a3
-F2kVOLE semi           send=80e4d2e92b6d990a recv=79a6fd98317b4f7a
-FpVOLE semi            send=b4623cdffe9191ad recv=13fc5ae1866c3376
-F2kVOLE(b9) semi       send=4e785bc8b78e48ba recv=f8a89e21cf80f424
-FpVOLE(b9) semi        send=269d07e14088dfd3 recv=13fc5ae1866c3376
-IKNP mali              send=64ab400fca07301b recv=70011110a3433ad5
-SoftSpoken<2> mali     send=e977a5ebf0042068 recv=70d9a989cf7a2d80
-SoftSpoken<8> mali     send=e977a5ebf0042068 recv=e5ac931f4d1bb5bc
-Ferret(b9) mali        send=d8831b86e4c0c321 recv=c336e36df79535f7
-SilentFerret(b9) mali  send=d8831b86e4c0c321 recv=c336e36df79535f7
-F2kVOLE mali           send=6d60e7c7c41e6965 recv=0c02be48027eb91c
-FpVOLE mali            send=42cccb5de3c37a42 recv=cc4efa45d401134d
-F2kVOLE(b9) mali       send=fd38ec7df8cd24f4 recv=e21bad7428d95ec6
-FpVOLE(b9) mali        send=6e52157db0cc4b7e recv=8faa1a473c08a57a
+Ferret(b9) semi        send=8717c2172d2d97c8 recv=998865714bd15b42
+SilentFerret(b9) semi  send=8717c2172d2d97c8 recv=998865714bd15b42
+F2kVOLE semi           send=0bee624b053183b9 recv=39b564cf4eacc258
+FpVOLE semi            send=dc2e0aa7e6cb1735 recv=ed44d94d78f09202
+F2kVOLE(b9) semi       send=088462f4221f9110 recv=810ee88f7644fa03
+FpVOLE(b9) semi        send=cdfbde1bb9bcd1ad recv=ed44d94d78f09202
+IKNP mali              send=64ab400fca07301b recv=65f43e18f025e291
+SoftSpoken<2> mali     send=e977a5ebf0042068 recv=d469374c10ac593d
+SoftSpoken<8> mali     send=e977a5ebf0042068 recv=11b1f246208773da
+Ferret(b9) mali        send=846d05ed7dccf36d recv=4a53d9508f54f15a
+SilentFerret(b9) mali  send=846d05ed7dccf36d recv=4a53d9508f54f15a
+F2kVOLE mali           send=9dfe966a4ae57cf6 recv=ce601c668330f9ff
+FpVOLE mali            send=a19653f84a23c18f recv=f99242ea737cb64d
+F2kVOLE(b9) mali       send=416823b441c2b173 recv=e2f1452fc1d518af
+FpVOLE(b9) mali        send=aeb2c191edd659de recv=eae05fe444cbec29
 ```
 
 ## Usage

@@ -60,8 +60,9 @@ class CSW : public OT { public:
 
 	ECGroup G;
 
-	// sid is the inherited OT::sid (default zero_block); set via OT::set_sid
-	// before first use. It is the leading bytes of every RO input below.
+	// sid is the inherited OT::sid: the one set via OT::set_sid before first
+	// use, else the channel's next session id, taken at first use (ot.h).
+	// It is the leading bytes of every RO input below.
 	CSW(IOChannel * io_) {this->io = io_;}
 
 private:

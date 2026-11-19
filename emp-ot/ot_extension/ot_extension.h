@@ -39,7 +39,8 @@ public:
     // overridden by passing a concrete OT into the subclass ctor.
     std::unique_ptr<OT> base_ot;
     // Non-null iff base_ot is CSW (the only base OT exposing the messy-core +
-    // deferred extraction-check split). Set once in the ctor. When set, the
+    // deferred extraction-check split). Set in the ctor, and cleared with
+    // base_ot when Ferret's bootstrap moves the base OT away. When set, the
     // subclass bootstrap calls *_core in begin() (buffering the base round-2
     // bytes) and the deferred *_check at the tail of the first end() or
     // mid-session check(), overlapping the base OT's last two flows with the
@@ -102,9 +103,10 @@ public:
 
     // Set this extension's session id and forward a derived child sid to the
     // owned base OT, so the base OT's RO transcript is session-separated.
-    // Pre-bootstrap, like the setters above. (Subclasses that nest another
-    // extension at bootstrap — Ferret — additionally derive a child sid for
-    // that nested instance in their bootstrap path.)
+    // Pre-bootstrap, like the setters above. Ferret, which hands base_ot to a
+    // nested extension at bootstrap, overrides this to forward nothing: its
+    // bootstrap derives a child sid for that nested instance, and the
+    // extension that finally runs the base OT forwards a child of its own.
     void set_sid(SessionID s) override {
         expecting(!setup_done, "set_sid: bootstrap already fired");
         OT::set_sid(s);

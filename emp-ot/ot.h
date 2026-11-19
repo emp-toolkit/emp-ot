@@ -19,6 +19,16 @@ inline void expect_ot_args(int64_t length, const void *buf0, const void *buf1,
 	          message);
 }
 
+// Fiat-Shamir challenge seed for a malicious-mode check: the channel's
+// transcript digest, bound to the session id of the object running the check.
+// Both parties call it at the same transcript point with the same sid, so they
+// draw the same seed without an extra message.
+inline block fs_challenge(IOChannel *io, block sid) {
+	return RO("emp-ot:fs-challenge", sid)
+		.absorb(io->get_digest())
+		.squeeze_block();
+}
+
 // Abstract 1-out-of-2 OT.
 class OT {
 public:
@@ -42,12 +52,16 @@ public:
 	// a session root. First uses come in the order the parties run their
 	// protocols, which both ends already share, so both draw the same ids.
 	// Extensions forward a derived child sid to their base OT before it runs
-	// (see OTExtension), so only a top-level object draws from its channel.
+	// (see OTExtension; Ferret gives it to the nested extension that takes
+	// over its base OT), so only a top-level object draws from its channel.
+	// Malicious-mode Fiat-Shamir challenges bind the sid (fs_challenge above).
 	// The SessionID ctor is implicit, so set_sid(some_block) still works.
 	virtual void set_sid(SessionID s) {
 		sid = s;
 		sid_fixed_ = true;
 	}
+	// The sid in force. It reads zero until the first use fixes it, unless
+	// set_sid() ran first.
 	const SessionID &session_id() const { return sid; }
 protected:
 	// Fix the sid at the first use, as set_sid() describes; later calls do

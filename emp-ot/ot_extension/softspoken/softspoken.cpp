@@ -67,7 +67,8 @@
 //   (2) Subspace VOLE check, once per begin/next…/end session. Each
 //       chunk's d_bufs are absorbed into the IOChannel FS transcript
 //       via send_data / recv_data; chi seed comes from
-//       io->get_digest(). Both sides chi-fold packed F_{2^128} elements
+//       io->get_digest(), bound to the sid by fs_challenge (ot.h).
+//       Both sides chi-fold packed F_{2^128} elements
 //       over post-Conv outputs (sender accumulates check_q := Σ chi_i
 //       · Q_i, receiver check_t := Σ chi_i · T_i and check_x := Σ chi_i
 //       · R_i where R_i = u_canonical[i]). One 128-OT sacrificial chunk
@@ -109,7 +110,12 @@ SoftSpoken<k, kChunkBlocks>::SoftSpoken(OTExtension::CloneInit ci,
     for (int i = 0; i < n; ++i) alphas_[i] = parent.alphas_[i];
     this->Delta = parent.Delta;
     std::memcpy(this->delta_bool, parent.delta_bool, sizeof(this->delta_bool));
-    this->sid = parent.sid;               // frozen post-bootstrap; unused on a clone
+    // The lane's own sid, which its malicious-check challenges bind: a hash of
+    // the parent's sid and lane_salt (the parent is const, so it cannot
+    // derive() a child). Both ends of a lane compute the same one.
+    this->sid = RO("emp-ot:softspoken:lane", parent.sid.value())
+                    .absorb((uint64_t)lane_salt)
+                    .squeeze_block();
     this->sid_fixed_ = true;
     this->setup_done = true;              // clone skips bootstrap
     lane_salt_ = lane_salt;
@@ -698,7 +704,7 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::combine_send_chunk(block* out, int64_t bs) {
-    block seed = this->io->get_digest();
+    block seed = fs_challenge(this->io, this->sid.value());
     PRG chiPRG(&seed);
     block* chi = check_chi_chunk_.data();
     block* packed = check_pack_chunk_.data();
@@ -714,7 +720,7 @@ void SoftSpoken<k, kChunkBlocks>::combine_send_chunk(block* out, int64_t bs) {
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::combine_recv_chunk(block* out, const block* u_canonical, int64_t bs) {
-    block seed = this->io->get_digest();
+    block seed = fs_challenge(this->io, this->sid.value());
     PRG chiPRG(&seed);
     block* chi = check_chi_chunk_.data();
     block* packed = check_pack_chunk_.data();
