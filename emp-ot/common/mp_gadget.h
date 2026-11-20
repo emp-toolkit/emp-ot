@@ -89,7 +89,9 @@ inline void typed_check_commit(block sid, const F &v, block salt, block out[2]) 
 // every leaf before it becomes a field element. The hash is a MITCCRH stream
 // with one gid per leaf, taken by both parties in the same leaf order, and
 // run_begin starts each round's stream at RO(kDomLeafHash, sid, round), so no
-// (start point, gid) pair recurs across rounds or instances.
+// (start point, gid) pair recurs across rounds, or across instances with
+// distinct session ids. Instances left at the zero id share start points and
+// fall back to the fixed-key setting of the cGGM's own CCRH.
 inline block leaf_hash_start(block sid, uint64_t round) {
   return RO(kDomLeafHash, sid).absorb(round).squeeze_block();
 }
@@ -184,7 +186,7 @@ public:
   // gamma_i is the per-tree carrier (sVOLE carry_curr_[tree_idx].mac).
   // For Ferret-style policies (kHasSecretSum=false) it is unused;
   // callers may omit it.
-  void run_next_tree(AuthValue *leaves_i, const block *base_i, int tree_idx,
+  void run_next_tree(AuthValue *leaves_i, const block *base_i, int64_t tree_idx,
                      [[maybe_unused]] F gamma_i = AuthValue::f_zero()) {
     block seed;
     prg.random_block(&seed, 1);
@@ -485,7 +487,7 @@ public:
   //   6. Malicious: chi seed, expand_chi, chi_alpha + VW.
   // Returns the punctured leaf's storage index = bit_reverse(α), which
   // is where the caller writes its val (split-layout leaf order).
-  uint32_t run_next_tree(AuthValue *leaves_i, const block *base_i, int tree_idx,
+  uint32_t run_next_tree(AuthValue *leaves_i, const block *base_i, int64_t tree_idx,
                          F triple_yz_i = AuthValue::f_zero()) {
     uint32_t alpha = 0;
     for (int64_t j = 0; j < tree_depth; ++j) {

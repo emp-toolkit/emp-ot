@@ -45,9 +45,9 @@ Semi-honest mode is plain regular LPN. Malicious mode is the "LPN with static
 leakage" of Ferret (CCS 2020, eprint 2020/924, Def. 4): once per round (once per prepaid batch for
 `SilentFerret`) the sender learns whether the chi-fold check passed, one
 selective-failure query on the round's noise positions. The paper answers that
-query before releasing outputs; `Ferret::next()` releases a round's COTs before
-`end()` runs the check, so outputs must be treated as provisional until `check()`
-or `end()` (README, *Streaming RCOT*).
+query before releasing outputs; `Ferret::next()` releases a round's COTs, and an
+sVOLE's `next()` its outputs, before `end()` runs the check, so outputs must be
+treated as provisional until `check()` or `end()` (README, *Streaming RCOT*).
 
 ### The parameters
 

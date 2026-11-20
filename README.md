@@ -587,9 +587,10 @@ what the estimates do not cover, and how to reproduce them and evaluate a custom
 - **`FpVOLE` malicious mode does not provide 128-bit soundness.** The
   field is p = 2⁶¹ − 1, so single-field consistency checks are bounded
   near 2⁻⁶¹ and the bootstrap's polynomial check near 2⁻⁴⁵ at the
-  shipped size; the 61-bit Δ caps key-guessing near 2⁻⁶¹ per online
-  guess (the round-final check commits before it reveals anything that
-  depends on Δ). `F2kVOLE` works over GF(2¹²⁸).
+  shipped size; the 61-bit Δ caps key-guessing near 2⁻⁶¹: the
+  round-final check commits before it reveals anything that depends on
+  Δ, and the base sVOLE lets a cheater learn k bits of Δ only with
+  probability 2⁻ᵏ, aborting otherwise. `F2kVOLE` works over GF(2¹²⁸).
 - **LPN parameters.** `Ferret`, `SilentFerret`, `F2kVOLE` and `FpVOLE` rest on
   primal LPN with regular noise. The shipped sets put every counted attack at
   141 bits or more, a 10% margin over the 128-bit target, for the binary

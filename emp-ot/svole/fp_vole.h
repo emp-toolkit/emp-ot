@@ -193,7 +193,7 @@ struct alignas(16) AuthValueFp {
           AuthValueFp *leaves_i = pre_vole.data() + i * pre_leaves;
           const block *base_i =
               pre_base_cots.data() + i * pre_param.tree_depth;
-          pre_send.run_next_tree(leaves_i, base_i, (int)i,
+          pre_send.run_next_tree(leaves_i, base_i, i,
                                  seed_pairs[i].mac);
         }
         pre_send.run_end_typed(seed_pairs[pre_param.t]);
@@ -204,7 +204,7 @@ struct alignas(16) AuthValueFp {
           const block *base_i =
               pre_base_cots.data() + i * pre_param.tree_depth;
           uint32_t alpha = pre_recv.run_next_tree(
-              leaves_i, base_i, (int)i, seed_pairs[i].mac);
+              leaves_i, base_i, i, seed_pairs[i].mac);
           leaves_i[alpha].val = seed_pairs[i].val;
         }
         pre_recv.run_end_typed(seed_pairs.data(), seed_pairs[pre_param.t]);

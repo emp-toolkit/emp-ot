@@ -273,6 +273,16 @@ public:
   }
 
   // Internal: chi-fold over raw mod-p macs (low 64 of __uint128_t).
+  //
+  // Selective failure on Δ's bits. Cope's corrections for bit position i
+  // reach the sender's keys only where Δ_i = 1, so a cheating receiver can
+  // send corrections for one position that encode a different u, then
+  // shift its check reply by what that changes if Δ_i = 1: the check
+  // passes iff its guess of Δ_i is right. It learns k bits of Δ this way
+  // with probability 2^-k, and the check aborts otherwise, so learning all
+  // of Δ, or forging a MAC with the bits it learned, still succeeds with
+  // probability about 2^-61. FpVOLE's outputs rest only on Δ as a whole
+  // staying unpredictable, so the base sVOLE accepts this leakage.
   void sender_check(__uint128_t *macs, uint64_t b, int64_t size) {
     PRG prg;
     uint64_t seed;
@@ -302,6 +312,7 @@ public:
     xz[0] = add_mod(xz[0], c);
     xz[1] = add_mod(xz[1], a);
     io->send_data(xz, 2 * sizeof(uint64_t));
+    io->flush();
   }
 };
 

@@ -288,8 +288,9 @@ Notes:
 ## Mid-session certification (`OTExtension::check()`)
 
 Malicious OT-extension outputs are provisional until the backend's
-consistency check succeeds. A long-lived incremental consumer can establish a
-safe boundary without discarding its chunk tail:
+consistency check succeeds, and so are a malicious sVOLE's, whose check runs
+in `end()`. A long-lived incremental consumer of an OT extension can establish
+a safe boundary without discarding its chunk tail:
 
 ```cpp
 ote.begin();

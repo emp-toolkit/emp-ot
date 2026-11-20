@@ -45,6 +45,9 @@ metadata is numeric (see the README's version guidance).
 
 ### Changed
 
+- The multi-point gadget's `run_next_tree` takes its tree index as `int64_t`,
+  like the parameter set's tree count, and the base sVOLE's receiver flushes its
+  check reply instead of relying on its next receive to drain it.
 - An OT, OT extension or sVOLE whose session id was not set with `set_sid()`
   takes its channel's next session id (emp-tool's
   `IOChannel::next_session_id()`) at its first use, instead of the zero id.
