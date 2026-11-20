@@ -37,7 +37,7 @@ using IKNPBaseOT = CSW;
  *
  * Bit-0 choice encoding: with the invariant bit_0(Δ) = 1, row 0 of the
  * IKNP matrix collapses. Sender forces q[0] = 0 (memset row 0 of t,
- * loop starts at i=1). Receiver samples r internally via choice_prg
+ * loop starts at i=1). Receiver samples r from its own PRG
  * and pins t[0] = r before sse_trans; after transpose, bit_0(M_k) =
  * bit_k(r) = choice_k and bit_0(K_k) = 0, so Q ^ T = r·Δ holds at bit
  * 0 with zero post-processing. RandomCOT's online correction reads
@@ -69,10 +69,9 @@ class IKNP : public OTExtension { public:
 private:
 	// ===== State =====
 	static constexpr int64_t block_size = tuning::iknp_chunk_ots;
-	// Per-row PRG streams. The base-class choice_prg samples the
-	// bit-packed choice vector r on the receiver. The sender-side Δ
-	// bool form lives on the base as `delta_bool[]` and is read in
-	// send_next_.
+	// Per-row PRG streams. The receiver samples the bit-packed choice
+	// vector r from the base-class prg. The sender-side Δ bool form
+	// lives on the base as `delta_bool[]` and is read in send_next_.
 	PRG G0[128], G1[128];
 	// Packs 128 consecutive COT outputs into a single F_{2^128} element
 	// via the gadget (1, X, ..., X^{127}). Lets the malicious check

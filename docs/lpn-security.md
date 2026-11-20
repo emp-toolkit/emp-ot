@@ -113,7 +113,7 @@ In the code:
 | `PrimalLPNParameter`, its derived `k`, `M`, `refill_trees`, and `validate_primal_lpn_parameter` | [`emp-ot/tuning.h`](../emp-ot/tuning.h) |
 | `d = 10` | `tuning::lpn_d` in [`emp-ot/tuning.h`](../emp-ot/tuning.h) |
 | The matrix: `idx = r & (k−1)` from an AES-CTR PRG; for `F2kVOLE`, one GF(2¹²⁸) coefficient block per entry from the same stream | `Lpn` in [`emp-ot/common/lpn.h`](../emp-ot/common/lpn.h) |
-| The matrix seed: `RO("emp-ot:ferret:lpn-seed", sid)`, or the `set_lpn_matrix_seed` root bound to `(t, logk, tree_depth)`; `RO("emp-ot:f2kvole:lpn-seed", sid)` and `RO("emp-ot:fpvole:lpn-seed", sid)` for sVOLE, and `RO("emp-ot:fpvole:pre-lpn-seed", sid)` for `FpVOLE`'s pre-stage | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h), [`fp_vole.h`](../emp-ot/svole/fp_vole.h) |
+| The matrix seed: `RO("emp-ot:ferret:lpn-seed", sid)`; `RO("emp-ot:f2kvole:lpn-seed", sid)` and `RO("emp-ot:fpvole:lpn-seed", sid)` for sVOLE, and `RO("emp-ot:fpvole:pre-lpn-seed", sid)` for `FpVOLE`'s pre-stage | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h), [`fp_vole.h`](../emp-ot/svole/fp_vole.h) |
 | The noise: tree `i` owns block `i`, and its one nonzero entry sits at the bit-reversed cGGM puncture point, the complement of the receiver's base-COT choice bits for that tree | [`emp-ot/common/mp_gadget.h`](../emp-ot/common/mp_gadget.h) |
 | The round loop and the slot layout of `M` | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h) |
 | Choosing a set: the `param` constructor argument, `ferret_b12` by default | [`ferret.h`](../emp-ot/ot_extension/ferret/ferret.h), [`silent_ferret.h`](../emp-ot/ot_extension/ferret/silent_ferret.h), [`svole.h`](../emp-ot/svole/svole.h) |
@@ -464,9 +464,8 @@ These were read and do not set any parameter here.
   `N` bits: 2⁵¹–2⁶³ bits (2⁵⁴ at the default) across the sets.
 - **Heuristics.** The algebraic attacks assume the rank behaviour the series predicts.
   Small experiments and Cueto Noval et al. support this, but neither covers these sizes.
-- **Leakage.** The malicious-mode selective-failure query of §1, and deployments sharing
-  one matrix root and choice seed across several senders, are outside the single-instance
-  model.
+- **Leakage.** The malicious-mode selective-failure query of §1 is outside the
+  single-instance model.
 
 ## 5. The sVOLE check mask
 

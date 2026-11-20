@@ -197,24 +197,24 @@ CO                     send=f2f89068a7816fb0 recv=d9c1fafc2be169a6
 CSW                    send=6cbdbfdeab5e4295 recv=682f47c8b14c6ce3
 PVW                    send=29c86c1a3e9ca181 recv=9b84ed820cbcacb7
 BMM                    send=29c79a292dcb6804 recv=a36fb2f0a8d131b5
-IKNP semi              send=64ab400fca07301b recv=6cb3b038f4735173
-SoftSpoken<2> semi     send=e977a5ebf0042068 recv=84592db1cdf7393d
-SoftSpoken<8> semi     send=e977a5ebf0042068 recv=b8f6e7578df9d24c
-Ferret(b9) semi        send=5a23c8a8920f50f5 recv=0954a9a9cf45e344
-SilentFerret(b9) semi  send=5a23c8a8920f50f5 recv=0954a9a9cf45e344
-F2kVOLE semi           send=1cc9b05647e16b6d recv=eacb15bedd3326bc
-FpVOLE semi            send=74d8dbcc4d0696ac recv=6848bc69686c2cc4
-F2kVOLE(b9) semi       send=1c703630f99309b5 recv=dfc6cb64f5f674e2
-FpVOLE(b9) semi        send=f16f08fb4e63948a recv=6848bc69686c2cc4
-IKNP mali              send=64ab400fca07301b recv=b4ea80334cb66552
-SoftSpoken<2> mali     send=e977a5ebf0042068 recv=e4c3270aec3f8e96
-SoftSpoken<8> mali     send=e977a5ebf0042068 recv=916884c91dfd6b28
-Ferret(b9) mali        send=1f7f62f266868e7e recv=e63a07538976b8e6
-SilentFerret(b9) mali  send=1f7f62f266868e7e recv=e63a07538976b8e6
-F2kVOLE mali           send=ea97ae859ced1479 recv=27a5cccaedd533f5
-FpVOLE mali            send=ff8f1bac18ab5e90 recv=0de1cb488c17eab3
-F2kVOLE(b9) mali       send=0be0895d5dbafa46 recv=e02fbe8d6d1847ae
-FpVOLE(b9) mali        send=1ccc3d1982bab332 recv=ae5f780ec282076f
+IKNP semi              send=10683f96182d1932 recv=71521069116554ea
+SoftSpoken<2> semi     send=58b5841c59972871 recv=5659fdade553c889
+SoftSpoken<8> semi     send=58b5841c59972871 recv=7331c25770184af2
+Ferret(b9) semi        send=d44267c2cf91d948 recv=d32d2e7a7b9ff737
+SilentFerret(b9) semi  send=d44267c2cf91d948 recv=d32d2e7a7b9ff737
+F2kVOLE semi           send=45ad8665a1cd00a0 recv=6800d7be63b04dbc
+FpVOLE semi            send=891df284f4e0e873 recv=43a57b9fefee635b
+F2kVOLE(b9) semi       send=780342c92a008584 recv=0956a3fc6360f1fd
+FpVOLE(b9) semi        send=756066ed76d004d3 recv=43a57b9fefee635b
+IKNP mali              send=10683f96182d1932 recv=807647cc71d70624
+SoftSpoken<2> mali     send=58b5841c59972871 recv=c14aaa7faffd4a8c
+SoftSpoken<8> mali     send=58b5841c59972871 recv=8f92908e6477c69b
+Ferret(b9) mali        send=e0c4d4a792105ae5 recv=cbe7eaae4142579a
+SilentFerret(b9) mali  send=e0c4d4a792105ae5 recv=cbe7eaae4142579a
+F2kVOLE mali           send=497942ce701bf7de recv=c2117e78ec6572c7
+FpVOLE mali            send=3928e02476b258f0 recv=2cbd1c00a1939ca8
+F2kVOLE(b9) mali       send=a1a6511d555fe63f recv=e4f47d513449318b
+FpVOLE(b9) mali        send=5fcd1617dae04e84 recv=0ad0ac51c977bc42
 ```
 
 ## Usage
@@ -354,10 +354,6 @@ protocol are session-separated with no setup, and nested objects get children
 of their parent's id. On a channel without a session root the id stays zero.
 An id given to `set_sid()` must belong to one object, as the channel's ids
 do: two objects given the same id derive the same child ids.
-An outer protocol that needs identical receiver-choice
-patterns across several separately domain-separated Ferret instances may call
-`set_lpn_matrix_seed(root)` on both roles before bootstrap; the transcript ids
-remain distinct, and Ferret domain-separates the root by its LPN parameters.
 
 ### Streaming RCOT
 

@@ -190,27 +190,19 @@ template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
     this->fix_sid_();
     // Build n GGM trees and ship the per-level XOR sums via base OT.
-    // Each tree gets a fresh Δ and root; K0[h] = level-(h+1) left-side
-    // XOR-sum, K1[h] = K0[h] ⊕ Δ (leveled correlation, paper §2.2).
-    //
-    // Half-Tree's level-1 right child is `Δ ^ k` (cggm::build_sender),
-    // so every leaf — and hence every u_canonical bit on the wire —
-    // depends on BOTH the per-tree Δ and the root. To make the
-    // receiver's choice-bit stream a pure function of choice_prg,
-    // we draw both from it. The "other randomness" caller intent
-    // (set_choice_seed determines choices, nothing else) is still
-    // satisfied: only the per-tree (Δ, root) pair lives on this
-    // stream; everything not affecting choice bits — Δ_global on
-    // the sender, base-OT keys, FS-driven malicious challenges —
-    // stays on its own source.
+    // Each tree gets a fresh Δ and root from this instance's own PRG;
+    // K0[h] = level-(h+1) left-side XOR-sum, K1[h] = K0[h] ⊕ Δ (leveled
+    // correlation, paper §2.2). The trees are this side's secret: the
+    // leaves, and so the corrections and the choice bits, follow from
+    // them, so they must be fresh for every instance.
     leaves_send_.resize(static_cast<size_t>(n) * Q);
     const int total = n * k;
     BlockVec K0(total), K1(total);
     block K0_buf[k], K1_buf[k];
     for (int i = 0; i < n; ++i) {
         block Delta, root;
-        this->choice_prg.random_block(&Delta, 1);
-        this->choice_prg.random_block(&root, 1);
+        this->prg.random_block(&Delta, 1);
+        this->prg.random_block(&root, 1);
         // build_sender stores leaves in the split layout (leaf for path p
         // at index bit_reverse(p)); the sub-VOLE sender has no puncture and
         // its butterfly reads leaves[x] as field element x, matching the

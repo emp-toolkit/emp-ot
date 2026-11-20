@@ -20,7 +20,7 @@ Two abstractions tie those families together. `StreamingExtension<Element>`
 is the shared begin/next/end + leftover + Fiat-Shamir lifecycle for
 both OT and sVOLE extensions. Each protocol family then plugs in
 under it: `OTExtension : public StreamingExtension<block>` adds Δ /
-base_ot / choice_prg; `Svole<AuthValue> : public StreamingExtension<AuthValue>`
+base_ot; `Svole<AuthValue> : public StreamingExtension<AuthValue>`
 parameterizes on a carrier type. The carrier (`AuthValueXxx`) is
 where every protocol-specific detail lives — field type, arithmetic
 ops, wire-format traits, chi-fold helpers, LPN ops, sVOLE bootstrap.
@@ -46,7 +46,7 @@ running concurrently on localhost. The `./run` script does the
 launch:
 
 ```bash
-./run ./build/test_choice_seed              # alice + bob; default port
+./run ./build/test_iknp                     # alice + bob; default port
 ./run ./build/test_f2k_vole
 ./run ./build/bench_ferret
 ```
@@ -155,7 +155,7 @@ from a subdoc.
 
 - **Lazy bootstrap, gated by `setup_done`.** Subclasses do no wire
   I/O in their constructor — pre-bootstrap setters (`set_delta`,
-  `set_choice_seed`) need a window to fire. The first `begin()`
+  `set_sid`) need a window to fire. The first `begin()`
   performs the bootstrap and flips `setup_done = true`; subsequent
   begins see `setup_done` and skip. Setters expect `!setup_done`
   (always-on) to catch ordering bugs.

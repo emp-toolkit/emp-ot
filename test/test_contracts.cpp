@@ -412,15 +412,6 @@ int main() {
         extension.mark_setup_done();
         extension.set_delta(bits);
     });
-    ok &= expect_rejected("sender choice seed", "sender has no choice bits", [] {
-        DummyExtension extension(ALICE, false, std::make_unique<DummyOT>(false));
-        extension.set_choice_seed(zero_block);
-    });
-    ok &= expect_rejected("late choice seed", "bootstrap already fired", [] {
-        DummyExtension extension(BOB, false, std::make_unique<DummyOT>(false));
-        extension.mark_setup_done();
-        extension.set_choice_seed(zero_block);
-    });
     ok &= expect_rejected("late sid", "bootstrap already fired", [] {
         DummyExtension extension(BOB, false, std::make_unique<DummyOT>(false));
         extension.mark_setup_done();
