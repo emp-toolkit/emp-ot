@@ -251,11 +251,14 @@ Rapids + fast link: T16 at k=2 measured +12%).
 
 ## Measured performance analysis (2026-11 campaign)
 
-Context for the README's observed numbers (two m8a.8xlarge, cluster
+This analysis comes from a campaign on two m8a.8xlarge (cluster
 placement group, Release builds using one final-source tuner result
 frozen across both hosts; raw outputs and the iperf3/ping captures are
 archived with the results). The frozen result selected cGGM tile 64 and
-LPN batch 64.
+LPN batch 64. The README's tables are measured on two m8a.large with the
+same tuner result. Their single-core rows agree with the m8a.8xlarge
+figures to within a few percent; the aggregate-bandwidth figures below are
+m8a.8xlarge's.
 
 **What binds each configuration.**
 

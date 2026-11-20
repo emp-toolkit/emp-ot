@@ -513,13 +513,15 @@ outputs: 1,141,248 at `ferret_b9`, 16,625,664 at the default `ferret_b12`.
 
 ## Performance
 
-Two AWS `m8a.8xlarge` (AMD EPYC 9R45, Zen 5) in a cluster placement
+Two AWS `m8a.large` (AMD EPYC 9R45, Zen 5; 2 vCPU) in a cluster placement
 group, us-east-1, Ubuntu 22.04, GCC 11.4, OpenSSL 3.0.2,
 `-march=native`. The two parties run on separate instances over the
-AWS private network; the link measured 9.46–9.54 Gbps single-flow /
-0.12–0.18 ms RTT (iperf3 and ping archived with the results). Release
-build with one final-source auto-tuner result frozen across both hosts;
-bench output buffers are pre-faulted.
+AWS private network, each pinned to one core (`taskset`); the link
+measured 9.49–9.54 Gbps single-flow before and after the runs, with a
+0.13 ms minimum RTT. Release build with one auto-tuner result frozen
+across both hosts; bench output buffers are pre-faulted. The numbers are
+single-core: the same build on `m8a.xlarge` and `m8a.4xlarge` pairs
+measured within 6% of them, most rows within 2%.
 
 ### Base OTs
 
@@ -528,8 +530,8 @@ send/recv bytes are deterministic).
 
 | Protocol     | Time   |  Send B |  Recv B | Security                                     |
 |--------------|-------:|--------:|--------:|----------------------------------------------|
-| `CO`       |  10 ms |   4,165 |   8,832 | semi-honest                                  |
-| `CSW`      | 9.5 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
+| `CO`       | 9.5 ms |   4,165 |   8,832 | semi-honest                                  |
+| `CSW`      | 9.4 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `PVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
 | `BMM`      |  14 ms | 196,608 | 106,496 | malicious-secure, post-quantum (over ML-KEM-512 internals) |
 
@@ -537,11 +539,11 @@ send/recv bytes are deterministic).
 
 Length 33,251,328 OTs (exactly two `ferret_b12` rounds; ~33M; `SoftSpoken<8>`
 rounds down to whole chunks, 33,243,136), single-threaded (one thread per
-party; `SilentFerret`'s `begin()` expansion pool disabled). `MOT/s` is the
+party, pinned to one core; `SilentFerret`'s `begin()` expansion pool disabled). `MOT/s` is the
 median of 9 runs, the slower of the two parties per run; `bits/RCOT` (total
 wire bytes, both directions — deterministic) includes the one-time base-OT
 bootstrap amortised over the length. Observed: the `IKNP` and `SoftSpoken<2>`
-rows, plus semi-honest `SoftSpoken<4>`, ran at 89–98% of the measured
+rows, plus semi-honest `SoftSpoken<4>`, ran at 92–98% of the measured
 link rate; the remaining rows were CPU-bound. Analysis of what binds each configuration is in
 [`docs/performance-tuning.md`](docs/performance-tuning.md).
 
@@ -550,14 +552,14 @@ link rate; the remaining rows were CPU-bound. Analysis of what binds each config
 | `IKNP`           | semi      |       127 |    73 |
 | `IKNP`           | malicious |       127 |    73 |
 | `SoftSpoken<2>`  | semi      |        63 |   145 |
-| `SoftSpoken<2>`  | malicious |        63 |   135 |
+| `SoftSpoken<2>`  | malicious |        63 |   139 |
 | `SoftSpoken<4>`  | semi      |        31 |   282 |
-| `SoftSpoken<4>`  | malicious |        31 |   188 |
-| `SoftSpoken<8>`  | semi      |        15 |    73 |
+| `SoftSpoken<4>`  | malicious |        31 |   189 |
+| `SoftSpoken<8>`  | semi      |        15 |    75 |
 | `SoftSpoken<8>`  | malicious |        15 |    69 |
-| `Ferret`         | semi      |      0.48 |   112 |
-| `Ferret`         | malicious |      0.48 |   102 |
-| `SilentFerret`   | semi      |      0.48 |   114 |
+| `Ferret`         | semi      |      0.48 |   116 |
+| `Ferret`         | malicious |      0.48 |   105 |
+| `SilentFerret`   | semi      |      0.48 |   116 |
 | `SilentFerret`   | malicious |      0.48 |   102 |
 
 `IKNP` and `SoftSpoken<k>` traffic is one-direction (127 and
@@ -575,6 +577,18 @@ the trace table above. The measured
 
 `COT`, `ROT`, `OT` flavors layer one MITCCRH pass (and, for
 chosen-input `OT`, one block per OT on the wire) on top of `RCOT`.
+
+### sVOLE running time
+
+Malicious mode, default `ferret_b12` set, one core per party. A round is
+`chunk_aligned_buf_sz()` = 16,625,664 outputs. The per-round time is the median
+of rounds 2–8 of a one-shot run, the slower party per round; setup is the first
+`begin()`, which runs the bootstrap. Both are medians of 3 runs.
+
+| Protocol  |  Setup | Per round | M outputs/s |
+|-----------|-------:|----------:|------------:|
+| `FpVOLE`  | 146 ms |    255 ms |          65 |
+| `F2kVOLE` | 195 ms |    555 ms |          30 |
 
 ## LPN security
 
