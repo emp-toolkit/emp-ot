@@ -323,9 +323,9 @@ public:
         reinterpret_cast<block *>(leaves_i), k0_scratch);
   }
 
-  // F2kPacked round-final check. Mutates `pre_cot_data[i]` for i in
-  // x_prime (in-place Δ-XOR on the chi-check region). Caller's
-  // buffer; the mutation is intentional and mirrored in the receiver.
+  // F2kPacked round-final check. XORs Δ into `pre_cot_data[i]` for each i
+  // set in x_prime, so the packed check COTs match the receiver's adjusted
+  // choice bits. The caller's buffer: those check slots are not read again.
   void run_end_packed(block *pre_cot_data) {
     static_assert(AuthValue::kChiFoldFlavor == ChiFoldFlavor::F2kPacked,
                   "run_end_packed: AuthValue is not F2kPacked");

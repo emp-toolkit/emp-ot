@@ -352,6 +352,8 @@ before the object's first use, that first use takes the channel's next session
 id (emp-tool's `IOChannel::next_session_id()`), so the top-level objects of a
 protocol are session-separated with no setup, and nested objects get children
 of their parent's id. On a channel without a session root the id stays zero.
+An id given to `set_sid()` must belong to one object, as the channel's ids
+do: two objects given the same id derive the same child ids.
 An outer protocol that needs identical receiver-choice
 patterns across several separately domain-separated Ferret instances may call
 `set_lpn_matrix_seed(root)` on both roles before bootstrap; the transcript ids
@@ -427,7 +429,17 @@ consumption shape (the two-box setup of the Performance section),
 1,048,576 one-COT calls were 72× faster (slower-party median of 5) and
 used 92× less wire this way than with `rcot(_, 1)` in a loop.
 `next_n` is mutually exclusive with `run()`/`rcot()` on the same
-instance (both touch the same leftover buffer).
+instance (both touch the same leftover buffer); a `run()` after the
+session's `end()` first returns the tail the session left, which that
+`end()` certified. Within one session use `next()` or `next_n()`, not
+both: `next()` does not see the tail `next_n()` buffers, so mixing them
+skips outputs.
+
+The malicious-mode checks hash the channel's transcript, so at every
+emp-ot call each party must have read everything the other sent before
+its matching call. emp-ot's own protocols do; an application sharing the
+channel must read each of its messages at the point matching where the
+other party sent it, or use a sibling channel.
 
 See [`docs/streaming-api.md`](docs/streaming-api.md) for the full
 lifecycle contract.
@@ -478,6 +490,26 @@ block sum = ote.produce_range_fused_xor(scratch.data(), tree_begin, n_trees);
 `produce_range_fused_xor()` sends each finalized LPN value directly to the
 XOR accumulator and skips the final store. Both reproduce the XOR of the
 corresponding `produce_range()` output and remain wire-free after `begin()`.
+
+### sVOLE
+
+`F2kVOLE` (VOLE over GF(2¹²⁸)) and `FpVOLE` (over F_p, p = 2⁶¹ − 1) stream
+authenticated values. The party without Δ gets `(val, mac)`; the Δ-holder gets
+the key in `mac`, with `val` = 0; and `mac = key + val·Δ`. The Δ-holder is `BOB`
+for `F2kVOLE` and `ALICE` for `FpVOLE`; it reads Δ with `delta()`, or sets it
+with `set_delta()` before the first use.
+
+```cpp
+FpVOLE<> vole(party, io);               // malicious by default, ferret_b12
+std::vector<AuthValueFp> out(n);
+vole.run(out.data(), n);                // one session per call
+// or: vole.begin(); vole.next_n(out.data(), k); ...; vole.end();
+```
+
+The streaming rules above apply, with one difference: an sVOLE has no
+`check()`, so a session's outputs stay provisional until `end()` runs the
+round's check. That window can be a whole round, `chunk_aligned_buf_sz()`
+outputs: 1,141,248 at `ferret_b9`, 16,625,664 at the default `ferret_b12`.
 
 ## Performance
 
@@ -590,7 +622,8 @@ what the estimates do not cover, and how to reproduce them and evaluate a custom
   shipped size; the 61-bit Δ caps key-guessing near 2⁻⁶¹: the
   round-final check commits before it reveals anything that depends on
   Δ, and the base sVOLE lets a cheater learn k bits of Δ only with
-  probability 2⁻ᵏ, aborting otherwise. `F2kVOLE` works over GF(2¹²⁸).
+  probability 2⁻ᵏ, aborting otherwise. `F2kVOLE` works over GF(2¹²⁸),
+  with Δ's lowest bit fixed to 1, so 127 bits of Δ are secret.
 - **LPN parameters.** `Ferret`, `SilentFerret`, `F2kVOLE` and `FpVOLE` rest on
   primal LPN with regular noise. The shipped sets put every counted attack at
   141 bits or more, a 10% margin over the 128-bit target, for the binary

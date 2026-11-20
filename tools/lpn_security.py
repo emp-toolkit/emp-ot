@@ -300,19 +300,29 @@ def tuning_sets():
 def main(argv):
     d_local = 10
     if '--d' in argv:
-        i = argv.index('--d'); d_local = int(argv[i + 1]); argv = argv[:i] + argv[i + 2:]
+        i = argv.index('--d')
+        try:
+            d_local = int(argv[i + 1])
+        except (IndexError, ValueError):
+            sys.exit("--d needs an integer value\n" + __doc__)
+        if d_local < 0:
+            sys.exit(f"--d must be 0 (dense) or positive (got {d_local})")
+        argv = argv[:i] + argv[i + 2:]
     if argv and argv[0] in ('-h', '--help'):
         print(__doc__); return
     if argv:
         if len(argv) != 3:
             sys.exit(__doc__)
-        n, k, t = (int(x.replace(',', '').replace('_', '')) for x in argv)
+        try:
+            n, k, t = (int(x.replace(',', '').replace('_', '')) for x in argv)
+        except ValueError:
+            sys.exit(__doc__)
         instances = [(f"N={n:,} k={k:,} t={t:,}", n, k, t)]
     else:
         instances = tuning_sets()
     for _, n, k, t in instances:
-        if t <= 0 or n % t or n <= k:
-            sys.exit(f"need N divisible by t and N > k (got N={n}, k={k}, t={t})")
+        if k <= 0 or t <= 0 or n % t or n <= k:
+            sys.exit(f"need k > 0, t > 0, N divisible by t and N > k (got N={n}, k={k}, t={t})")
     cols = [(f, v) for f in ('F2', 'large') for v in ('XFL', 'WXL', 'sparse')] + [('both', 'restricted')]
     print(f"bits; sparse and restricted assume a {d_local}-local code" if d_local else "bits; dense code")
     names = {('both', 'restricted'): 'restricted'}

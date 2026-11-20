@@ -309,7 +309,7 @@ templating on AuthValue — it just writes `block` leaves. Used by
 ```
 
 For Ferret RCOT the picture is the same with these substitutions:
-`Svole` → `Ferret`, `carry_*` → `ot_pre_data_*` (raw block storage),
+`Svole` → `Ferret`, `carry_*` hold raw blocks (`BlockVec`),
 `gadget_*` is a `MultiPointGadget<AuthValueFerret>` (= `MPCOT_*`),
 `lpn_` is `Lpn<AuthValueFerret, 10>`.
 

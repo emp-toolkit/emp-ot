@@ -43,8 +43,19 @@ metadata is numeric (see the README's version guidance).
   parties must upgrade together, and the `FpVOLE` rows of
   `test/trace_hash.baseline` are regenerated.
 
+### Removed
+
+- `OTIdeal` (`emp-ot/ideal.h`), a test-only ideal COT that no test used. Its
+  chosen-input and ROT wrappers went out of step after the first call, because
+  the wrapper drew its start point from the PRG the mock shared between parties.
+
 ### Changed
 
+- `EMP_TUNE_LPN_BATCH_M` must be a power of two in [4, 512], checked at compile
+  time. Other values fold a different LPN matrix, so parties built with different
+  values would silently disagree; a LOCAL knob must not change outputs.
+- `tools/lpn_security.py` rejects a missing or negative `--d`, a non-integer
+  argument and `k ≤ 0` before it evaluates anything.
 - The multi-point gadget's `run_next_tree` takes its tree index as `int64_t`,
   like the parameter set's tree count, and the base sVOLE's receiver flushes its
   check reply instead of relying on its next receive to drain it.

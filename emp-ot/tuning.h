@@ -291,6 +291,11 @@ inline constexpr int lpn_d = 10;
 #define EMP_TUNE_LPN_BATCH_M 32
 #endif
 inline constexpr int lpn_batch_m = EMP_TUNE_LPN_BATCH_M;
+// The contract, checked: any power of two in [4, 512] folds the same matrix,
+// so parties built with different values still agree.
+static_assert(lpn_batch_m >= 4 && lpn_batch_m <= 512 &&
+                  (lpn_batch_m & (lpn_batch_m - 1)) == 0,
+              "EMP_TUNE_LPN_BATCH_M must be a power of two in [4, 512]");
 
 }  // namespace tuning
 }  // namespace emp

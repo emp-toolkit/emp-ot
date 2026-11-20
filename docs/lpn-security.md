@@ -34,6 +34,11 @@ In syndrome form this is the regular syndrome decoding (RSD) problem of the atta
 literature, with `n = N`, `h = t` and block size `β = 2^tree_depth`. The target is
 128 bits.
 
+A round that ends early (`end()` before all `t` trees have run) releases a prefix of
+the round's samples: the same secret and the same per-block noise, in fewer blocks.
+An attack on the prefix is an attack on the full round with the rest discarded, so
+the full-round figures cover it.
+
 The field `F` is F₂ for `Ferret` and `SilentFerret`, F_p with p = 2⁶¹ − 1 for
 `FpVOLE`, where a repeated row gives the coefficient 2, and GF(2¹²⁸) for `F2kVOLE`,
 with the per-entry coefficients above. Over GF(2¹²⁸), 0/1 entries would let the
@@ -48,6 +53,18 @@ selective-failure query on the round's noise positions. The paper answers that
 query before releasing outputs; `Ferret::next()` releases a round's COTs, and an
 sVOLE's `next()` its outputs, before `end()` runs the check, so outputs must be
 treated as provisional until `check()` or `end()` (README, *Streaming RCOT*).
+
+Two compositions depart from the papers' setting. No published proof covers them, and
+we know no attack on either:
+
+- **Half-Tree trees under Ferret's check.** The MPCOT trees are Half-Tree correlated
+  GGM trees (eprint 2022/1431). They realize Ferret's single-point COT only with
+  global-key queries, because the receiver's reconstructed leaves XOR to a public
+  constant. The chi-fold check needs only `v ⊕ w = e_α·Δ`, which the trees give.
+- **SilentFerret's batched check.** One check spans K rounds, and rounds 2 to K take
+  their base COTs from the previous round before that round is checked. The sender
+  makes one selective-failure query over the K rounds' joint noise instead of one per
+  round.
 
 ### The parameters
 

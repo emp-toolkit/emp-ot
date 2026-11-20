@@ -121,7 +121,7 @@ Notes:
   | `kHasSecretSum` | No per-tree `secret_sum` byte; receiver α-fills from cGGM LSB-clear closure (RCOT-style). | Sender ships `secret_sum:F` per tree; receiver α-fills via `triple_yz − secret_sum − Σ_{j≠α} mac`. |
   | `kClearLeafLSB` | cGGM `build_sender` / `eval_receiver` write leaves as-is. | cGGM clears the per-leaf LSB (RCOT choice-bit encoding). |
   | `kChiFoldFlavor=F2kPacked` | n/a | Round-end check ships `bool[128] x_prime + 2-block hash`. Uses Galois packing on a 128-COT chi-check region. |
-  | `kChiFoldFlavor=FTyped`    | n/a | Round-end check ships `F x_star + 1-block hash`. Uses field-typed accumulators. |
+  | `kChiFoldFlavor=FTyped`    | n/a | Round-end check: the receiver ships `F x_star`, then an equality test (the sender's 2-block commitment, the receiver's `F va`, the sender's 1-block salt only on a match). Uses field-typed accumulators. |
 
   The current pairings:
   - Ferret-style: `kHasSecretSum=false`, `kClearLeafLSB=true`, `F2kPacked`.

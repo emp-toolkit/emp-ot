@@ -275,7 +275,13 @@ Notes:
   **mutually exclusive** on one instance — pick streaming (`next_n` /
   `begin`/`next`/`end`) *or* one-shot (`run` / `rcot`), not both.
   In particular, `run()` rejects a call made while the streaming
-  session is open.
+  session is open, and a `run()` after the session's `end()` first
+  drains the tail the session left, which that `end()` certified.
+- Within one session use `next()` or `next_n()`, not both. `next()` is
+  the subclass's whole-chunk producer and does not see the tail
+  `next_n()` buffers: a `next()` after a partial `next_n()` returns the
+  following chunk and skips the buffered elements, and an sVOLE's
+  auto-rollover then discards them.
 - `enter_session_()` resets `leftover_count_ = 0` and any prior count plan, so
   a fresh ordinary `begin()` never serves a stale tail from a previous
   session. Internal certification/rollover helpers save and restore both
@@ -437,7 +443,12 @@ Streaming extensions use FS in two ways:
    chi vectors. The digest is computed deterministically from the
    wire bytes both parties have observed, and both parties hold the
    same sid, so both get the same chi vector without an extra round
-   of communication.
+   of communication. The two transcripts agree only if neither party
+   has unread bytes from the other at the snapshot. emp-ot's own
+   protocols guarantee that; an application that shares the channel
+   must read each of its messages at the point matching where the
+   other party sent it, or use a sibling channel. Otherwise honest
+   parties derive different chi vectors and the check aborts.
 
 2. **Diagnostic per-direction digests.** `io->get_send_digest()`
    and `io->get_recv_digest()` return the running digest (SHA-256 by
