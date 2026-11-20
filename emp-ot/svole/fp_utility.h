@@ -9,7 +9,7 @@
 // flavors. extract_fp reduces a __uint128_t's low 64 bits in place.
 // uni_hash_coeff_gen / vector_inn_prdt_sum_red are the F_p variants
 // of the corresponding emp-tool helpers (the emp-tool versions are
-// GF(2^128)).
+// GF(2^128)). recv_fp is how an F_p element from the peer is read.
 
 namespace emp {
 
@@ -114,6 +114,16 @@ inline uint64_t add_mod(uint64_t a, uint64_t b) {
 
 inline void extract_fp(__uint128_t &x) {
   x = mod(_mm_extract_epi64((block)x, 0));
+}
+
+// Receive `n` F_p elements from the peer and abort unless each is canonical
+// (< p). The routines here assume canonical operands; a peer's out-of-range
+// encoding of a residue would make them compute something other than the
+// field operation, so no received element reaches them unchecked.
+inline void recv_fp(IOChannel *io, uint64_t *out, int64_t n) {
+  io->recv_data(out, n * (int64_t)sizeof(uint64_t));
+  for (int64_t i = 0; i < n; ++i)
+    expecting(out[i] < PR, "received a non-canonical F_p element");
 }
 
 template <typename T> void uni_hash_coeff_gen(T *coeff, T seed, int64_t sz) {

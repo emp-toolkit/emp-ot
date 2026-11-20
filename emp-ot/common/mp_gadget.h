@@ -32,6 +32,8 @@
 //   F mac;                                        — mac storage
 //   [F val;]                                      — sVOLE only
 //   static F   f_zero()/f_add/f_sub/f_mul         — field arithmetic
+//   static bool f_canonical(F)                    — sVOLE only: may a peer's
+//                                                   F be used as received
 //   static AuthValue auth_from_block(block leaf)  — leaf wrap (an sVOLE
 //                                                   leaf arrives hashed)
 //   static void expand_chi(block, F*, int64_t)    — FS chi
@@ -381,6 +383,8 @@ public:
     if (!is_malicious) return;
     F x_star;
     io->recv_data(&x_star, sizeof(F));
+    expecting(AuthValue::f_canonical(x_star),
+              "MultiPointGadget: received a non-canonical field element");
     F vb = AuthValue::f_add(AuthValue::f_mul(delta, x_star), triple_t.mac);
     for (int64_t i = 0; i < tree_n; ++i)
       vb = AuthValue::f_add(vb, consist_check_VW[i]);
@@ -467,6 +471,8 @@ public:
     F secret_sum = AuthValue::f_zero();
     if constexpr (AuthValue::kHasSecretSum) {
       io->recv_data(&secret_sum, sizeof(F));
+      expecting(AuthValue::f_canonical(secret_sum),
+                "MultiPointGadget: received a non-canonical field element");
     }
 
     for (int64_t j = 0; j < tree_depth; ++j) K_recv[j] = base_i[j] ^ c[j];

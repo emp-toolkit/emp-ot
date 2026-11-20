@@ -172,6 +172,7 @@ struct AuthValueXxx {
 
   // Field arithmetic
   static F f_zero / f_add / f_sub / f_mul ...
+  static bool f_canonical(F);                       // sVOLE: accept a peer's F
 
   // Wire-format / protocol traits
   static constexpr bool          kHasSecretSum;

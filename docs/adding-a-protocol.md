@@ -68,6 +68,7 @@ struct AuthValueXxx {
   static F f_add(F, F);
   static F f_sub(F, F);
   static F f_mul(F, F);
+  static bool f_canonical(F);   // kHasSecretSum: may a peer's F be used as received
 
   // (d) Wire-format traits
   static constexpr bool          kHasSecretSum;
@@ -107,7 +108,10 @@ Notes:
   use. `AuthValueFerret` only defines `f_zero` / `f_add` — the
   FTyped-only `f_mul` / `f_sub` callers don't instantiate for it
   (gated by `kChiFoldFlavor`). Add only what the gadget actually
-  reaches for your wire-format-traits combination.
+  reaches for your wire-format-traits combination. A `kHasSecretSum`
+  carrier also provides `f_canonical`: the gadget aborts on a received
+  `secret_sum` or `x*` it rejects, so a field whose arithmetic assumes a
+  canonical encoding (F_p) never sees another one.
 
 - **(d) wire-format traits.** Pick all three carefully — they decide
   what the multi-point gadget puts on the wire:

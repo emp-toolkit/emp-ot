@@ -33,6 +33,8 @@ struct AuthValueF2k {
   static inline F    f_add (F a, F b)      { return a ^ b; }
   static inline F    f_sub (F a, F b)      { return a ^ b; }
   static inline F    f_mul (F a, F b)      { block r; gfmul(a, b, &r); return r; }
+  // Every block is a GF(2^128) element.
+  static inline bool f_canonical(F)        { return true; }
 
   // -------- Wire-format traits --------
   // Per-tree wire ships secret_sum:F; cGGM doesn't pre-mask the per-

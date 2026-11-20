@@ -85,6 +85,8 @@ public:
     }
 
     io->recv_data(v.data(), m * sizeof(__uint128_t));
+    for (int64_t i = 0; i < m; ++i)
+      expecting(v[i] < p, "received a non-canonical F_p element");
     __uint128_t ch[2];
     ch[0] = (__uint128_t)0;
     for (int64_t i = 0; i < m; ++i) {
@@ -108,8 +110,8 @@ public:
     uint64_t ch[2];
     ch[0] = (uint64_t)0;
     for (int64_t i = 0; i < m; ++i) {
+      recv_fp(io, &v[i * size], size);
       for (int64_t j = 0; j < size; ++j) {
-        io->recv_data(&v[i * size + j], sizeof(uint64_t));
         ch[1] = v[i * size + j];
         v[i * size + j] = add_mod(w[i * size + j], ch[delta_bool[i]]);
       }
@@ -269,7 +271,7 @@ public:
     uint64_t y = vector_inn_prdt_sum_red(macs, chi.data(), size);
     y = add_mod(y, b);
     uint64_t xz[2];
-    io->recv_data(xz, 2 * sizeof(uint64_t));
+    recv_fp(io, xz, 2);
     xz[1] = mult_mod(xz[1], (uint64_t)Delta);
     y = add_mod(y, xz[1]);
     expecting(y == xz[0], "base sVOLE check fails");
@@ -278,7 +280,7 @@ public:
   void recver_check(__uint128_t *macs, uint64_t *x, uint64_t c, uint64_t a,
                     int64_t size) {
     uint64_t seed;
-    io->recv_data(&seed, sizeof(uint64_t));
+    recv_fp(io, &seed, 1);
     std::vector<uint64_t> chi(size);
     uni_hash_coeff_gen(chi.data(), seed, size);
     uint64_t xz[2];

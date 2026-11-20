@@ -412,6 +412,52 @@ int main() {
             std::numeric_limits<int64_t>::max() / 2 + 1, 0, 1);
     });
 
+    // F_p elements from the peer must be canonical (< p): p - 1 is read as is,
+    // p and 2^64 - 1 (encodings of the residues 0 and 7) abort.
+    {
+        const uint64_t top = AuthValueFp::PR_VAL - 1;
+        FixedInputIO io(reinterpret_cast<const uint8_t *>(&top), sizeof(top));
+        uint64_t got = 0;
+        recv_fp(&io, &got, 1);
+        if (got != top) {
+            std::cerr << "recv_fp changed a canonical element\n";
+            ok = false;
+        }
+    }
+    for (const uint64_t bad : {AuthValueFp::PR_VAL, ~uint64_t{0}}) {
+        ok &= expect_rejected("Fp non-canonical receive",
+                              "non-canonical F_p element", [bad] {
+            FixedInputIO io(reinterpret_cast<const uint8_t *>(&bad), sizeof(bad));
+            uint64_t got;
+            recv_fp(&io, &got, 1);
+        });
+    }
+    // The multi-point gadget's received F values: the sender's x* and the
+    // receiver's per-tree secret_sum.
+    ok &= expect_rejected("Fp gadget non-canonical x*",
+                          "non-canonical field element", [] {
+        const uint64_t x_star = AuthValueFp::PR_VAL;
+        FixedInputIO io(reinterpret_cast<const uint8_t *>(&x_star), sizeof(x_star));
+        MultiPointGadgetSender<AuthValueFp> gadget(1, 1, &io);
+        gadget.set_malicious();
+        gadget.set_delta(1);
+        gadget.run_begin();
+        gadget.run_end_typed(AuthValueFp{0, 0});
+    });
+    ok &= expect_rejected("Fp gadget non-canonical secret_sum",
+                          "non-canonical field element", [] {
+        // One tree of depth 1 on the wire: one correction block, then secret_sum.
+        std::array<uint8_t, sizeof(block) + sizeof(uint64_t)> wire = {};
+        const uint64_t secret_sum = AuthValueFp::PR_VAL;
+        std::memcpy(wire.data() + sizeof(block), &secret_sum, sizeof(secret_sum));
+        FixedInputIO io(wire.data(), static_cast<int64_t>(wire.size()));
+        MultiPointGadgetReceiver<AuthValueFp> gadget(1, 1, &io);
+        gadget.run_begin();
+        AuthValueFp leaves[2];
+        const block base = zero_block;
+        gadget.run_next_tree(leaves, &base, 0, 0);
+    });
+
     if (!ok) return 1;
     std::cout << "test_contracts: OK\n";
     return 0;

@@ -43,6 +43,8 @@ struct alignas(16) AuthValueFp {
   static inline F    f_add (F a, F b)      { return add_mod(a, b); }
   static inline F    f_sub (F a, F b)      { return a >= b ? a - b : a + PR_VAL - b; }
   static inline F    f_mul (F a, F b)      { return mult_mod(a, b); }
+  // A field element from the peer must be canonical (< p).
+  static inline bool f_canonical(F a)      { return a < PR_VAL; }
 
   // -------- Wire-format traits --------
   static constexpr bool kHasSecretSum = true;

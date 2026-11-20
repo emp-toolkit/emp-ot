@@ -17,6 +17,12 @@ metadata is numeric (see the README's version guidance).
   change: both parties must upgrade together, and the sVOLE rows of
   `test/trace_hash.baseline` are regenerated. `Ferret` and `SilentFerret` are
   unchanged.
+- `FpVOLE`: every F_p element received from the other party (the base sVOLE's
+  corrections, check reply and check seed, and the multi-point gadget's
+  per-tree sum and check value) must be canonical, below p, or the receiving
+  party aborts. The field arithmetic assumes canonical operands. `recv_fp`
+  (`svole/fp_utility.h`) is the F_p receive, and a `kHasSecretSum` carrier
+  provides `f_canonical(F)` for the gadget. Honest transcripts are unchanged.
 
 ### Changed
 
