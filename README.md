@@ -194,27 +194,27 @@ round at the default set.
 
 ```
 CO                     send=f2f89068a7816fb0 recv=d9c1fafc2be169a6
-CSW                    send=49ac68903b0455d2 recv=682f47c8b14c6ce3
+CSW                    send=6cbdbfdeab5e4295 recv=682f47c8b14c6ce3
 PVW                    send=29c86c1a3e9ca181 recv=9b84ed820cbcacb7
 BMM                    send=29c79a292dcb6804 recv=a36fb2f0a8d131b5
-IKNP semi              send=64ab400fca07301b recv=fd6b181b569e486d
-SoftSpoken<2> semi     send=e977a5ebf0042068 recv=0e756d29750968fb
-SoftSpoken<8> semi     send=e977a5ebf0042068 recv=6683f1726a4fde3c
-Ferret(b9) semi        send=8717c2172d2d97c8 recv=998865714bd15b42
-SilentFerret(b9) semi  send=8717c2172d2d97c8 recv=998865714bd15b42
-F2kVOLE semi           send=0bee624b053183b9 recv=fb8382370181d371
-FpVOLE semi            send=069428059f994e4b recv=ab630a4308875699
-F2kVOLE(b9) semi       send=088462f4221f9110 recv=2d435f770573b26a
-FpVOLE(b9) semi        send=4fff54474cd3aaca recv=ab630a4308875699
-IKNP mali              send=64ab400fca07301b recv=65f43e18f025e291
-SoftSpoken<2> mali     send=e977a5ebf0042068 recv=d469374c10ac593d
-SoftSpoken<8> mali     send=e977a5ebf0042068 recv=11b1f246208773da
-Ferret(b9) mali        send=846d05ed7dccf36d recv=4a53d9508f54f15a
-SilentFerret(b9) mali  send=846d05ed7dccf36d recv=4a53d9508f54f15a
-F2kVOLE mali           send=6f051e68194631ee recv=4341a61beba2610b
-FpVOLE mali            send=3c9d87cacf6feffa recv=4b74b450ecd7244f
-F2kVOLE(b9) mali       send=cdc351a09af2a353 recv=df027f17e41a7469
-FpVOLE(b9) mali        send=fe71043a0a8e3762 recv=5f2be50d4a8b8978
+IKNP semi              send=64ab400fca07301b recv=6cb3b038f4735173
+SoftSpoken<2> semi     send=e977a5ebf0042068 recv=2b48ddbbbc4e718a
+SoftSpoken<8> semi     send=e977a5ebf0042068 recv=925a770f9b9dcd4d
+Ferret(b9) semi        send=8717c2172d2d97c8 recv=b8df38a0715432a8
+SilentFerret(b9) semi  send=8717c2172d2d97c8 recv=b8df38a0715432a8
+F2kVOLE semi           send=c0af7dcbd2f557e1 recv=fb8382370181d371
+FpVOLE semi            send=069428059f994e4b recv=be821520bc55f5d8
+F2kVOLE(b9) semi       send=edaa96c476b1b5de recv=2d435f770573b26a
+FpVOLE(b9) semi        send=4fff54474cd3aaca recv=be821520bc55f5d8
+IKNP mali              send=64ab400fca07301b recv=b4ea80334cb66552
+SoftSpoken<2> mali     send=e977a5ebf0042068 recv=f7c49cf92b2ed807
+SoftSpoken<8> mali     send=e977a5ebf0042068 recv=516167a5419897ee
+Ferret(b9) mali        send=9d2284476666ae94 recv=426ca93f2aa749f9
+SilentFerret(b9) mali  send=9d2284476666ae94 recv=426ca93f2aa749f9
+F2kVOLE mali           send=64ec7324525209e2 recv=7d0dde1c88f00618
+FpVOLE mali            send=68635e131c2514ee recv=e41752e8ffa758b9
+F2kVOLE(b9) mali       send=837918d1fd60a555 recv=9443f177cfc08c6e
+FpVOLE(b9) mali        send=cf53d7b30dea8a39 recv=14de053b380ac1b0
 ```
 
 ## Usage
