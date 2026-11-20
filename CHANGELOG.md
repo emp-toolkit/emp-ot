@@ -42,6 +42,16 @@ metadata is numeric (see the README's version guidance).
   random choice bits, and drops the 19. All `FpVOLE` transcripts change: both
   parties must upgrade together, and the `FpVOLE` rows of
   `test/trace_hash.baseline` are regenerated.
+- `CSW`: each chosen-input ciphertext is the message XORed with a hash of its
+  pad, `RO("emp-ot:csw-base-ot:msg-key", sid, i, p)`, instead of with the pad
+  itself. The extraction check sends `χ_i = H3(p_{i,0}) ⊕ H3(p_{i,1})`, so a
+  receiver holding one pad learns `H3` of the other, and a ciphertext under the
+  bare pad let it test guesses of the message it did not choose, one hash per
+  guess: a message with little entropy was exposed. The OT extensions and COPE
+  send uniformly random messages through `CSW`, which this did not expose.
+  Every transcript that runs `CSW` changes: both parties must upgrade together,
+  and the `test/trace_hash.baseline` rows of `CSW` and of every protocol that
+  bootstraps through it are regenerated.
 
 ### Removed
 

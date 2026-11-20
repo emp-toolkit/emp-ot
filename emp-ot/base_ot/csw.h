@@ -26,9 +26,13 @@ namespace emp {
  *     verifies H_3(sid, otans') == Π; sends otans' back; sender accepts
  *     iff otans' == otans. Hash-only analogue of IKNP's chi-fold check.
  *
- * Chosen-input encoding: per-OT ciphertexts c_{i,b} = p_{i,b} ⊕ data_{i,b}
- * ride inside the round-2 payload, so the OT::send / OT::recv API stays
- * at 3 messages (matching the random-OT version).
+ * Chosen-input encoding: per-OT ciphertexts
+ * c_{i,b} = H_5(sid, i, p_{i,b}) ⊕ data_{i,b} ride inside the round-2
+ * payload, so the OT::send / OT::recv API stays at 3 messages (matching the
+ * random-OT version). The key is a hash of the pad, not the pad itself: the
+ * check publishes χ_i = H_3(p_{i,0}) ⊕ H_3(p_{i,1}), so a receiver holding
+ * one pad learns H_3 of the other, and a ciphertext under the bare pad would
+ * let it test guesses of the message it did not choose.
  *
  * Messy core + deferred check. send/recv_core deliver the messy core
  * (delivering the receiver its chosen pad while the other stays
@@ -84,15 +88,22 @@ private:
 	// sid; all are independent and session-bound. =====
 	//
 	// H_1 (to-curve) is called inline at its send/recv sites via RO
-	// directly. H_2 (pad) keeps a helper — more call sites, and pad has a
-	// multi-field order. The challenge–prove–response oracles (H_3 short and
-	// H_4 aggregate) live in the private check_* helpers below.
+	// directly. H_2 (pad) and H_5 (message key) keep helpers — more call
+	// sites, and multi-field inputs. The challenge–prove–response oracles
+	// (H_3 short and H_4 aggregate) live in the private check_* helpers below.
 	static constexpr char kDomToCurve[] = "emp-ot:csw-base-ot:to-curve";
 
 	// H_2(sid, i, P) → block. P is a curve point (the DH share ρ).
 	block H_pad(int64_t i, Point & P) {
 		return RO("emp-ot:csw-base-ot:pad", sid.value())
 		           .absorb((uint64_t)i).absorb(P).squeeze_block();
+	}
+
+	// H_5(sid, i, p) → block: the key that encrypts OT i's chosen message
+	// under its pad p (see the chosen-input note above).
+	block H_msg_key(int64_t i, const block & p) {
+		return RO("emp-ot:csw-base-ot:msg-key", sid.value())
+		           .absorb((uint64_t)i).absorb(p).squeeze_block();
 	}
 
 	// H_3(sid, x): one block in, one block out — used for the per-pad short
@@ -138,12 +149,12 @@ public:
 			p1_[i] = H_pad(i, rho1);
 		}
 
-		// Chosen-input ciphertexts c_{i,b} = p_{i,b} ⊕ data_{i,b}.
+		// Chosen-input ciphertexts c_{i,b} = H_5(sid, i, p_{i,b}) ⊕ data_{i,b}.
 		std::vector<block> c0(length);
 		std::vector<block> c1(length);
 		for (int64_t i = 0; i < length; ++i) {
-			c0[i] = p0_[i] ^ data0[i];
-			c1[i] = p1_[i] ^ data1[i];
+			c0[i] = H_msg_key(i, p0_[i]) ^ data0[i];
+			c1[i] = H_msg_key(i, p1_[i]) ^ data1[i];
 		}
 
 		// Round 2 (S→R): core bytes (z, {c_{i,0}, c_{i,1}}), buffered (no flush).
@@ -234,10 +245,10 @@ public:
 		io->recv_block(c0.data(), length);
 		io->recv_block(c1.data(), length);
 
-		// Decrypt outputs from the chosen pad.
+		// Decrypt outputs under the chosen pad's message key.
 		for (int64_t i = 0; i < length; ++i) {
 			block c = b[i] ? c1[i] : c0[i];
-			data[i] = c ^ p_bi_[i];
+			data[i] = c ^ H_msg_key(i, p_bi_[i]);
 		}
 	}
 
