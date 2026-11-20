@@ -417,6 +417,17 @@ int main() {
         extension.mark_setup_done();
         extension.set_sid(SessionID{});
     });
+    ok &= expect_rejected("receiver wrapper on a sender", "this extension is the sender", [] {
+        DummyExtension extension(ALICE, false, std::make_unique<DummyOT>(false));
+        block out[1];
+        bool b[1] = {true};
+        extension.recv_cot(out, b, 1);
+    });
+    ok &= expect_rejected("sender wrapper on a receiver", "this extension is the receiver", [] {
+        DummyExtension extension(BOB, false, std::make_unique<DummyOT>(false));
+        block out[1];
+        extension.send_cot(out, 1);
+    });
     ok &= expect_rejected("clone before bootstrap", "parent not bootstrapped", [] {
         SoftSpoken<8> parent(BOB, nullptr, false, std::make_unique<DummyOT>(false));
         auto lane = parent.clone_lane(nullptr);
@@ -461,12 +472,21 @@ int main() {
     ok &= expect_rejected("oversized LPN tree depth", "tree_depth must be", [] {
         (void)PrimalLPNParameter(100, 10, 31);
     });
+    ok &= expect_rejected("LPN tree depth 1", "tree_depth must be in [2, 30]", [] {
+        (void)PrimalLPNParameter(100, 10, 1);
+    });
     ok &= expect_rejected("LPN M overflow", "M overflows", [] {
-        (void)PrimalLPNParameter(std::numeric_limits<int64_t>::max(), 0, 1);
+        (void)PrimalLPNParameter(std::numeric_limits<int64_t>::max(), 0, 2);
     });
     ok &= expect_rejected("LPN output overflow", "round output size overflows", [] {
         (void)PrimalLPNParameter(
-            std::numeric_limits<int64_t>::max() / 2 + 1, 0, 1);
+            std::numeric_limits<int64_t>::max() / 4 + 1, 0, 2);
+    });
+    ok &= expect_rejected("FpVOLE set beyond the pre-stage", "more carry pairs", [] {
+        FixedInputIO io(nullptr, 0);
+        FpVOLE<> vole(ALICE, &io, /*malicious=*/true,
+                      PrimalLPNParameter(200, 21, 14));
+        vole.begin();
     });
 
     // F_p elements from the peer must be canonical (< p): p - 1 is read as is,

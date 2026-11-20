@@ -57,6 +57,12 @@
     abort(); \
 } while (0)
 
+/* A failed EVP digest call leaves its output unwritten: secret noise would
+ * come from uninitialized memory and the CRS sampler might never finish. */
+#define EMP_MLKEM_CHECK(call, what) do { \
+    if ((call) != 1) EMP_MLKEM_DIE(what " failed"); \
+} while (0)
+
 /* EVP_DigestSqueeze + multi-call EVP_DigestFinalXOF land in OpenSSL 3.3. */
 #define EMP_MLKEM_HAVE_DIGEST_SQUEEZE (OPENSSL_VERSION_NUMBER >= 0x30300000L)
 
@@ -88,7 +94,7 @@ static inline EVP_MD_CTX *_emp_kst_ensure(keccak_state *s, const EVP_MD *md) {
         if (c == NULL) EMP_MLKEM_DIE("EVP_MD_CTX_new in _emp_kst_ensure");
         s->opaque = (void *)c;
     }
-    EVP_DigestInit_ex(c, md, NULL);
+    EMP_MLKEM_CHECK(EVP_DigestInit_ex(c, md, NULL), "EVP_DigestInit_ex");
     return c;
 }
 
@@ -112,7 +118,7 @@ static inline void kyber_shake128_absorb(keccak_state *s,
     memcpy(extseed, seed, KYBER_SYMBYTES);
     extseed[KYBER_SYMBYTES + 0] = x;
     extseed[KYBER_SYMBYTES + 1] = y;
-    EVP_DigestUpdate(c, extseed, sizeof(extseed));
+    EMP_MLKEM_CHECK(EVP_DigestUpdate(c, extseed, sizeof(extseed)), "EVP_DigestUpdate");
 #else
     /* No live ctx yet — squeeze allocates one lazily and re-inits each
      * call, so we just stash the absorbed bytes. */
@@ -127,7 +133,7 @@ static inline void kyber_shake128_absorb(keccak_state *s,
 static inline void shake128_squeezeblocks(uint8_t *out, size_t nblocks,
                                            keccak_state *s) {
 #if EMP_MLKEM_HAVE_DIGEST_SQUEEZE
-    EVP_DigestSqueeze((EVP_MD_CTX *)s->opaque, out, nblocks * SHAKE128_RATE);
+    EMP_MLKEM_CHECK(EVP_DigestSqueeze((EVP_MD_CTX *)s->opaque, out, nblocks * SHAKE128_RATE), "EVP_DigestSqueeze");
 #else
     const size_t need = nblocks * SHAKE128_RATE;
     const size_t total = (size_t)s->produced + need;
@@ -139,9 +145,9 @@ static inline void shake128_squeezeblocks(uint8_t *out, size_t nblocks,
     }
     uint8_t *tmp = (uint8_t *)malloc(total);
     if (tmp == NULL) EMP_MLKEM_DIE("malloc in shake128_squeezeblocks");
-    EVP_DigestInit_ex(c, EVP_shake128(), NULL);
-    EVP_DigestUpdate(c, s->absorbed, s->absorbed_len);
-    EVP_DigestFinalXOF(c, tmp, total);
+    EMP_MLKEM_CHECK(EVP_DigestInit_ex(c, EVP_shake128(), NULL), "EVP_DigestInit_ex");
+    EMP_MLKEM_CHECK(EVP_DigestUpdate(c, s->absorbed, s->absorbed_len), "EVP_DigestUpdate");
+    EMP_MLKEM_CHECK(EVP_DigestFinalXOF(c, tmp, total), "EVP_DigestFinalXOF");
     memcpy(out, tmp + s->produced, need);
     free(tmp);
     s->produced = (uint32_t)total;
@@ -175,9 +181,9 @@ static inline void kyber_shake256_prf(uint8_t *out, size_t outlen,
     uint8_t extkey[KYBER_SYMBYTES + 1];
     memcpy(extkey, key, KYBER_SYMBYTES);
     extkey[KYBER_SYMBYTES] = nonce;
-    EVP_DigestInit_ex(ctx, EVP_shake256(), NULL);
-    EVP_DigestUpdate(ctx, extkey, sizeof(extkey));
-    EVP_DigestFinalXOF(ctx, out, outlen);
+    EMP_MLKEM_CHECK(EVP_DigestInit_ex(ctx, EVP_shake256(), NULL), "EVP_DigestInit_ex");
+    EMP_MLKEM_CHECK(EVP_DigestUpdate(ctx, extkey, sizeof(extkey)), "EVP_DigestUpdate");
+    EMP_MLKEM_CHECK(EVP_DigestFinalXOF(ctx, out, outlen), "EVP_DigestFinalXOF");
 }
 
 #define prf(OUT, OUTBYTES, KEY, NONCE) kyber_shake256_prf(OUT, OUTBYTES, KEY, NONCE)
@@ -191,9 +197,9 @@ static inline void shake256(uint8_t *out, size_t outlen,
         ctx = EVP_MD_CTX_new();
         if (ctx == NULL) EMP_MLKEM_DIE("EVP_MD_CTX_new in shake256");
     }
-    EVP_DigestInit_ex(ctx, EVP_shake256(), NULL);
-    EVP_DigestUpdate(ctx, in, inlen);
-    EVP_DigestFinalXOF(ctx, out, outlen);
+    EMP_MLKEM_CHECK(EVP_DigestInit_ex(ctx, EVP_shake256(), NULL), "EVP_DigestInit_ex");
+    EMP_MLKEM_CHECK(EVP_DigestUpdate(ctx, in, inlen), "EVP_DigestUpdate");
+    EMP_MLKEM_CHECK(EVP_DigestFinalXOF(ctx, out, outlen), "EVP_DigestFinalXOF");
 }
 
 #ifdef __cplusplus

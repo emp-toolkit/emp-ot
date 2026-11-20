@@ -112,7 +112,9 @@ public:
 	// to the serial next() path.
 	//
 	// Within one round use EITHER produce_range OR the cursor (next/run/
-	// next_n), not both. To span rounds, drive the cursor (which rolls the
+	// next_n), not both: the cursor does not know which trees produce_range
+	// returned, so mixing them hands out the same COTs twice. To span
+	// rounds, drive the cursor (which rolls the
 	// base wire-free) — produce_range stays within the current round because
 	// the rolling base is single-round state.
 	void produce_range(block *out, int64_t tree_begin, int64_t n_trees) const;

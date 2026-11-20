@@ -106,7 +106,7 @@ public:
   std::unique_ptr<Ferret>                              base_ferret_;
   std::unique_ptr<MultiPointGadgetSender<AuthValue>>   gadget_send_;
   std::unique_ptr<MultiPointGadgetReceiver<AuthValue>> gadget_recv_;
-  std::unique_ptr<Lpn<AuthValue, 10>>                  lpn_;
+  std::unique_ptr<Lpn<AuthValue, tuning::lpn_d>>       lpn_;
 
   Svole(int party, IOChannel *io, bool malicious = true,
         PrimalLPNParameter param = tuning::ferret_b12)
@@ -126,7 +126,7 @@ public:
       gadget_send_->set_malicious();
       gadget_recv_->set_malicious();
     }
-    lpn_ = std::make_unique<Lpn<AuthValue, 10>>(param.k);
+    lpn_ = std::make_unique<Lpn<AuthValue, tuning::lpn_d>>(param.k);
     // A coefficient LPN folds val and mac separately, and the Δ-holder's val
     // half is zero throughout, so it folds mac only.
     if constexpr (lpn_has_coefficients<AuthValue>)
@@ -154,6 +154,9 @@ public:
   // Δ-holder-only, pre-bootstrap. Stored in delta_value_ and
   // additionally propagated into the inner Ferret iff the carrier
   // requires it (F2k case: Ferret Δ === sVOLE Δ; F_p case: no-op).
+  // The Δ should be uniformly random, and one that a session used is
+  // spent if the session aborts: an abort can tell the peer which of its
+  // guesses about Δ failed.
   void set_delta(F delta) {
     expecting(is_delta_holder(), "set_delta: caller is not Δ-holder");
     expecting(!this->setup_done, "set_delta: bootstrap already fired");
