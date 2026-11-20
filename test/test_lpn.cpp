@@ -152,7 +152,7 @@ static FpVec fp_values(PRG &prg, int64_t n, bool worst) {
 			e.val = e.mac = AuthValueFp::PR_VAL - 1;
 		} else {
 			uint64_t r[2];
-			prg.random_data(r, sizeof(r));
+			prg.random_data_unaligned(r, sizeof(r));
 			e.val = mod(r[0]);
 			e.mac = mod(r[1]);
 		}
@@ -219,7 +219,7 @@ static void test_vole_relation_fp() {
 	constexpr int64_t k = 1 << 12, n = 4096 + 2;
 	PRG prg;
 	uint64_t delta;
-	prg.random_data(&delta, sizeof(delta));
+	prg.random_data_unaligned(&delta, sizeof(delta));
 	delta = mod(delta);
 	auto keys = [&](const FpVec &recv) {
 		FpVec send(recv.size());

@@ -61,7 +61,7 @@ private:
 struct FpOps {
 	using AV = AuthValueFp;
 	using F = uint64_t;
-	static F rand(PRG &prg) { uint64_t x; prg.random_data(&x, sizeof(x)); return mod(x); }
+	static F rand(PRG &prg) { uint64_t x; prg.random_data_unaligned(&x, sizeof(x)); return mod(x); }
 	static F mul_add(F a, F b, F c) { return add_mod(mult_mod(a, b), c); }
 	static bool eq(F a, F b) { return a == b; }
 };
