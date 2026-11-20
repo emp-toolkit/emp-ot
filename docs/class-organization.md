@@ -172,6 +172,7 @@ struct AuthValueXxx {
 
   // Field arithmetic
   static F f_zero / f_add / f_sub / f_mul ...
+  static bool f_canonical(F);                       // sVOLE: accept a peer's F
 
   // Wire-format / protocol traits
   static constexpr bool          kHasSecretSum;
@@ -189,7 +190,7 @@ struct AuthValueXxx {
   // ... or a GF(2^128) coefficient per entry ({block val; block mac;} only)
   static constexpr bool kLpnCoefficients = true;
 
-  // cGGM leaf to element
+  // leaf to element (the gadget hashes an sVOLE leaf first, hash_leaves)
   static AuthValueXxx auth_from_block(block leaf);
 
   // sVOLE-specific (Svole<AuthValue> only)
@@ -229,7 +230,8 @@ branches:
             ┌─────────────────┴─────────────────┐
             │                                   │
   cGGM build with                      kHasSecretSum?
-  AuthValue::kClearLeafLSB             ├── true:  ship c[d] + secret_sum:F
+  AuthValue::kClearLeafLSB             ├── true:  hash every leaf (MITCCRH),
+                                       │          ship c[d] + secret_sum:F
                                        └── false: ship c[d] only
 
                               │
@@ -243,8 +245,10 @@ branches:
                        receiver derives x_prime from XOR(chi_α) + chi-check region
 
   run_end_typed    ◄── FTyped chi-fold (Mpsvole style)
-                       sender: vb = Δ·x_star + triple_t.mac + Σ VW
-                       receiver: x_star = Σ chi_α·val + triple.val
+                       receiver: ships x_star = Σ chi_α·val + triple.val
+                       sender:   vb = Δ·x_star + triple_t.mac + Σ VW;
+                                 commits to vb, the receiver reveals va,
+                                 the sender opens only if va == vb
 ```
 
 Aliases on Ferret's side keep the legacy names:
@@ -305,7 +309,7 @@ templating on AuthValue — it just writes `block` leaves. Used by
 ```
 
 For Ferret RCOT the picture is the same with these substitutions:
-`Svole` → `Ferret`, `carry_*` → `ot_pre_data_*` (raw block storage),
+`Svole` → `Ferret`, `carry_*` hold raw blocks (`BlockVec`),
 `gadget_*` is a `MultiPointGadget<AuthValueFerret>` (= `MPCOT_*`),
 `lpn_` is `Lpn<AuthValueFerret, 10>`.
 

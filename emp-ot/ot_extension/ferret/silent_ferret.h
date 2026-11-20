@@ -26,8 +26,10 @@ namespace emp {
  *   and check during begin(). The consumer then draws up to prepared_
  *   capacity() COTs across all K rounds without touching the wire.
  *
- *   The K-round wire transcript is bit-identical to K serial rollovers, so
- *   malicious security is unchanged.
+ *   In semi-honest mode the K-round wire transcript is bit-identical to K
+ *   serial rollovers. In malicious mode the K rounds share one batched check
+ *   (one mask, one round trip) where K rollovers run K, so the sender learns
+ *   one pass/fail bit per batch instead of one per round.
  *
  * Memory-light: nothing the wire already carried is re-stored. The next
  * round's base is re-derived from the previous one on the fly (a rolling

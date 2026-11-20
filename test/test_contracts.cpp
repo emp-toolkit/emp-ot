@@ -12,6 +12,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 
 using namespace emp;
 
@@ -180,6 +181,61 @@ private:
     int64_t size_;
     int64_t offset_ = 0;
 };
+
+// Scripted input plus a record of what was sent, with ordering gates. A send
+// gate {at, need} lets output bytes from offset `at` on leave only after
+// `need` input bytes have been read; a receive gate {at, need} lets input
+// bytes from offset `at` on be read only after `need` bytes were sent. A
+// violated gate, or a send past `cap` bytes, ends the process with status 2,
+// which a rejection test reports as a failure, not as the rejection.
+class ScriptIO final : public IOChannel {
+public:
+    struct Gate { int64_t at, need; };
+    ScriptIO(std::vector<uint8_t> input, int64_t cap,
+             std::vector<Gate> send_gates, std::vector<Gate> recv_gates)
+        : input_(std::move(input)), cap_(cap),
+          send_gates_(std::move(send_gates)), recv_gates_(std::move(recv_gates)) {}
+
+    std::vector<uint8_t> sent;
+
+    void send_data_internal(const void *data, int64_t nbyte) override {
+        const int64_t at = static_cast<int64_t>(sent.size());
+        if (at + nbyte > cap_) die("sent past its cap");
+        for (const Gate &g : send_gates_)
+            if (at + nbyte > g.at && received_ < g.need)
+                die("sent before the input it waits for");
+        const uint8_t *b = static_cast<const uint8_t *>(data);
+        sent.insert(sent.end(), b, b + nbyte);
+    }
+    void recv_data_internal(void *out, int64_t nbyte) override {
+        expecting(nbyte >= 0 &&
+                      received_ + nbyte <= static_cast<int64_t>(input_.size()),
+                  "ScriptIO: insufficient input");
+        for (const Gate &g : recv_gates_)
+            if (received_ + nbyte > g.at &&
+                static_cast<int64_t>(sent.size()) < g.need)
+                die("read before the output it waits for");
+        std::memcpy(out, input_.data() + received_, static_cast<size_t>(nbyte));
+        received_ += nbyte;
+    }
+
+private:
+    [[noreturn]] static void die(const char *what) {
+        std::fprintf(stderr, "ScriptIO: %s\n", what);
+        std::fflush(stderr);
+        _exit(2);
+    }
+    std::vector<uint8_t> input_;
+    int64_t cap_;
+    std::vector<Gate> send_gates_, recv_gates_;
+    int64_t received_ = 0;
+};
+
+template <typename T>
+void append_bytes(std::vector<uint8_t> &out, const T &v) {
+    const uint8_t *b = reinterpret_cast<const uint8_t *>(&v);
+    out.insert(out.end(), b, b + sizeof(T));
+}
 
 bool check_zero_count_semantics() {
     FakeStreaming stream(4);
@@ -411,6 +467,135 @@ int main() {
         (void)PrimalLPNParameter(
             std::numeric_limits<int64_t>::max() / 2 + 1, 0, 1);
     });
+
+    // F_p elements from the peer must be canonical (< p): p - 1 is read as is,
+    // p and 2^64 - 1 (encodings of the residues 0 and 7) abort.
+    {
+        const uint64_t top = AuthValueFp::PR_VAL - 1;
+        FixedInputIO io(reinterpret_cast<const uint8_t *>(&top), sizeof(top));
+        uint64_t got = 0;
+        recv_fp(&io, &got, 1);
+        if (got != top) {
+            std::cerr << "recv_fp changed a canonical element\n";
+            ok = false;
+        }
+    }
+    for (const uint64_t bad : {AuthValueFp::PR_VAL, ~uint64_t{0}}) {
+        ok &= expect_rejected("Fp non-canonical receive",
+                              "non-canonical F_p element", [bad] {
+            FixedInputIO io(reinterpret_cast<const uint8_t *>(&bad), sizeof(bad));
+            uint64_t got;
+            recv_fp(&io, &got, 1);
+        });
+    }
+    // The multi-point gadget's received F values: the sender's x* and the
+    // receiver's per-tree secret_sum.
+    ok &= expect_rejected("Fp gadget non-canonical x*",
+                          "non-canonical field element", [] {
+        const uint64_t x_star = AuthValueFp::PR_VAL;
+        FixedInputIO io(reinterpret_cast<const uint8_t *>(&x_star), sizeof(x_star));
+        MultiPointGadgetSender<AuthValueFp> gadget(1, 1, &io);
+        gadget.set_malicious();
+        gadget.set_delta(1);
+        gadget.run_begin();
+        gadget.run_end_typed(AuthValueFp{0, 0});
+    });
+    ok &= expect_rejected("Fp gadget non-canonical secret_sum",
+                          "non-canonical field element", [] {
+        // One tree of depth 1 on the wire: one correction block, then secret_sum.
+        std::array<uint8_t, sizeof(block) + sizeof(uint64_t)> wire = {};
+        const uint64_t secret_sum = AuthValueFp::PR_VAL;
+        std::memcpy(wire.data() + sizeof(block), &secret_sum, sizeof(secret_sum));
+        FixedInputIO io(wire.data(), static_cast<int64_t>(wire.size()));
+        MultiPointGadgetReceiver<AuthValueFp> gadget(1, 1, &io);
+        gadget.run_begin();
+        AuthValueFp leaves[2];
+        const block base = zero_block;
+        gadget.run_next_tree(leaves, &base, 0, 0);
+    });
+
+    // The typed check's equality test (F_p carrier, one tree, no trees run, so
+    // the check values are the mask's mac). The Δ-holder reads x*, sends its
+    // commitment (32 bytes), reads va, and only on a match sends the salt;
+    // the receiver sends x*, reads the commitment, sends va, reads the salt.
+    {
+        const block sid = makeBlock(0x5e, 0x1d);
+        const AuthValueFp mask{7, 99};   // val, mac
+        constexpr int64_t kCom = 2 * sizeof(block);
+        constexpr int64_t kF = sizeof(uint64_t);
+        auto holder_io = [&](uint64_t va, int64_t cap) {
+            std::vector<uint8_t> in;
+            append_bytes(in, uint64_t{0});   // x*
+            append_bytes(in, va);
+            // commitment after x*, salt after va; va read only after the commitment
+            return ScriptIO(std::move(in), cap, {{0, kF}, {kCom, 2 * kF}}, {{kF, kCom}});
+        };
+        auto holder = [&](ScriptIO &io) {
+            MultiPointGadgetSender<AuthValueFp> gadget(1, 1, &io);
+            gadget.sid = sid;
+            gadget.set_malicious();
+            gadget.set_delta(12345);
+            gadget.run_begin();
+            gadget.run_end_typed(mask);
+        };
+        {   // match: the holder opens, and the opening verifies
+            ScriptIO io = holder_io(mask.mac, kCom + sizeof(block));
+            holder(io);
+            block com[2], salt, opened[2];
+            const bool sizes = io.sent.size() == kCom + sizeof(block);
+            if (sizes) {
+                std::memcpy(com, io.sent.data(), kCom);
+                std::memcpy(&salt, io.sent.data() + kCom, sizeof(block));
+                typed_check_commit(sid, mask.mac, salt, opened);
+            }
+            if (!sizes || !cmpBlock(com, opened, 2)) {
+                std::cerr << "typed check: the holder's opening does not verify\n";
+                ok = false;
+            }
+        }
+        // mismatch: the holder aborts, and its salt never leaves (cap = commitment)
+        ok &= expect_rejected("typed check holder mismatch", "chi-fold check failed", [&] {
+            ScriptIO io = holder_io(mask.mac + 1, kCom);
+            holder(io);
+        });
+
+        auto receiver_io = [&](const block com[2], block salt) {
+            std::vector<uint8_t> in;
+            append_bytes(in, com[0]);
+            append_bytes(in, com[1]);
+            append_bytes(in, salt);
+            // va leaves only after the commitment arrived
+            return ScriptIO(std::move(in), 2 * kF, {{kF, kCom}}, {{kCom, 2 * kF}});
+        };
+        auto receiver = [&](ScriptIO &io) {
+            MultiPointGadgetReceiver<AuthValueFp> gadget(1, 1, &io);
+            gadget.sid = sid;
+            gadget.set_malicious();
+            gadget.run_begin();
+            const AuthValueFp triples[1] = {AuthValueFp{3, 4}};
+            gadget.run_end_typed(triples, mask);
+        };
+        const block salt = makeBlock(0xabc, 0xdef);
+        {   // a valid opening is accepted; x* is the mask's val, va its mac
+            block com[2];
+            typed_check_commit(sid, mask.mac, salt, com);
+            ScriptIO io = receiver_io(com, salt);
+            receiver(io);
+            uint64_t sent[2] = {0, 0};
+            const bool sizes = io.sent.size() == 2 * kF;
+            if (sizes) std::memcpy(sent, io.sent.data(), 2 * kF);
+            if (!sizes || sent[0] != mask.val || sent[1] != mask.mac) {
+                std::cerr << "typed check: the receiver sent the wrong x* or va\n";
+                ok = false;
+            }
+        }
+        ok &= expect_rejected("typed check bad opening", "chi-fold check failed", [&] {
+            block com[2];
+            typed_check_commit(sid, mask.mac + 1, salt, com);
+            ScriptIO io = receiver_io(com, salt);
+            receiver(io);
+        });
+    }
 
     if (!ok) return 1;
     std::cout << "test_contracts: OK\n";

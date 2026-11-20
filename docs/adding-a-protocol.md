@@ -68,6 +68,7 @@ struct AuthValueXxx {
   static F f_add(F, F);
   static F f_sub(F, F);
   static F f_mul(F, F);
+  static bool f_canonical(F);   // kHasSecretSum: may a peer's F be used as received
 
   // (d) Wire-format traits
   static constexpr bool          kHasSecretSum;
@@ -107,7 +108,10 @@ Notes:
   use. `AuthValueFerret` only defines `f_zero` / `f_add` — the
   FTyped-only `f_mul` / `f_sub` callers don't instantiate for it
   (gated by `kChiFoldFlavor`). Add only what the gadget actually
-  reaches for your wire-format-traits combination.
+  reaches for your wire-format-traits combination. A `kHasSecretSum`
+  carrier also provides `f_canonical`: the gadget aborts on a received
+  `secret_sum` or `x*` it rejects, so a field whose arithmetic assumes a
+  canonical encoding (F_p) never sees another one.
 
 - **(d) wire-format traits.** Pick all three carefully — they decide
   what the multi-point gadget puts on the wire:
@@ -117,7 +121,7 @@ Notes:
   | `kHasSecretSum` | No per-tree `secret_sum` byte; receiver α-fills from cGGM LSB-clear closure (RCOT-style). | Sender ships `secret_sum:F` per tree; receiver α-fills via `triple_yz − secret_sum − Σ_{j≠α} mac`. |
   | `kClearLeafLSB` | cGGM `build_sender` / `eval_receiver` write leaves as-is. | cGGM clears the per-leaf LSB (RCOT choice-bit encoding). |
   | `kChiFoldFlavor=F2kPacked` | n/a | Round-end check ships `bool[128] x_prime + 2-block hash`. Uses Galois packing on a 128-COT chi-check region. |
-  | `kChiFoldFlavor=FTyped`    | n/a | Round-end check ships `F x_star + 1-block hash`. Uses field-typed accumulators. |
+  | `kChiFoldFlavor=FTyped`    | n/a | Round-end check: the receiver ships `F x_star`, then an equality test (the sender's 2-block commitment, the receiver's `F va`, the sender's 1-block salt only on a match). Uses field-typed accumulators. |
 
   The current pairings:
   - Ferret-style: `kHasSecretSum=false`, `kClearLeafLSB=true`, `F2kPacked`.
@@ -128,8 +132,11 @@ Notes:
   new run_end body in `mp_gadget.h`.
 
 - **(e) `auth_from_block`.** Only called inside the gadget's
-  `kHasSecretSum=true` branch. If your carrier has `kHasSecretSum=false`
-  you can omit it (`AuthValueFerret` does).
+  `kHasSecretSum=true` branch, on a leaf the gadget has already hashed
+  (`hash_leaves` in `mp_gadget.h`): every cGGM level XORs to the inner
+  Ferret's Δ, so an unhashed leaf would be known to the receiver up to
+  that Δ. If your carrier has `kHasSecretSum=false` you can omit it
+  (`AuthValueFerret` does).
 
 - **(f) chi-fold helpers.** Both are only used in malicious mode.
   - `expand_chi`: turn the FS chi seed into `chi[leave_n]`. Ferret

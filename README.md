@@ -202,19 +202,19 @@ SoftSpoken<2> semi     send=e977a5ebf0042068 recv=0e756d29750968fb
 SoftSpoken<8> semi     send=e977a5ebf0042068 recv=6683f1726a4fde3c
 Ferret(b9) semi        send=8717c2172d2d97c8 recv=998865714bd15b42
 SilentFerret(b9) semi  send=8717c2172d2d97c8 recv=998865714bd15b42
-F2kVOLE semi           send=0bee624b053183b9 recv=39b564cf4eacc258
-FpVOLE semi            send=dc2e0aa7e6cb1735 recv=ed44d94d78f09202
-F2kVOLE(b9) semi       send=088462f4221f9110 recv=810ee88f7644fa03
-FpVOLE(b9) semi        send=cdfbde1bb9bcd1ad recv=ed44d94d78f09202
+F2kVOLE semi           send=0bee624b053183b9 recv=fb8382370181d371
+FpVOLE semi            send=069428059f994e4b recv=ab630a4308875699
+F2kVOLE(b9) semi       send=088462f4221f9110 recv=2d435f770573b26a
+FpVOLE(b9) semi        send=4fff54474cd3aaca recv=ab630a4308875699
 IKNP mali              send=64ab400fca07301b recv=65f43e18f025e291
 SoftSpoken<2> mali     send=e977a5ebf0042068 recv=d469374c10ac593d
 SoftSpoken<8> mali     send=e977a5ebf0042068 recv=11b1f246208773da
 Ferret(b9) mali        send=846d05ed7dccf36d recv=4a53d9508f54f15a
 SilentFerret(b9) mali  send=846d05ed7dccf36d recv=4a53d9508f54f15a
-F2kVOLE mali           send=9dfe966a4ae57cf6 recv=ce601c668330f9ff
-FpVOLE mali            send=a19653f84a23c18f recv=f99242ea737cb64d
-F2kVOLE(b9) mali       send=416823b441c2b173 recv=e2f1452fc1d518af
-FpVOLE(b9) mali        send=aeb2c191edd659de recv=eae05fe444cbec29
+F2kVOLE mali           send=6f051e68194631ee recv=4341a61beba2610b
+FpVOLE mali            send=3c9d87cacf6feffa recv=4b74b450ecd7244f
+F2kVOLE(b9) mali       send=cdc351a09af2a353 recv=df027f17e41a7469
+FpVOLE(b9) mali        send=fe71043a0a8e3762 recv=5f2be50d4a8b8978
 ```
 
 ## Usage
@@ -352,6 +352,8 @@ before the object's first use, that first use takes the channel's next session
 id (emp-tool's `IOChannel::next_session_id()`), so the top-level objects of a
 protocol are session-separated with no setup, and nested objects get children
 of their parent's id. On a channel without a session root the id stays zero.
+An id given to `set_sid()` must belong to one object, as the channel's ids
+do: two objects given the same id derive the same child ids.
 An outer protocol that needs identical receiver-choice
 patterns across several separately domain-separated Ferret instances may call
 `set_lpn_matrix_seed(root)` on both roles before bootstrap; the transcript ids
@@ -427,7 +429,17 @@ consumption shape (the two-box setup of the Performance section),
 1,048,576 one-COT calls were 72× faster (slower-party median of 5) and
 used 92× less wire this way than with `rcot(_, 1)` in a loop.
 `next_n` is mutually exclusive with `run()`/`rcot()` on the same
-instance (both touch the same leftover buffer).
+instance (both touch the same leftover buffer); a `run()` after the
+session's `end()` first returns the tail the session left, which that
+`end()` certified. Within one session use `next()` or `next_n()`, not
+both: `next()` does not see the tail `next_n()` buffers, so mixing them
+skips outputs.
+
+The malicious-mode checks hash the channel's transcript, so at every
+emp-ot call each party must have read everything the other sent before
+its matching call. emp-ot's own protocols do; an application sharing the
+channel must read each of its messages at the point matching where the
+other party sent it, or use a sibling channel.
 
 See [`docs/streaming-api.md`](docs/streaming-api.md) for the full
 lifecycle contract.
@@ -478,6 +490,26 @@ block sum = ote.produce_range_fused_xor(scratch.data(), tree_begin, n_trees);
 `produce_range_fused_xor()` sends each finalized LPN value directly to the
 XOR accumulator and skips the final store. Both reproduce the XOR of the
 corresponding `produce_range()` output and remain wire-free after `begin()`.
+
+### sVOLE
+
+`F2kVOLE` (VOLE over GF(2¹²⁸)) and `FpVOLE` (over F_p, p = 2⁶¹ − 1) stream
+authenticated values. The party without Δ gets `(val, mac)`; the Δ-holder gets
+the key in `mac`, with `val` = 0; and `mac = key + val·Δ`. The Δ-holder is `BOB`
+for `F2kVOLE` and `ALICE` for `FpVOLE`; it reads Δ with `delta()`, or sets it
+with `set_delta()` before the first use.
+
+```cpp
+FpVOLE<> vole(party, io);               // malicious by default, ferret_b12
+std::vector<AuthValueFp> out(n);
+vole.run(out.data(), n);                // one session per call
+// or: vole.begin(); vole.next_n(out.data(), k); ...; vole.end();
+```
+
+The streaming rules above apply, with one difference: an sVOLE has no
+`check()`, so a session's outputs stay provisional until `end()` runs the
+round's check. That window can be a whole round, `chunk_aligned_buf_sz()`
+outputs: 1,141,248 at `ferret_b9`, 16,625,664 at the default `ferret_b12`.
 
 ## Performance
 
@@ -587,19 +619,24 @@ what the estimates do not cover, and how to reproduce them and evaluate a custom
 - **`FpVOLE` malicious mode does not provide 128-bit soundness.** The
   field is p = 2⁶¹ − 1, so single-field consistency checks are bounded
   near 2⁻⁶¹ and the bootstrap's polynomial check near 2⁻⁴⁵ at the
-  shipped size; the 61-bit Δ caps key-guessing near 2⁻⁶¹. `F2kVOLE`
-  works over GF(2¹²⁸).
+  shipped size; the 61-bit Δ caps key-guessing near 2⁻⁶¹: the
+  round-final check commits before it reveals anything that depends on
+  Δ, and the base sVOLE lets a cheater learn k bits of Δ only with
+  probability 2⁻ᵏ, aborting otherwise. `F2kVOLE` works over GF(2¹²⁸),
+  with Δ's lowest bit fixed to 1, so 127 bits of Δ are secret.
 - **LPN parameters.** `Ferret`, `SilentFerret`, `F2kVOLE` and `FpVOLE` rest on
   primal LPN with regular noise. The shipped sets put every counted attack at
   141 bits or more, a 10% margin over the 128-bit target, for the binary
   instance and for the large-field instances of `FpVOLE` and `F2kVOLE` (*LPN
   security* section). The binding attack is a sparse-row variant of WXL from this
   project, which is not peer-reviewed.
-- The malicious-mode OT extensions realize **selective-abort**-style
-  functionalities: an adversary may make selective guesses that the
-  consistency checks catch with overwhelming probability, and streaming
-  outputs are **provisional until `check()` or `end()`** completes the
-  covering checks (see the Streaming RCOT section).
+- The malicious-mode OT extensions and sVOLEs realize
+  **selective-abort**-style functionalities: an adversary may make
+  selective guesses that the consistency checks catch with overwhelming
+  probability, and streaming outputs are **provisional until `check()`
+  or `end()`** completes the covering checks (see the Streaming RCOT
+  section); an sVOLE round's check runs in `end()`. Discard the outputs
+  of a session that aborts.
 - **`BMM` is a custom OT construction** using ML-KEM-512 (Kyber)
   parameters and arithmetic (vendored reference sources); it is not
   standardized FIPS-203 ML-KEM used as a black box, and "post-quantum"

@@ -34,6 +34,11 @@ In syndrome form this is the regular syndrome decoding (RSD) problem of the atta
 literature, with `n = N`, `h = t` and block size `β = 2^tree_depth`. The target is
 128 bits.
 
+A round that ends early (`end()` before all `t` trees have run) releases a prefix of
+the round's samples: the same secret and the same per-block noise, in fewer blocks.
+An attack on the prefix is an attack on the full round with the rest discarded, so
+the full-round figures cover it.
+
 The field `F` is F₂ for `Ferret` and `SilentFerret`, F_p with p = 2⁶¹ − 1 for
 `FpVOLE`, where a repeated row gives the coefficient 2, and GF(2¹²⁸) for `F2kVOLE`,
 with the per-entry coefficients above. Over GF(2¹²⁸), 0/1 entries would let the
@@ -45,9 +50,21 @@ Semi-honest mode is plain regular LPN. Malicious mode is the "LPN with static
 leakage" of Ferret (CCS 2020, eprint 2020/924, Def. 4): once per round (once per prepaid batch for
 `SilentFerret`) the sender learns whether the chi-fold check passed, one
 selective-failure query on the round's noise positions. The paper answers that
-query before releasing outputs; `Ferret::next()` releases a round's COTs before
-`end()` runs the check, so outputs must be treated as provisional until `check()`
-or `end()` (README, *Streaming RCOT*).
+query before releasing outputs; `Ferret::next()` releases a round's COTs, and an
+sVOLE's `next()` its outputs, before `end()` runs the check, so outputs must be
+treated as provisional until `check()` or `end()` (README, *Streaming RCOT*).
+
+Two compositions depart from the papers' setting. No published proof covers them, and
+we know no attack on either:
+
+- **Half-Tree trees under Ferret's check.** The MPCOT trees are Half-Tree correlated
+  GGM trees (eprint 2022/1431). They realize Ferret's single-point COT only with
+  global-key queries, because the receiver's reconstructed leaves XOR to a public
+  constant. The chi-fold check needs only `v ⊕ w = e_α·Δ`, which the trees give.
+- **SilentFerret's batched check.** One check spans K rounds, and rounds 2 to K take
+  their base COTs from the previous round before that round is checked. The sender
+  makes one selective-failure query over the K rounds' joint noise instead of one per
+  round.
 
 ### The parameters
 
@@ -457,9 +474,16 @@ In malicious mode the `F2kVOLE`/`FpVOLE` receiver answers the round-final
 chi-fold check with `x* = Σ_i β_i·χ_{α_i} + x₀` in the clear (`mp_gadget.h`,
 typed check). The mask `x₀` is carry slot `t`, and nothing else reads it: of the
 `t + k + 1` carried slots, `0` to `t − 1` seed the trees and `t + 1` to `t + k` are
-the round's LPN secret (`svole.h`). `x*` is therefore one-time padded, and the
-check reveals only whether it passed, the selective-failure query of §1. `Ferret`
-masks its check with the 128 dedicated check COTs.
+the round's LPN secret (`svole.h`). `x*` is therefore one-time padded. The two
+parties' check values are then compared by an equality test in which the Δ-holder
+commits to its value under a fresh salt, the receiver reveals its own, and the
+Δ-holder opens only if they match. A receiver that deviates holds only the
+commitment, nothing it can test candidate Δs against offline. A Δ-holder that
+deviates is bound before it sees the receiver's value; that value tells it more than
+whether the check passed, but only in a round that aborts, whose outputs are
+provisional and discarded. A round that completes reveals only that the check
+passed, the selective-failure query of §1. `Ferret` masks its check with the 128
+dedicated check COTs.
 
 ## 6. Parameter sets by release
 

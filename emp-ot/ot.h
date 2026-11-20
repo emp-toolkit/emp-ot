@@ -56,6 +56,8 @@ public:
 	// over its base OT), so only a top-level object draws from its channel.
 	// Malicious-mode Fiat-Shamir challenges bind the sid (fs_challenge above).
 	// The SessionID ctor is implicit, so set_sid(some_block) still works.
+	// An id set here must not be shared with another object, as the channel's
+	// ids never are: two objects with one id derive the same child ids.
 	virtual void set_sid(SessionID s) {
 		sid = s;
 		sid_fixed_ = true;

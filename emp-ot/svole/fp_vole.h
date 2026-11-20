@@ -43,6 +43,8 @@ struct alignas(16) AuthValueFp {
   static inline F    f_add (F a, F b)      { return add_mod(a, b); }
   static inline F    f_sub (F a, F b)      { return a >= b ? a - b : a + PR_VAL - b; }
   static inline F    f_mul (F a, F b)      { return mult_mod(a, b); }
+  // A field element from the peer must be canonical (< p).
+  static inline bool f_canonical(F a)      { return a < PR_VAL; }
 
   // -------- Wire-format traits --------
   static constexpr bool kHasSecretSum = true;
@@ -191,7 +193,7 @@ struct alignas(16) AuthValueFp {
           AuthValueFp *leaves_i = pre_vole.data() + i * pre_leaves;
           const block *base_i =
               pre_base_cots.data() + i * pre_param.tree_depth;
-          pre_send.run_next_tree(leaves_i, base_i, (int)i,
+          pre_send.run_next_tree(leaves_i, base_i, i,
                                  seed_pairs[i].mac);
         }
         pre_send.run_end_typed(seed_pairs[pre_param.t]);
@@ -202,7 +204,7 @@ struct alignas(16) AuthValueFp {
           const block *base_i =
               pre_base_cots.data() + i * pre_param.tree_depth;
           uint32_t alpha = pre_recv.run_next_tree(
-              leaves_i, base_i, (int)i, seed_pairs[i].mac);
+              leaves_i, base_i, i, seed_pairs[i].mac);
           leaves_i[alpha].val = seed_pairs[i].val;
         }
         pre_recv.run_end_typed(seed_pairs.data(), seed_pairs[pre_param.t]);

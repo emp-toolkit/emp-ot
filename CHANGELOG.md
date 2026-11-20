@@ -5,8 +5,60 @@ metadata is numeric (see the README's version guidance).
 
 ## Unreleased
 
+### Security
+
+- `F2kVOLE` / `FpVOLE`: the multi-point gadget hashes every tree leaf before it
+  becomes a field element, with a MITCCRH stream: one gid per leaf, taken by both
+  parties in the same order, from a fresh start point
+  `RO("emp-ot:mpcot:leaf-hash", sid, round)` each round. The sVOLE trees are
+  correlated GGM trees whose every level XORs to the inner `Ferret`'s Δ, which
+  all trees share; the hash keeps each punctured leaf pseudorandom to the
+  receiver, as the sVOLE relation needs. All sVOLE outputs and transcripts
+  change: both parties must upgrade together, and the sVOLE rows of
+  `test/trace_hash.baseline` are regenerated. `Ferret` and `SilentFerret` are
+  unchanged.
+- `FpVOLE`: every F_p element received from the other party (the base sVOLE's
+  corrections, check reply and check seed, and the multi-point gadget's
+  per-tree sum and check value) must be canonical, below p, or the receiving
+  party aborts. The field arithmetic assumes canonical operands. `recv_fp`
+  (`svole/fp_utility.h`) is the F_p receive, and a `kHasSecretSum` carrier
+  provides `f_canonical(F)` for the gadget. Honest transcripts are unchanged.
+- `F2kVOLE` / `FpVOLE`: the round-final check compares the two parties' check
+  values by an equality test in which the Δ-holder commits first. The receiver
+  sends `x*` as before; the Δ-holder answers with a commitment
+  `RO("emp-ot:mpcot:check-ftyped", sid, vb, salt)` under a fresh 128-bit salt,
+  the receiver reveals its value, and the Δ-holder sends the salt only if the
+  values match. The Δ-holder used to send a hash of its value, which is linear
+  in Δ, so a receiver that deviated in `x*` could test candidate Δs against it
+  offline, a 2⁶¹ search for `FpVOLE`. The check takes one more round trip per
+  round. Malicious-mode sVOLE transcripts change: both parties must upgrade
+  together, and the malicious sVOLE rows of `test/trace_hash.baseline` are
+  regenerated.
+- `FpVOLE`: the base sVOLE (COPE) takes its base OTs from `CSW`, which is
+  malicious-secure, instead of `CO`, which is semi-honest, through `CSW`'s
+  standalone `send` / `recv`, so every `CSW` round, the extraction check
+  included, completes before COPE uses an output. A `CSW` batch holds at least
+  `CSW::kMinLength` = 80 OTs: COPE runs 80, one per bit of Δ and 19 more with
+  random choice bits, and drops the 19. All `FpVOLE` transcripts change: both
+  parties must upgrade together, and the `FpVOLE` rows of
+  `test/trace_hash.baseline` are regenerated.
+
+### Removed
+
+- `OTIdeal` (`emp-ot/ideal.h`), a test-only ideal COT that no test used. Its
+  chosen-input and ROT wrappers went out of step after the first call, because
+  the wrapper drew its start point from the PRG the mock shared between parties.
+
 ### Changed
 
+- `EMP_TUNE_LPN_BATCH_M` must be a power of two in [4, 512], checked at compile
+  time. Other values fold a different LPN matrix, so parties built with different
+  values would silently disagree; a LOCAL knob must not change outputs.
+- `tools/lpn_security.py` rejects a missing or negative `--d`, a non-integer
+  argument and `k ≤ 0` before it evaluates anything.
+- The multi-point gadget's `run_next_tree` takes its tree index as `int64_t`,
+  like the parameter set's tree count, and the base sVOLE's receiver flushes its
+  check reply instead of relying on its next receive to drain it.
 - An OT, OT extension or sVOLE whose session id was not set with `set_sid()`
   takes its channel's next session id (emp-tool's
   `IOChannel::next_session_id()`) at its first use, instead of the zero id.

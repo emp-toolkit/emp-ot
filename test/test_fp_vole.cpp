@@ -109,6 +109,46 @@ void test_oneshot(NetIO *io, int svole_party) {
   check_lpn_seed(vtriple.lpn_->prg_key(), AuthValueFp::kLpnSeedDomain, sid);
 }
 
+// Check the first n outputs of buf with the triple oracle.
+static void check_outputs(uint64_t delta, const std::vector<AuthValueFp> &buf,
+                          int64_t n, NetIO *io) {
+  std::vector<uint64_t> val(n), mac(n);
+  for (int64_t k = 0; k < n; ++k) {
+    val[k] = buf[k].val;
+    mac[k] = buf[k].mac;
+  }
+  check_triple(delta, val.data(), mac.data(), n, io);
+}
+
+// Semi-honest one-shot runs at lengths that are not whole chunks, then a
+// malicious session whose next_n counts cut across chunk boundaries.
+void test_short_sessions(NetIO *io, int svole_party) {
+  {
+    FpVOLE<AuthValueFp> vtriple(svole_party, io,
+                                /*malicious=*/false, kSvoleParam);
+    const uint64_t Delta = svole_party == ALICE ? vtriple.delta() : 0;
+    const int64_t chunk = vtriple.chunk_size();
+    for (int64_t n : {int64_t{1}, int64_t{1000}, chunk + 3}) {
+      std::vector<AuthValueFp> buf(n);
+      vtriple.run(buf.data(), n);
+      check_outputs(Delta, buf, n, io);
+    }
+  }
+  {
+    FpVOLE<AuthValueFp> vtriple(svole_party, io,
+                                /*malicious=*/true, kSvoleParam);
+    const uint64_t Delta = svole_party == ALICE ? vtriple.delta() : 0;
+    const int64_t chunk = vtriple.chunk_size();
+    vtriple.begin();
+    for (int64_t n : {int64_t{5}, chunk + 7, int64_t{3}}) {
+      std::vector<AuthValueFp> buf(n);
+      vtriple.next_n(buf.data(), n);
+      check_outputs(Delta, buf, n, io);
+    }
+    vtriple.end();
+  }
+}
+
 int main(int argc, char **argv) {
   party = parse_party(argv);
   port = peer_port();
@@ -124,6 +164,11 @@ int main(int argc, char **argv) {
             << "------------ VOLE Fp (one-shot) ------------" << std::endl
             << std::endl;
   test_oneshot(io.get(), party);
+
+  std::cout << std::endl
+            << "------------ VOLE Fp (short sessions) ------------" << std::endl
+            << std::endl;
+  test_short_sessions(io.get(), party);
 
   return 0;
 }

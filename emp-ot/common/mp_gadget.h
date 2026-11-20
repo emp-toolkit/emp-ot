@@ -32,7 +32,10 @@
 //   F mac;                                        — mac storage
 //   [F val;]                                      — sVOLE only
 //   static F   f_zero()/f_add/f_sub/f_mul         — field arithmetic
-//   static AuthValue auth_from_block(block leaf)  — cGGM leaf wrap
+//   static bool f_canonical(F)                    — sVOLE only: may a peer's
+//                                                   F be used as received
+//   static AuthValue auth_from_block(block leaf)  — leaf wrap (an sVOLE
+//                                                   leaf arrives hashed)
 //   static void expand_chi(block, F*, int64_t)    — FS chi
 //   static void accumulate_VW(F&, const F*, const AuthValue*, int64_t)
 //                                                 — VW[i] = Σ chi·mac
@@ -56,15 +59,47 @@ enum class ChiFoldFlavor {
   F2kPacked,   // sender ships bool[128] x_prime + 2-block digest;
                // receiver derives x_prime from XOR(chi_alpha) and the
                // chi-check region LSBs. Used by Ferret MPCOT.
-  FTyped,      // sender ships F x_star + 1-block digest; receiver
-               // computes x_star = Σ chi_α·val + triple.val. Used by
-               // Mpsvole (F_2k + F_p).
+  FTyped,      // receiver ships F x_star = Σ chi_α·val + triple.val,
+               // then an equality test: the sender commits to its
+               // check value, the receiver reveals its own, and the
+               // sender opens only on a match. Used by Mpsvole
+               // (F_2k + F_p).
 };
 
 // Domain separators for the round-final consistency-check commitments,
 // at file scope so the sender and receiver hash byte-identical inputs.
 inline constexpr char kDomCheckPacked[] = "emp-ot:mpcot:check-f2kpacked";
 inline constexpr char kDomCheckTyped[]  = "emp-ot:mpcot:check-ftyped";
+inline constexpr char kDomLeafHash[]    = "emp-ot:mpcot:leaf-hash";
+
+// The FTyped check's commitment to a check value v: a 2-block digest of
+// RO(kDomCheckTyped, sid, v, salt), hiding while the 128-bit salt is
+// unopened. Both run_end_typed sides compute it the same way.
+template <typename F>
+inline void typed_check_commit(block sid, const F &v, block salt, block out[2]) {
+  RO(kDomCheckTyped, sid).absorb(&v, sizeof(F)).absorb(salt).squeeze_digest(out);
+}
+
+// sVOLE leaf hash (kHasSecretSum carriers: F2kVOLE, FpVOLE). Every cGGM level
+// XORs to cggm_delta, the inner Ferret's Δ, which every tree shares, so the
+// receiver knows its punctured leaf up to that Δ. Ferret's COTs want exactly
+// that correlation. An sVOLE leaf must instead look random to the receiver:
+// it is masked only by β·Δ, so a leaf the receiver knows up to one shared
+// offset would let it solve for Δ across trees. Both parties therefore hash
+// every leaf before it becomes a field element. The hash is a MITCCRH stream
+// with one gid per leaf, taken by both parties in the same leaf order, and
+// run_begin starts each round's stream at RO(kDomLeafHash, sid, round), so no
+// (start point, gid) pair recurs across rounds, or across instances with
+// distinct session ids. Instances left at the zero id share start points and
+// fall back to the fixed-key setting of the cGGM's own CCRH.
+inline block leaf_hash_start(block sid, uint64_t round) {
+  return RO(kDomLeafHash, sid).absorb(round).squeeze_block();
+}
+inline void hash_leaves(MITCCRH<> &h, block *leaves, int64_t n) {
+  int64_t i = 0;
+  for (; i + 8 <= n; i += 8) h.hash_cir<8, 1>(leaves + i);
+  for (; i < n; ++i) h.hash_cir<1, 1>(leaves + i);
+}
 
 // Run `fn(s)` for s in [0,B) — on `pool` if given (and worth it), else
 // inline. Used by the decoupled prepare path to parallelize the per-tree
@@ -107,6 +142,8 @@ public:
   PRG prg;
   std::vector<F>      consist_check_VW;
   GaloisFieldPacking  pack;   // F2kPacked only.
+  MITCCRH<>           leaf_hash;        // kHasSecretSum only; see hash_leaves.
+  uint64_t            rounds_begun = 0; // run_begin calls so far
 
   // Per-tree scratch — sized once at construction (or on set_malicious
   // for chi) instead of std::vector ctor per run_next_tree call.
@@ -130,14 +167,17 @@ public:
 
   void run_begin() {
     if (is_malicious) consist_check_VW.assign(tree_n, AuthValue::f_zero());
+    if constexpr (AuthValue::kHasSecretSum)
+      leaf_hash.setS(leaf_hash_start(sid, rounds_begun));
+    ++rounds_begun;
   }
 
   // Per-tree work:
   //   1. cGGM build into leaves_i + K0[tree_depth]. For Ferret-style
   //      (kHasSecretSum=false), AuthValue is layout-compat with block
   //      and cGGM writes directly via reinterpret_cast. For sVOLE
-  //      (kHasSecretSum=true), cGGM writes a temp block buffer and
-  //      auth_from_block converts.
+  //      (kHasSecretSum=true), cGGM writes a temp block buffer, every
+  //      leaf is hashed (hash_leaves), and auth_from_block converts.
   //   2. c[j] = base_i[j] XOR K0[j] (correction shipped to receiver).
   //   3. If kHasSecretSum: secret_sum = gamma_i − Σ mac (shipped).
   //   4. Malicious: chi seed from the FS transcript and sid
@@ -146,7 +186,7 @@ public:
   // gamma_i is the per-tree carrier (sVOLE carry_curr_[tree_idx].mac).
   // For Ferret-style policies (kHasSecretSum=false) it is unused;
   // callers may omit it.
-  void run_next_tree(AuthValue *leaves_i, const block *base_i, int tree_idx,
+  void run_next_tree(AuthValue *leaves_i, const block *base_i, int64_t tree_idx,
                      [[maybe_unused]] F gamma_i = AuthValue::f_zero()) {
     block seed;
     prg.random_block(&seed, 1);
@@ -159,6 +199,7 @@ public:
     } else {
       cggm::build_sender<cggm::kTile, AuthValue::kClearLeafLSB>(
           tree_depth, cggm_delta, seed, leaves_block.data(), K0.data());
+      hash_leaves(leaf_hash, leaves_block.data(), leave_n);
       for (int64_t i = 0; i < leave_n; ++i)
         leaves_i[i] = AuthValue::auth_from_block(leaves_block[i]);
     }
@@ -282,9 +323,9 @@ public:
         reinterpret_cast<block *>(leaves_i), k0_scratch);
   }
 
-  // F2kPacked round-final check. Mutates `pre_cot_data[i]` for i in
-  // x_prime (in-place Δ-XOR on the chi-check region). Caller's
-  // buffer; the mutation is intentional and mirrored in the receiver.
+  // F2kPacked round-final check. XORs Δ into `pre_cot_data[i]` for each i
+  // set in x_prime, so the packed check COTs match the receiver's adjusted
+  // choice bits. The caller's buffer: those check slots are not read again.
   void run_end_packed(block *pre_cot_data) {
     static_assert(AuthValue::kChiFoldFlavor == ChiFoldFlavor::F2kPacked,
                   "run_end_packed: AuthValue is not F2kPacked");
@@ -348,17 +389,39 @@ public:
   // Ferret-style policies this method is never instantiated (gated
   // by static_assert + the outer's chi-fold-flavor-aware caller),
   // so the .mac access in the body is fine.
+  //
+  // vb is linear in Δ, so it is compared with the receiver's va by an
+  // equality test in which this side commits first: commit to vb under a
+  // fresh salt, receive va, and open only if va == vb. A receiver that
+  // deviated in x* holds only the hiding commitment, nothing it can test
+  // candidate Δs against offline, and the opening never leaves on a
+  // mismatch. The commitment binds vb before va arrives, so a sender that
+  // corrupted trees cannot adapt to va; the va it then sees belongs to a
+  // round that aborts.
   void run_end_typed(AuthValue triple_t) {
     static_assert(AuthValue::kChiFoldFlavor == ChiFoldFlavor::FTyped,
                   "run_end_typed: AuthValue is not FTyped");
     if (!is_malicious) return;
     F x_star;
     io->recv_data(&x_star, sizeof(F));
+    expecting(AuthValue::f_canonical(x_star),
+              "MultiPointGadget: received a non-canonical field element");
     F vb = AuthValue::f_add(AuthValue::f_mul(delta, x_star), triple_t.mac);
     for (int64_t i = 0; i < tree_n; ++i)
       vb = AuthValue::f_add(vb, consist_check_VW[i]);
-    block h = RO(kDomCheckTyped, sid).absorb(&vb, sizeof(F)).squeeze_block();
-    io->send_data(&h, sizeof(block));
+    block salt;
+    prg.random_block(&salt, 1);
+    block com[2];
+    typed_check_commit(sid, vb, salt, com);
+    io->send_data(com, sizeof(com));
+    io->flush();
+    F va;
+    io->recv_data(&va, sizeof(F));
+    expecting(AuthValue::f_canonical(va),
+              "MultiPointGadget: received a non-canonical field element");
+    expecting(std::memcmp(&va, &vb, sizeof(F)) == 0,
+              "MultiPointGadget chi-fold check failed");
+    io->send_data(&salt, sizeof(block));
     io->flush();
   }
 };
@@ -382,6 +445,8 @@ public:
   std::vector<F> consist_check_chi_alpha;
   std::vector<F> consist_check_VW;
   GaloisFieldPacking pack;   // F2kPacked only.
+  MITCCRH<> leaf_hash;          // kHasSecretSum only; see hash_leaves.
+  uint64_t  rounds_begun = 0;   // run_begin calls so far
 
   // Per-tree scratch — sized once at construction (or on set_malicious
   // for chi) instead of std::vector ctor per run_next_tree call.
@@ -406,6 +471,9 @@ public:
       consist_check_chi_alpha.assign(tree_n, AuthValue::f_zero());
       consist_check_VW.assign(tree_n, AuthValue::f_zero());
     }
+    if constexpr (AuthValue::kHasSecretSum)
+      leaf_hash.setS(leaf_hash_start(sid, rounds_begun));
+    ++rounds_begun;
   }
 
   // Per-tree work (mirror of sender; see MultiPointGadgetSender for
@@ -413,13 +481,13 @@ public:
   //   1. α = MSB-first NOT(LSB) of base_i.
   //   2. Recv c[] (and, when kHasSecretSum, secret_sum:F).
   //   3. K_recv[j] = base_i[j] XOR c[j].
-  //   4. cGGM eval.
+  //   4. cGGM eval (sVOLE: then hash every leaf, as the sender does).
   //   5. α-fill (F2kPacked: XOR closure + bit0_mask;
   //              FTyped: triple_yz − secret_sum − Σ_{j≠α} mac).
   //   6. Malicious: chi seed, expand_chi, chi_alpha + VW.
   // Returns the punctured leaf's storage index = bit_reverse(α), which
   // is where the caller writes its val (split-layout leaf order).
-  uint32_t run_next_tree(AuthValue *leaves_i, const block *base_i, int tree_idx,
+  uint32_t run_next_tree(AuthValue *leaves_i, const block *base_i, int64_t tree_idx,
                          F triple_yz_i = AuthValue::f_zero()) {
     uint32_t alpha = 0;
     for (int64_t j = 0; j < tree_depth; ++j) {
@@ -435,6 +503,8 @@ public:
     F secret_sum = AuthValue::f_zero();
     if constexpr (AuthValue::kHasSecretSum) {
       io->recv_data(&secret_sum, sizeof(F));
+      expecting(AuthValue::f_canonical(secret_sum),
+                "MultiPointGadget: received a non-canonical field element");
     }
 
     for (int64_t j = 0; j < tree_depth; ++j) K_recv[j] = base_i[j] ^ c[j];
@@ -454,6 +524,9 @@ public:
     } else {
       cggm::eval_receiver<cggm::kTile, AuthValue::kClearLeafLSB>(
           tree_depth, alpha, K_recv.data(), leaves_block.data());
+      // The punctured slot (zero here) is hashed too, so both parties take
+      // the same gids; its mac is filled below.
+      hash_leaves(leaf_hash, leaves_block.data(), leave_n);
       F nodes_sum = AuthValue::f_zero();
       for (int64_t i = 0; i < leave_n; ++i) {
         if ((uint32_t)i == rev) {
@@ -677,10 +750,17 @@ public:
     F va = triple_t.mac;
     for (int64_t i = 0; i < tree_n; ++i)
       va = AuthValue::f_add(va, consist_check_VW[i]);
-    block h = RO(kDomCheckTyped, sid).absorb(&va, sizeof(F)).squeeze_block();
-    block r;
-    io->recv_data(&r, sizeof(block));
-    expecting(cmpBlock(&r, &h, 1),
+    // The sender's commitment arrives before va leaves (see the sender's
+    // run_end_typed), then the sender opens it only if the values match.
+    block com[2];
+    io->recv_data(com, sizeof(com));
+    io->send_data(&va, sizeof(F));
+    io->flush();
+    block salt;
+    io->recv_data(&salt, sizeof(block));
+    block opened[2];
+    typed_check_commit(sid, va, salt, opened);
+    expecting(cmpBlock(com, opened, 2),
               "MultiPointGadget chi-fold check failed");
   }
 };

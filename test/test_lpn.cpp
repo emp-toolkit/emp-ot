@@ -1,7 +1,9 @@
-// Lpn<AuthValue, d> with GF(2^128) coefficients (common/lpn.h): the fold
+// Lpn<AuthValue, d> (common/lpn.h). With GF(2^128) coefficients: the fold
 // against a one-gfmul-per-entry reference of the documented stream layout,
 // the Δ-holder's mac-only fold, the VOLE relation across both parties' folds,
-// and the PRG accounting that slicing relies on.
+// and the PRG accounting that slicing relies on. With F_p unit entries: the
+// lazily reduced fold against one add_mod per entry, on random inputs and on
+// inputs that are all p - 1, and the VOLE relation.
 //
 // Single-process (no IO / no `run`).
 #include "emp-ot/emp-ot.h"
@@ -138,10 +140,117 @@ static void test_vole_relation() {
 	check("f2k receiver + mac-only Δ-holder folds keep mac ^ key = val·Δ", ok);
 }
 
+// ---- F_p, unit entries ----
+using FpVec = vector<AuthValueFp>;
+
+// Canonical random elements, or every val and mac p - 1 (`worst`): the most a
+// lazily reduced accumulator can hold between reductions.
+static FpVec fp_values(PRG &prg, int64_t n, bool worst) {
+	FpVec v((size_t)n);
+	for (AuthValueFp &e : v) {
+		if (worst) {
+			e.val = e.mac = AuthValueFp::PR_VAL - 1;
+		} else {
+			uint64_t r[2];
+			prg.random_data_unaligned(r, sizeof(r));
+			e.val = mod(r[0]);
+			e.mac = mod(r[1]);
+		}
+	}
+	return v;
+}
+
+static bool same_fp(const FpVec &a, const FpVec &b) {
+	return a.size() == b.size()
+	    && memcmp(a.data(), b.data(), sizeof(AuthValueFp) * a.size()) == 0;
+}
+
+// compute_slice's unit-entry stream with one add_mod per entry: batches of
+// tuning::lpn_batch_m outputs, then of 4, then single outputs, each drawing
+// ceil(B·d/4) blocks whose uint32 words are the batch's indices in order
+// (output m's l-th index is word m·d + l).
+static void ref_fold_fp(PRG &prg, int64_t k, FpVec &out, const FpVec &pre) {
+	const int64_t n = (int64_t)out.size();
+	auto batch = [&](int64_t i, int b) {
+		vector<block> rnd((size_t)(b * kD + 3) / 4);
+		prg.random_block(rnd.data(), (int64_t)rnd.size());
+		const uint32_t *w = reinterpret_cast<const uint32_t *>(rnd.data());
+		for (int m = 0; m < b; ++m) {
+			AuthValueFp &o = out[(size_t)(i + m)];
+			for (int l = 0; l < kD; ++l) {
+				const AuthValueFp &e = pre[w[m * kD + l] & (k - 1)];
+				o.val = add_mod(o.val, e.val);
+				o.mac = add_mod(o.mac, e.mac);
+			}
+		}
+	};
+	constexpr int M = tuning::lpn_batch_m;
+	int64_t j = 0;
+	for (; j + M <= n; j += M) batch(j, M);
+	for (; j + 4 <= n; j += 4) batch(j, 4);
+	for (; j < n; ++j) batch(j, 1);
+}
+
+static void test_reference_fp() {
+	constexpr int64_t k = 1 << 12;
+	PRG prg;
+	block seed;
+	prg.random_block(&seed, 1);
+	bool ok = true;
+	for (bool worst : {false, true}) {
+		const FpVec pre = fp_values(prg, k, worst);
+		for (int64_t n : {int64_t{4096}, int64_t{4096 + 3}, int64_t{6}, int64_t{1}}) {
+			const FpVec base = fp_values(prg, n, worst);
+			Lpn<AuthValueFp, kD> lpn((int)k);
+			FpVec got = base, want = base;
+			PRG p(&seed), q(&seed);
+			lpn.compute_slice(p, got.data(), pre.data(), n);
+			ref_fold_fp(q, k, want, pre);
+			ok = ok && same_fp(got, want) && p.position() == q.position()
+			        && p.position() == lpn.blocks_per_chunk(n);
+		}
+	}
+	check("fp fold == per-entry add_mod reference (random and all p - 1)", ok);
+}
+
+// Unit entries add val and mac alike, so mac = key + val·Δ survives the fold
+// on both parties' halves.
+static void test_vole_relation_fp() {
+	constexpr int64_t k = 1 << 12, n = 4096 + 2;
+	PRG prg;
+	uint64_t delta;
+	prg.random_data_unaligned(&delta, sizeof(delta));
+	delta = mod(delta);
+	auto keys = [&](const FpVec &recv) {
+		FpVec send(recv.size());
+		for (size_t i = 0; i < recv.size(); ++i) {
+			const uint64_t vd = mult_mod(recv[i].val, delta);
+			send[i] = AuthValueFp{0, recv[i].mac >= vd ? recv[i].mac - vd
+			                                           : recv[i].mac + AuthValueFp::PR_VAL - vd};
+		}
+		return send;
+	};
+	const FpVec pre_r = fp_values(prg, k, false), pre_s = keys(pre_r);
+	FpVec out_r = fp_values(prg, n, false), out_s = keys(out_r);
+	block seed;
+	prg.random_block(&seed, 1);
+	Lpn<AuthValueFp, kD> lpn((int)k);
+	PRG pr(&seed), ps(&seed);
+	lpn.compute_slice(pr, out_r.data(), pre_r.data(), n);
+	lpn.compute_slice(ps, out_s.data(), pre_s.data(), n);
+	bool ok = true;
+	for (int64_t i = 0; i < n; ++i)
+		ok = ok && out_s[i].val == 0
+		        && out_r[i].mac == add_mod(out_s[i].mac, mult_mod(out_r[i].val, delta));
+	check("fp folds keep mac = key + val·Δ", ok);
+}
+
 int main() {
 	test_reference();
 	test_serial_slices();
 	test_vole_relation();
+	test_reference_fp();
+	test_vole_relation_fp();
 	if (failures) {
 		cout << failures << " check(s) failed\n";
 		return 1;

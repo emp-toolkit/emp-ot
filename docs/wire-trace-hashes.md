@@ -15,7 +15,8 @@ protocol.
 Each protocol is measured from a **reset deterministic seed state**
 (`reset_test_seed_counter()` before each one) and under **one pinned
 session id**, `kTraceSid`, which every row sets with `set_sid()` on each
-top-level object before its first use. Unpinned, an object would take
+top-level object before its first use (a pinned id suits a trace; in an
+application each top-level object needs its own). Unpinned, an object would take
 its channel's next session id, and each row's sibling channel takes its
 session root from the anchor's next one, so a row's ids, and with them
 its digests, would depend on how many rows ran before it. With both, a

@@ -1,9 +1,10 @@
 #ifndef EMP_OT_SVOLE_FP_BASE_SVOLE_H__
 #define EMP_OT_SVOLE_FP_BASE_SVOLE_H__
 
-#include "emp-ot/base_ot/co.h"
+#include "emp-ot/base_ot/csw.h"
 #include "emp-ot/svole/fp_utility.h"
 #include "emp-tool/emp-tool.h"
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -18,8 +19,12 @@
 // chooser to be the COT-*receiver*, but the F_p sVOLE Δ-holder
 // (ALICE) must be the inner-Ferret COT-*sender* to drive the main
 // MPFSS sibling-OT layer (c[j]=base[j]^K0[j], identical to the F_2k
-// case). The two roles conflict; using CO directly for Cope's 61
-// base OTs avoids running a second Ferret with swapped roles.
+// case). The two roles conflict, so Cope runs its own base OTs instead
+// of a second Ferret with swapped roles: CSW, which is malicious-secure,
+// through its standalone send / recv, which run the core and the
+// extraction check back to back, so every CSW round has completed before
+// Cope uses an output. A CSW batch holds at least CSW::kMinLength OTs;
+// Cope needs one per bit of Δ (MERSENNE_PRIME_EXP = 61) and drops the rest.
 
 namespace emp {
 
@@ -49,10 +54,16 @@ public:
     delta_bool.reset(new bool[m]);
     delta64_to_bool(delta_bool.get(), delta_in);
 
-    std::vector<block> K(m);
-    CO otco(io);
-    otco.set_sid(sid);
-    otco.recv(K.data(), delta_bool.get(), m);
+    // Choice bits: Δ's m bits, then fresh random bits up to CSW's batch.
+    const int64_t n = std::max<int64_t>(m, CSW::kMinLength);
+    std::unique_ptr<bool[]> choice(new bool[n]);
+    std::copy(delta_bool.get(), delta_bool.get() + m, choice.get());
+    PRG prg;
+    prg.random_bool(choice.get() + m, n - m);
+    std::vector<block> K(n);
+    CSW csw(io);
+    csw.set_sid(sid);
+    csw.recv(K.data(), choice.get(), n);   // core + check: all CSW rounds done
 
     G0.resize(m);
     for (int64_t i = 0; i < m; ++i)
@@ -61,18 +72,20 @@ public:
 
   // recver
   void initialize() {
-    std::vector<block> K(2 * m);
+    // K0 = K[0, n), K1 = K[n, 2n); only the first m OTs feed Cope.
+    const int64_t n = std::max<int64_t>(m, CSW::kMinLength);
+    std::vector<block> K(2 * n);
     PRG prg;
-    prg.random_block(K.data(), 2 * m);
-    CO otco(io);
-    otco.set_sid(sid);
-    otco.send(K.data(), K.data() + m, m);
+    prg.random_block(K.data(), 2 * n);
+    CSW csw(io);
+    csw.set_sid(sid);
+    csw.send(K.data(), K.data() + n, n);   // core + check: all CSW rounds done
 
     G0.resize(m);
     G1.resize(m);
     for (int64_t i = 0; i < m; ++i) {
       G0[i].reseed(K.data() + i);
-      G1[i].reseed(K.data() + m + i);
+      G1[i].reseed(K.data() + n + i);
     }
   }
 
@@ -85,6 +98,8 @@ public:
     }
 
     io->recv_data(v.data(), m * sizeof(__uint128_t));
+    for (int64_t i = 0; i < m; ++i)
+      expecting(v[i] < p, "received a non-canonical F_p element");
     __uint128_t ch[2];
     ch[0] = (__uint128_t)0;
     for (int64_t i = 0; i < m; ++i) {
@@ -108,8 +123,8 @@ public:
     uint64_t ch[2];
     ch[0] = (uint64_t)0;
     for (int64_t i = 0; i < m; ++i) {
+      recv_fp(io, &v[i * size], size);
       for (int64_t j = 0; j < size; ++j) {
-        io->recv_data(&v[i * size + j], sizeof(uint64_t));
         ch[1] = v[i * size + j];
         v[i * size + j] = add_mod(w[i * size + j], ch[delta_bool[i]]);
       }
@@ -258,6 +273,16 @@ public:
   }
 
   // Internal: chi-fold over raw mod-p macs (low 64 of __uint128_t).
+  //
+  // Selective failure on Δ's bits. Cope's corrections for bit position i
+  // reach the sender's keys only where Δ_i = 1, so a cheating receiver can
+  // send corrections for one position that encode a different u, then
+  // shift its check reply by what that changes if Δ_i = 1: the check
+  // passes iff its guess of Δ_i is right. It learns k bits of Δ this way
+  // with probability 2^-k, and the check aborts otherwise, so learning all
+  // of Δ, or forging a MAC with the bits it learned, still succeeds with
+  // probability about 2^-61. FpVOLE's outputs rest only on Δ as a whole
+  // staying unpredictable, so the base sVOLE accepts this leakage.
   void sender_check(__uint128_t *macs, uint64_t b, int64_t size) {
     PRG prg;
     uint64_t seed;
@@ -269,7 +294,7 @@ public:
     uint64_t y = vector_inn_prdt_sum_red(macs, chi.data(), size);
     y = add_mod(y, b);
     uint64_t xz[2];
-    io->recv_data(xz, 2 * sizeof(uint64_t));
+    recv_fp(io, xz, 2);
     xz[1] = mult_mod(xz[1], (uint64_t)Delta);
     y = add_mod(y, xz[1]);
     expecting(y == xz[0], "base sVOLE check fails");
@@ -278,7 +303,7 @@ public:
   void recver_check(__uint128_t *macs, uint64_t *x, uint64_t c, uint64_t a,
                     int64_t size) {
     uint64_t seed;
-    io->recv_data(&seed, sizeof(uint64_t));
+    recv_fp(io, &seed, 1);
     std::vector<uint64_t> chi(size);
     uni_hash_coeff_gen(chi.data(), seed, size);
     uint64_t xz[2];
@@ -287,6 +312,7 @@ public:
     xz[0] = add_mod(xz[0], c);
     xz[1] = add_mod(xz[1], a);
     io->send_data(xz, 2 * sizeof(uint64_t));
+    io->flush();
   }
 };
 
