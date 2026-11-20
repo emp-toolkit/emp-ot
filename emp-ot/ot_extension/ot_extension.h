@@ -19,7 +19,7 @@ namespace emp {
 //     this — they implement begin / next / end and let rcot delegate.
 //   - check() — certify newly generated chunks without closing the caller's
 //     session or dropping an already-certified next_n() tail.
-//   - Δ / delta_bool / choice_prg / base_ot — OT-specific plumbing.
+//   - Δ / delta_bool / base_ot — OT-specific plumbing.
 //
 // Concrete subclasses (IKNP, SoftSpoken, Ferret) override the three
 // streaming virtuals begin / next / end directly:
@@ -59,15 +59,6 @@ public:
     // Zero-valued on the receiver (Δ is sender-only).
     bool delta_bool[128] = {};
 
-    // Receiver-side choice PRG. Every RCOT backend's choice bits are
-    // PRG-derived; this is the source of that derivation. IKNP pulls
-    // the bit-packed r vector from here; SoftSpoken pulls per-sub-VOLE
-    // roots; Ferret pulls a sub-seed to forward to the inner extension
-    // at bootstrap time. Default-initialized with a fresh random seed;
-    // outer protocols call set_choice_seed pre-bootstrap to take
-    // control. Unused on the sender.
-    PRG choice_prg;
-
     bool is_ot_sender() const { return party == ALICE; }
 
     // Replace the ctor-sampled Δ with one supplied by an outer protocol.
@@ -84,21 +75,6 @@ public:
         expecting(bits[0], "set_delta: bits[0] must be true (LSB invariant)");
         memcpy(this->delta_bool, bits, sizeof(this->delta_bool));
         this->Delta = bool_to_block(this->delta_bool);
-    }
-
-    // Reseed the receiver-side choice PRG. Receiver-only; must fire
-    // before the streaming bootstrap consumes the PRG (i.e. before
-    // the first begin() call). Subclasses that nest another
-    // OTExtension at bootstrap (Ferret -> SoftSpoken / nested Ferret)
-    // pull a sub-seed from choice_prg and forward it via the inner's
-    // set_choice_seed in their bootstrap path; the PRG lives on the
-    // base and no subclass needs to override the setter.
-    void set_choice_seed(const block& seed) {
-        expecting(!is_ot_sender(),
-                  "set_choice_seed: sender has no choice bits");
-        expecting(!setup_done,
-                  "set_choice_seed: bootstrap already fired");
-        choice_prg.reseed(&seed);
     }
 
     // Set this extension's session id and forward a derived child sid to the
@@ -194,8 +170,7 @@ protected:
     // mutable state and touch disjoint scratch. base_ot / csw_base_ /
     // base_check_pending_ default to null/null/false, so the deferred base-OT
     // extraction check is the PARENT's sole responsibility, run once on its io.
-    // choice_prg is bootstrap-only (dead after setup_done), so its value is
-    // irrelevant on a clone. See SoftSpoken::clone_lane.
+    // See SoftSpoken::clone_lane.
     OTExtension(CloneInit, int party_, IOChannel* io_, bool malicious_)
         : StreamingExtension<block>(party_, malicious_) {
         this->io = io_;
@@ -229,9 +204,6 @@ protected:
             set_delta(bits);
         } else {
             this->Delta = zero_block;
-            // choice_prg is default-init with a fresh random seed (PRG
-            // ctor pulls urandom). Caller can override pre-bootstrap
-            // via set_choice_seed.
         }
     }
 

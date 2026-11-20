@@ -86,11 +86,7 @@ OTExtension : public RandomCOT, public StreamingExtension<block>
 ├── public
 │   ├── base_ot                 (owned base OT for bootstrap)
 │   ├── Δ, delta_bool[128]      (sender-side correlation)
-│   ├── choice_prg              (receiver-side PRG)
 │   ├── set_delta(bool*)        (override Δ pre-bootstrap)
-│   ├── set_choice_seed(block)  (override choice PRG seed)
-│   ├── Ferret::set_lpn_matrix_seed(block)
-│   │                            (optional public matrix root, both roles)
 │   ├── chunk_size()            (inherited; subclass overrides)
 │   ├── begin/next/end          (inherited; subclass overrides no-arg begin)
 │   ├── begin(total)            (counted next_n plan; OT-only virtual default)
@@ -121,13 +117,8 @@ one unified body each, and the per-tree helpers
 (`bootstrap_/inner_run_begin_/process_one_tree_/inner_run_end_/run_refill_`)
 party-dispatch internally.
 
-Ferret normally derives its public LPN matrix from its session id: the one
-set with `set_sid`, or else the channel's next session id, taken at bootstrap.
-`set_lpn_matrix_seed` is the narrow exception for an outer protocol that needs
-several otherwise domain-separated Ferret instances to expose one identical
-receiver-choice pattern. Both roles set the same root before bootstrap; Ferret
-domain-separates it by the concrete LPN parameters and forwards it through a
-nested `ferret_b9` bootstrap.
+Ferret derives its public LPN matrix from its session id: the one set with
+`set_sid`, or else the channel's next session id, taken at bootstrap.
 
 ## Svole — one template, two carriers, two policies
 

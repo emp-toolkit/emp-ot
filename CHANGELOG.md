@@ -63,9 +63,23 @@ metadata is numeric (see the README's version guidance).
   through `SoftSpoken`: both parties must upgrade together, and those
   `test/trace_hash.baseline` rows are regenerated.
 
+- `OTExtension::set_choice_seed` and `Ferret::set_lpn_matrix_seed` are removed,
+  and every receiver draws its randomness from its own PRG. `SoftSpoken` built
+  its receiver's trees from the choice seed, and `Ferret` and `SilentFerret`
+  seeded their nested `SoftSpoken` from it, so two instances given one seed had
+  the same receiver state: senders who combined their views read every choice
+  bit. The README and the `Ferret` docs described sharing one choice pattern
+  across instances, with a shared matrix root, as supported. A protocol that
+  needs one party's bits under several keys can instead correct each
+  instance's random choices to them, at one bit per COT. Messages are
+  unchanged; the receivers now draw from a different PRG stream, so the
+  test-mode `test/trace_hash.baseline` rows of the OT extensions and sVOLEs
+  are regenerated.
 
 ### Removed
 
+- `OTExtension::set_choice_seed`, with `OTExtension::choice_prg`, and
+  `Ferret::set_lpn_matrix_seed`; see Security.
 - `OTIdeal` (`emp-ot/ideal.h`), a test-only ideal COT that no test used. Its
   chosen-input and ROT wrappers went out of step after the first call, because
   the wrapper drew its start point from the PRG the mock shared between parties.

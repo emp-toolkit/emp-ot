@@ -13,7 +13,7 @@
 //
 //   OTExtension : public StreamingExtension<block>            (RCOT)
 //                 + rcot(data, num) from RandomCOT
-//                 + Δ / base_ot / choice_prg
+//                 + Δ / base_ot
 //   Svole<AuthValue> : public StreamingExtension<AuthValue> (sVOLE)
 //
 // Lifecycle: begin → loop next* → end. Two convenience draws sit on top

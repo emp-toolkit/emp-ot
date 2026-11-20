@@ -30,18 +30,6 @@ static block derive_lpn_seed_(block sid) {
 	return RO("emp-ot:ferret:lpn-seed", sid).squeeze_block();
 }
 
-// An explicit root may intentionally be shared by several Ferret instances.
-// Bind the concrete matrix geometry here so nested and top-level amplifiers do
-// not reuse one PRG stream under different parameter sets.
-static block derive_lpn_seed_from_root_(block root,
-		const PrimalLPNParameter &param) {
-	return RO("emp-ot:ferret:lpn-matrix-seed", root)
-		.absorb((uint64_t)param.t)
-		.absorb((uint64_t)param.logk)
-		.absorb((uint64_t)param.tree_depth)
-		.squeeze_block();
-}
-
 Ferret::Ferret(int party, IOChannel *io,
 		bool malicious, std::unique_ptr<OT> base_ot,
 		PrimalLPNParameter param)
@@ -95,15 +83,6 @@ void Ferret::set_delta(const bool *bits) {
 void Ferret::set_sid(SessionID s) {
 	expecting(!setup_done, "set_sid: bootstrap already fired");
 	OT::set_sid(s);
-}
-
-void Ferret::set_lpn_matrix_seed(const block &seed) {
-	expecting(!setup_done,
-		"Ferret::set_lpn_matrix_seed: bootstrap already fired");
-	expecting(!lpn_seed_set_,
-		"Ferret::set_lpn_matrix_seed: LPN matrix already initialized");
-	lpn_matrix_seed_root_ = seed;
-	lpn_matrix_seed_overridden_ = true;
 }
 
 // =====================================================================
@@ -179,18 +158,7 @@ void Ferret::bootstrap_() {
 		// (it re-forwards a further-derived sid to the moved-in base OT).
 		// Role-symmetric: both parties tick the counter identically.
 		src->set_sid(sid.derive());
-		if (is_ot_sender()) {
-			src->set_delta(delta_bool);
-		} else {
-			// Forward a sub-seed pulled from this Ferret's choice_prg
-			// to the inner source's receiver: the inner's base-COT
-			// LSBs become our MPCOT alpha positions, so its choice
-			// randomness fully determines ours. End-to-end choice
-			// control from the top API.
-			block inner_seed;
-			choice_prg.random_block(&inner_seed, 1);
-			src->set_choice_seed(inner_seed);
-		}
+		if (is_ot_sender()) src->set_delta(delta_bool);
 		src->rcot(carry_next_.data(), param.M);
 	};
 
@@ -201,8 +169,6 @@ void Ferret::bootstrap_() {
 	if (param.M > tuning::ferret_bootstrap_nest_factor * tuning::ferret_b9.M) {
 		Ferret b9(party, io, /*malicious=*/malicious,
 		          std::move(base_ot), tuning::ferret_b9);
-		if (lpn_matrix_seed_overridden_)
-			b9.set_lpn_matrix_seed(lpn_matrix_seed_root_);
 		pump(&b9);
 	} else {
 		// kChunkBlocks sized so b9.M fits in a single SoftSpoken chunk
@@ -228,10 +194,7 @@ void Ferret::inner_run_begin_() {
 		gadget_recv_->run_begin();
 	}
 	if (!lpn_seed_set_) {
-		const block seed = lpn_matrix_seed_overridden_
-			? derive_lpn_seed_from_root_(lpn_matrix_seed_root_, param)
-			: derive_lpn_seed_(sid.value());
-		lpn_->reseed(seed);
+		lpn_->reseed(derive_lpn_seed_(sid.value()));
 		lpn_seed_set_ = true;
 	}
 }

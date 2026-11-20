@@ -159,9 +159,8 @@ void IKNP::recv_begin_() {
 	if (!setup_done) {
 		fix_sid_();
 		// Receiver bootstrap: sample (k0, k1) ← PRG, base_ot->send,
-		// reseed G0/G1. The base-class choice_prg supplies the per-
-		// chunk r vector at recv_next_; outer protocols can
-		// override its seed pre-bootstrap via set_choice_seed.
+		// reseed G0/G1. The same PRG supplies the per-chunk r vector
+		// at recv_next_.
 		block k0[128], k1[128];
 		this->prg.random_block(k0, 128);
 		this->prg.random_block(k1, 128);
@@ -221,7 +220,7 @@ void IKNP::recv_next_(block *out) {
 	block t[block_size];
 	block tmp[block_size / 128];
 	constexpr int64_t row_blocks = block_size / 128;
-	choice_prg.random_block(r, row_blocks);
+	this->prg.random_block(r, row_blocks);
 	for (int64_t i = 1; i < 128; ++i) {
 		G0[i].random_data(t + (i * row_blocks), block_size / 8);
 		G1[i].random_data(tmp, block_size / 8);

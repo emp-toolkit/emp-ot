@@ -97,17 +97,12 @@ and flipping `setup_done = true`. Every later begin sees
 `setup_done == true` and skips the bootstrap.
 
 This lets outer protocols configure the instance (e.g.
-`set_delta` / `set_choice_seed`) between construction and the
+`set_delta` / `set_sid`) between construction and the
 first session. Preconditions on these configuration APIs use
 `emp::expecting`, so misuse is rejected in release builds too:
 
 - OT-extension `set_delta` is sender-only, requires a non-null bit
   buffer with bit 0 set, and must run before bootstrap.
-- `set_choice_seed` is receiver-only and must run before bootstrap.
-- Ferret's `set_lpn_matrix_seed` is role-symmetric and must run before
-  bootstrap. It leaves the transcript sid independent while explicitly sharing
-  the public LPN matrix where an outer protocol requires matching choice
-  patterns across instances.
 - OT-extension and sVOLE `set_sid` must run before bootstrap; Ferret and
   sVOLE also seed their public LPN matrix from it.
 - sVOLE `set_delta` is Δ-holder-only and pre-bootstrap; reading
@@ -486,7 +481,7 @@ gone).
 
 `setup_done` is a public-on-the-base bool. Subclasses set it true
 inside their lazy bootstrap. Setters that must fire pre-bootstrap
-(`set_delta`, `set_choice_seed`, Ferret's `set_lpn_matrix_seed`, and `set_sid`) enforce
+(`set_delta` and `set_sid`) enforce
 `!setup_done` with always-on `emp::expecting` checks. The base does not
 check `setup_done` itself — it remains a contract implemented by each
 subclass's bootstrap and configuration surface.

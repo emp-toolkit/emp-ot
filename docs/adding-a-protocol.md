@@ -335,8 +335,8 @@ void MyIKNP::send_begin_() {
         // channel's next session id and forwards a child to base_ot
         fix_sid_();
         // run the bootstrap: base_ot->send/recv, seed PRGs, etc.
-        // (use `delta_bool[]` for Δ-side, `choice_prg` for choice-bit
-        // side — both are inherited from OTExtension)
+        // (use `delta_bool[]` for the Δ side and `prg` for the
+        // receiver's randomness — both are inherited from OTExtension)
         if (malicious && !io->fs_enabled())
             io->enable_fs(/*send_first=*/is_ot_sender());
         setup_done = true;
@@ -468,7 +468,7 @@ compare against.
 ### 5c. Write a correctness test
 
 If your protocol is an OT extension, follow the shape of
-`test/test_choice_seed.cpp` or `test/test_ferret.cpp` —
+`test/test_iknp.cpp` or `test/test_ferret.cpp` —
 exercise sender + receiver, verify the COT correlation (`K = m ⊕ b·Δ`).
 
 For a sVOLE carrier, follow `test/test_f2k_vole.cpp` or
