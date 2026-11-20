@@ -245,8 +245,10 @@ branches:
                        receiver derives x_prime from XOR(chi_α) + chi-check region
 
   run_end_typed    ◄── FTyped chi-fold (Mpsvole style)
-                       sender: vb = Δ·x_star + triple_t.mac + Σ VW
-                       receiver: x_star = Σ chi_α·val + triple.val
+                       receiver: ships x_star = Σ chi_α·val + triple.val
+                       sender:   vb = Δ·x_star + triple_t.mac + Σ VW;
+                                 commits to vb, the receiver reveals va,
+                                 the sender opens only if va == vb
 ```
 
 Aliases on Ferret's side keep the legacy names:

@@ -211,10 +211,10 @@ SoftSpoken<2> mali     send=e977a5ebf0042068 recv=d469374c10ac593d
 SoftSpoken<8> mali     send=e977a5ebf0042068 recv=11b1f246208773da
 Ferret(b9) mali        send=846d05ed7dccf36d recv=4a53d9508f54f15a
 SilentFerret(b9) mali  send=846d05ed7dccf36d recv=4a53d9508f54f15a
-F2kVOLE mali           send=3c7de69fe0669944 recv=2142f6086afc0691
-FpVOLE mali            send=6e40dfe605ad3f43 recv=2e94281e55408ff5
-F2kVOLE(b9) mali       send=a99ca26819c145e1 recv=1da8e0dbf8da3b54
-FpVOLE(b9) mali        send=d11e2271ac9f794e recv=2f0b79ca3632934f
+F2kVOLE mali           send=6f051e68194631ee recv=4341a61beba2610b
+FpVOLE mali            send=23d3a6bd4b7a3d3e recv=140c856ac544f9a8
+F2kVOLE(b9) mali       send=cdc351a09af2a353 recv=df027f17e41a7469
+FpVOLE(b9) mali        send=eac178a864c6caf8 recv=0b6248f8db91f541
 ```
 
 ## Usage
@@ -587,19 +587,22 @@ what the estimates do not cover, and how to reproduce them and evaluate a custom
 - **`FpVOLE` malicious mode does not provide 128-bit soundness.** The
   field is p = 2⁶¹ − 1, so single-field consistency checks are bounded
   near 2⁻⁶¹ and the bootstrap's polynomial check near 2⁻⁴⁵ at the
-  shipped size; the 61-bit Δ caps key-guessing near 2⁻⁶¹. `F2kVOLE`
-  works over GF(2¹²⁸).
+  shipped size; the 61-bit Δ caps key-guessing near 2⁻⁶¹ per online
+  guess (the round-final check commits before it reveals anything that
+  depends on Δ). `F2kVOLE` works over GF(2¹²⁸).
 - **LPN parameters.** `Ferret`, `SilentFerret`, `F2kVOLE` and `FpVOLE` rest on
   primal LPN with regular noise. The shipped sets put every counted attack at
   141 bits or more, a 10% margin over the 128-bit target, for the binary
   instance and for the large-field instances of `FpVOLE` and `F2kVOLE` (*LPN
   security* section). The binding attack is a sparse-row variant of WXL from this
   project, which is not peer-reviewed.
-- The malicious-mode OT extensions realize **selective-abort**-style
-  functionalities: an adversary may make selective guesses that the
-  consistency checks catch with overwhelming probability, and streaming
-  outputs are **provisional until `check()` or `end()`** completes the
-  covering checks (see the Streaming RCOT section).
+- The malicious-mode OT extensions and sVOLEs realize
+  **selective-abort**-style functionalities: an adversary may make
+  selective guesses that the consistency checks catch with overwhelming
+  probability, and streaming outputs are **provisional until `check()`
+  or `end()`** completes the covering checks (see the Streaming RCOT
+  section); an sVOLE round's check runs in `end()`. Discard the outputs
+  of a session that aborts.
 - **`BMM` is a custom OT construction** using ML-KEM-512 (Kyber)
   parameters and arithmetic (vendored reference sources); it is not
   standardized FIPS-203 ML-KEM used as a black box, and "post-quantum"

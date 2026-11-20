@@ -59,9 +59,11 @@ enum class ChiFoldFlavor {
   F2kPacked,   // sender ships bool[128] x_prime + 2-block digest;
                // receiver derives x_prime from XOR(chi_alpha) and the
                // chi-check region LSBs. Used by Ferret MPCOT.
-  FTyped,      // sender ships F x_star + 1-block digest; receiver
-               // computes x_star = Σ chi_α·val + triple.val. Used by
-               // Mpsvole (F_2k + F_p).
+  FTyped,      // receiver ships F x_star = Σ chi_α·val + triple.val,
+               // then an equality test: the sender commits to its
+               // check value, the receiver reveals its own, and the
+               // sender opens only on a match. Used by Mpsvole
+               // (F_2k + F_p).
 };
 
 // Domain separators for the round-final consistency-check commitments,
@@ -69,6 +71,14 @@ enum class ChiFoldFlavor {
 inline constexpr char kDomCheckPacked[] = "emp-ot:mpcot:check-f2kpacked";
 inline constexpr char kDomCheckTyped[]  = "emp-ot:mpcot:check-ftyped";
 inline constexpr char kDomLeafHash[]    = "emp-ot:mpcot:leaf-hash";
+
+// The FTyped check's commitment to a check value v: a 2-block digest of
+// RO(kDomCheckTyped, sid, v, salt), hiding while the 128-bit salt is
+// unopened. Both run_end_typed sides compute it the same way.
+template <typename F>
+inline void typed_check_commit(block sid, const F &v, block salt, block out[2]) {
+  RO(kDomCheckTyped, sid).absorb(&v, sizeof(F)).absorb(salt).squeeze_digest(out);
+}
 
 // sVOLE leaf hash (kHasSecretSum carriers: F2kVOLE, FpVOLE). Every cGGM level
 // XORs to cggm_delta, the inner Ferret's Δ, which every tree shares, so the
@@ -377,6 +387,15 @@ public:
   // Ferret-style policies this method is never instantiated (gated
   // by static_assert + the outer's chi-fold-flavor-aware caller),
   // so the .mac access in the body is fine.
+  //
+  // vb is linear in Δ, so it is compared with the receiver's va by an
+  // equality test in which this side commits first: commit to vb under a
+  // fresh salt, receive va, and open only if va == vb. A receiver that
+  // deviated in x* holds only the hiding commitment, nothing it can test
+  // candidate Δs against offline, and the opening never leaves on a
+  // mismatch. The commitment binds vb before va arrives, so a sender that
+  // corrupted trees cannot adapt to va; the va it then sees belongs to a
+  // round that aborts.
   void run_end_typed(AuthValue triple_t) {
     static_assert(AuthValue::kChiFoldFlavor == ChiFoldFlavor::FTyped,
                   "run_end_typed: AuthValue is not FTyped");
@@ -388,8 +407,19 @@ public:
     F vb = AuthValue::f_add(AuthValue::f_mul(delta, x_star), triple_t.mac);
     for (int64_t i = 0; i < tree_n; ++i)
       vb = AuthValue::f_add(vb, consist_check_VW[i]);
-    block h = RO(kDomCheckTyped, sid).absorb(&vb, sizeof(F)).squeeze_block();
-    io->send_data(&h, sizeof(block));
+    block salt;
+    prg.random_block(&salt, 1);
+    block com[2];
+    typed_check_commit(sid, vb, salt, com);
+    io->send_data(com, sizeof(com));
+    io->flush();
+    F va;
+    io->recv_data(&va, sizeof(F));
+    expecting(AuthValue::f_canonical(va),
+              "MultiPointGadget: received a non-canonical field element");
+    expecting(std::memcmp(&va, &vb, sizeof(F)) == 0,
+              "MultiPointGadget chi-fold check failed");
+    io->send_data(&salt, sizeof(block));
     io->flush();
   }
 };
@@ -718,10 +748,17 @@ public:
     F va = triple_t.mac;
     for (int64_t i = 0; i < tree_n; ++i)
       va = AuthValue::f_add(va, consist_check_VW[i]);
-    block h = RO(kDomCheckTyped, sid).absorb(&va, sizeof(F)).squeeze_block();
-    block r;
-    io->recv_data(&r, sizeof(block));
-    expecting(cmpBlock(&r, &h, 1),
+    // The sender's commitment arrives before va leaves (see the sender's
+    // run_end_typed), then the sender opens it only if the values match.
+    block com[2];
+    io->recv_data(com, sizeof(com));
+    io->send_data(&va, sizeof(F));
+    io->flush();
+    block salt;
+    io->recv_data(&salt, sizeof(block));
+    block opened[2];
+    typed_check_commit(sid, va, salt, opened);
+    expecting(cmpBlock(com, opened, 2),
               "MultiPointGadget chi-fold check failed");
   }
 };

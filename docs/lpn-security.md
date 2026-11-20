@@ -457,9 +457,16 @@ In malicious mode the `F2kVOLE`/`FpVOLE` receiver answers the round-final
 chi-fold check with `x* = Σ_i β_i·χ_{α_i} + x₀` in the clear (`mp_gadget.h`,
 typed check). The mask `x₀` is carry slot `t`, and nothing else reads it: of the
 `t + k + 1` carried slots, `0` to `t − 1` seed the trees and `t + 1` to `t + k` are
-the round's LPN secret (`svole.h`). `x*` is therefore one-time padded, and the
-check reveals only whether it passed, the selective-failure query of §1. `Ferret`
-masks its check with the 128 dedicated check COTs.
+the round's LPN secret (`svole.h`). `x*` is therefore one-time padded. The two
+parties' check values are then compared by an equality test in which the Δ-holder
+commits to its value under a fresh salt, the receiver reveals its own, and the
+Δ-holder opens only if they match. A receiver that deviates holds only the
+commitment, nothing it can test candidate Δs against offline. A Δ-holder that
+deviates is bound before it sees the receiver's value; that value tells it more than
+whether the check passed, but only in a round that aborts, whose outputs are
+provisional and discarded. A round that completes reveals only that the check
+passed, the selective-failure query of §1. `Ferret` masks its check with the 128
+dedicated check COTs.
 
 ## 6. Parameter sets by release
 

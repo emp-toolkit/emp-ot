@@ -23,6 +23,17 @@ metadata is numeric (see the README's version guidance).
   party aborts. The field arithmetic assumes canonical operands. `recv_fp`
   (`svole/fp_utility.h`) is the F_p receive, and a `kHasSecretSum` carrier
   provides `f_canonical(F)` for the gadget. Honest transcripts are unchanged.
+- `F2kVOLE` / `FpVOLE`: the round-final check compares the two parties' check
+  values by an equality test in which the Δ-holder commits first. The receiver
+  sends `x*` as before; the Δ-holder answers with a commitment
+  `RO("emp-ot:mpcot:check-ftyped", sid, vb, salt)` under a fresh 128-bit salt,
+  the receiver reveals its value, and the Δ-holder sends the salt only if the
+  values match. The Δ-holder used to send a hash of its value, which is linear
+  in Δ, so a receiver that deviated in `x*` could test candidate Δs against it
+  offline, a 2⁶¹ search for `FpVOLE`. The check takes one more round trip per
+  round. Malicious-mode sVOLE transcripts change: both parties must upgrade
+  together, and the malicious sVOLE rows of `test/trace_hash.baseline` are
+  regenerated.
 
 ### Changed
 
