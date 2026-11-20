@@ -96,7 +96,7 @@ struct AuthValueF2k {
     VW_slot = reduce(lo, hi);
   }
 
-  // -------- LPN ops (Lpn<AuthValueF2k, 10>) --------
+  // -------- LPN ops (Lpn<AuthValueF2k, tuning::lpn_d>) --------
   // Every LPN matrix entry is a pseudorandom GF(2^128) element rather than
   // 0/1 (see lpn.h), applied to val and mac alike.
   static constexpr bool kLpnCoefficients = true;

@@ -646,7 +646,9 @@ what the estimates do not cover, and how to reproduce them and evaluate a custom
   probability, and streaming outputs are **provisional until `check()`
   or `end()`** completes the covering checks (see the Streaming RCOT
   section); an sVOLE round's check runs in `end()`. Discard the outputs
-  of a session that aborts.
+  of a session that aborts. An abort can also tell the adversary which of
+  its guesses failed, so do not rerun with a Δ that an aborted session
+  used (`set_delta`): let each new session sample its own.
 - **`BMM` is a custom OT construction** using ML-KEM-512 (Kyber)
   parameters and arithmetic (vendored reference sources); it is not
   standardized FIPS-203 ML-KEM used as a black box, and "post-quantum"

@@ -64,9 +64,10 @@ class PrimalLPNParameter { public:
         if (logk < 0 || logk > 30)
             expecting(false,
                       "PrimalLPNParameter: logk must be in [0, 30]");
-        if (tree_depth <= 0 || tree_depth > 30)
+        // Depth >= 2: see validate_primal_lpn_parameter.
+        if (tree_depth < 2 || tree_depth > 30)
             expecting(false,
-                      "PrimalLPNParameter: tree_depth must be in [1, 30]");
+                      "PrimalLPNParameter: tree_depth must be in [2, 30]");
 
         constexpr int64_t max_i64 = std::numeric_limits<int64_t>::max();
         k = int64_t{1} << logk;
@@ -101,8 +102,10 @@ inline void validate_primal_lpn_parameter(const PrimalLPNParameter &p) {
     const int64_t expected_k = int64_t{1} << p.logk;
     expecting(p.k == expected_k,
               "PrimalLPNParameter: inconsistent k/logk");
-    expecting(p.tree_depth > 0 && p.tree_depth <= 30,
-              "PrimalLPNParameter: tree_depth must be in [1, 30]");
+    // The cGGM applies its leaf-LSB mask (the COT choice-bit convention)
+    // only from depth 2 on, so a depth-1 tree would break that convention.
+    expecting(p.tree_depth >= 2 && p.tree_depth <= 30,
+              "PrimalLPNParameter: tree_depth must be in [2, 30]");
     const int64_t chunk = int64_t{1} << p.tree_depth;
     const int64_t m_fixed = p.k + kConsistCheckCotNum;
     expecting(p.t <= (max_i64 - m_fixed) / p.tree_depth,

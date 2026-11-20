@@ -78,7 +78,7 @@ struct alignas(16) AuthValueFp {
     VW_slot = v;
   }
 
-  // -------- LPN ops (Lpn<AuthValueFp, 10>) --------
+  // -------- LPN ops (Lpn<AuthValueFp, tuning::lpn_d>) --------
   // mod-p adds overflow uint64_t after ~8 unreduced accumulations, so
   // partial reduction is needed every 5 adds. With Lpn d=10 this gives
   // a 5+5 split: five adds → partial_reduce → five adds → final_reduce.
@@ -143,6 +143,12 @@ struct alignas(16) AuthValueFp {
       constexpr PrimalLPNParameter pre_param = tuning::ferret_b9;
       const int64_t M     = svole_M(svole.param);
       const int64_t n_pre = svole_n(pre_param);
+      // Stage 3 copies the pre-stage's last M outputs into carry_next_, so
+      // the pre-stage must produce at least M of them. Every shipped set
+      // fits; a custom set may not.
+      expecting(M <= n_pre,
+                "FpVOLE: the parameter set needs more carry pairs (t + k + 1) "
+                "than the ferret_b9 pre-stage produces");
 
       // ---- Stage 1: seed sVOLE via Cope + chi-fold check ----
       //   Base_svole produces (1 + t_pre + k_pre) seed pairs.
@@ -174,7 +180,7 @@ struct alignas(16) AuthValueFp {
           pre_param.t, pre_param.tree_depth, svole.io_);
       MultiPointGadgetReceiver<AuthValueFp> pre_recv(
           pre_param.t, pre_param.tree_depth, svole.io_);
-      Lpn<AuthValueFp, 10> pre_lpn(pre_param.k);
+      Lpn<AuthValueFp, tuning::lpn_d> pre_lpn(pre_param.k);
       pre_lpn.reseed(svole_lpn_seed(kPreLpnSeedDomain, svole.sid.value()));
       pre_send.sid = pre_sid;
       pre_recv.sid = pre_sid;

@@ -75,6 +75,10 @@ metadata is numeric (see the README's version guidance).
   unchanged; the receivers now draw from a different PRG stream, so the
   test-mode `test/trace_hash.baseline` rows of the OT extensions and sVOLEs
   are regenerated.
+- `FpVOLE` rejects, at its first `begin()`, a custom parameter set whose
+  `t + k + 1` exceeds the output of its `ferret_b9` pre-stage. The bootstrap
+  copies that many pre-stage outputs into the carry-over, and such a set used to
+  make it read before the start of the pre-stage buffer. Every shipped set fits.
 
 ### Removed
 
@@ -86,6 +90,18 @@ metadata is numeric (see the README's version guidance).
 
 ### Changed
 
+- `PrimalLPNParameter` requires `tree_depth ≥ 2`. The cGGM applies its
+  leaf-LSB mask only from depth 2 on, so a depth-1 set gave broken COTs in
+  semi-honest mode and made honest parties abort in malicious mode.
+- `BMM`'s SHAKE shim aborts when an OpenSSL digest call fails, instead of
+  continuing with unwritten output.
+- `COT::send` and `RandomCOT::recv_cot` flush before returning, as `send_rot`
+  does, so a caller whose next step waits on another channel no longer leaves
+  its peer blocked.
+- The role-explicit wrappers (`send` / `recv`, `send_rot` / `recv_rot`,
+  `send_cot` / `recv_cot`) reject a call of the other role on an OT extension.
+  A sender-role extension's `recv_cot` used to send its choice bits in the
+  clear.
 - `EMP_TUNE_LPN_BATCH_M` must be a power of two in [4, 512], checked at compile
   time. Other values fold a different LPN matrix, so parties built with different
   values would silently disagree; a LOCAL knob must not change outputs.

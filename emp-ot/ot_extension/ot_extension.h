@@ -68,6 +68,11 @@ public:
     //
     // Subclasses that need to propagate Δ into auxiliary state (e.g.
     // Ferret's mpcot_sender) override and call this base first.
+    //
+    // A Δ given here should be uniformly random, and one that a session
+    // used is spent if the session aborts: the malicious checks are
+    // selective-abort, so an abort can tell the peer which of its guesses
+    // about Δ failed.
     virtual void set_delta(const bool* bits) {
         expecting(is_ot_sender(), "set_delta: receiver has no \xCE\x94");
         expecting(!setup_done, "set_delta: bootstrap already fired");
@@ -137,6 +142,13 @@ public:
     }
 
 protected:
+    // An extension has one role. On the other role's instance a wrapper
+    // would run the wrong half of its conversion: a sender's recv_cot, for
+    // one, would send the caller's choice bits in the clear.
+    void expect_role_(bool sender, const char* message) const override {
+        expecting(is_ot_sender() == sender, message);
+    }
+
     // Concrete next() overrides mark once after successfully producing one
     // backend chunk; concrete end() overrides clear only after every check and
     // deferred base-OT check succeeds. This is per chunk (thousands of COTs),

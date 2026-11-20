@@ -88,9 +88,21 @@ class COT : public OT { public:
 	virtual void send_cot(block* data0, int64_t length) = 0;
 	virtual void recv_cot(block* data, const bool* b, int64_t length) = 0;
 
+protected:
+	// Role check for the role-explicit wrappers below. An OT extension has
+	// one fixed role and overrides this to reject the other role's wrappers;
+	// the default accepts both.
+	virtual void expect_role_(bool sender, const char* message) const {
+		(void)sender;
+		(void)message;
+	}
+
+public:
+
 	void send(const block* data0, const block* data1, int64_t length) override {
 		expect_ot_args(length, data0, data1,
 		               "COT::send: invalid length or null buffer");
+		expect_role_(true, "COT::send: this extension is the receiver");
 		BlockVec data(length);
 		send_cot(data.data(), length);
 		block s;prg.random_block(&s, 1);
@@ -109,11 +121,13 @@ class COT : public OT { public:
 			}
 			io->send_data(pad, 2*sizeof(block)*std::min(ot_bsize,length-i));
 		}
+		io->flush();
 	}
 
 	void recv(block* data, const bool* r, int64_t length) override {
 		expect_ot_args(length, data, r,
 		               "COT::recv: invalid length or null buffer");
+		expect_role_(false, "COT::recv: this extension is the sender");
 		recv_cot(data, r, length);
 		block s;
 		io->recv_block(&s,1);
@@ -134,6 +148,7 @@ class COT : public OT { public:
 	void send_rot(block* data0, block* data1, int64_t length) {
 		expect_ot_args(length, data0, data1,
 		               "COT::send_rot: invalid length or null buffer");
+		expect_role_(true, "COT::send_rot: this extension is the receiver");
 		send_cot(data0, length);
 		block s; prg.random_block(&s, 1);
 		io->send_block(&s,1);
@@ -157,6 +172,7 @@ class COT : public OT { public:
 	void recv_rot(block* data, const bool* r, int64_t length) {
 		expect_ot_args(length, data, r,
 		               "COT::recv_rot: invalid length or null buffer");
+		expect_role_(false, "COT::recv_rot: this extension is the sender");
 		recv_cot(data, r, length);
 		block s;
 		io->recv_block(&s,1);
@@ -197,6 +213,7 @@ public:
 	void send_cot(block* data, int64_t length) override {
 		expect_ot_args(length, data, data,
 		               "RandomCOT::send_cot: invalid length or null buffer");
+		expect_role_(true, "RandomCOT::send_cot: this extension is the receiver");
 		rcot(data, length);
 		// unsigned char (not bool) so the storage is one byte each —
 		// matches the wire layout that `recv_bool` writes (and avoids
@@ -213,12 +230,14 @@ public:
 	void recv_cot(block* data, const bool* b, int64_t length) override {
 		expect_ot_args(length, data, b,
 		               "RandomCOT::recv_cot: invalid length or null buffer");
+		expect_role_(false, "RandomCOT::recv_cot: this extension is the sender");
 		rcot(data, length);
 		default_init_vector<unsigned char> bo(length);
 		for (int64_t i = 0; i < length; ++i)
 			bo[i] = b[i] ^ getLSB(data[i]);
 
 		io->send_bool(reinterpret_cast<bool*>(bo.data()), length);
+		io->flush();
 	}
 };
 

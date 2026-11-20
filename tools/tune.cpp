@@ -113,6 +113,7 @@ struct Verdict {
 	string knob;
 	string define;               // empty = keep default
 	string note;
+	bool beats_default = false;  // a non-default candidate cleared the gate
 };
 
 // Sweep one knob: interleave candidates across rounds, pick the winner,
@@ -158,7 +159,7 @@ static Verdict sweep(const string& knob, vector<Candidate>& cands) {
 	}
 	snprintf(note, sizeof(note), "%s: %s beats default by %.1f%% (band %.1f%%) -> override",
 	         knob.c_str(), best->label.c_str(), win * 100, band * 100);
-	return {knob, best->define, note};
+	return {knob, best->define, note, true};
 }
 
 // ---------------------------------------------------------------------
@@ -254,8 +255,7 @@ static Candidate cot_tile_candidate(bool is_default) {
 	prg.random_block(&S, 1);
 
 	Candidate c;
-	c.label = "tile=" + to_string(B);
-	c.define = "#define EMP_TUNE_COT_TILE " + to_string(B);
+	c.label = "tile=" + to_string(B);   // no define: the tile is pinned
 	c.is_default = is_default;
 	c.units = double(n_ot);
 	c.fn = [=]() {
@@ -422,10 +422,8 @@ int main(int argc, char** argv) {
 		vector<Candidate> c = {cot_tile_candidate<8>(true),
 		                       cot_tile_candidate<4>(false)};
 		Verdict v = sweep("cot_tile (ns/OT, H=2)", c);
-		if (!v.define.empty()) {
+		if (v.beats_default)
 			v.note += "  [informational only -- cot tile is pinned in tuning.h]";
-			v.define.clear();
-		}
 		verdicts.push_back(v);
 	}
 
