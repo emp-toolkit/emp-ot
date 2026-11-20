@@ -34,6 +34,14 @@ metadata is numeric (see the README's version guidance).
   round. Malicious-mode sVOLE transcripts change: both parties must upgrade
   together, and the malicious sVOLE rows of `test/trace_hash.baseline` are
   regenerated.
+- `FpVOLE`: the base sVOLE (COPE) takes its base OTs from `CSW`, which is
+  malicious-secure, instead of `CO`, which is semi-honest, through `CSW`'s
+  standalone `send` / `recv`, so every `CSW` round, the extraction check
+  included, completes before COPE uses an output. A `CSW` batch holds at least
+  `CSW::kMinLength` = 80 OTs: COPE runs 80, one per bit of Δ and 19 more with
+  random choice bits, and drops the 19. All `FpVOLE` transcripts change: both
+  parties must upgrade together, and the `FpVOLE` rows of
+  `test/trace_hash.baseline` are regenerated.
 
 ### Changed
 

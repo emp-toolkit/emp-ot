@@ -50,6 +50,10 @@ class CSW : public OT { public:
 	// UC-secure under CDH in the random oracle model.
 	bool is_malicious_secure() const override { return true; }
 
+	// Fewest OTs one send/recv may run: the sender-input extraction argument
+	// needs ℓ > 2σ, with σ = 40.
+	static constexpr int64_t kMinLength = 80;
+
 	// Exposes the messy-core + deferred extraction-check split. An OT
 	// extension reads this through the OT* it holds (mirroring
 	// is_malicious_secure()) and, when true, static_casts to CSW* to drive
@@ -103,7 +107,7 @@ public:
 	// p0_/p1_ for the deferred check and does NOT flush — the core bytes stay
 	// buffered so an extension can bundle them with its first message.
 	void send_core(const block * data0, const block * data1, int64_t length) {
-		expecting(length >= 80,
+		expecting(length >= kMinLength,
 		          "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
 		expect_ot_args(length, data0, data1,
 		               "CSW::send_core: invalid length or null buffer");
@@ -183,7 +187,7 @@ public:
 	// acceptance; the extension's own check + this base check both run before
 	// any output is consumed). Does NOT flush.
 	void recv_core(block * data, const bool * b, int64_t length) {
-		expecting(length >= 80,
+		expecting(length >= kMinLength,
 		          "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
 		expect_ot_args(length, data, b,
 		               "CSW::recv_core: invalid length or null buffer");

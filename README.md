@@ -203,18 +203,18 @@ SoftSpoken<8> semi     send=e977a5ebf0042068 recv=6683f1726a4fde3c
 Ferret(b9) semi        send=8717c2172d2d97c8 recv=998865714bd15b42
 SilentFerret(b9) semi  send=8717c2172d2d97c8 recv=998865714bd15b42
 F2kVOLE semi           send=0bee624b053183b9 recv=fb8382370181d371
-FpVOLE semi            send=41d1e6977ecb54f7 recv=ed44d94d78f09202
+FpVOLE semi            send=069428059f994e4b recv=ab630a4308875699
 F2kVOLE(b9) semi       send=088462f4221f9110 recv=2d435f770573b26a
-FpVOLE(b9) semi        send=e8026d562e30bc83 recv=ed44d94d78f09202
+FpVOLE(b9) semi        send=4fff54474cd3aaca recv=ab630a4308875699
 IKNP mali              send=64ab400fca07301b recv=65f43e18f025e291
 SoftSpoken<2> mali     send=e977a5ebf0042068 recv=d469374c10ac593d
 SoftSpoken<8> mali     send=e977a5ebf0042068 recv=11b1f246208773da
 Ferret(b9) mali        send=846d05ed7dccf36d recv=4a53d9508f54f15a
 SilentFerret(b9) mali  send=846d05ed7dccf36d recv=4a53d9508f54f15a
 F2kVOLE mali           send=6f051e68194631ee recv=4341a61beba2610b
-FpVOLE mali            send=23d3a6bd4b7a3d3e recv=140c856ac544f9a8
+FpVOLE mali            send=3c9d87cacf6feffa recv=4b74b450ecd7244f
 F2kVOLE(b9) mali       send=cdc351a09af2a353 recv=df027f17e41a7469
-FpVOLE(b9) mali        send=eac178a864c6caf8 recv=0b6248f8db91f541
+FpVOLE(b9) mali        send=fe71043a0a8e3762 recv=5f2be50d4a8b8978
 ```
 
 ## Usage
