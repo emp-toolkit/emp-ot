@@ -5,9 +5,11 @@
 // known block on both runs via set_choice_seed; everything else
 // (Δ on the sender, base-OT keys, internal PRGs) is freshly random.
 // After both runs, the receiver's LSBs (= choice bits) must be
-// byte-identical across the two runs. Ferret's two runs also share one
-// session id: its choice bits follow its public LPN matrix, which the id
-// seeds, and each run would otherwise take the channel's next id.
+// byte-identical across the two runs. SoftSpoken's and Ferret's two runs
+// also share one session id: their choice bits also follow the id
+// (SoftSpoken's session keys derive from it, and Ferret's public LPN
+// matrix and nested SoftSpoken do), and each run would otherwise take the
+// channel's next id.
 //
 // Two-party via the `run` script.
 #include "emp-ot/emp-ot.h"
@@ -27,32 +29,6 @@ static void compare_lsbs(const char* tag, const block* a, const block* b, int64_
         cout << "[FAIL] " << tag << ": " << mismatches << "/" << n << " choice bits differ\n";
         exit(1);
     }
-}
-
-// An outer multi-party protocol may deliberately share one receiver-choice
-// pattern across peer COTs while assigning every pair a distinct transcript
-// sid. An explicit public LPN-matrix root must preserve that pattern; the sid
-// remains free to domain-separate the rest of each Ferret transcript.
-static void check_ferret_distinct_sids(NetIO* io, int party, bool malicious,
-                                       const block& choice_seed,
-                                       const block& matrix_seed) {
-    BlockVec buf1(kN), buf2(kN);
-    const block sids[2] = {
-        makeBlock(0x1011121314151617ULL, 0x18191a1b1c1d1e1fULL),
-        makeBlock(0x2021222324252627ULL, 0x28292a2b2c2d2e2fULL)};
-    BlockVec* outputs[2] = {&buf1, &buf2};
-    for (int run = 0; run < 2; ++run) {
-        Ferret ot(party, io, malicious);
-        ot.set_sid(SessionID(sids[run]));
-        ot.set_lpn_matrix_seed(matrix_seed);
-        if (party == BOB) ot.set_choice_seed(choice_seed);
-        ot.rcot(outputs[run]->data(), kN);
-        io->flush();
-    }
-    if (party == BOB)
-        compare_lsbs(malicious ? "Ferret distinct-sid mali"
-                               : "Ferret distinct-sid semi",
-                     buf1.data(), buf2.data(), kN);
 }
 
 template <typename MakeOT>
@@ -94,11 +70,17 @@ int main(int argc, char** argv) {
         return std::make_unique<IKNP>(party, io.get(), /*malicious=*/true);
     });
 
+    const block softspoken_sid =
+        makeBlock(0x736f667473706f6bULL, 0x656e2d70696e6e65ULL);
     check_one(io.get(), party, "SoftSpoken<8> semi", seed, [&]{
-        return std::make_unique<SoftSpoken<8>>(party, io.get(), /*malicious=*/false);
+        auto ot = std::make_unique<SoftSpoken<8>>(party, io.get(), /*malicious=*/false);
+        ot->set_sid(softspoken_sid);
+        return ot;
     });
     check_one(io.get(), party, "SoftSpoken<8> mali", seed, [&]{
-        return std::make_unique<SoftSpoken<8>>(party, io.get(), /*malicious=*/true);
+        auto ot = std::make_unique<SoftSpoken<8>>(party, io.get(), /*malicious=*/true);
+        ot->set_sid(softspoken_sid);
+        return ot;
     });
 
     const block ferret_sid =
@@ -114,12 +96,6 @@ int main(int argc, char** argv) {
         return ot;
     });
 
-    const block matrix_seed =
-        makeBlock(0x3141592653589793ULL, 0x2384626433832795ULL);
-    check_ferret_distinct_sids(io.get(), party, /*malicious=*/false, seed,
-                              matrix_seed);
-    check_ferret_distinct_sids(io.get(), party, /*malicious=*/true, seed,
-                              matrix_seed);
 
     return 0;
 }

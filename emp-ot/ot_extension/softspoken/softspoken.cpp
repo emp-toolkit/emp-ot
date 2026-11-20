@@ -100,25 +100,22 @@ SoftSpoken<k, kChunkBlocks>::SoftSpoken(int party, IOChannel* io_, bool maliciou
 template <int k, int kChunkBlocks>
 SoftSpoken<k, kChunkBlocks>::SoftSpoken(OTExtension::CloneInit ci,
                               const SoftSpoken& parent,
-                              IOChannel* new_io, uint16_t lane_salt)
+                              IOChannel* new_io, SessionID lane_sid)
     : OTExtension(ci, parent.party, new_io, parent.malicious) {
     expecting(parent.setup_done, "clone_lane: parent not bootstrapped");
-    expecting(lane_salt != 0,
-              "clone_lane: lane_salt must be nonzero (0 = parent)");
+    expecting(!parent.base_check_pending_,
+              "clone_lane: the parent's deferred base-OT check has not run "
+              "(call end() or check() on the parent first)");
     leaves_recv_ = parent.leaves_recv_;   // populated on the OT-sender role
     leaves_send_ = parent.leaves_send_;   // populated on the OT-receiver role
     for (int i = 0; i < n; ++i) alphas_[i] = parent.alphas_[i];
     this->Delta = parent.Delta;
     std::memcpy(this->delta_bool, parent.delta_bool, sizeof(this->delta_bool));
-    // The lane's own sid, which its malicious-check challenges bind: a hash of
-    // the parent's sid and lane_salt (the parent is const, so it cannot
-    // derive() a child). Both ends of a lane compute the same one.
-    this->sid = RO("emp-ot:softspoken:lane", parent.sid.value())
-                    .absorb((uint64_t)lane_salt)
-                    .squeeze_block();
+    // The lane's own sid, a fresh child of the parent's (clone_lane derived
+    // it). Its malicious-check challenges and its session keys bind it.
+    this->sid = lane_sid;
     this->sid_fixed_ = true;
     this->setup_done = true;              // clone skips bootstrap
-    lane_salt_ = lane_salt;
     // Own malicious-check FS transcript on this lane's channel, guarded (mirrors
     // bootstrap_*_ softspoken.cpp:148/199) so an already-FS-enabled channel is
     // idempotent, not a double-enable abort. send_first matches the role, so
@@ -505,11 +502,11 @@ void SoftSpoken<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
     block* d_bufs = d_bufs_chunk_.data();
 
     // One session AES key, scheduled once per chunk and shared across every
-    // sub-VOLE's butterfly (the session is constant within a chunk). The HIGH 64
-    // bits carry lane_salt_ (0 for a non-clone => byte-identical to pre-lane),
-    // so each lane is an independent keystream domain over the shared leaves.
+    // sub-VOLE's butterfly (the session is constant within a chunk). It derives
+    // from this instance's sid (session_key_), so each lane is an independent
+    // keystream domain over the shared leaves.
     AES_KEY session_K;
-    AES_set_encrypt_key(makeBlock((uint64_t)lane_salt_, (uint64_t)cur_send_session_), &session_K);
+    AES_set_encrypt_key(session_key_(cur_send_session_), &session_K);
 
     // Compute every sub-VOLE's contribution to this chunk's w_planes.
     {
@@ -628,10 +625,10 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
     block u_temp[kChunkBlocks];        // sub-VOLE i ≥ 1
 
     // One session AES key, scheduled once per chunk and shared across every
-    // sub-VOLE's butterfly (the session is constant within a chunk). HIGH 64 bits
-    // = lane_salt_ (0 for a non-clone => byte-identical to pre-lane).
+    // sub-VOLE's butterfly (the session is constant within a chunk); see
+    // session_key_.
     AES_KEY session_K;
-    AES_set_encrypt_key(makeBlock((uint64_t)lane_salt_, (uint64_t)cur_recv_session_), &session_K);
+    AES_set_encrypt_key(session_key_(cur_recv_session_), &session_K);
 
     // Sub-VOLE 0 produces u_canonical (no d_buf for i=0). The i ≥ 1 loop
     // interleaves each butterfly with its d_buf_i = u_canonical ⊕ u_temp

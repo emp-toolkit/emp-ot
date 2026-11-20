@@ -69,23 +69,23 @@ public:
 
     // Spawn a lane: a clone that SHARES this (already-bootstrapped) instance's
     // checked VOLE material (leaves, alphas, Δ) but runs an INDEPENDENT COT
-    // extension on `new_io`, domain-separated by `lane_salt`. Lets L lanes
-    // extend DISJOINT output ranges concurrently on L channels (one COT
-    // instance's compute/transfer then fills more cores; see
-    // docs/design/softspoken_lanes.md + threading_model.md).
+    // extension on `new_io`. Lets L lanes extend DISJOINT output ranges
+    // concurrently on L channels (one COT instance's compute/transfer then
+    // fills more cores).
     //
-    // `lane_salt` MUST be nonzero and distinct per lane (0 is reserved for this
-    // parent). It salts the per-chunk session AES key's HIGH 64 bits, so each
-    // lane is an independent keystream domain over the shared leaves; a
-    // duplicate/zero salt silently reuses a lane's COTs, so the caller must
-    // allocate salts as a dense index (salt = lane index) from one source of
-    // truth. The lane's session id is a hash of this instance's sid and the
-    // salt. For cross-peer choice consistency the caller must ALSO make the
-    // [0,length) partition and salt a pure function of the lane index (never of
-    // peer identity). This parent, and every `new_io`, must outlive the clone.
-    std::unique_ptr<SoftSpoken> clone_lane(IOChannel* new_io, uint16_t lane_salt) const {
+    // Each lane takes a fresh child of this instance's session id
+    // (sid.derive()) and expands the shared leaves under session keys derived
+    // from that id (session_key_), so every lane, a lane of a lane included,
+    // is its own keystream domain; no caller-chosen value can repeat one.
+    // Both parties must clone in the same order, which keeps their derive()
+    // counters, and so the lanes' ids, in step. The parent's deferred base-OT
+    // check must have run first (its first end() or check()), so no lane
+    // certifies outputs ahead of it. This parent, and every `new_io`, must
+    // outlive the clone.
+    std::unique_ptr<SoftSpoken> clone_lane(IOChannel* new_io) {
+        const SessionID lane_sid = this->sid.derive();
         return std::unique_ptr<SoftSpoken>(
-            new SoftSpoken(OTExtension::CloneInit{}, *this, new_io, lane_salt));
+            new SoftSpoken(OTExtension::CloneInit{}, *this, new_io, lane_sid));
     }
 
     static constexpr int kChunkBlocks_value = kChunkBlocks;
@@ -113,14 +113,18 @@ private:
     // checked material. Never copy-construct a clone (that would alias the
     // parent's leftover_/mitccrh/prg). Defined in softspoken.cpp.
     SoftSpoken(OTExtension::CloneInit, const SoftSpoken& parent,
-               IOChannel* new_io, uint16_t lane_salt);
+               IOChannel* new_io, SessionID lane_sid);
 
     uint64_t session_ = 0;
-    // Per-chunk session AES key's HIGH 64 bits (lane domain separator). 0 for
-    // every non-clone instance -> makeBlock(0, session) is byte-identical to the
-    // pre-lane code; the `= 0` in-class initializer is load-bearing for that
-    // (the normal ctor's init list does not set it). Clones get a nonzero salt.
-    uint16_t lane_salt_ = 0;
+
+    // The AES key under which session `s` expands the leaves: a public
+    // function of this instance's session id and the session counter. A lane
+    // has its own id, a child of its parent's, so the parent, every lane and
+    // every session use distinct keys.
+    block session_key_(uint64_t s) const {
+        return RO("emp-ot:softspoken:session-key", this->sid.value())
+                   .absorb(s).squeeze_block();
+    }
 
     // COT-Sender (= VOLE-Receiver / PPRF-Receiver) state.
     int alphas_[n] = {0};

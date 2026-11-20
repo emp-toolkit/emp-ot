@@ -3,20 +3,20 @@ CSW                    send=6cbdbfdeab5e4295 recv=682f47c8b14c6ce3
 PVW                    send=29c86c1a3e9ca181 recv=9b84ed820cbcacb7
 BMM                    send=29c79a292dcb6804 recv=a36fb2f0a8d131b5
 IKNP semi              send=64ab400fca07301b recv=6cb3b038f4735173
-SoftSpoken<2> semi     send=e977a5ebf0042068 recv=2b48ddbbbc4e718a
-SoftSpoken<8> semi     send=e977a5ebf0042068 recv=925a770f9b9dcd4d
-Ferret(b9) semi        send=8717c2172d2d97c8 recv=b8df38a0715432a8
-SilentFerret(b9) semi  send=8717c2172d2d97c8 recv=b8df38a0715432a8
-F2kVOLE semi           send=c0af7dcbd2f557e1 recv=fb8382370181d371
-FpVOLE semi            send=069428059f994e4b recv=be821520bc55f5d8
-F2kVOLE(b9) semi       send=edaa96c476b1b5de recv=2d435f770573b26a
-FpVOLE(b9) semi        send=4fff54474cd3aaca recv=be821520bc55f5d8
+SoftSpoken<2> semi     send=e977a5ebf0042068 recv=84592db1cdf7393d
+SoftSpoken<8> semi     send=e977a5ebf0042068 recv=b8f6e7578df9d24c
+Ferret(b9) semi        send=5a23c8a8920f50f5 recv=0954a9a9cf45e344
+SilentFerret(b9) semi  send=5a23c8a8920f50f5 recv=0954a9a9cf45e344
+F2kVOLE semi           send=1cc9b05647e16b6d recv=eacb15bedd3326bc
+FpVOLE semi            send=74d8dbcc4d0696ac recv=6848bc69686c2cc4
+F2kVOLE(b9) semi       send=1c703630f99309b5 recv=dfc6cb64f5f674e2
+FpVOLE(b9) semi        send=f16f08fb4e63948a recv=6848bc69686c2cc4
 IKNP mali              send=64ab400fca07301b recv=b4ea80334cb66552
-SoftSpoken<2> mali     send=e977a5ebf0042068 recv=f7c49cf92b2ed807
-SoftSpoken<8> mali     send=e977a5ebf0042068 recv=516167a5419897ee
-Ferret(b9) mali        send=9d2284476666ae94 recv=426ca93f2aa749f9
-SilentFerret(b9) mali  send=9d2284476666ae94 recv=426ca93f2aa749f9
-F2kVOLE mali           send=64ec7324525209e2 recv=7d0dde1c88f00618
-FpVOLE mali            send=68635e131c2514ee recv=e41752e8ffa758b9
-F2kVOLE(b9) mali       send=837918d1fd60a555 recv=9443f177cfc08c6e
-FpVOLE(b9) mali        send=cf53d7b30dea8a39 recv=14de053b380ac1b0
+SoftSpoken<2> mali     send=e977a5ebf0042068 recv=e4c3270aec3f8e96
+SoftSpoken<8> mali     send=e977a5ebf0042068 recv=916884c91dfd6b28
+Ferret(b9) mali        send=1f7f62f266868e7e recv=e63a07538976b8e6
+SilentFerret(b9) mali  send=1f7f62f266868e7e recv=e63a07538976b8e6
+F2kVOLE mali           send=ea97ae859ced1479 recv=27a5cccaedd533f5
+FpVOLE mali            send=ff8f1bac18ab5e90 recv=0de1cb488c17eab3
+F2kVOLE(b9) mali       send=0be0895d5dbafa46 recv=e02fbe8d6d1847ae
+FpVOLE(b9) mali        send=1ccc3d1982bab332 recv=ae5f780ec282076f

@@ -1,13 +1,15 @@
-// SoftSpoken clone_lane correctness (docs/design/softspoken_lanes.md).
+// SoftSpoken clone_lane correctness.
 //
 // Test A (assembled RCOT): a parent + L-1 lane clones extend DISJOINT contiguous
 //   output ranges on L independent channels; the CONCATENATION must be one
 //   coherent RCOT (per-lane COT relation Q^W = u*Delta, shared Delta). L in
 //   {1,2,4}, k in {4,8}, semi + malicious (each lane runs its OWN subspace-VOLE
 //   check at end() -- a mis-wired lane check or a broken correlation aborts).
-// Test B (domain separation): two clones with DISTINCT salts over the SAME range
-//   must produce DIFFERENT outputs -- catches a salt-not-applied / salt-collision
-//   bug that Test A alone would miss (each lane is individually COT-valid).
+// Test B (domain separation): two clones of one parent, and a clone of a clone,
+//   over the SAME range must produce pairwise DIFFERENT outputs -- each lane
+//   takes a fresh child of its parent's session id, and a lane whose id did not
+//   reach its session keys would repeat another lane's COTs while staying
+//   individually COT-valid, which Test A alone would miss.
 //
 // Two-party loopback via the `run` script. L channels are opened in the SAME
 // order on both sides (sequential listen/connect), base port stepped per sub-test.
@@ -48,11 +50,11 @@ static void test_assembled(int party, int L, bool malicious, int64_t total) {
     parent.next_n(out + lo(0), hi(0) - lo(0));
     parent.end();
 
-    // Lanes 1..L-1: clones on channels 1..L-1, salt = lane index (nonzero,
-    // distinct, index-derived -- the required allocation).
+    // Lanes 1..L-1: clones on channels 1..L-1, cloned in the same order on both
+    // parties, so each takes the same child of the parent's session id.
     vector<unique_ptr<SoftSpoken<k>>> lanes;
     for (int t = 1; t < L; ++t) {
-        auto lane = parent.clone_lane(ch[t].get(), (uint16_t)t);
+        auto lane = parent.clone_lane(ch[t].get());
         lane->begin();
         lane->next_n(out + lo(t), hi(t) - lo(t));
         lane->end();
@@ -66,34 +68,38 @@ static void test_assembled(int party, int L, bool malicious, int64_t total) {
     delete[] out;
 }
 
-// Test B: two clones, distinct salts, SAME range -> outputs must differ.
+// Test B: two clones of the parent and a clone of the first clone, SAME range
+// -> all three outputs must differ pairwise.
 template <int k>
 static void test_domain_sep(int party, int64_t len) {
     vector<unique_ptr<NetIO>> ch;
-    open_channels<k>(party, 3, ch);   // ch[0]=parent bootstrap, ch[1],ch[2]=clones
+    open_channels<k>(party, 4, ch);   // ch[0]=parent bootstrap, ch[1..3]=clones
 
     SoftSpoken<k> parent(party, ch[0].get(), /*malicious=*/true);
     parent.begin();
     { block* warm = new block[len]; parent.next_n(warm, len); delete[] warm; }
     parent.end();
 
-    block* a = new block[len];
-    block* b = new block[len];
-    auto l1 = parent.clone_lane(ch[1].get(), (uint16_t)1);
-    l1->begin(); l1->next_n(a, len); l1->end();
-    auto l2 = parent.clone_lane(ch[2].get(), (uint16_t)2);
-    l2->begin(); l2->next_n(b, len); l2->end();
+    vector<block> out[3];
+    for (auto& o : out) o.resize(len);
+    auto l1 = parent.clone_lane(ch[1].get());
+    l1->begin(); l1->next_n(out[0].data(), len); l1->end();
+    auto l2 = parent.clone_lane(ch[2].get());
+    l2->begin(); l2->next_n(out[1].data(), len); l2->end();
+    auto l3 = l1->clone_lane(ch[3].get());
+    l3->begin(); l3->next_n(out[2].data(), len); l3->end();
 
-    // Distinct lane_salt => distinct session-key domain over the shared leaves
-    // => distinct keystream. Identical outputs would mean the salt never reached
-    // the AES key (or collided) -- a silent COT-reuse bug.
-    bool identical = true;
-    for (int64_t i = 0; i < len; ++i)
-        if (!cmpBlock(&a[i], &b[i], 1)) { identical = false; break; }
-    expecting(!identical,
-              "clone_lane: distinct salts produced IDENTICAL outputs (domain separation broken)");
+    // Each lane's session keys derive from its own id, so the keystreams over
+    // the shared leaves differ. Identical outputs would be a silent COT reuse.
+    for (int x = 0; x < 3; ++x)
+        for (int y = x + 1; y < 3; ++y) {
+            bool identical = true;
+            for (int64_t i = 0; i < len; ++i)
+                if (!cmpBlock(&out[x][i], &out[y][i], 1)) { identical = false; break; }
+            expecting(!identical,
+                      "clone_lane: two lanes produced IDENTICAL outputs (domain separation broken)");
+        }
     cout << "[B k=" << k << " distinct] ";
-    delete[] a; delete[] b;
 }
 
 int main(int argc, char** argv) {

@@ -426,6 +426,16 @@ int main() {
         extension.mark_setup_done();
         extension.set_sid(SessionID{});
     });
+    ok &= expect_rejected("clone before bootstrap", "parent not bootstrapped", [] {
+        SoftSpoken<8> parent(BOB, nullptr, false, std::make_unique<DummyOT>(false));
+        auto lane = parent.clone_lane(nullptr);
+    });
+    ok &= expect_rejected("clone before base check", "deferred base-OT check has not run", [] {
+        SoftSpoken<8> parent(BOB, nullptr, false, std::make_unique<DummyOT>(false));
+        parent.setup_done = true;            // as after bootstrap over CSW,
+        parent.base_check_pending_ = true;   // before the first end()/check()
+        auto lane = parent.clone_lane(nullptr);
+    });
     ok &= expect_rejected("CSW send security bound", "length must be", [] {
         CSW csw(nullptr);
         csw.send_core(nullptr, nullptr, 79);
