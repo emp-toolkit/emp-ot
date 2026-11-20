@@ -128,8 +128,11 @@ Notes:
   new run_end body in `mp_gadget.h`.
 
 - **(e) `auth_from_block`.** Only called inside the gadget's
-  `kHasSecretSum=true` branch. If your carrier has `kHasSecretSum=false`
-  you can omit it (`AuthValueFerret` does).
+  `kHasSecretSum=true` branch, on a leaf the gadget has already hashed
+  (`hash_leaves` in `mp_gadget.h`): every cGGM level XORs to the inner
+  Ferret's Δ, so an unhashed leaf would be known to the receiver up to
+  that Δ. If your carrier has `kHasSecretSum=false` you can omit it
+  (`AuthValueFerret` does).
 
 - **(f) chi-fold helpers.** Both are only used in malicious mode.
   - `expand_chi`: turn the FS chi seed into `chi[leave_n]`. Ferret

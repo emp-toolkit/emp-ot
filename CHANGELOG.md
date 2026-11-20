@@ -5,6 +5,19 @@ metadata is numeric (see the README's version guidance).
 
 ## Unreleased
 
+### Security
+
+- `F2kVOLE` / `FpVOLE`: the multi-point gadget hashes every tree leaf before it
+  becomes a field element, with a MITCCRH stream: one gid per leaf, taken by both
+  parties in the same order, from a fresh start point
+  `RO("emp-ot:mpcot:leaf-hash", sid, round)` each round. The sVOLE trees are
+  correlated GGM trees whose every level XORs to the inner `Ferret`'s Δ, which
+  all trees share; the hash keeps each punctured leaf pseudorandom to the
+  receiver, as the sVOLE relation needs. All sVOLE outputs and transcripts
+  change: both parties must upgrade together, and the sVOLE rows of
+  `test/trace_hash.baseline` are regenerated. `Ferret` and `SilentFerret` are
+  unchanged.
+
 ### Changed
 
 - An OT, OT extension or sVOLE whose session id was not set with `set_sid()`

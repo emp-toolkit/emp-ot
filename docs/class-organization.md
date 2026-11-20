@@ -189,7 +189,7 @@ struct AuthValueXxx {
   // ... or a GF(2^128) coefficient per entry ({block val; block mac;} only)
   static constexpr bool kLpnCoefficients = true;
 
-  // cGGM leaf to element
+  // leaf to element (the gadget hashes an sVOLE leaf first, hash_leaves)
   static AuthValueXxx auth_from_block(block leaf);
 
   // sVOLE-specific (Svole<AuthValue> only)
@@ -229,7 +229,8 @@ branches:
             ┌─────────────────┴─────────────────┐
             │                                   │
   cGGM build with                      kHasSecretSum?
-  AuthValue::kClearLeafLSB             ├── true:  ship c[d] + secret_sum:F
+  AuthValue::kClearLeafLSB             ├── true:  hash every leaf (MITCCRH),
+                                       │          ship c[d] + secret_sum:F
                                        └── false: ship c[d] only
 
                               │

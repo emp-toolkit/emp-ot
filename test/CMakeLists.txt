@@ -76,6 +76,10 @@ add_test_case(test_tuning_invariance)
 # LPN fold over GF(2^128) against a per-entry reference (single-process).
 add_test_case(test_lpn)
 
+# sVOLE multi-point gadget: the relation and the leaf hash, F_p and GF(2^128)
+# carriers (single-process).
+add_test_case(test_mp_gadget)
+
 # Release-surviving public/security contract checks (single-process).
 add_test_case(test_contracts)
 set_tests_properties(test_contracts PROPERTIES TIMEOUT 10)
