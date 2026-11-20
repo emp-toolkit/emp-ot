@@ -52,6 +52,17 @@ metadata is numeric (see the README's version guidance).
   Every transcript that runs `CSW` changes: both parties must upgrade together,
   and the `test/trace_hash.baseline` rows of `CSW` and of every protocol that
   bootstraps through it are regenerated.
+- `SoftSpoken::clone_lane(new_io)` no longer takes a salt (issue #103). A lane
+  takes a fresh child of its parent's session id, and every `SoftSpoken`
+  instance, lane or not, expands its leaves under per-session AES keys derived
+  from its own session id, `RO("emp-ot:softspoken:session-key", sid, session)`.
+  Two lanes cloned with one salt used to produce the same COTs, with every check
+  passing. A lane can also no longer be cloned before its parent's deferred
+  base-OT check has run, so no lane certifies outputs ahead of it. Every
+  `SoftSpoken` transcript changes, and so does every protocol that bootstraps
+  through `SoftSpoken`: both parties must upgrade together, and those
+  `test/trace_hash.baseline` rows are regenerated.
+
 
 ### Removed
 
@@ -89,8 +100,8 @@ metadata is numeric (see the README's version guidance).
   extension that runs it, and `Ferret` no longer keeps a pointer to the base
   OT it hands over. `FpVOLE`'s pre-stage gadgets take their own derived child
   id instead of sharing the main gadgets' id. A `SoftSpoken::clone_lane` lane
-  takes its own id, hashed from its parent's id and its salt, instead of a
-  copy of its parent's. Every malicious-mode OT-extension and sVOLE
+  takes its own id, a child of its parent's id, instead of a copy of its
+  parent's. Every malicious-mode OT-extension and sVOLE
   transcript changes, and so do semi-honest `Ferret`, `SilentFerret` and
   sVOLE transcripts whenever the object has a session id (set, or taken from
   the channel), since their base OT now runs under a different derived id;

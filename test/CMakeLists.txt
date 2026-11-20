@@ -88,7 +88,7 @@ set_tests_properties(test_contracts PROPERTIES TIMEOUT 10)
 add_test_case_with_run(test_base_ot)
 add_test_case_with_run(test_iknp)
 add_test_case_with_run(test_softspoken)
-add_test_case_with_run(test_softspoken_lanes PORTS 56)   # base steps by L + 2 per sub-test
+add_test_case_with_run(test_softspoken_lanes PORTS 60)   # base steps by L + 2 per sub-test
 add_test_case_with_run(test_ferret)
 add_test_case_with_run(test_silentferret)
 add_test_case_with_run(test_f2k_vole)
