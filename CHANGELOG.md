@@ -162,6 +162,8 @@ metadata is numeric (see the README's version guidance).
 - `FpVOLE`: the multi-point gadget's per-tree sums of macs and the check
   accumulation reduce once instead of after every term. A `kHasSecretSum`
   carrier now provides `MacSum`, the per-tree sum. Outputs are unchanged.
+- The LPN fold takes each output's indices in a fixed-length loop that unrolls
+  fully. Outputs are unchanged.
 
 ## v1.0.0-alpha.2
 

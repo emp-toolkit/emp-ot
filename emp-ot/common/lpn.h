@@ -45,6 +45,25 @@ class Lpn { private:
     bool fold_val_ = true;
     PRG prg_;
 
+    // Fold one output: add the d table entries its indices `r` select into
+    // `acc`, with a partial reduce after every kLpnSafeAddsPerReduce adds and
+    // a final reduce. The trip count and the reduce points are compile-time
+    // constants, so the loop unrolls completely; a loop whose bound is
+    // recomputed per reduce step is left as a compare-and-branch per add.
+    static inline void fold_one(AuthValue & acc, const uint32_t* r,
+                                const AuthValue * __restrict pre,
+                                int lmask) {
+        constexpr int kStep = (AuthValue::kLpnSafeAddsPerReduce < d)
+                              ? AuthValue::kLpnSafeAddsPerReduce : d;
+#pragma GCC unroll 16
+        for (int j = 0; j < d; ++j) {
+            AuthValue::auth_add_into(acc, pre[(int)(r[j] & lmask)]);
+            if ((j + 1) % kStep == 0 && j + 1 < d)
+                AuthValue::auth_partial_reduce(acc);
+        }
+        AuthValue::auth_final_reduce(acc);
+    }
+
     // Fold one block of M output positions starting at i, drawing the
     // index randomness from `prg`. Reads d pseudo-random indices per
     // output (advancing `prg` by ceil(M*d/4) blocks), then accumulates
@@ -58,21 +77,9 @@ class Lpn { private:
         prg.random_block(tmp, kNeededBlocks);
         const uint32_t* r = (const uint32_t*)(tmp);
         const int lmask = mask;
-        constexpr int kStep = (AuthValue::kLpnSafeAddsPerReduce < d)
-                              ? AuthValue::kLpnSafeAddsPerReduce : d;
         for (int m = 0; m < M; ++m) {
             AuthValue acc = out[i+m];
-            int j = 0;
-            while (j < d) {
-                const int batch_end = std::min(j + kStep, d);
-                for (; j < batch_end; ++j) {
-                    const int idx = (int)((*r) & lmask);
-                    ++r;
-                    AuthValue::auth_add_into(acc, pre[idx]);
-                }
-                if (j < d) AuthValue::auth_partial_reduce(acc);
-            }
-            AuthValue::auth_final_reduce(acc);
+            fold_one(acc, r + m * d, pre, lmask);
             out[i+m] = acc;
         }
     }
@@ -90,21 +97,9 @@ class Lpn { private:
         prg.random_block(tmp, kNeededBlocks);
         const uint32_t* r = (const uint32_t*)(tmp);
         const int lmask = mask;
-        constexpr int kStep = (AuthValue::kLpnSafeAddsPerReduce < d)
-                              ? AuthValue::kLpnSafeAddsPerReduce : d;
         for (int m = 0; m < M; ++m) {
             AuthValue acc = initial[i+m];
-            int j = 0;
-            while (j < d) {
-                const int batch_end = std::min(j + kStep, d);
-                for (; j < batch_end; ++j) {
-                    const int idx = (int)((*r) & lmask);
-                    ++r;
-                    AuthValue::auth_add_into(acc, pre[idx]);
-                }
-                if (j < d) AuthValue::auth_partial_reduce(acc);
-            }
-            AuthValue::auth_final_reduce(acc);
+            fold_one(acc, r + m * d, pre, lmask);
             sink(i + m, acc);
         }
     }
