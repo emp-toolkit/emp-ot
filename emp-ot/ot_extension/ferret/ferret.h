@@ -1,6 +1,7 @@
 #ifndef EMP_FERRET_H_
 #define EMP_FERRET_H_
 #include "emp-ot/common/mp_gadget.h"
+#include "emp-ot/common/table_alloc.h"
 #include "emp-ot/ot_extension/ot_extension.h"
 #include "emp-ot/base_ot/csw.h"
 #include "emp-ot/tuning.h"
@@ -171,8 +172,10 @@ protected:
 	// written by this round's refill trees. Swapped at every round
 	// boundary in begin(). Element type is raw `block` (block
 	// storage; reinterpret to AuthValueFerret at the gadget/Lpn boundary).
-	BlockVec carry_curr_;
-	BlockVec carry_next_;
+	// Line-aligned, and huge-page backed where the system allows it
+	// (table_alloc.h).
+	LpnTableBlockVec carry_curr_;
+	LpnTableBlockVec carry_next_;
 
 	// Exactly one of these is populated, depending on `party`.
 	std::unique_ptr<MPCOT_Sender>            gadget_send_;

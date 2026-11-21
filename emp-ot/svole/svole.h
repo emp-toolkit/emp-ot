@@ -4,6 +4,7 @@
 #include "emp-ot/common/lpn.h"
 #include "emp-ot/common/mp_gadget.h"
 #include "emp-ot/common/streaming_extension.h"
+#include "emp-ot/common/table_alloc.h"
 #include "emp-ot/ot_extension/ferret/ferret.h"
 #include <memory>
 #include <vector>
@@ -97,8 +98,10 @@ public:
   // Ping-pong carry-over buffers. Size = `refill_trees * 2^tree_depth`
   // to mirror Ferret's slack-tolerant pattern: refill trees in
   // run_refill_() write directly here, and the first M = svole_M(param)
-  // entries become next round's read region.
-  std::vector<AuthValue> carry_curr_, carry_next_;
+  // entries become next round's read region. Line-aligned, and huge-page
+  // backed where the system allows it (table_alloc.h).
+  std::vector<AuthValue, LpnTableAllocator<AuthValue>> carry_curr_,
+      carry_next_;
   // Per-round scratch for MPFSS sibling-OT base COTs (t * tree_depth
   // raw blocks from inner Ferret). Refilled in inner_run_begin_().
   std::vector<block>     base_cots_;
