@@ -508,14 +508,15 @@ outputs: 1,141,248 at `ferret_b9`, 16,625,664 at the default `ferret_b12`.
 ## Performance
 
 Two AWS `m8a.large` (AMD EPYC 9R45, Zen 5; 2 vCPU) in a cluster placement
-group, us-east-1, Ubuntu 22.04, GCC 11.4, OpenSSL 3.0.2,
-`-march=native`. The two parties run on separate instances over the
-AWS private network, each pinned to one core (`taskset`); the link
+group, us-east-1, Ubuntu 22.04 (Linux 6.8, transparent huge pages in the
+default `madvise` mode), GCC 11.4, OpenSSL 3.0.2, `-march=native`. The two
+parties run on separate instances over the AWS private network, each pinned
+to one core (`taskset`) with the NIC's interrupts on the other core; the link
 measured 9.49–9.54 Gbps single-flow before and after the runs, with a
-0.13 ms minimum RTT. Release build with one auto-tuner result frozen
+0.09–0.13 ms minimum RTT. Release build with one auto-tuner result frozen
 across both hosts; bench output buffers are pre-faulted. The numbers are
-single-core: the same build on `m8a.xlarge` and `m8a.4xlarge` pairs
-measured within 6% of them, most rows within 2%.
+single-core: the same code on an `m8a.xlarge` pair measured within 4% of
+them, most rows within 1% (the `ferret_b13` rows were not run there).
 
 ### Base OTs
 
@@ -524,46 +525,53 @@ send/recv bytes are deterministic).
 
 | Protocol     | Time   |  Send B |  Recv B | Security                                     |
 |--------------|-------:|--------:|--------:|----------------------------------------------|
-| `CO`       | 9.5 ms |   4,165 |   8,832 | semi-honest                                  |
-| `CSW`      | 9.4 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
-| `PVW`      |  40 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `BMM`      |  14 ms | 196,608 | 106,496 | malicious-secure, post-quantum (over ML-KEM-512 internals) |
+| `CO`       | 6.1 ms |   4,165 |   8,832 | semi-honest                                  |
+| `CSW`      | 5.7 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
+| `PVW`      |  23 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
+| `BMM`      | 8.2 ms | 196,608 | 106,496 | malicious-secure, post-quantum (over ML-KEM-512 internals) |
 
 ### OT extensions (RCOT throughput)
 
 Length 33,251,328 OTs (exactly two `ferret_b12` rounds; ~33M; `SoftSpoken<8>`
-rounds down to whole chunks, 33,243,136), single-threaded (one thread per
+rounds down to whole chunks, 33,243,136; the `ferret_b13` rows run two
+`ferret_b13` rounds, 71,499,776), single-threaded (one thread per
 party, pinned to one core; `SilentFerret`'s `begin()` expansion pool disabled). `MOT/s` is the
 median of 9 runs, the slower of the two parties per run; `bits/RCOT` (total
 wire bytes, both directions — deterministic) includes the one-time base-OT
 bootstrap amortised over the length. Observed: the `IKNP` and `SoftSpoken<2>`
-rows, plus semi-honest `SoftSpoken<4>`, ran at 92–98% of the measured
+rows, plus semi-honest `SoftSpoken<4>`, ran at 94–99% of the measured
 link rate; the remaining rows were CPU-bound. Analysis of what binds each configuration is in
 [`docs/performance-tuning.md`](docs/performance-tuning.md).
 
-| Protocol         | Mode      | bits/RCOT | MOT/s |
-|------------------|-----------|----------:|------:|
-| `IKNP`           | semi      |       127 |    73 |
-| `IKNP`           | malicious |       127 |    73 |
-| `SoftSpoken<2>`  | semi      |        63 |   145 |
-| `SoftSpoken<2>`  | malicious |        63 |   139 |
-| `SoftSpoken<4>`  | semi      |        31 |   282 |
-| `SoftSpoken<4>`  | malicious |        31 |   189 |
-| `SoftSpoken<8>`  | semi      |        15 |    75 |
-| `SoftSpoken<8>`  | malicious |        15 |    69 |
-| `Ferret`         | semi      |      0.48 |   116 |
-| `Ferret`         | malicious |      0.48 |   105 |
-| `SilentFerret`   | semi      |      0.48 |   116 |
-| `SilentFerret`   | malicious |      0.48 |   102 |
+| Protocol                      | Mode      | bits/RCOT | MOT/s |
+|-------------------------------|-----------|----------:|------:|
+| `IKNP`                        | semi      |       127 |    74 |
+| `IKNP`                        | malicious |       127 |    74 |
+| `SoftSpoken<2>`               | semi      |        63 |   148 |
+| `SoftSpoken<2>`               | malicious |        63 |   142 |
+| `SoftSpoken<4>`               | semi      |        31 |   294 |
+| `SoftSpoken<4>`               | malicious |        31 |   202 |
+| `SoftSpoken<8>`               | semi      |        15 |    79 |
+| `SoftSpoken<8>`               | malicious |        15 |    73 |
+| `Ferret`                      | semi      |      0.48 |   132 |
+| `Ferret`                      | malicious |      0.48 |   114 |
+| `SilentFerret`                | semi      |      0.48 |   120 |
+| `SilentFerret`                | malicious |      0.48 |   105 |
+| `Ferret` (`ferret_b13`)       | semi      |      0.27 |   133 |
+| `Ferret` (`ferret_b13`)       | malicious |      0.27 |   118 |
+| `SilentFerret` (`ferret_b13`) | semi      |      0.27 |   120 |
+| `SilentFerret` (`ferret_b13`) | malicious |      0.27 |   106 |
 
 `IKNP` and `SoftSpoken<k>` traffic is one-direction (127 and
 `128/k − 1` bits/RCOT). The `Ferret` and `SilentFerret` rows use the
-default `ferret_b12` parameter set and are measured over two complete
-rounds; the steady-state correction traffic is 0.388 bits/RCOT and the
-rest is the amortised bootstrap. Their correction traffic is identical,
-and their semi-honest total traffic matches exactly. Malicious
-SilentFerret batches the two per-round checks into one, saving 48 bytes
-total (about 0.000012 bits/RCOT), so both still round to 0.48 bits/RCOT.
+default `ferret_b12` parameter set, and the `ferret_b13` rows the next
+larger set; each is measured over two complete rounds of its set. The
+steady-state correction traffic is 0.388 bits/RCOT at `ferret_b12` and
+0.209 at `ferret_b13`; the rest is the amortised bootstrap. `Ferret`'s and
+`SilentFerret`'s correction traffic is identical, and their semi-honest
+total traffic matches exactly. Malicious SilentFerret batches the two
+per-round checks into one, saving 48 bytes total (about 0.000012
+bits/RCOT), so both still round to 0.48 bits/RCOT (0.27 at `ferret_b13`).
 The no-argument, one-round-at-a-time wire equivalence is pinned by
 the trace table above. The measured
 `SilentFerret` rows' `next()` calls are wire-free (all traffic is in
@@ -581,8 +589,8 @@ of rounds 2–8 of a one-shot run, the slower party per round; setup is the firs
 
 | Protocol  |  Setup | Per round | M outputs/s |
 |-----------|-------:|----------:|------------:|
-| `FpVOLE`  | 146 ms |    255 ms |          65 |
-| `F2kVOLE` | 195 ms |    555 ms |          30 |
+| `FpVOLE`  |  89 ms |    195 ms |          85 |
+| `F2kVOLE` | 140 ms |    470 ms |          35 |
 
 ## LPN security
 
