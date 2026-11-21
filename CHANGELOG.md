@@ -156,6 +156,9 @@ metadata is numeric (see the README's version guidance).
 - `FpVOLE`'s base sVOLE (COPE) sends each bit position's corrections in one call
   and no longer builds its four whole-batch arrays, which cuts the bootstrap's
   time and peak memory. Transcripts are unchanged.
+- `F2kVOLE`'s bootstrap packs its base COTs window by window from one session
+  of the inner `Ferret`, instead of from one buffer holding all of them (139 MB
+  at the default set). Outputs and transcripts are unchanged.
 
 ## v1.0.0-alpha.2
 
