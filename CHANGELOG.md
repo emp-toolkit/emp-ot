@@ -164,6 +164,10 @@ metadata is numeric (see the README's version guidance).
   carrier now provides `MacSum`, the per-tree sum. Outputs are unchanged.
 - The LPN fold takes each output's indices in a fixed-length loop that unrolls
   fully. Outputs are unchanged.
+- `IKNP` and `SoftSpoken`: the OT-receiver's `next()` flushes once 128 KiB of
+  corrections have accumulated (`tuning::ot_extension_stream_flush_bytes`), so
+  the OT-sender's first output no longer waits for a 1 MiB buffer to fill.
+  Transcripts are unchanged.
 
 ## v1.0.0-alpha.2
 

@@ -169,6 +169,19 @@ protected:
         checked_continuation_idle_ = false;
     }
 
+    // Flush cadence of an OT-receiver that streams each chunk's correction
+    // to the OT-sender (IKNP, SoftSpoken). Its next() reports the bytes it
+    // sent and flushes once tuning::ot_extension_stream_flush_bytes have
+    // accumulated; its end() flushes the rest and resets the count.
+    void stream_sent_(int64_t bytes) {
+        stream_unflushed_ += bytes;
+        if (stream_unflushed_ >= tuning::ot_extension_stream_flush_bytes) {
+            io->flush();
+            stream_unflushed_ = 0;
+        }
+    }
+    void stream_flushed_() { stream_unflushed_ = 0; }
+
     // Tag for the clone-lane ctor below (disambiguates from the normal ctor).
     struct CloneInit {};
 
@@ -222,6 +235,7 @@ protected:
 private:
     bool unchecked_chunk_ = false;
     bool checked_continuation_idle_ = false;
+    int64_t stream_unflushed_ = 0;
 };
 
 }  // namespace emp

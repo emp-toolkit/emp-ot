@@ -592,6 +592,7 @@ void SoftSpoken<k, kChunkBlocks>::recv_end_() {
     // Flush any d_buf bytes still buffered in NetIO so the peer's
     // matching recv_next_ can complete.
     this->io->flush();
+    this->stream_flushed_();
     EMP_SS_PHASE_REPORT(recv);
 }
 
@@ -654,6 +655,7 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
         // so io->get_digest() in combine_*_chunk agrees on both sides.
         EMP_SS_PHASE(recv, io);
         this->io->send_block(d_bufs, total_d_blocks);
+        this->stream_sent_(total_d_blocks * (int64_t)sizeof(block));
     }
 
     {

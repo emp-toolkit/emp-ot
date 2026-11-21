@@ -207,6 +207,7 @@ void IKNP::recv_end_() {
 	// recv_next_ batch (and the malicious tail above) sit in
 	// send_buf otherwise.
 	io->flush();
+	stream_flushed_();
 }
 
 // Sample r — the bit-packed choice vector. bit_k(r) is OT k's choice.
@@ -228,6 +229,7 @@ void IKNP::recv_next_(block *out) {
 		xorBlocksTo_arr(tmp, r, row_blocks);
 		io->send_data(tmp, block_size / 8);
 	}
+	stream_sent_(127 * (block_size / 8));
 	// Pin t[0] = r so bit_0(out[k]) = bit_k(r) = choice_k after transpose.
 	memcpy(t, r, block_size / 8);
 	sse_trans_n128(out, t, block_size);
