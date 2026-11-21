@@ -145,6 +145,10 @@ metadata is numeric (see the README's version guidance).
   OpenSSL runs its dedicated P-256 code, which is constant-time for any number
   of points (x86-64 and AArch64), and its receiver streams round 1. Elsewhere
   it keeps two single-point products. Transcripts are unchanged.
+- `BMM` streams per OT, with at most 32 OTs outstanding, instead of sending each
+  round as one batch. Each direction carries the same bytes in the same order.
+  A receiver message that is not canonical now aborts the sender after it has
+  replied to the earlier OTs.
 
 ## v1.0.0-alpha.2
 
