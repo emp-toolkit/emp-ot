@@ -7,10 +7,13 @@
 // regardless of how many OTs the row runs. The requested length defaults to
 // 2^25, then snaps to a whole number of rounds of the default set (two
 // ferret_b12 rounds, 33,251,328 OTs, at the Release default) so Ferret and
-// SilentFerret cover the same round geometry
-// and ship the same correction traffic. SilentFerret is the one
-// exception to pure streaming: it prepays every round in begin(eff_len) (all
-// correction traffic up front) and then draws wire-free -- its defining mode.
+// SilentFerret cover the same round geometry and ship the same correction
+// traffic. Ferret and SilentFerret then run again on ferret_b13, over as
+// many of its whole rounds as the default-set rows run, so each set
+// amortizes its own bootstrap over the same number of rounds. SilentFerret
+// is the one exception to pure streaming: it prepays every round in
+// begin(eff_len) (all correction traffic up front) and then draws wire-free
+// -- its defining mode.
 // Every row gets a fresh NetIO so its Fiat-Shamir state is independent. Each
 // row also absorbs its base-OT bootstrap (the first streaming begin triggers
 // it lazily) inside the timed window; this is
@@ -93,6 +96,9 @@ int main(int argc, char** argv) {
     // geometry; the other rows round it down to their own chunk size (less
     // than one chunk apart).
     length = snap_to_ferret_rounds(length, ferret_param);
+    constexpr auto ferret_b13 = tuning::ferret_b13;
+    const int64_t length_b13 = length / ferret_round_cots(ferret_param)
+                               * ferret_round_cots(ferret_b13);
 
     party = parse_party(argv);
     port = peer_port();
@@ -109,6 +115,7 @@ int main(int argc, char** argv) {
 
     cout << "# bench_ot_extension: length=" << length
          << "  ferret_param=" << ferret_param_name
+         << "  b13_length=" << length_b13
          << "  (RCOT throughput, streaming API)" << endl;
 
     // IKNP
@@ -139,6 +146,21 @@ int main(int argc, char** argv) {
     run_fresh_row<SilentFerret>(anchor.get(), party, length,
                                 "SilentFerret mali",
                                 /*malicious=*/true, ferret_param,
+                                nullptr, /*n_threads=*/1);
+
+    // Ferret and SilentFerret on ferret_b13: a 16 MiB LPN table and less
+    // correction traffic per COT than the default set.
+    run_fresh_row<Ferret>(anchor.get(), party, length_b13, "Ferret(b13) semi",
+                          /*malicious=*/false, nullptr, ferret_b13);
+    run_fresh_row<Ferret>(anchor.get(), party, length_b13, "Ferret(b13) mali",
+                          /*malicious=*/true, nullptr, ferret_b13);
+    run_fresh_row<SilentFerret>(anchor.get(), party, length_b13,
+                                "SilentFerret(b13) semi",
+                                /*malicious=*/false, ferret_b13,
+                                nullptr, /*n_threads=*/1);
+    run_fresh_row<SilentFerret>(anchor.get(), party, length_b13,
+                                "SilentFerret(b13) mali",
+                                /*malicious=*/true, ferret_b13,
                                 nullptr, /*n_threads=*/1);
 
     return 0;

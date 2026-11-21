@@ -264,8 +264,7 @@ Rapids + fast link: T16 at k=2 measured +12%).
 These measurements are from two m8a.8xlarge (cluster placement group,
 Release builds using one tuner result frozen across both hosts). The
 frozen result selected cGGM tile 64 and LPN batch 64. The README's tables
-are measured on two m8a.large with the same tuner result. Their single-core
-rows agree with the m8a.8xlarge figures to within a few percent; the
+are measured on two m8a.large with the same tuner result; the
 aggregate-bandwidth figures below are m8a.8xlarge's.
 
 **What binds each configuration.**
@@ -292,14 +291,14 @@ aggregate-bandwidth figures below are m8a.8xlarge's.
 - Malicious `SoftSpoken<4>`, both `SoftSpoken<8>` modes, `Ferret`, and
   `SilentFerret` are CPU-bound at these link rates. The published values
   use nine-run medians: `IKNP` and semi-honest `SoftSpoken<2>` varied by under 1%
-  across the runs, semi-honest `SoftSpoken<4>` and malicious `SoftSpoken<2>` by
-  about 3%, and the CPU-bound rows by 4–10%, so no blanket reproducibility figure
-  is claimed.
+  across the runs and the other rows by 1–5%, so no blanket reproducibility
+  figure is claimed.
 
 **Wire-format facts behind the bits/RCOT column.** At the common
 33,251,328-output length (two `ferret_b12` rounds), Ferret uses 0.476
-bits/RCOT including the one-time bootstrap (0.388 in steady state).
-SilentFerret sends the same correction stream. The semi-honest totals are
+bits/RCOT including the one-time bootstrap (0.388 in steady state). Over
+two `ferret_b13` rounds (71,499,776 outputs) it uses 0.267 (0.209 in steady
+state). SilentFerret sends the same correction stream. The semi-honest totals are
 identical; in malicious mode a two-round prepaid batch folds the two
 per-round checks into one, saving 48 bytes total (about 0.000012
 bits/RCOT). Parameter choice must be agreed by both parties.
