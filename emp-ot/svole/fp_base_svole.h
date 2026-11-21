@@ -109,27 +109,23 @@ public:
     return prm2pr(v.data());
   }
 
-  // sender: batch
+  // sender: batch. One bit position at a time: draw w_i, receive the
+  // receiver's `size` corrections for position i, and add the position's
+  // term into ret, so only one position's values are held at a time.
   void extend(__uint128_t *ret, int64_t size) {
-    std::vector<uint64_t> w(m * size), v(m * size);
-    for (int64_t i = 0; i < m; ++i) {
-      G0[i].random_data_unaligned(&w[i * size], size * sizeof(uint64_t));
-      for (int64_t j = 0; j < size; ++j) {
-        w[i * size + j] = mod(w[i * size + j]);
-      }
-    }
-
+    std::vector<uint64_t> w(size), v(size);
+    memset(ret, 0, size * sizeof(__uint128_t));
     uint64_t ch[2];
     ch[0] = (uint64_t)0;
     for (int64_t i = 0; i < m; ++i) {
-      recv_fp(io, &v[i * size], size);
+      G0[i].random_data_unaligned(w.data(), size * sizeof(uint64_t));
+      recv_fp(io, v.data(), size);
       for (int64_t j = 0; j < size; ++j) {
-        ch[1] = v[i * size + j];
-        v[i * size + j] = add_mod(w[i * size + j], ch[delta_bool[i]]);
+        ch[1] = v[j];
+        v[j] = add_mod(mod(w[j]), ch[delta_bool[i]]);
       }
+      prm2pr_add(ret, v.data(), i, size);
     }
-
-    prm2pr(ret, v.data(), size);
   }
 
   // recver: single
@@ -151,24 +147,28 @@ public:
     return prm2pr(w0.data());
   }
 
-  // recver: batch
+  // recver: batch. One bit position at a time: the position's `size`
+  // corrections tau go out in one send_data, which puts the same bytes in
+  // the same order on the wire and into the transcript as one send per
+  // element, and the position's term is added into ret before the next
+  // position is drawn, so only one position's values are held at a time.
   void extend(__uint128_t *ret, uint64_t *u, int64_t size) {
-    std::vector<uint64_t> w0(m * size), w1(m * size);
+    std::vector<uint64_t> w0(size), tau(size);
+    memset(ret, 0, size * sizeof(__uint128_t));
     for (int64_t i = 0; i < m; ++i) {
-      G0[i].random_data_unaligned(&w0[i * size], size * sizeof(uint64_t));
-      G1[i].random_data_unaligned(&w1[i * size], size * sizeof(uint64_t));
+      G0[i].random_data_unaligned(w0.data(), size * sizeof(uint64_t));
+      G1[i].random_data_unaligned(tau.data(), size * sizeof(uint64_t));
       for (int64_t j = 0; j < size; ++j) {
-        w0[i * size + j] = mod(w0[i * size + j]);
-        w1[i * size + j] = mod(w1[i * size + j]);
+        w0[j] = mod(w0[j]);
+        uint64_t w1 = mod(tau[j]);
 
-        w1[i * size + j] = add_mod(w1[i * size + j], u[j]);
-        w1[i * size + j] = PR - w1[i * size + j];
-        uint64_t tau = add_mod(w0[i * size + j], w1[i * size + j]);
-        io->send_data(&tau, sizeof(uint64_t));
+        w1 = add_mod(w1, u[j]);
+        w1 = PR - w1;
+        tau[j] = add_mod(w0[j], w1);
       }
+      io->send_data(tau.data(), size * sizeof(uint64_t));
+      prm2pr_add(ret, w0.data(), i, size);
     }
-
-    prm2pr(ret, w0.data(), size);
   }
 
   void delta64_to_bool(bool *bdata, __uint128_t u128) {
@@ -201,15 +201,16 @@ public:
     }
   }
 
-  void prm2pr(__uint128_t *ret, uint64_t *a, int64_t size) {
-    memset(ret, 0, size * sizeof(__uint128_t));
+  // Bit position i's term of the batch prm2pr: ret[j] += 2^i * a[j] mod p.
+  // The batch extends zero ret and call it for i = 0, 1, ..., m - 1, so each
+  // ret[j] receives the terms of Σ_i 2^i * a_i[j] in increasing i.
+  void prm2pr_add(__uint128_t *ret, const uint64_t *a, int64_t i,
+                  int64_t size) {
     __uint128_t tmp;
-    for (int64_t i = 0; i < m; ++i) {
-      for (int64_t j = 0; j < size; ++j) {
-        tmp = (__uint128_t)a[i * size + j];
-        tmp = mod(tmp << i, pr);
-        ret[j] = (__uint128_t)add_mod(ret[j], tmp);
-      }
+    for (int64_t j = 0; j < size; ++j) {
+      tmp = (__uint128_t)a[j];
+      tmp = mod(tmp << i, pr);
+      ret[j] = (__uint128_t)add_mod(ret[j], tmp);
     }
   }
 };

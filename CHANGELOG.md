@@ -153,6 +153,9 @@ metadata is numeric (see the README's version guidance).
   reuses one SHAKE-128 context. It used to resolve OpenSSL's legacy digest
   handles on every initialization and allocate a context per polynomial.
   Outputs are unchanged.
+- `FpVOLE`'s base sVOLE (COPE) sends each bit position's corrections in one call
+  and no longer builds its four whole-batch arrays, which cuts the bootstrap's
+  time and peak memory. Transcripts are unchanged.
 
 ## v1.0.0-alpha.2
 
