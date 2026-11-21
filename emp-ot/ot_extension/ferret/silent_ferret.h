@@ -167,7 +167,8 @@ private:
 	// Batch-boundary scratch: holds pristine base_0 during prepay/check, then
 	// retains the already-computed base_K while the consumer rolls from base_0.
 	// Its [0,128) base_0 region is the single mask for the batched check.
-	BlockVec base0_;
+	// It trades places with carry_curr_, so it shares the carry buffers' type.
+	LpnTableBlockVec base0_;
 
 	// Batched malicious-check accumulators (Ferret App. C over m = K*t trees):
 	// the running XOR of every round's VW (both roles) and chi_alpha = phi

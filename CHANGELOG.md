@@ -168,6 +168,15 @@ metadata is numeric (see the README's version guidance).
   corrections have accumulated (`tuning::ot_extension_stream_flush_bytes`), so
   the OT-sender's first output no longer waits for a 1 MiB buffer to fill.
   Transcripts are unchanged.
+- On Linux, each buffer that holds an LPN table (`Ferret`'s two round buffers,
+  `SilentFerret`'s batch base and the sVOLEs' two round buffers) is mapped on
+  its own 2 MiB-aligned range, rounded up to whole 2 MiB pages and advised
+  `MADV_HUGEPAGE`, so transparent huge pages back it when the system's THP
+  mode is `madvise` or `always`. The LPN fold reads the table at random, and
+  with 4 KiB pages most of those reads missed the TLB. Smaller buffers, and
+  every buffer on other systems, are 64-byte aligned, so an `F2kVOLE` table
+  entry no longer spans two cache lines. `Svole::carry_curr_` and
+  `carry_next_` change type. Outputs and transcripts are unchanged.
 
 ## v1.0.0-alpha.2
 

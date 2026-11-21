@@ -61,6 +61,42 @@ of them and is a registry knob. The prefetch never clears the variance gate on
 any of them, Zen 5 included: its share of the Zen 5 gain in the table is drift
 between runs that were not interleaved. There is no prefetch knob.
 
+## The LPN tables on huge pages
+
+The fold's gathers land anywhere in the table, so with 4 KiB pages most of
+them also need an address translation that the TLB does not hold: the 8 MiB
+`ferret_b12` table spans 2,048 pages, and the 16 MiB tables (`ferret_b13`, and
+`F2kVOLE`'s 32-byte entries at `ferret_b12`) span 4,096. On Linux each buffer
+that holds a table ([`table_alloc.h`](../emp-ot/common/table_alloc.h)) is mapped
+on its own 2 MiB-aligned range and advised `MADV_HUGEPAGE`, so transparent huge
+pages back it when the system's THP mode is `madvise` (Ubuntu's default) or
+`always`, and the whole table needs 4–8 TLB entries. With THP off, and on other
+systems, the buffers keep 4 KiB pages. Contents are the same either way.
+
+- To check: `AnonHugePages` in `/proc/<pid>/smaps_rollup` while a party runs.
+- To turn it off: THP `enabled=never`. With `defrag=defer` (or `never`) a page
+  fault does not compact memory synchronously; on a fragmented host that
+  compaction can stall the first touch of a buffer. The buffers are allocated
+  once per object and reused every round, so any stall is a one-time cost.
+- Each buffer rounds up to whole 2 MiB pages: a `ferret_b12` `Ferret`'s two
+  8.8 MiB buffers take 10 MiB each.
+
+Measured as an interleaved two-box A/B of one source revision with and without
+the huge-page mapping (one core per party, the slower party, the median of the
+per-round ratios over 9 rounds, 11 for the sVOLEs):
+
+| Row | Zen 5 (m8a.xlarge) | Granite Rapids (c8i.2xlarge) |
+|---|---|---|
+| `Ferret` `ferret_b12`, streaming, semi / malicious | +5.5% / +3.5% | +2.4% / +2.8% |
+| `Ferret` `ferret_b13`, `rcot`, semi / malicious | +22% / +32% | +32% / +31% |
+| `SilentFerret` `ferret_b12`, streaming, semi / malicious | +1.1% / +0.8% | +1.2% / +0.8% |
+| `F2kVOLE` per-round time | −10% | −14% |
+| `FpVOLE` per-round time | −1.7% | −2.7% |
+
+Without huge pages the Zen 5 `ferret_b13` rows also varied between 44 and
+112 MOT/s from run to run; with them every run was within 5% of the median.
+`IKNP` and `SoftSpoken`, which have no LPN table, stayed within 0.8%.
+
 ## Methodology requirements for any sweep
 
 A sweep, by the tuner or by hand, must defend against these measurement
