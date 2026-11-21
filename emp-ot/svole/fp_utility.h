@@ -97,6 +97,25 @@ inline uint64_t mult_mod(uint64_t a, uint64_t b) {
   return (res >= PR) ? (res - PR) : res;
 }
 
+// Lazy reduction for long sums. mult_mod_lazy leaves the product of canonical
+// a, b as a value below 2^62 that is congruent to a·b: one Mersenne fold of the
+// 122-bit product, without the final conditional subtraction. Sums of such
+// terms, or of canonical elements, accumulate in a __uint128_t and are reduced
+// once by mod_u128.
+inline uint64_t mult_mod_lazy(uint64_t a, uint64_t b) {
+  const __uint128_t x = (__uint128_t)a * b;
+  return (uint64_t)(x & PR) + (uint64_t)(x >> MERSENNE_PRIME_EXP);
+}
+
+// Canonical residue of any 128-bit value: two folds bring it below
+// 2^61 + 2^7 < 2p, and one conditional subtraction finishes.
+inline uint64_t mod_u128(__uint128_t x) {
+  x = (x & PR) + (x >> MERSENNE_PRIME_EXP);
+  const uint64_t r =
+      (uint64_t)(x & PR) + (uint64_t)(x >> MERSENNE_PRIME_EXP);
+  return (r >= PR) ? (r - PR) : r;
+}
+
 inline block add_mod(block a, block b) {
   block res = _mm_add_epi64(a, b);
   return vec_partial_mod(res);

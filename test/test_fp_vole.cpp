@@ -47,6 +47,46 @@ void check_triple(uint64_t delta, const uint64_t *val, const uint64_t *mac,
 static constexpr auto kSvoleParam   = tuning::ferret_b9;
 static constexpr int  kOneshotIters = 2;
 
+// Differential check for the carrier's lazy reductions: MacSum (the gadget's
+// per-tree Σ mac) and accumulate_VW (Σ chi·mac) reduce once at the end and
+// must return the element the add_mod / mult_mod chains return. The sizes run
+// to the largest shipped tree (2^13 leaves), and the second pass sets every
+// operand to p - 1, the largest term either sum can take.
+bool test_lazy_reductions() {
+  const block seed = makeBlock(0x6670206c617a7972ULL,
+                               0x656475637469306eULL);
+  PRG prg(&seed);
+  constexpr int64_t sizes[] = {0, 1, 2, 3, 4, 5, 7, 16, 127, 128, 1024,
+                               4096, 8192};
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int64_t size : sizes) {
+      std::vector<uint64_t> chi(size);
+      std::vector<AuthValueFp> leaves(size);
+      for (int64_t i = 0; i < size; ++i) {
+        uint64_t r[2];
+        prg.random_data_unaligned(r, sizeof(r));
+        chi[i] = pass ? PR - 1 : mod(r[0]);
+        leaves[i].mac = pass ? PR - 1 : mod(r[1]);
+      }
+      uint64_t sum = 0, vw = 0;
+      AuthValueFp::MacSum lazy_sum;
+      for (int64_t i = 0; i < size; ++i) {
+        sum = add_mod(sum, leaves[i].mac);
+        vw = add_mod(vw, mult_mod(chi[i], leaves[i].mac));
+        lazy_sum.add(leaves[i].mac);
+      }
+      uint64_t lazy_vw = PR;   // not canonical: must be overwritten
+      AuthValueFp::accumulate_VW(lazy_vw, chi.data(), leaves.data(), size);
+      if (lazy_sum.value() != sum || lazy_vw != vw) {
+        std::cerr << "AuthValueFp lazy reduction mismatch at size " << size
+                  << (pass ? " (operands p - 1)" : "") << std::endl;
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 // Streaming-path exercise: begin → many next → end.
 // Walks chunk-by-chunk through two rounds of outputs, verifying each.
 void test_streaming(NetIO *io, int svole_party) {
@@ -150,6 +190,8 @@ void test_short_sessions(NetIO *io, int svole_party) {
 }
 
 int main(int argc, char **argv) {
+  if (!test_lazy_reductions()) return 1;
+
   party = parse_party(argv);
   port = peer_port();
 
