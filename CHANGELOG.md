@@ -138,6 +138,9 @@ metadata is numeric (see the README's version guidance).
   base-OT transcripts and semi-honest `IKNP` and `SoftSpoken` transcripts are
   unchanged. Both parties must upgrade together, and
   `test/trace_hash.baseline` is regenerated.
+- `CO` and `CSW` flush each message as soon as the other party can use it, so
+  the two parties' work overlaps. Each direction carries the same bytes in the
+  same order, and `test/trace_hash.baseline` is unchanged.
 
 ## v1.0.0-alpha.2
 
