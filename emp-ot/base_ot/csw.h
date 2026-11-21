@@ -40,12 +40,18 @@ namespace emp {
  * observable-RO challenge–prove–response extraction step over those pads.
  * Splitting the two lets an OT extension overlap the base OT's last two
  * flows with its own first message (the paper's round-preserving 3-round
- * result): the extension calls *_core in its bootstrap (which buffers the
- * core round-2 bytes WITHOUT flushing, so they bundle with the extension's
- * first message) and defers *_check to the very end of its session, after
- * its own consistency check. See the deferred-check wiring in iknp.cpp /
+ * result): the extension calls *_core in its bootstrap, so the core round-2
+ * bytes and the extension's first message travel in the same direction with
+ * no reply between them, and defers *_check to the very end of its session,
+ * after its own consistency check. See the deferred-check wiring in iknp.cpp /
  * softspoken.cpp. Standalone callers use the monolithic send / recv
  * (= core + check back-to-back), wire-identical to a monolithic OT.
+ *
+ * Flushes only decide when bytes leave, never which bytes or in what order.
+ * Each side flushes as soon as the peer can use what it has sent: the
+ * receiver its seed (the sender then derives T while the receiver builds
+ * {B_i}), the sender z once all of round 1 is in (the receiver's z^{α_i}
+ * then run alongside the sender's pads), and the sender its ciphertexts.
  *
  * `length` must be ≥ 80 (≈ 2σ for σ = 40); the sender-input extraction
  * argument needs ℓ > 2σ
@@ -115,8 +121,9 @@ private:
 public:
 	// ----- Sender side. Plays the OT sender role (S in the paper). -----
 	// Messy core only: Round 1 recv + Round 2 core bytes (z, {c}). Stashes
-	// p0_/p1_ for the deferred check and does NOT flush — the core bytes stay
-	// buffered so an extension can bundle them with its first message.
+	// p0_/p1_ for the deferred check. z goes out as soon as round 1 is
+	// complete and the ciphertexts right after the pads; an extension's first
+	// message follows them in the same direction.
 	void send_core(const block * data0, const block * data1, int64_t length) {
 		expecting(length >= kMinLength,
 		          "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
@@ -128,16 +135,23 @@ public:
 		// Round 1 (R→S): receive seed, {B_i}.
 		block seed;
 		io->recv_block(&seed, 1);
-		std::vector<Point> B(length);
-		io->recv_pt(&G, B.data(), length);
 
 		// Sender params: T = H_1(sid, seed); r ← Z_q; z = g^r.
 		// Amortize T^r over the batch: ρ_{i,1} = (B_i/T)^r = B_i^r · (T^r)^{-1}
-		// = ρ_{i,0} + (-T_r). One mul/OT instead of two.
+		// = ρ_{i,0} + (-T_r). One mul/OT instead of two. None of these needs
+		// {B_i}, so they are computed while the receiver is still building them.
 		Point T = RO(kDomToCurve, sid.value()).absorb(seed).squeeze_point(G);
 		Scalar r = G.rand_scalar();
 		Point z = G.mul_gen(r);
 		Point T_r_neg = T.mul(r).inv();                // -(T^r), reused per OT
+
+		std::vector<Point> B(length);
+		io->recv_pt(&G, B.data(), length);
+
+		// Round 2 (S→R) opens with z. It is released only now that all of
+		// round 1 is in, and flushed so the receiver's z^{α_i} overlap the pads.
+		io->send_pt(&z);
+		io->flush();
 
 		// Per-OT pads p_{i,0}, p_{i,1} (the random seed-OT outputs).
 		p0_.resize(length);
@@ -157,10 +171,11 @@ public:
 			c1[i] = H_msg_key(i, p1_[i]) ^ data1[i];
 		}
 
-		// Round 2 (S→R): core bytes (z, {c_{i,0}, c_{i,1}}), buffered (no flush).
-		io->send_pt(&z);
+		// Rest of the round-2 core bytes, {c_{i,0}, c_{i,1}}, flushed so the
+		// receiver decrypts while this side runs whatever comes next.
 		io->send_block(c0.data(), length);
 		io->send_block(c1.data(), length);
+		io->flush();
 	}
 
 	// Deferred Round-2-tail + Round-3 check ({χ_i}, Π; recv otans' and verify),
@@ -196,7 +211,8 @@ public:
 	// pads p_bi_ and a copy of b for the deferred check, and decrypts the
 	// outputs (local — the deferred check, not the decrypt, is what gates
 	// acceptance; the extension's own check + this base check both run before
-	// any output is consumed). Does NOT flush.
+	// any output is consumed). Flushes the seed, so the sender derives T
+	// while this side builds {B_i}; the next recv drains {B_i}.
 	void recv_core(block * data, const bool * b, int64_t length) {
 		expecting(length >= kMinLength,
 		          "CSW: length must be ≥ 80 (paper requires ℓ > 2σ for σ=40)");
@@ -212,8 +228,9 @@ public:
 		block seed;
 		PRG prg;
 		prg.random_block(&seed, 1);
-		Point T = RO(kDomToCurve, sid.value()).absorb(seed).squeeze_point(G);
 		io->send_block(&seed, 1);
+		io->flush();
+		Point T = RO(kDomToCurve, sid.value()).absorb(seed).squeeze_point(G);
 
 		// Per-OT receiver msg: α_i ← Z_q; B_i = g^{α_i} · T^{b_i}.
 		std::vector<Scalar> alpha(length);
