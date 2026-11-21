@@ -135,8 +135,8 @@ How it works:
 - **The socket.** tuning.h includes a generated `emp-ot/tuning_local.h`
   when present (`__has_include`); every tuner-managed LOCAL knob is an
   `#ifndef`-guarded macro default forwarded into its constexpr, while the
-  fixed LOCAL policies (`cot_chosen_input_tile`, `mp_gadget_flush_trees`)
-  are plain constexpr. AGREEMENT and SECURITY knobs have no macro guard —
+  fixed LOCAL policies (`cot_chosen_input_tile`, `mp_gadget_flush_trees`,
+  `ot_extension_stream_flush_bytes`) are plain constexpr. AGREEMENT and SECURITY knobs have no macro guard —
   the generated file has no channel to reach them, so the class boundary
   is enforced by construction.
 - **The tuner** (`tools/tune.cpp`, target `emp-ot-tune`). Every knob is a
