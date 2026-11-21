@@ -31,7 +31,7 @@
 // OTExtension layers a mid-session check() API over the same virtual
 // lifecycle. Its internal end/begin continuation uses
 // restart_session_preserving_leftover_() so an already-checked next_n() tail
-// survives. The shared sVOLE surface remains begin/next/end.
+// survives. The shared sVOLE surface is begin/next/end.
 //
 // Each instance is single-role at runtime (`party` is fixed at
 // construction). begin/next/end are virtual — subclasses override them
@@ -227,10 +227,11 @@ protected:
     }
 
     // Produce the final declared suffix into `out`, returning the number of
-    // elements actually written. The default deliberately delegates to the
-    // ordinary full-chunk next() so existing backends are byte-for-byte
-    // unchanged. A backend with a smaller native production granularity may
-    // override this and round `requested` up to that granularity.
+    // elements actually written. The default delegates to the ordinary
+    // full-chunk next(), so a backend that does not override it produces the
+    // same stream whether or not a count was declared. A backend with a
+    // smaller native production granularity may override this and round
+    // `requested` up to that granularity.
     virtual int64_t next_sized_tail_(Element *out, int64_t requested) {
         (void)requested;
         next(out);
@@ -244,9 +245,9 @@ protected:
     // and the already-generated (therefore already-checked) suffix remains the
     // next part of the caller-visible stream.
     //
-    // Ordinary caller-visible end(); begin(); behavior is unchanged: the
-    // begin() still clears leftovers in enter_session_(). Only this explicit
-    // continuation helper restores the saved cursor after begin() returns.
+    // A caller-visible end(); begin(); discards the buffered tail (begin()
+    // clears leftovers in enter_session_()). Only this explicit continuation
+    // helper restores the saved cursor after begin() returns.
     void restart_session_preserving_leftover_() {
         expecting(in_session_,
                   "StreamingExtension: no active session; call begin first");

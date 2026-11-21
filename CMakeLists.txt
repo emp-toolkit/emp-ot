@@ -60,8 +60,8 @@ find_package(emp-tool 1.0 REQUIRED)
 # ---------------------------------------------------------------------
 # Library target
 # ---------------------------------------------------------------------
-# IKNP and Ferret bodies live in .cpp; the rest of the headers are
-# consumed inline.
+# The IKNP, SoftSpoken, Ferret, SilentFerret and BMM bodies live in .cpp;
+# the rest of the headers are consumed inline.
 #
 # Verbatim pq-crystals/kyber sources sit in emp-ot/base_ot/mlkem/kyber/;
 # the SHAKE / Keccak shim is a single header at emp-ot/base_ot/mlkem/
@@ -112,8 +112,8 @@ target_link_libraries(emp-ot PUBLIC emp-tool::emp-tool)
 # stale file. The header always exists — a canonical marked stub means
 # shipped defaults — so compiler depfiles track it from the first compile
 # and a later `tune` rewrite recompiles exactly the affected TUs. The include
-# dir is prepended (BEFORE) so this file shadows any pre-redesign
-# source-tree copy. tools/ owns the tune / tune-clean / auto-tune
+# dir is prepended (BEFORE) so this file shadows any legacy
+# source-tree copy. tools/ owns the tune / tune-clean / tune-auto
 # targets that write it.
 set(EMP_OT_TUNING_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/tuning-include)
 set(EMP_OT_TUNING_LOCAL_H ${EMP_OT_TUNING_INCLUDE_DIR}/emp-ot/tuning_local.h)
@@ -122,7 +122,7 @@ set(_emp_ot_legacy_tuning ${CMAKE_CURRENT_SOURCE_DIR}/emp-ot/tuning_local.h)
 if(NOT EXISTS ${EMP_OT_TUNING_LOCAL_H})
     file(MAKE_DIRECTORY ${EMP_OT_TUNING_INCLUDE_DIR}/emp-ot)
     if(EXISTS ${_emp_ot_legacy_tuning} AND EMP_OT_AUTO_TUNE_ACTIVE)
-        # One-time migration from the pre-redesign source-tree location,
+        # One-time migration from the legacy source-tree location,
         # so an already-tuned machine does not pay a fresh sweep.
         file(COPY_FILE ${_emp_ot_legacy_tuning} ${EMP_OT_TUNING_LOCAL_H})
         message(STATUS "emp-ot: migrated source-tree emp-ot/tuning_local.h "
@@ -148,10 +148,9 @@ if(EMP_OT_INSTALL)
     install(TARGETS emp-ot EXPORT emp-otTargets)
 
     # tuning_local.h is excluded from the glob (a source-tree copy is a
-    # pre-redesign leftover) and installed explicitly from the build dir
+    # legacy leftover) and installed explicitly from the build dir
     # below: the library objects were compiled with exactly that file, so
-    # installed consumers see the same configuration as the binary —
-    # required, since one knob-adjacent constant sizes class members.
+    # installed consumers see the same configuration as the binary.
     install(DIRECTORY emp-ot
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING

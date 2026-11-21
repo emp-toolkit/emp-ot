@@ -30,7 +30,7 @@
  *     reset via EVP_DigestInit_ex on each call. Mirrors emp-tool's
  *     Hash::hash_once amortization. Each TU including this header
  *     gets its own thread_local ctx (static-inline → internal
- *     linkage); fine — there are only two TUs (poly.c, crs.hpp).
+ *     linkage); fine — there are only two TUs (poly.c, bmm.cpp).
  *
  *   - shake128_squeezeblocks uses EVP_DigestSqueeze on OpenSSL ≥ 3.3.
  *     Older OpenSSL — including the 3.0.x shipped by Ubuntu 24.04 —
@@ -156,7 +156,7 @@ static inline void shake128_squeezeblocks(uint8_t *out, size_t nblocks,
 
 /* Per-thread persistent EVP_MD_CTX for the one-shot SHAKE-256 PRF.
  * Each TU including this header gets its own thread_local copy; that's
- * fine, only poly.c and crs.hpp include it. */
+ * fine, only poly.c and bmm.cpp include it. */
 #if defined(__cplusplus)
   #define EMP_MLKEM_TLS thread_local
 #elif __STDC_VERSION__ >= 201112L
@@ -189,7 +189,7 @@ static inline void kyber_shake256_prf(uint8_t *out, size_t outlen,
 #define prf(OUT, OUTBYTES, KEY, NONCE) kyber_shake256_prf(OUT, OUTBYTES, KEY, NONCE)
 
 /* One-shot SHAKE-256: out = SHAKE256(in). Used by our own
- * derive_subseed / sid_to_session_seed for CRS expansion. */
+ * derive_subseed, sid_index_to_matrix_seed and hash_to_polyvec. */
 static inline void shake256(uint8_t *out, size_t outlen,
                              const uint8_t *in, size_t inlen) {
     static EMP_MLKEM_TLS EVP_MD_CTX *ctx = NULL;

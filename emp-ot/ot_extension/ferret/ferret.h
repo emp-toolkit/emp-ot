@@ -6,10 +6,9 @@
 #include "emp-ot/tuning.h"
 #include <memory>
 
-// Forward-declare ferret internals so the public header doesn't pull
-// in the cGGM transitive closure.
-// The .cpp #includes the real headers; std::unique_ptr<T> works with
-// forward-declared T as long as the dtor is out-of-line (it is).
+// Forward-declare Lpn so the public header doesn't pull in lpn.h. The
+// .cpp #includes it; std::unique_ptr<T> works with forward-declared T
+// as long as the dtor is out-of-line (it is).
 
 namespace emp {
 
@@ -55,11 +54,10 @@ struct AuthValueFerret {
   // block-typed cGGM buffer to the AuthValueFerret-typed user-out.)
 
   // -------- Chi-fold helpers --------
-  // PRG-expand the chi seed into chi[leave_n]. Differs from
-  // AuthValueF2k / AuthValueFp (hash + uni_hash_coeff_gen) — Ferret's
-  // MPCOT derives chi via PRG, and the round-final hash bytes on the
-  // wire depend on the resulting VW, so this expansion is fixed by the
-  // wire format.
+  // PRG-expand the chi seed into chi[leave_n] (AuthValueF2k and
+  // AuthValueFp mirror it). The round-final hash bytes on the wire
+  // depend on the resulting VW, so this expansion is fixed by the wire
+  // format.
   static inline void expand_chi(block chi_seed, F* chi, int64_t sz) {
     PRG chi_prg(&chi_seed);
     chi_prg.random_block(chi, sz);
@@ -87,7 +85,7 @@ struct AuthValueFerret {
   static inline void auth_final_reduce  (AuthValueFerret&) {}
 };
 
-// Back-compat aliases over the unified gadget.
+// Ferret's names for its two gadget instantiations.
 using MPCOT_Sender   = MultiPointGadgetSender<AuthValueFerret>;
 using MPCOT_Receiver = MultiPointGadgetReceiver<AuthValueFerret>;
 
@@ -109,7 +107,7 @@ public:
 	PrimalLPNParameter param;
 
 	// `base_ot` is forwarded to the internal SoftSpoken<8> bootstrap.
-	// Default (nullptr) → the base allocates a CSW. The optional final
+	// Default (nullptr) → a FerretBaseOT (CSW). The optional final
 	// parameter selects the Ferret LPN parameter set (default ferret_b12).
 	Ferret(int party, IOChannel *io, bool malicious = true,
 			std::unique_ptr<OT> base_ot = nullptr,
@@ -140,7 +138,7 @@ public:
 
 	// Per-chunk extend (next()) traffic direction: the OT-sender role is
 	// send-dominant per tree (MPCOT_Sender::run_next_tree sends the cGGM
-	// correction + secret_sum), the receiver recv-dominant — the opposite of
+	// correction), the receiver recv-dominant — the opposite of
 	// SoftSpoken. Callers interleaving the COT with a fixed-direction protocol
 	// on the same sockets read this to place the send-dominant role on the send
 	// channel. (begin()'s nested-SoftSpoken bootstrap is recv-dominant, but
@@ -151,9 +149,9 @@ protected:
 	// Per-stage helpers, called from begin / next / end. Each
 	// party-dispatches internally where the sender and receiver
 	// bodies diverge. `protected` (not private) so SilentFerret can
-	// reuse the bootstrap / buffers / LPN / round-end machinery and
-	// override only the per-tree body. process_one_tree_ is virtual so
-	// the inherited next() / run_refill_ dispatch to the override.
+	// reuse the bootstrap / buffers / gadget / LPN machinery. It
+	// overrides the lifecycle and process_one_tree_, and uses its own
+	// base roll and batched check instead of run_refill_ / inner_run_end_.
 	void bootstrap_();
 	void inner_run_begin_();
 	virtual void process_one_tree_(AuthValueFerret *out);
@@ -183,4 +181,4 @@ protected:
 };
 
 }  // namespace emp
-#endif  // EMP_FERRET_COT_H_
+#endif  // EMP_FERRET_H_

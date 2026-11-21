@@ -28,8 +28,8 @@ add_custom_target(tune
 
 # Back to shipped defaults: copy the canonical, explicitly marked untuned
 # stub over the build-dir header. The fresh mtime makes the next build
-# recompile consumers without the overrides. Also removes a pre-redesign
-# source-tree copy, which CMake builds no longer read.
+# recompile consumers without the overrides. Also removes a legacy
+# source-tree copy, which CMake builds do not read.
 add_custom_target(tune-clean
     COMMAND ${CMAKE_COMMAND} -E copy
             "${EMP_OT_TUNING_STUB_H}" "${EMP_OT_TUNING_LOCAL_H}"

@@ -6,7 +6,7 @@
 
 // Single source of truth for emp-ot's tunable performance parameters
 // and LPN security parameters. Every consumer (IKNP, SoftSpoken,
-// Ferret, cGGM, LpnF2, COT chosen-input wrapper) reads its knob
+// Ferret, cGGM, Lpn, COT chosen-input wrapper) reads its knob
 // from here.
 //
 // LPN security parameters live here too — they're not pure perf, but
@@ -25,8 +25,8 @@
 // marked stub at configure time; the `tune` tool overwrites it with
 // provenance comments, `tune-clean` restores the stub, and `install` ships the file
 // the library objects were compiled with. Every build directory owns its
-// tuning state; a source-tree tuning_local.h is a pre-redesign leftover
-// and is not read by CMake builds. AGREEMENT and SECURITY knobs are plain
+// tuning state; a source-tree tuning_local.h is not read by CMake
+// builds. AGREEMENT and SECURITY knobs are plain
 // constexpr, with no macro guard: tuning_local.h has no channel to reach
 // them. test_tuning_invariance asserts the output-invariance of every
 // guarded knob at its extreme candidate values.
@@ -48,7 +48,7 @@ inline constexpr int kConsistCheckCotNum = 128;
 class PrimalLPNParameter { public:
     int64_t t = 0, logk = 0, tree_depth = 0;
     int64_t k = 0;            // = 1 << logk (power of 2 by construction;
-                              // LpnF2 samples `(*r) & (k-1)` with no fold).
+                              // Lpn samples `(*r) & (k-1)` with no fold).
     int64_t M = 0;            // base COTs per round = k + t*tree_depth + 128
     int64_t refill_trees = 0; // = ceil(M / 2^tree_depth); the round's last
                               // refill_trees trees write next round's bases.
@@ -128,7 +128,7 @@ inline void validate_primal_lpn_parameter(const PrimalLPNParameter &p) {
 namespace tuning {
 
 // ===== IKNP =====
-// Chunk size in OTs per do_{send,recv}_rcot_next call. Must be a multiple of
+// Chunk size in OTs per IKNP::next() call. Must be a multiple of
 // 128 (one IKNP matrix row's worth) and a multiple of the F_{2^128}
 // gadget packing (128 OTs → one packed element).
 inline constexpr int64_t iknp_chunk_ots = 2048;
@@ -155,7 +155,7 @@ inline constexpr int64_t cot_chosen_input_tile = 8;
 // aes.hpp's apply_grouped emitting <=4-tile groups); a sweep on Intel Granite
 // Rapids and AMD Zen 5 picks 32 over 16 at production depths d>=12. Larger
 // tiles help Zen 5 further but regress Granite Rapids, so 32 is the cross-x86
-// optimum. aarch64 is flat across 4..64 (within noise); 4 retained.
+// optimum. aarch64 is flat across 4..64 (within noise), so it uses 4.
 #ifndef EMP_TUNE_CGGM_TILE
 #define EMP_TUNE_CGGM_TILE 0   // 0 = use the per-arch default
 #endif
@@ -278,7 +278,7 @@ inline constexpr int softspoken_ferret_bootstrap_chunk_blocks =
     static_cast<int>((ferret_b9.M + 127) / 128);
 static_assert(softspoken_ferret_bootstrap_chunk_blocks <= softspoken_chunk_blocks_max);
 
-// ===== LPN encoder (LpnF2) =====
+// ===== LPN encoder (Lpn) =====
 // SECURITY (not tunable): XOR positions per LPN output (the "d" of
 // LPN(n, k, d)).
 inline constexpr int lpn_d = 10;

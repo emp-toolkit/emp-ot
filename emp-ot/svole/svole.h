@@ -11,7 +11,7 @@
 // Svole<AuthValue>: the single sVOLE extension class. Both the
 // F_2^k case (AuthValue=AuthValueF2k) and the F_p case
 // (AuthValue=AuthValueFp) instantiate this with their respective
-// concrete carrier-and-ops type. F2kVOLE / FpVOLE remain as `using`
+// concrete carrier-and-ops type. F2kVOLE / FpVOLE are `using`
 // aliases over the corresponding carrier.
 //
 // Structurally parallel to Ferret (emp-ot/ot_extension/ferret/ferret.h):
@@ -59,7 +59,7 @@ inline block svole_lpn_seed(std::string_view domain, block sid) {
 }
 
 // =================================================================
-// Svole<AuthValue> — unified sVOLE class for F_2^k and F_p.
+// Svole<AuthValue> — the sVOLE class for F_2^k and F_p.
 // =================================================================
 
 template <typename AuthValue_>

@@ -7,7 +7,7 @@
 // at depth d does (2^d - 2) calls to H, batched in tiles of `Tile`.
 //
 // First column is the raw H<Tile> peak — same AES, no cGGM scaffolding
-// (no level-sum compute, no parents_buf copy, no per-level loop).
+// (no level-sum compute, no per-level loop).
 // Compare against the depth columns to see how much overhead the
 // tree expander adds; the gap shrinks as d grows because the AES gen
 // dominates at depth.
@@ -73,7 +73,7 @@ static void run_row(CCRH& ccrh, block* raw_in, block* raw_out,
 #ifdef NDEBUG
     constexpr int64_t total_H_target = 1LL << 22;  // ~4M H
 #else
-    constexpr int64_t total_H_target = 1LL << 18;  // ~256K H — Debug-CI fast path
+    constexpr int64_t total_H_target = 1LL << 18;  // ~256K H — Debug fast path
 #endif
 
     const double raw_us = bench_raw_H<Tile>(ccrh, raw_in, raw_out, total_H_target);

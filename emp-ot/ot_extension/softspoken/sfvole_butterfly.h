@@ -33,25 +33,24 @@
 // All eight r_N stay in registers across AES rounds and the three fold
 // levels.
 //
-// Quad kernel (for k=2) emits per y ∈ [0, Q/4):
+// Quad kernel (for k=2, 4) emits per y ∈ [0, Q/4):
 //   A_round1[y][j] = r_{4y} ⊕ r_{4y+1} ⊕ r_{4y+2} ⊕ r_{4y+3}
 //   v_0 ^= r_{4y+1} ⊕ r_{4y+3}
 //   v_1 ^= r_{4y+2} ⊕ r_{4y+3}
 //
-// Remaining halving for rounds k-2 (oct) or k-1 (quad): butterfly_halve
+// Remaining k-3 (oct) or k-2 (quad) halving rounds: butterfly_halve
 // runs in place on the post-fuse scratch.
 //
 // Receiver uses the substitution y = α ⊕ x: the y=0 slot of the
 // permuted tweaks[] reads leaves[α] (= zero_block, pinned by
-// pprf_eval_receiver). Its bogus r_0 lands in the A_round? entry for
+// cggm::eval_receiver). Its bogus r_0 lands in the A_round? entry for
 // the first oct-or-quad and propagates only through L-chains to u
 // (which receiver discards), never into any w_b plane.
 //
 // Tile size T=8 (j-axis). Per-iter live state during AES: 8 ptN +
 // 8 xN + 11 broadcast round keys = 27 vec regs (oct). Fits with 5
 // spare on VAES-512 (32 zmm) and NEON (32 q); narrower lanes (VAES-256
-// ymm / AES-NI xmm) spill round keys to L1-hot stack (~1 cycle per
-// round per stream extra, amortized over AES throughput).
+// ymm / AES-NI xmm) spill round keys to L1-hot stack.
 
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/tuning.h"
@@ -213,9 +212,9 @@ inline void sfvole_fuse_round012_oct(block* A_round2_y,
     }
 }
 
-// Fused rounds 0 + 1 (4-leaf quad). Used by k=2 only (Q=4 too short
-// for the octet kernel). Same shape as the oct above, dropped to two
-// fold levels.
+// Fused rounds 0 + 1 (4-leaf quad). Used by k=2 (Q=4 too short for the
+// octet kernel) and k=4 (see the kernel-selection notes above). Same shape
+// as the oct above, dropped to two fold levels.
 template <int T>
 EMP_AES_TARGET_ATTR
 inline void sfvole_fuse_round01_quad(block* A_round1_y,
@@ -292,8 +291,8 @@ inline void sfvole_fuse_round01_quad(block* A_round1_y,
 // 0+1+2) — the win compounds with the L1 footprint reduction at
 // Q=256. k=2 and k=4 use the 4-leaf quad kernel (fuses rounds 0+1)
 // — the oct kernel's larger basic block + 27-vec-reg working set
-// hurts the small-Q cases (only 1 or 2 oct calls per tile, not
-// enough to amortize the µop-cache pressure).
+// hurts the small-Q cases (only 2 oct calls per tile at k=4, not
+// enough to amortize the µop-cache pressure; none at k=2, Q=4 < 8).
 template <int k, int T = emp::tuning::sfvole_tile<k>()>
 EMP_AES_TARGET_ATTR
 inline void sfvole_sender_butterfly(const block leaves[1 << k],

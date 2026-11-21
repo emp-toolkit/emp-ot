@@ -9,9 +9,8 @@
 #include <vector>
 
 // Bootstrap layer for FpVOLE: COPE-based seed sVOLE plus its chi-fold
-// consistency check. Provides both Cope and Base_svole in one header
-// (upstream provenance: emp-zk's fp_cope.h + fp_base_svole.h), which is
-// all FpVOLE includes to get them.
+// consistency check. Provides both Cope and Base_svole in one header,
+// which is all FpVOLE includes to get them.
 //
 // Why not Ferret for Cope's base OTs: Cope is a chosen-bit OT
 // construction — the OT-receiver picks delta_bool, the OT-sender
@@ -37,7 +36,7 @@ public:
   int party;
   int64_t m;
   IOChannel *io;
-  block sid;                 // session id forwarded to the base CO
+  block sid;                 // session id forwarded to the base CSW
   __uint128_t delta;
   std::vector<PRG> G0, G1;
   std::unique_ptr<bool[]> delta_bool;

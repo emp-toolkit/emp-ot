@@ -2,7 +2,7 @@
 #define EMP_OT_MLKEM_CRS_HPP__
 
 // Common reference string (CRS) / public-parameter expansion for the
-// ML-KEM-512 base OTs.
+// ML-KEM-512 base OT (BMM).
 //
 // Inputs:  32-byte session_seed (shared by sender and receiver, derived from
 //          the OT class's (`block sid`, OT index) pair).

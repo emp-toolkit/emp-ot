@@ -133,7 +133,8 @@ from a subdoc.
   in the test-mode tree before the change, again after, and `diff` them. Empty diff means
   the wire is preserved. Any change to the protocol's wire format —
   even an algebraically equivalent reordering — must be intentional
-  and update the baseline table in [README.md](README.md). See
+  and update `test/trace_hash.baseline` and the table in
+  [README.md](README.md). See
   [docs/wire-trace-hashes.md](docs/wire-trace-hashes.md) for the full
   workflow. This is the single most important rule in this repo.
 

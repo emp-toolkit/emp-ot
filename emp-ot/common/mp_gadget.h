@@ -10,9 +10,9 @@
 #include <type_traits>
 #include <vector>
 
-// Unified multi-point sibling-OT gadget. Driven `tree_n` times by an
-// outer streaming extension (Ferret RCOT or sVOLE). One template
-// class subsumes all three current shapes:
+// Multi-point sibling-OT gadget. Driven `tree_n` times by an outer
+// streaming extension (Ferret RCOT or sVOLE). One template class
+// serves all three shapes:
 //
 //   Ferret MPCOT (F_2 RCOT)    : AuthValue=AuthValueFerret (single
 //                                 `block mac` field), no per-tree
@@ -227,11 +227,11 @@ public:
   // ---- Decoupled "silent consume" path (SilentFerret) --------------
   // Splits run_next_tree into a one-shot prepare (all wire traffic, run
   // once at begin) and a wire-free per-tree produce (run at consume).
-  // prepare_all() expands every tree, ships corrections in tree order, and
-  // remembers the per-tree cGGM root seeds so
+  // prepare_all() expands every tree and ships corrections in tree order;
+  // the caller supplies reproducible cGGM root seeds so
   // produce_tree() can re-derive a tree's leaves with no I/O. In
   // malicious mode it also folds each tree's chi contribution into
-  // consist_check_VW here, so end()'s run_end_packed check is unchanged.
+  // consist_check_VW here, which fold_round_check reads.
   //
   // The expensive cGGM expand and VW inner-product run on `pool` a batch
   // at a time; the socket sends and the per-tree get_digest() chi snapshot
@@ -556,8 +556,8 @@ public:
   // Mirror of MultiPointGadgetSender's prepare_all / produce_tree.
   // prepare_all() receives and stores every tree's correction. In malicious
   // mode it also evaluates each tree and folds its chi contribution into
-  // consist_check_chi_alpha / consist_check_VW so end()'s run_end_packed
-  // check is unchanged. In semi-honest mode that evaluation has no persistent
+  // consist_check_chi_alpha / consist_check_VW, which fold_round_check
+  // reads. In semi-honest mode that evaluation has no persistent
   // effect, so it is deferred to produce_tree(), which evaluates from the
   // stored correction with no I/O.
   //
@@ -728,10 +728,8 @@ public:
               "MultiPointGadget batched consistency check fails");
   }
 
-  // FTyped round-final check (receiver). Both val- and mac-side
-  // arithmetic goes through f_mul/f_add: AuthValue<F> has val and
-  // mac both F-typed, so scalar_mul/embed degenerate to f_mul and
-  // identity.
+  // FTyped round-final check (receiver). The carrier's val and mac are
+  // both F-typed, so both sides of the check use f_mul / f_add.
   void run_end_typed(const AuthValue *triples, AuthValue triple_t) {
     static_assert(AuthValue::kChiFoldFlavor == ChiFoldFlavor::FTyped,
                   "run_end_typed: AuthValue is not FTyped");

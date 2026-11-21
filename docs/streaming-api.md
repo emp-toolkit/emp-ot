@@ -39,10 +39,10 @@ void next_n(Element* dst,  int64_t n);    // buffered draw within a caller-owned
 default calls the backend's ordinary virtual `begin()` and records `n_ots` as
 an upper bound across subsequent `next_n()` calls. Concrete OT backends retain
 the overload with `using OTExtension::begin`. It is virtual because
-`SilentFerret` keeps its stronger existing meaning: prepay enough complete
-Ferret rounds before returning. That override preserves its prior
-prepayment-hint contract and may roll live if a caller continues beyond
-`n_ots`. sVOLE exposes only the ordinary streaming lifecycle.
+`SilentFerret` gives it a stronger meaning: prepay enough complete Ferret
+rounds before returning. That override treats `n_ots` as a prepayment hint
+and may roll live if a caller continues beyond it. sVOLE exposes only the
+ordinary streaming lifecycle.
 
 The lifecycle is
 
@@ -55,11 +55,11 @@ The lifecycle is
 
 `check()` is an `OTExtension` API, not a fifth
 `StreamingExtension<Element>` virtual: OT extensions have a public
-mid-session certification use case, while the shared sVOLE lifecycle remains
-`begin/next/end`. The concrete OT backends keep implementing the same four
-streaming virtuals listed above; `OTExtension::check()` composes their existing
-virtual `end()` and `begin()` semantics while the streaming base preserves the
-buffer cursor across that internal boundary.
+mid-session certification use case, while the shared sVOLE lifecycle is
+`begin/next/end`. The concrete OT backends implement the four streaming
+virtuals listed above, and `OTExtension::check()` composes their virtual
+`end()` and `begin()` while the streaming base preserves the buffer cursor
+across that internal boundary.
 
 `chunk_size()` is the unit each `next()` emits — one cGGM tree's
 leaves for Ferret, one batch for IKNP/SoftSpoken, one tree's
@@ -170,12 +170,12 @@ caller-owned streaming session even when `num == 0`.
 ## Incremental draw (`next_n(dst, n)`)
 
 `run()` is convenient but opens and closes a session *per call*. For a
-backend that consumes the stream a little at a time (emp-zk draws one
-COT per AND gate, a few per multiplication), that means paying the
-per-round end-work — `run_refill_`'s refill trees **plus** the
-malicious chi-fold check — every `chunk_size()` elements, amortized
-over a single produced tree instead of a whole round (~hundreds of
-trees). That was a ~20× slowdown in emp-zk before this API.
+caller that consumes the stream a little at a time (an interactive ZK
+proof draws one COT per AND gate, a few per multiplication), that
+means paying the per-round end-work — `run_refill_`'s refill trees
+**plus** the malicious chi-fold check — every `chunk_size()` elements,
+amortized over a single produced tree instead of a whole round
+(~hundreds of trees).
 
 `next_n` instead draws from one long-lived session the caller owns. It
 fills whole chunks *straight into* `dst` (no intermediate copy) and only
@@ -252,10 +252,9 @@ ending early is allowed. Both peers must declare the same total: a backend's
 sized final unit changes the actual message length, so mismatched declarations
 desynchronize the stream rather than acting as independent local hints. Once
 the entire remaining declaration fits in one chunk, the base offers it to a
-protected sized-tail hook. Existing OT backends' default hook still calls one
-full `next()`, so IKNP, Ferret, and every ordinary no-argument `begin()` retain
-their previous behavior. SoftSpoken
-overrides the hook using its existing arbitrary-`bs` pipeline and rounds only
+protected sized-tail hook. The default hook calls one full `next()`, so IKNP
+and Ferret produce whole chunks, as every no-argument `begin()` session does.
+SoftSpoken overrides the hook with its arbitrary-`bs` pipeline and rounds only
 to its native 128-COT unit: a declared suffix of `r` COTs produces
 `128 * ceil(r / 128)`, not a full public chunk.
 
@@ -348,7 +347,7 @@ mid-session `check()` boundary described above, and implements
 `RandomCOT::rcot` — the polymorphic one-shot
 entry that callers holding a `RandomCOT*` (chosen-correlation
 auto-wrapper inside `COT::send_cot/recv_cot`, generic-OT consumers in
-emp-zk / emp-sh2pc) use without knowing the instance's party:
+outer protocols) use without knowing the instance's party:
 
 ```cpp
 //   begin/next/end / run / chunk_size  (StreamingExtension contract — inherited)

@@ -139,7 +139,7 @@ default set. `FpVOLE` always runs a `ferret_b9` pre-stage. `F2kVOLE` nests throu
 are SECURITY-class for the auto-tuner ([`performance-tuning.md`](performance-tuning.md)), and
 both parties must use the same set. To evaluate a set, feed `N = t·2^tree_depth`,
 `k = 2^logk` and `t` to the estimator in `regular` mode and to
-`python3 tools/lpn_security.py N k t` (§7).
+`python3 tools/lpn_security.py N k t` (§6).
 Evaluate the exact `t` rather than interpolating, because costs step when the solving degree
 changes (Step 3 of §3).
 
@@ -157,14 +157,14 @@ A custom set cannot change the stages underneath it:
 
 Every set keeps every counted attack at **141 bits or more, in both F₂ and the large
 field**: 128 bits plus a 10% margin. One set serves both fields. The margin is there
-because published costs for regular LPN keep falling; §6 shows what that did to
-earlier sets.
+because published costs for regular LPN keep falling; the CHANGELOG records what
+that did to the sets of earlier releases.
 
 ### The papers used
 
 The tool is the LPN estimator of Yu, Yang, Wang, A. Wang, T. Wang, Liu, Hao and Li
 (<https://lpnestimator.com>, `Code_estimators` at commit 969ef60, with the overflow
-fix of §7). Its routines, and the three more evaluated with `tools/lpn_security.py`:
+fix of §6). Its routines, and the three more evaluated with `tools/lpn_security.py`:
 
 | Attack | Source | Evaluated with |
 |---|---|---|
@@ -263,7 +263,7 @@ Binary instance, `regular` mode (bits; the lowest in each row in bold):
 
 Large-field instance. Of the estimator's F_q routines, only SD 2.0 changes with `q` on
 these sets, by under 0.02 bits between F_p and GF(2¹²⁸). The one-round AGB routine
-`AGBforq` (the copy in `lwyy/hardness_of_lpn.py`, see §7) agrees with AGB 2.0 to within
+`AGBforq` (the copy in `lwyy/hardness_of_lpn.py`, see §6) agrees with AGB 2.0 to within
 0.01 bit on every set and has no column of its own.
 
 | set | Gauss | SD 2.0 | SD-ISD | hybrid | reg-ISD | AGB 2.0 | XFL | WXL | restricted ISD | sparse WXL |
@@ -484,30 +484,7 @@ provisional and discarded. A round that completes reveals only that the check
 passed, the selective-failure query of §1. `Ferret` masks its check with the 128
 dedicated check COTs.
 
-## 6. Parameter sets by release
-
-| release | sets `(N, k, t)` or `(t, logk, tree_depth)` | estimator minimum (binding) |
-|---|---|---|
-| current | `ferret_b9` (2,400, 16, 9) · `b10` (2,800, 17, 10) · `b11` (3,800, 18, 11) · `b12` (4,200, 19, 12) · `b13` (4,500, 20, 13) | 183.3 or more in both fields; every counted attack ≥ 141 (§3) |
-| `v1.0.0-alpha.1` | `ferret_b13` (1,900, 19, 13) · `b12` (1,520, 18, 12) · `b11` (1,170, 17, 11) · `b10` (850, 16, 10) | 128.2 · 128.1 · 128.2 · 128.6 (hybrid; BJMM for b10) |
-| `0.2.4`–`0.3.0` | `ferret_b13` (10,485,760; 452,000; 1,280) · `b12` (10,268,672; 238,000; 2,507) · `b11` (10,180,608; 124,000; 4,971), with setup sets (470,016; 32,768; 918) · (268,800; 17,384; 1,050) · (178,944; 17,384; 699) | 125.3 · 104.5 · 92.8 (hybrid); setup 119.8 · 113.7 · 124.0 |
-| `0.1.0`–`0.2.3` | (10,608,640; 589,824; 1,295) with setup (649,728; 36,288; 1,269), within 2% of the CCS'20 sets of the attack literature (10,805,248; 589,760; 1,319) / (609,728; 36,288; 1,269), whose 609,728 is a Ferret-paper typo for 649,728 | the CCS'20 sets: 149.9 main, 126.6 setup (hybrid) |
-
-The `v1.0.0-alpha.1` sets cost 112.8 · 111.3 · 113.1 · 120.6 bits under the sparse WXL
-of §3 (`b13` · `b12` · `b11` · `b10`), and its default costs 130.3 under dense XFL/WXL over F₂.
-
-In every 0.1.0–0.3.0 release the extension round reuses base COTs across
-roles: cGGM choice bits occupy slots `[0, t·log_bin)`, the chi check
-`[0, 128)`, the LPN secret `[128, 128 + k)`, so the first `t·log_bin − 128`
-secret coordinates are also noise-position bits; the setup round is
-disjoint, and the legacy LPN matrix seed is sampled by one party and sent
-in the clear. The legacy estimates above assume the standard instance. The
-`v1.0.0-alpha.1` sets have `logk − tree_depth = 6` and the `0.3.x` sets
-were chosen against the Liu–Wang–Yang–Yu estimator of 2022, before the
-regular-ISD, hybrid and AGB 2.0 attacks. The sets shape the transcript:
-both parties must run the same release.
-
-## 7. Reproducing the estimates
+## 6. Reproducing the estimates
 
 ### The estimator
 

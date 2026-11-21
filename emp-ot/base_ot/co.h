@@ -76,4 +76,4 @@ class CO: public OT { public:
 };
 
 }//namespace
-#endif// OT_CO_H__
+#endif// EMP_CO_H__

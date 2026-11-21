@@ -1,10 +1,10 @@
 #ifndef EMP_OT_BASE_OT_SELECT_H__
 #define EMP_OT_BASE_OT_SELECT_H__
 
-// Runtime base-OT selection. The OT-extension backends (SoftSpoken) already take
-// a polymorphic `std::unique_ptr<OT>` base OT; this enum + factory let a consumer
-// pick one at run time (per instance) instead of editing the compile-time
-// SoftSpokenBaseOT alias. The extension's own runtime guard
+// Runtime base-OT selection. The OT-extension backends (IKNP, SoftSpoken,
+// Ferret) take a polymorphic `std::unique_ptr<OT>` base OT; this enum +
+// factory let a consumer pick one at run time (per instance) instead of
+// editing a compile-time *BaseOT alias. The extension's own runtime guard
 // (OTExtension: malicious_ && !base_ot->is_malicious_secure()) still applies.
 
 #include <memory>

@@ -242,7 +242,7 @@ branches:
                                  the sender opens only if va == vb
 ```
 
-Aliases on Ferret's side keep the legacy names:
+Ferret names its two gadget instantiations with aliases:
 
 ```cpp
 using MPCOT_Sender   = MultiPointGadgetSender<AuthValueFerret>;

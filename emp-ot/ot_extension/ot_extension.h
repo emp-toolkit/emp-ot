@@ -26,7 +26,7 @@ namespace emp {
 //   - IKNP / SoftSpoken: party-dispatch inline to private send/recv
 //     helpers (their bodies diverge per role).
 //   - Ferret: one unified body per stage (party-dispatches inside the
-//     private per-tree helpers).
+//     protected per-tree helpers).
 class OTExtension : public RandomCOT, public StreamingExtension<block> {
 public:
     // Subclass begin/next/end trip this on first call via
@@ -67,7 +67,7 @@ public:
     // (the COT LSB convention shared by all three extensions).
     //
     // Subclasses that need to propagate Δ into auxiliary state (e.g.
-    // Ferret's mpcot_sender) override and call this base first.
+    // Ferret's gadget_send_) override and call this base first.
     //
     // A Δ given here should be uniformly random, and one that a session
     // used is spent if the session aborts: the malicious checks are
@@ -84,7 +84,7 @@ public:
 
     // Set this extension's session id and forward a derived child sid to the
     // owned base OT, so the base OT's RO transcript is session-separated.
-    // Pre-bootstrap, like the setters above. Ferret, which hands base_ot to a
+    // Pre-bootstrap, like set_delta above. Ferret, which hands base_ot to a
     // nested extension at bootstrap, overrides this to forward nothing: its
     // bootstrap derives a child sid for that nested instance, and the
     // extension that finally runs the base OT forwards a child of its own.
@@ -103,10 +103,10 @@ public:
     // Counted streaming begin: `n_ots` is an upper bound across this
     // session's next_n() calls. It enables a backend to shrink its final
     // production unit. Both peers must pass the same count because a sized
-    // unit changes wire length. Ordinary begin() remains unchanged.
+    // unit changes wire length. Ordinary begin() opens an uncounted session.
     //
-    // Virtual to preserve SilentFerret's existing stronger begin(n_ots)
-    // prepayment semantics.
+    // Virtual so SilentFerret can give begin(n_ots) its stronger prepayment
+    // semantics.
     using StreamingExtension<block>::begin;
     virtual void begin(int64_t n_ots) { begin_counted_(n_ots); }
 
@@ -119,11 +119,11 @@ public:
     // its deferred base-OT extraction check pending.
     //
     // The default implementation deliberately composes the concrete virtual
-    // end()/begin() lifecycle. This gives every OTExtension backend its exact
-    // existing round-final check/restart semantics without adding a new pure
-    // hook, while StreamingExtension preserves the buffered cursor across that
-    // internal boundary. Ordinary public end(); begin(); continues to discard
-    // a prior caller-owned tail.
+    // end()/begin() lifecycle. This gives every OTExtension backend its own
+    // round-final check/restart semantics without a separate pure hook,
+    // while StreamingExtension preserves the buffered cursor across that
+    // internal boundary. An ordinary public end(); begin(); discards a prior
+    // caller-owned tail.
     virtual void check() {
         expect_in_session_();
         if (unchecked_chunk_ || base_check_pending_)
@@ -152,7 +152,7 @@ protected:
     // Concrete next() overrides mark once after successfully producing one
     // backend chunk; concrete end() overrides clear only after every check and
     // deferred base-OT check succeeds. This is per chunk (thousands of COTs),
-    // never per COT or per downstream gate.
+    // never per COT.
     void mark_chunk_unchecked_() {
         unchecked_chunk_ = true;
         checked_continuation_idle_ = false;

@@ -23,8 +23,8 @@ template <typename AuthValue> class Svole;
 struct AuthValueF2k {
   using F = block;
 
-  // Storage (val-first by convention; downstream emp-zk depends on
-  // val in the low 64 bits of an AuthValue-shaped __uint128_t).
+  // Storage (val-first by convention, and part of the layout contract:
+  // val at offset 0, mac at offset 16).
   F val;
   F mac;
 

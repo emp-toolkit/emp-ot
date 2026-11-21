@@ -110,8 +110,9 @@ A hash change is not automatically bad. There are three categories:
 
 2. **Intentional.** You're changing the protocol on purpose — adding
    a new round, removing a redundant byte, switching a hash function,
-   etc. The hash should change. **Update the canonical hash table in
-   the README** so the next refactor's baseline is the new value.
+   etc. The hash should change. **Regenerate `test/trace_hash.baseline`
+   and the README table** (see *The CI gate* below) so the next
+   refactor's baseline is the new value.
    In the commit message:
    - State which protocols are affected.
    - State what the wire-byte change is.

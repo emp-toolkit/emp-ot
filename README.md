@@ -312,10 +312,8 @@ internally).
 
 `Δ` is readable as `ote.Delta` immediately after construction. The
 receiver has no `Δ`. To override the ctor-sampled `Δ` (e.g. when an
-outer protocol like
-[`emp-zk`](https://github.com/emp-toolkit/emp-zk) or
-[`emp-sh2pc`](https://github.com/emp-toolkit/emp-sh2pc) supplies its
-own correlation), call `set_delta` before the first `rcot()` call:
+outer protocol supplies its own correlation), call `set_delta` before
+the first `rcot()` call:
 
 ```cpp
 IKNP ote(party, io.get());
@@ -420,10 +418,10 @@ This matters because `rcot(data, num)` opens and closes a session per
 call, so the per-round end-work (refill trees + the malicious chi-fold
 check) is paid every `chunk_size()` COTs. `next_n` keeps one session
 open, amortizing that over the whole stream. In a malicious `Ferret`
-benchmark at the default set matching emp-zk's one-COT-per-AND-gate
-consumption shape (the two-box setup of the Performance section),
-1,048,576 one-COT calls were 72× faster (slower-party median of 5) and
-used 92× less wire this way than with `rcot(_, 1)` in a loop.
+benchmark at the default set (the two-box setup of the Performance
+section), 1,048,576 one-COT draws, one per AND gate as in an interactive
+ZK proof, ran 72× faster (slower-party median of 5) and used 92× less
+wire through `next_n` than through `rcot(_, 1)` in a loop.
 `next_n` is mutually exclusive with `run()`/`rcot()` on the same
 instance (both touch the same leftover buffer); a `run()` after the
 session's `end()` first returns the tail the session left, which that
@@ -566,7 +564,7 @@ rest is the amortised bootstrap. Their correction traffic is identical,
 and their semi-honest total traffic matches exactly. Malicious
 SilentFerret batches the two per-round checks into one, saving 48 bytes
 total (about 0.000012 bits/RCOT), so both still round to 0.48 bits/RCOT.
-The no-argument, one-round-at-a-time wire equivalence remains pinned by
+The no-argument, one-round-at-a-time wire equivalence is pinned by
 the trace table above. The measured
 `SilentFerret` rows' `next()` calls are wire-free (all traffic is in
 `begin(n_ots)`).

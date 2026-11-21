@@ -17,8 +17,8 @@ int party, port;
 // Authenticated triple check for F_p (Mersenne 2^61 - 1):
 //   ALICE has (Δ, mac_i); BOB has (val_i, K_i).
 //   Invariant: K_i ≡ mac_i + Δ × val_i (mod p).
-// BOB ships (Δ_alice received from ALICE, all K_i / val_i), ALICE
-// verifies locally — same shape as test_f2k_vole.
+// ALICE ships Δ and her mac_i; BOB verifies K_i locally — same shape as
+// test_f2k_vole (the Δ-holder ships, the other party checks).
 void check_triple(uint64_t delta, const uint64_t *val, const uint64_t *mac,
                   int64_t size, NetIO *io) {
   if (party == ALICE) {
@@ -48,7 +48,7 @@ static constexpr auto kSvoleParam   = tuning::ferret_b9;
 static constexpr int  kOneshotIters = 2;
 
 // Streaming-path exercise: begin → many next → end.
-// Walks chunk-by-chunk through ~one round of outputs, verifying each.
+// Walks chunk-by-chunk through two rounds of outputs, verifying each.
 void test_streaming(NetIO *io, int svole_party) {
   FpVOLE<AuthValueFp> vtriple(svole_party, io,
                               /*malicious=*/true, kSvoleParam);

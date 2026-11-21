@@ -44,8 +44,8 @@ namespace emp {
  * wire-free, with a live (communicating) rollover when the round's budget is
  * exhausted — behaviorally identical to plain Ferret's per-round streaming.
  *
- * Subclasses Ferret and reuses its bootstrap / LPN / gadget / round-end
- * check; overrides the lifecycle to add the prepay loop and the rolling
+ * Subclasses Ferret and reuses its bootstrap / LPN / gadget; overrides the
+ * lifecycle to add the prepay loop, the batched check and the rolling
  * wire-free consume.
  */
 class SilentFerret : public Ferret {

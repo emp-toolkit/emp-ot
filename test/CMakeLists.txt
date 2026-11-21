@@ -73,7 +73,8 @@ set_tests_properties(test_tuning_local PROPERTIES TIMEOUT 30)
 # Output-invariance of the `make tune` LOCAL knobs (single-process).
 add_test_case(test_tuning_invariance)
 
-# LPN fold over GF(2^128) against a per-entry reference (single-process).
+# LPN fold over GF(2^128) and F_p against a per-entry reference
+# (single-process).
 add_test_case(test_lpn)
 
 # sVOLE multi-point gadget: the relation and the leaf hash, F_p and GF(2^128)

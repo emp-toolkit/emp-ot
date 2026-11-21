@@ -257,8 +257,8 @@ public:
             compute_block_sink<1>(prg, initial, pre, j, sink);
     }
 
-    // Back-compat: fold a chunk using the instance's own advancing PRG.
-    // (Ferret / sVOLE serial path; advances prg_ by blocks_per_chunk.)
+    // Serial path (Ferret, sVOLE): fold a chunk using the instance's own
+    // advancing PRG; advances prg_ by blocks_per_chunk(length).
     void compute_slice(AuthValue *out, const AuthValue *pre, int64_t length) {
         compute_slice(prg_, out, pre, length);
     }

@@ -28,7 +28,7 @@ using IKNPBaseOT = CSW;
  * packed F_{2^128} elements fold into running accumulators
  * (check_q on the sender, check_t / check_x on the receiver) right
  * after sse_trans, while `out` is still cache-hot. end() runs a final
- * 128-OT chunk (folded with chi from the same continuing transcript)
+ * sacrificial chunk (folded with chi from the same continuing transcript)
  * before the (x, t) io exchange and the check_q ⊕ x·Δ == t compare.
  * Each next() writes exactly chunk_size() = block_size = 2048 blocks;
  * the StreamingExtension base wraps it into a one-shot rcot() with a

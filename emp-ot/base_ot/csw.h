@@ -10,7 +10,7 @@ namespace emp {
  * Canetti-Sarkar-Wang "Blazing Fast OT" — base OT realising π_ot^ℓ
  * instances of F_SFROT.
  * [REF] Canetti, Sarkar, Wang. "Blazing Fast OT for Three-Round UC OT
- *       Extension." (Fig. SFROT_Prot in SFOT.tex)
+ *       Extension." ePrint 2020/110 (the SF-ROT protocol figure)
  *
  * 3-message base OT under CDH in the observable RO model. ℓ batched
  * OTs share a single (seed, T, z) setup; per-OT cost ≈ 1 EC exp/side.

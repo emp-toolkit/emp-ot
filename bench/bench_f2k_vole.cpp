@@ -15,8 +15,7 @@ using namespace std;
 
 int party, port;
 
-// Release-mode keeps the default (b12) for stress coverage at the default
-// parameter point.
+// Default parameter point (b12) for stress / throughput coverage.
 static constexpr auto kSvoleParam   = tuning::ferret_b12;
 static constexpr int  kOneshotIters = 8;
 
@@ -43,8 +42,8 @@ void bench_streaming(NetIO *io, int svole_party) {
   vtriple.end();
 }
 
-// One-shot path: run(out, num) with chunk-aligned num. ram-zk uses
-// the same shape with `num = chunk_aligned_buf_sz()`.
+// One-shot path: run(out, num) with chunk-aligned num
+// (`num = chunk_aligned_buf_sz()`).
 void bench_oneshot(NetIO *io, int svole_party) {
   F2kVOLE<AuthValueF2k> vtriple(svole_party, io,
                                 /*malicious=*/true, kSvoleParam);

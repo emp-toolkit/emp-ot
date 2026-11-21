@@ -275,3 +275,37 @@ extensions realize selective-abort functionalities with streaming
 outputs provisional until `check()` or `end()`, and `BMM` is a custom
 construction over ML-KEM-512 internals (not standardized FIPS-203).
 Research software; no independent audit.
+
+The Ferret LPN sets, as `(t, logk, tree_depth)`: `ferret_b13` (1,900, 19, 13) ·
+`b12` (1,520, 18, 12) · `b11` (1,170, 17, 11) · `b10` (850, 16, 10), all with
+`logk − tree_depth = 6`; `ferret_b13` is the default. Their estimator minimum is
+128.2 · 128.1 · 128.2 · 128.6 bits (hybrid; BJMM for `b10`). Under the sparse WXL
+of `docs/lpn-security.md` §3 they cost 112.8 · 111.3 · 113.1 · 120.6 bits
+(`b13` · `b12` · `b11` · `b10`), and the default costs 130.3 under dense XFL/WXL
+over F₂.
+
+## 0.1.0 – 0.3.0
+
+Releases before the 1.0 line. Only their LPN parameters are recorded here.
+
+### Security
+
+- `0.2.4`–`0.3.0`, as `(N, k, t)`: `ferret_b13` (10,485,760; 452,000; 1,280) ·
+  `b12` (10,268,672; 238,000; 2,507) · `b11` (10,180,608; 124,000; 4,971), with
+  setup sets (470,016; 32,768; 918) · (268,800; 17,384; 1,050) ·
+  (178,944; 17,384; 699). Estimator minimum 125.3 · 104.5 · 92.8 bits (hybrid);
+  setup 119.8 · 113.7 · 124.0. The `0.3.x` sets were chosen against the
+  Liu–Wang–Yang–Yu estimator of 2022, before the regular-ISD, hybrid and AGB 2.0
+  attacks.
+- `0.1.0`–`0.2.3`: (10,608,640; 589,824; 1,295) with setup (649,728; 36,288;
+  1,269), within 2% of the CCS'20 sets of the attack literature
+  (10,805,248; 589,760; 1,319) / (609,728; 36,288; 1,269), whose 609,728 is a
+  Ferret-paper typo for 649,728. The CCS'20 sets cost 149.9 bits (main) and
+  126.6 (setup) under the hybrid attack.
+- In every 0.1.0–0.3.0 release the extension round reuses base COTs across
+  roles: cGGM choice bits occupy slots `[0, t·log_bin)`, the chi check
+  `[0, 128)`, the LPN secret `[128, 128 + k)`, so the first `t·log_bin − 128`
+  secret coordinates are also noise-position bits. The setup round is disjoint,
+  and the LPN matrix seed is sampled by one party and sent in the clear. The
+  estimates above assume the standard instance.
+- The sets shape the transcript: both parties must run the same release.

@@ -106,7 +106,7 @@ void IKNP::send_end_() {
 	}
 }
 
-// Row-by-row recv + compute, mirroring send_next_'s interleave (see):
+// Row-by-row recv + compute, mirroring recv_next_'s interleave:
 // the receiver sends the u-matrix one row at a time, so we read one
 // row, fold it into the transcript, and combine it with G0[i] before
 // the next read — keeping `tmp` to a single row and pipelining the

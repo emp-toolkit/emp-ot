@@ -34,8 +34,8 @@ static void bench_one(NetIO* io, int party, int64_t length, bool malicious,
 // window. begin_threads drives the begin() offline pool; online_threads drives
 // the wire-free extend (next_chunks_parallel). Unlike bench_one (rcot(), whose
 // extend loop is serial and ignores online_threads) this threads both phases,
-// and unlike bench_online it keeps begin() -- hence the base OTs and all begin
-// wire traffic -- inside the timer. Wire bytes are captured across the whole
+// and it keeps begin() -- hence the base OTs and all begin wire traffic --
+// inside the timer. Wire bytes are captured across the whole
 // call, so send/recv B/COT reflect the full protocol.
 static void bench_e2e(NetIO* io, int party, int64_t length, bool malicious,
                       const char* tag, const PrimalLPNParameter& param,

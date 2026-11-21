@@ -31,7 +31,7 @@
 //
 // begin / next / end (and the one-shot rcot wrapper from
 // StreamingExtension::run) chunk the OT-output axis: each session
-// gets a fresh session_id; cur_*_b0_ tracks the per-session PRG
+// gets a fresh key (session_key_); cur_*_b0_ tracks the per-session PRG
 // counter offset (in bpr-blocks) consumed by previous next() calls
 // so the keystream across chunks of one session matches one bulk
 // PRG invocation.
@@ -54,7 +54,7 @@
 // Two checks compose to upgrade from semi-honest to malicious-secure
 // (Roy '22 Fig. protpprfconsistency + protvoleconsistency):
 //
-//   (1) PPRF check, once at end of setup_*. The PPRF-sender (=
+//   (1) PPRF check, once at end of bootstrap_*_. The PPRF-sender (=
 //       COT-receiver) commits to its leaves via an expanded SHA-256
 //       digest + XOR t̂ over PRG'-expanded check material. The
 //       PPRF-receiver reconstructs s'_{α_i} (the 2λ check material,
@@ -74,7 +74,7 @@
 //       · R_i where R_i = u_canonical[i]). One 128-OT sacrificial chunk
 //       runs in *_end before the (check_x, check_t) exchange and the
 //       check_q ?= check_t ⊕ check_x · Δ compare. Same shape as IKNP
-//       — see emp-ot/iknp.{h,cpp}.
+//       — see emp-ot/ot_extension/iknp.{h,cpp}.
 
 #include "emp-ot/ot_extension/softspoken/softspoken.h"
 #include "emp-ot/ot_extension/softspoken/ss_bench_phases.h"
@@ -116,10 +116,10 @@ SoftSpoken<k, kChunkBlocks>::SoftSpoken(OTExtension::CloneInit ci,
     this->sid = lane_sid;
     this->sid_fixed_ = true;
     this->setup_done = true;              // clone skips bootstrap
-    // Own malicious-check FS transcript on this lane's channel, guarded (mirrors
-    // bootstrap_*_ softspoken.cpp:148/199) so an already-FS-enabled channel is
-    // idempotent, not a double-enable abort. send_first matches the role, so
-    // both ends of the lane agree.
+    // Own malicious-check FS transcript on this lane's channel, guarded (as at
+    // the end of bootstrap_send_ / bootstrap_recv_) so an already-FS-enabled
+    // channel is idempotent, not a double-enable abort. send_first matches the
+    // role, so both ends of the lane agree.
     if (this->malicious && !new_io->fs_enabled())
         new_io->enable_fs(this->is_ot_sender());
 }
@@ -255,9 +255,9 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
 // exp[2]), feeds the resulting Q × 2-block vector through its own
 // rolling SHA-256, and compares.
 //
-// kPPRFCheckSession sits in the high 64 bits to keep the check_K
-// disjoint from per-chunk sfvole session keys (which use the low 64
-// bits with the high 64 bits zeroed).
+// check_K is a fixed key, kPPRFCheckSessionHigh in its high 64 bits. The
+// per-chunk sfvole session keys are RO outputs (session_key_), so none
+// equals it except with negligible probability.
 
 namespace {
 constexpr int64_t kPPRFCheckSessionHigh = 0x70505246434B5F00LL; // "pPRFCK_\0"
@@ -349,21 +349,22 @@ void SoftSpoken<k, kChunkBlocks>::pprf_check_recv() {
 // Streaming API
 // =====================================================================
 //
-// Each rcot_next call processes one chunk of `chunk_len` OTs
-// (multiple of 128, ≤ kChunkOTs). Internally:
+// Each {send,recv}_chunk_pipeline call processes one chunk of bs * 128 OTs:
+// bs = kChunkBlocks from next(), ceil(r / 128) for a counted tail of r
+// COTs, and 1 for the sacrificial end chunk. Internally:
 //
-//   * For every sub-VOLE i in [0, n), the chunk-aware sfvole_*_compute_chunk
-//     produces this chunk's u_target / v_planes (sender side, a.k.a.
-//     OT-receiver) or w_planes (receiver side, a.k.a. OT-sender), via
+//   * For every sub-VOLE i in [0, n), sfvole_*_butterfly produces this
+//     chunk's u / v_planes (sender side, a.k.a. OT-receiver) or w_planes
+//     (receiver side, a.k.a. OT-sender), via
 //     the butterfly kernel — one session-shared fixed AES key, leaves
 //     XORed in as plaintext tweaks. PRG counter offset = cur_*_b0_
 //     (advances by `bs` per chunk within the session) so the keystream
 //     slice across chunks of one session matches one bulk PRG invocation.
 //
-//   * The OT-receiver side (rcot_next) batches all n-1 d_buf_i
+//   * The OT-receiver side (recv_chunk_pipeline) batches all n-1 d_buf_i
 //     vectors of this chunk into one io->send_block call (saves
 //     n-2 NetIO ops per chunk vs sub-VOLE-by-sub-VOLE sends). The
-//     OT-sender side (rcot_next) reads them with a matching
+//     OT-sender side (send_chunk_pipeline) reads them with a matching
 //     batched io->recv_block. Both bytes-on-the-wire orderings are
 //     fixed: chunk 0's d_bufs (sub-VOLE 1..n-1 concatenated), then
 //     chunk 1's, etc.
@@ -375,11 +376,9 @@ void SoftSpoken<k, kChunkBlocks>::pprf_check_recv() {
 //     sse_trans expects, so no gather scratch is needed. The LSB
 //     convention is applied to the same chunk-local slice.
 //
-// Memory: the dominant inner-loop scratch is `planes_chunk` of size
-// n*k*kChunkBlocks blocks (= 64 KB at the current kChunkBlocks),
-// sized to fit L1 across modern x86 and Apple Silicon parts. In
-// contrast the bulk path held n*k*bpr of plane data at length=2^20 —
-// well past L3 on small-cache parts.
+// Memory: the dominant inner-loop scratch is `planes_chunk_` of
+// n*k*kChunkBlocks = 128*kChunkBlocks blocks; tuning.h sizes kChunkBlocks
+// to keep it cache-resident while amortizing per-chunk setup.
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::ensure_chunk_scratch_() {
@@ -543,9 +542,9 @@ void SoftSpoken<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
         // 0 to zero, so after Conv bit_0 of every output block is zero.
         // Mirrored on the receiver side by V_0[0] := u_canonical. The COT
         // relation V ⊕ W = u_canonical · α at bit 0 (where bit_0(α_0) = 1
-        // is forced in setup_send) then holds trivially: 0 ⊕ u_canonical =
-        // u_canonical. The fold work for sub-VOLE 0 plane 0 above is wasted,
-        // kept for now to avoid splitting the sfvole API.
+        // is forced by Δ's LSB) then holds trivially: 0 ⊕ u_canonical =
+        // u_canonical. The fold work for sub-VOLE 0 plane 0 above is wasted;
+        // skipping it would split the sfvole API.
         std::memset(w_planes_chunk, 0, sizeof(block) * bs);
 
         // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.
@@ -663,7 +662,7 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
         // 0 to u_canonical, so after Conv bit_0(out[j]) = bit_j(u_canonical)
         // = receiver's intrinsic choice bit. Mirrored on the sender side
         // by W_0[0] := 0. The fold work for sub-VOLE 0 plane 0 above is
-        // wasted, kept for now to avoid splitting the sfvole API.
+        // wasted; skipping it would split the sfvole API.
         std::memcpy(v_planes_chunk, u_canonical, sizeof(block) * bs);
 
         // Transpose 128 × (bs*128) bit-matrix → bs*128 output blocks.

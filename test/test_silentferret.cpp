@@ -1,5 +1,5 @@
 // SilentFerret RCOT correctness: all wire traffic at begin(), wire-free
-// next()/end(). Verifies RCOT correctness (one-shot + streaming) for
+// next()/end(). Verifies RCOT correctness (streaming + produce_range) for
 // semi-honest and malicious modes with a parallel begin()-time pool, and
 // asserts that the next()/end() path moves zero bytes after begin — the
 // "silent consume" property. Throughput lives in bench/bench_silentferret.cpp
@@ -183,8 +183,7 @@ static void verify_next_n(NetIO* io, int party, bool malicious,
 // Prepaid multi-round: begin(n_ots) ships every prepared round's traffic up
 // front, then the whole prepared_capacity() is drawn with ZERO wire I/O
 // across several round boundaries. n_ots is chosen to span K>=4 rounds with a
-// partial last round. Asserts wire-free consume + RCOT correctness, and that
-// a produce_range over round 0 matches the cursor output for the same trees.
+// partial last round. Asserts wire-free consume + RCOT correctness.
 static void verify_prepaid(NetIO* io, int party, bool malicious,
                            const PrimalLPNParameter& param, int n_threads) {
     SilentFerret ot(party, io, malicious, param, nullptr, n_threads);
@@ -262,9 +261,9 @@ static void verify_partial_end_chain(NetIO* io, int party, bool malicious,
          << (malicious ? "mali" : "semi") << ")" << endl;
 }
 
-// Threaded cursor fill across a prepaid round boundary. This is the emp-zk
-// buffer-fill shape: one call fills a chunk-multiple buffer in stream order,
-// while SilentFerret owns the rolling base transitions.
+// Threaded cursor fill across a prepaid round boundary: one call fills a
+// chunk-multiple buffer in stream order, while SilentFerret owns the rolling
+// base transitions.
 static void verify_parallel_rollover(NetIO* io, int party, bool malicious,
                                      const PrimalLPNParameter& param,
                                      int n_threads) {
@@ -295,7 +294,7 @@ static void verify_parallel_rollover(NetIO* io, int party, bool malicious,
 // no-arg (K=1-per-round) SilentFerret move the EXACT same number of bytes in each
 // direction. SilentFerret only *reschedules* Ferret's traffic — all corrections
 // up front, wire-free consume — with one check per round either way. (Byte
-// *values* differ: SilentFerret re-derives its cGGM seeds; the *counts* are
+// *values* differ: each instance draws its own randomness; the *counts* are
 // protocol-determined and must match.) N must be a multiple of one round's user
 // budget: SilentFerret prepares whole rounds, so a PARTIAL last round would make
 // it ship the unused tail of that round's corrections (Ferret ships only what it
@@ -423,9 +422,9 @@ int main(int argc, char** argv) {
             verify_parallel_rollover(io.get(), party, mali, p, n_threads);
         }
 
-    // Differential: SilentFerret moves byte-for-byte the same as Ferret,
-    // both plain (2 batches x 2 rounds vs 4 rounds → identical corrections,
-    // (rounds - batches) fewer checks) and as a valid batch-chained RCOT.
+    // Differential: no-arg SilentFerret moves exactly as many bytes as Ferret;
+    // batched (2 batches x 2 rounds vs 4 rounds) it has identical corrections,
+    // (rounds - batches) fewer checks, and is a valid batch-chained RCOT.
     for (const auto& p : comm_sizes) {
         verify_comm_matches_ferret(io.get(), party, p);
         verify_comm_batched_vs_ferret(io.get(), party, p);

@@ -39,20 +39,18 @@
 
 namespace emp { namespace cggm {
 
-// Tile size for batched H, resolved in tuning.h (per-arch default; leaf
-// values and K0 sums are identical for every tile). At production tree
-// depth the leaves array exceeds L1, so per-tile working-set fit
-// dominates over AES port saturation: smaller tiles when the tree
-// exceeds L1, larger tiles only when everything stays L1-resident.
-// The Tile template parameter on expand_level / build_sender /
-// eval_receiver defaults to kTile but can be overridden.
+// Tile size for batched H, resolved in tuning.h (per-arch default and its
+// rationale, plus any per-build-directory override); leaf values and K0
+// sums are identical for every tile. The Tile template parameter on
+// expand_level / build_sender / eval_receiver defaults to kTile but can
+// be overridden.
 constexpr int kTile = tuning::cggm_tile();
 
 namespace detail {
 
 // Bit-0-clear mask for the COT LSB convention. Used when callers
 // want the final-level leaves to carry the choice signal in bit 0
-// rather than its raw cGGM bit (currently ferret's MPCOT). The mask
+// rather than its raw cGGM bit (Ferret's MPCOT). The mask
 // is applied both to the written leaf and the XOR-sum so K0 stays
 // consistent on both sides.
 inline constexpr block kCggmLsbClearMask = makeBlock(0xFFFFFFFFFFFFFFFFLL,

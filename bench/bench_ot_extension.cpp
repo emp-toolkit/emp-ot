@@ -12,8 +12,8 @@
 // exception to pure streaming: it prepays every round in begin(eff_len) (all
 // correction traffic up front) and then draws wire-free -- its defining mode.
 // Every row gets a fresh NetIO so its Fiat-Shamir state is independent. Each
-// row also absorbs its base-OT bootstrap (set_delta hasn't fired and the
-// streaming begin triggers it lazily) inside the timed window; this is
+// row also absorbs its base-OT bootstrap (the first streaming begin triggers
+// it lazily) inside the timed window; this is
 // intentional -- the reported B/RCOT includes the one-time bootstrap
 // amortised over the bench length.
 #include "bench/bench.h"

@@ -84,7 +84,7 @@ bool test_accumulate_vw() {
 }
 
 // Streaming-path exercise: begin -> many next -> end.
-// Walks chunk-by-chunk through ~one round of outputs, verifying each.
+// Walks chunk-by-chunk through two rounds of outputs, verifying each.
 void test_streaming(NetIO *io, int svole_party) {
   F2kVOLE<AuthValueF2k> vtriple(svole_party, io,
                                 /*malicious=*/true, kSvoleParam);
@@ -121,9 +121,8 @@ static void check_lpn_seed(block key, const char *domain, block sid) {
   }
 }
 
-// One-shot path: run(out, num) with chunk-aligned num. ram-zk uses
-// the same shape with `num = chunk_aligned_buf_sz()`. Runs under a
-// non-default session id.
+// One-shot path: run(out, num) with chunk-aligned num
+// (`num = chunk_aligned_buf_sz()`). Runs under a non-default session id.
 void test_oneshot(NetIO *io, int svole_party) {
   F2kVOLE<AuthValueF2k> vtriple(svole_party, io,
                                 /*malicious=*/true, kSvoleParam);

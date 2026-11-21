@@ -145,8 +145,8 @@ void Ferret::end() {
 // straight to SoftSpoken — at most one level of nesting.
 //
 // FS transcript enabled before either path; in malicious mode it binds the
-// per-tree chi seeds pulled by MPCOT. Unless explicitly overridden, the public
-// LPN matrix seed is derived once from the SID for this Ferret instance.
+// per-tree chi seeds pulled by MPCOT. The public LPN matrix seed is derived
+// once from the SID for this Ferret instance.
 void Ferret::bootstrap_() {
 	if (setup_done) return;
 	fix_sid_();

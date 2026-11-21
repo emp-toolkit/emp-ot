@@ -1,5 +1,5 @@
-// Output-invariance of every LOCAL-class knob that `make tune` may
-// override (see tuning.h "Per-machine overrides"). For each knob, run
+// Output-invariance of every LOCAL-class knob that `make tune` sweeps
+// (see tuning.h "Per-build-directory overrides"). For each knob, run
 // the same computation at the extreme candidate values and assert
 // bit-identical results — a knob that shapes outputs (and therefore
 // the transcript) is AGREEMENT/SECURITY-class and must never be in the

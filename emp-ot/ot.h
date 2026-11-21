@@ -55,7 +55,7 @@ public:
 	// (see OTExtension; Ferret gives it to the nested extension that takes
 	// over its base OT), so only a top-level object draws from its channel.
 	// Malicious-mode Fiat-Shamir challenges bind the sid (fs_challenge above).
-	// The SessionID ctor is implicit, so set_sid(some_block) still works.
+	// The SessionID ctor is implicit, so set_sid(some_block) also works.
 	// An id set here must not be shared with another object, as the channel's
 	// ids never are: two objects with one id derive the same child ids.
 	virtual void set_sid(SessionID s) {
@@ -188,7 +188,8 @@ public:
 private:
 	// Tile size for the chosen-input MITCCRH wrapper: each tile hashes
 	// `ot_bsize` COT outputs in one MITCCRH call, under one key, as one
-	// ParaEnc<1, ot_bsize> AES-NI call. Value lives in tuning.h; see
+	// ParaEnc<1, H * ot_bsize> AES-NI call (H = 2 pads per output when
+	// sending, 1 when receiving). Value lives in tuning.h; see
 	// cot_chosen_input_tile for rationale. A short last tile still hashes
 	// all ot_bsize lanes (the outputs of the unused ones are dropped), so the
 	// pad buffers start zeroed.

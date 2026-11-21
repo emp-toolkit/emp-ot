@@ -12,7 +12,7 @@ Three common extension shapes, in rough order of frequency:
 
 Each below walks you through the checklist. The last section covers
 the *cross-cutting* changes any new protocol needs:
-trace-hash registration, README baseline update, and tests.
+trace-hash registration, baseline updates, and tests.
 
 For background on what these classes are, see
 [`class-organization.md`](class-organization.md); for what they're
@@ -49,8 +49,8 @@ struct AuthValueXxx {
 ```
 
 The order matters: val-first is the convention everything else
-follows (emp-zk's `VAL`/`MAC` accessors, the `AuthValue`-as-packed-int
-casts in `ostriple.h`). Don't reorder.
+follows, including callers that rely on val sitting at offset 0.
+Don't reorder.
 
 ### 1b. Required members
 
@@ -421,8 +421,8 @@ The two existing flavors (`F2kPacked`, `FTyped`) are hardcoded as a
 This is invasive — a new flavor means a new round-final
 consistency-check protocol. Don't reach for it unless you're
 implementing something the two existing ones genuinely can't
-express. If you do, also update [`wire-trace-hashes.md`](wire-trace-hashes.md)'s
-baseline; the new flavor's hash will differ.
+express. If you do, also regenerate the trace-hash baselines (see
+[`wire-trace-hashes.md`](wire-trace-hashes.md)); the new flavor's hash will differ.
 
 ---
 
@@ -457,12 +457,13 @@ Pick `send_first` to match the protocol's own internal `enable_fs`
 convention so the pre-enable is a no-op (RCOT: `is_ot_sender()`;
 sVOLE: `is_delta_holder()`).
 
-### 5b. Update the README baseline
+### 5b. Update the baselines
 
 After verifying with `./run ./build-tm/trace_hash` in a test-mode tree
-([wire-trace-hashes.md](wire-trace-hashes.md)), paste
-the new line into the `### Wire-trace hashes` table in
-[`README.md`](../README.md). This is the baseline future refactors
+([wire-trace-hashes.md](wire-trace-hashes.md)), regenerate
+`test/trace_hash.baseline` (diffed by the `trace_hash_baseline` CI gate)
+and paste the new line into the `### Wire-trace hashes` table in
+[`README.md`](../README.md). These are the baselines future refactors
 compare against.
 
 ### 5c. Write a correctness test
@@ -500,10 +501,10 @@ If consumers should be able to pull your header via the umbrella
 
 | Adding... | Header(s) | Test additions | Baseline |
 |---|---|---|---|
-| sVOLE carrier | `emp-ot/svole/<myfield>_vole.h` (new) | `test/test_<myfield>_vole.cpp` + CMakeLists entry; one line in `trace_hash.cpp` | README hash table |
-| OT extension | `emp-ot/ot_extension/<myiknp>.{h,cpp}` (new) + CMake source list | maybe `test/test_<myiknp>.cpp`; one line in `trace_hash.cpp` | README hash table |
-| Base OT | `emp-ot/base_ot/<mybase>.h` (new) | a `bench_base_ot.cpp` row; one line in `trace_hash.cpp` | README hash table |
-| Chi-fold flavor | `emp-ot/common/mp_gadget.h` (extend) + all carriers that opt in | trace_hash will catch it | README hash table (all affected protocols' rows change) |
+| sVOLE carrier | `emp-ot/svole/<myfield>_vole.h` (new) | `test/test_<myfield>_vole.cpp` + CMakeLists entry; one line in `trace_hash.cpp` | `trace_hash.baseline` + README table |
+| OT extension | `emp-ot/ot_extension/<myiknp>.{h,cpp}` (new) + CMake source list | maybe `test/test_<myiknp>.cpp`; one line in `trace_hash.cpp` | `trace_hash.baseline` + README table |
+| Base OT | `emp-ot/base_ot/<mybase>.h` (new) | a `bench_base_ot.cpp` row; one line in `trace_hash.cpp` | `trace_hash.baseline` + README table |
+| Chi-fold flavor | `emp-ot/common/mp_gadget.h` (extend) + all carriers that opt in | trace_hash will catch it | `trace_hash.baseline` + README table (all affected protocols' rows change) |
 
 ## See also
 

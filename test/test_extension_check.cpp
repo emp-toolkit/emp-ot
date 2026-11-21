@@ -49,9 +49,9 @@ void check_backend(const char* name, std::unique_ptr<OTExtension> ot,
     BlockVec out(static_cast<size_t>(chunk + final_demand));
 
     // The declared total spans several next_n() calls and every check()
-    // continuation below. Backends without a sized-tail override retain their
-    // historical full-chunk refill; SoftSpoken can finish at 128-COT
-    // granularity once only 129 declared outputs remain.
+    // continuation below. Backends without a sized-tail override refill a
+    // full chunk; SoftSpoken can finish at 128-COT granularity once only 129
+    // declared outputs remain.
     ot->begin(chunk + final_demand);
     // No extension chunk exists yet. With CSW this must nevertheless finish
     // the deferred base extraction check; with blocking BMM it is a no-op.
@@ -109,7 +109,7 @@ void check_backend(const char* name, std::unique_ptr<OTExtension> ot,
     // Reopen after the optimized idle close. This is especially important for
     // Ferret: the close path must have restored the empty continuation's carry
     // swap so this begin() advances to the certified next-round base. Ordinary
-    // begin() also drops the old caller-owned tail, as before check() existed.
+    // begin() also drops the old caller-owned tail.
     BlockVec reopened(3);
     ot->begin();
     ot->next_n(reopened.data(), static_cast<int64_t>(reopened.size()));

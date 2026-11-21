@@ -70,7 +70,7 @@ static void run_rcot(NetIO* io, int party, int64_t length, Make make,
     delete[] b;
 }
 
-// sVOLE runner: single-role extend(). The caller may override the
+// sVOLE runner: single-role run(). The caller may override the
 // carrier-provided default Δ on the holder before bootstrap.
 template <typename SVole, typename DeltaSetter>
 static void run_svole(NetIO* io, int party, int64_t length,

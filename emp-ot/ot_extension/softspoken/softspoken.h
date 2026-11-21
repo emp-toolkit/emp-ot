@@ -164,7 +164,8 @@ private:
     void combine_recv_chunk(block* out, const block* u_canonical, int64_t bs);
     // Per-chunk pipeline at arbitrary bs (1..kChunkBlocks). Called with
     // bs=kChunkBlocks from {send,recv}_next_, bs=1 from the sacrificial
-    // chunk in {send,recv}_end_.
+    // chunk in {send,recv}_end_, and the rounded-up tail from
+    // next_sized_tail_.
     void send_chunk_pipeline(block* out, int64_t bs);
     void recv_chunk_pipeline(block* out, int64_t bs);
 

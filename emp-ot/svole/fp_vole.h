@@ -11,7 +11,7 @@
 // F_p sVOLE: AuthValueFp carrier + FpVOLE alias over the generic
 // Svole<AuthValue>. The bootstrap runs Base_svole (COPE +
 // chi-fold) for seed sVOLE pairs, then a pre-stage MPFSS+LPN to
-// amplify into n_pre carry-over pairs.
+// amplify them into n_pre pairs, whose last M are the carry-over.
 
 namespace emp {
 
@@ -30,8 +30,8 @@ template <typename AuthValue> class Svole;
 struct alignas(16) AuthValueFp {
   using F = uint64_t;
 
-  // Storage (val-first). Downstream emp-zk casts to packed
-  // __uint128_t with val in low 64, mac in high 64.
+  // Storage (val-first), part of the layout contract: a caller may cast
+  // to packed __uint128_t with val in low 64, mac in high 64.
   F val;
   F mac;
 
@@ -156,8 +156,8 @@ struct alignas(16) AuthValueFp {
       std::vector<AuthValueFp> seed_pairs(triple_n);
       // Derived child sids, each computed once (same counter ticks on both
       // parties) and passed to whichever role runs: one for the COPE base
-      // CO, then one for the pre-stage gadgets, whose checks and challenges
-      // must not share the main gadgets' sid.
+      // OT (CSW), then one for the pre-stage gadgets, whose checks and
+      // challenges must not share the main gadgets' sid.
       const block bv_sid = svole.sid.derive().value();
       const block pre_sid = svole.sid.derive().value();
       if (svole.is_delta_holder()) {
@@ -228,8 +228,8 @@ struct alignas(16) AuthValueFp {
   };
 };
 
-// ABI pinned by the block-reinterpret arithmetic above and by emp-zk's
-// packed-__uint128_t view (val in low 64, mac in high 64).
+// ABI pinned by the block-reinterpret arithmetic above and by the
+// packed-__uint128_t view callers may take (val in low 64, mac in high 64).
 static_assert(sizeof(AuthValueFp) == 16, "AuthValueFp must be 16 bytes");
 static_assert(alignof(AuthValueFp) == 16, "AuthValueFp must be 16-byte aligned");
 static_assert(offsetof(AuthValueFp, val) == 0, "AuthValueFp.val must be at offset 0");

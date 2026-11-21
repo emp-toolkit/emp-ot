@@ -269,7 +269,7 @@ bool check_counted_begin_semantics() {
         stream.full_calls != 0)
         return false;
 
-    // The ordinary overload retains the historical full-chunk refill.
+    // An ordinary (uncounted) begin() session refills a full chunk.
     uint64_t ordinary = 0;
     stream.begin();
     stream.next_n(&ordinary, 1);

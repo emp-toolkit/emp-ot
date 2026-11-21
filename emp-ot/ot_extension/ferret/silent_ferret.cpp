@@ -93,8 +93,9 @@ void SilentFerret::begin_batch_(int64_t n_ots) {
 	// Sender's cGGM-root key = the gadget's own per-tree PRG key. Ferret's
 	// run_next_tree pulls tree g's seed as gadget-prg block g; deriving seed(g)
 	// = PRG(this key) seek'd to g reproduces exactly that, so a no-arg
-	// SilentFerret is byte-for-byte wire-identical to Ferret (verified by
-	// trace_equiv). SilentFerret never advances gadget_send_->prg itself (it uses
+	// SilentFerret is byte-for-byte wire-identical to Ferret (the trace-hash
+	// baseline's Ferret(b9) and SilentFerret(b9) rows are equal). SilentFerret
+	// never advances gadget_send_->prg itself (it uses
 	// prepare_all/produce_tree, not run_next_tree), so the key is stable for the
 	// instance lifetime → same (round,tree) re-derives the same seed at prepay
 	// and at consume.
@@ -166,9 +167,9 @@ void SilentFerret::begin_batch_(int64_t n_ots) {
 	}
 
 	// One malicious check over the whole prepay, masked by round-0's 128 consist-
-	// check COTs (G2: pristine base0_, finalize once). The FS transcript stayed
-	// append-only in (round,tree) order across the loop, so each round's chi was
-	// sampled post-commitment (G1). No-op when semi-honest.
+	// check COTs (from the pristine base0_, finalized once). The FS transcript
+	// stayed append-only in (round,tree) order across the loop, so each round's
+	// chi was sampled after its commitment. No-op when semi-honest.
 	if (is_ot_sender())
 		gadget_send_->finalize_batched_packed_sender(acc_vw_, base0_.data());
 	else

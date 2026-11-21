@@ -14,7 +14,7 @@ For an instance of N samples, dimension k and t noise blocks of beta = N/t posit
               "Restricted ISD"). The peeling ratio is measured on a scaled random instance.
 
 Costs are log2 of an operation count, time only. The lpnestimator.com routines are not
-included; run them as well (docs/lpn-security.md, section 7).
+included; run them as well (docs/lpn-security.md, section 6).
 
   python3 tools/lpn_security.py                 the sets in emp-ot/tuning.h
   python3 tools/lpn_security.py N k t [--d D]   one instance; D = column weight of the
