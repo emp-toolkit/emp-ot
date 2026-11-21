@@ -10,6 +10,7 @@
 // the bit_i × ⌊(q+1)/2⌋ embedding). A 128-bit OT message occupies the first
 // 16 bytes of m; the remaining 16 bytes are zero. There is no KEM–DEM wrapper.
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -43,6 +44,25 @@ inline lam_t lam_xor(const lam_t& a, const lam_t& b) {
 constexpr int kRecvBytesPerOT     = kPolyVecBytes + 2 * kLambdaBytes; // 832
 constexpr int kSendBytesPerBranch = kPolyVecCompBytes + kPolyCompBytes; // 768
 constexpr int kSendBytesPerOT     = 2 * kSendBytesPerBranch; // 1536
+
+// Both parties stream: each sends an OT's message as soon as it has computed
+// it, so the sender works on OT i while the receiver computes later first
+// messages, and the receiver decrypts OT i while the sender works on later
+// OTs. Each direction carries the bytes of the batched two-flow protocol in
+// the same order; only the timing of one direction against the other moves.
+//
+// Both parties flush after every kFlushEvery OTs and after their last one.
+// The receiver sends OT j's first message only once it has decrypted OT
+// j - kWindow. That bounds the unread data in either direction by kWindow
+// OTs' messages, so neither party can block on a full transport while the
+// other blocks the same way, and it keeps the receiver's secret keys in a
+// kWindow-slot ring. kWindow >= 2 * kFlushEvery puts every reply the
+// receiver waits for into a sender flush whose inputs the receiver has
+// already flushed.
+constexpr int64_t kFlushEvery = 8;
+constexpr int64_t kWindow     = 32;
+static_assert(kWindow >= 2 * kFlushEvery,
+              "BMM: the receiver window must span two flush groups");
 
 // Derive an independent 32-byte public matrix seed for OT i. The leading tag
 // gives this use its own domain even before crs_expand_matrix applies its 0x01
@@ -139,21 +159,42 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
                    "BMM::recv: invalid length or null buffer");
     fix_sid_();
     // Per-OT payloads are wider than a block; kSendBytesPerOT is the larger
-    // element size, so this bound covers both byte-count products below.
+    // element size, so this bound keeps both directions' byte counts in range.
     expecting(length <= std::numeric_limits<int64_t>::max() / kSendBytesPerOT,
               "BMM::recv: payload byte count overflow");
-    const int64_t recv_bytes = length * kRecvBytesPerOT;
-    const int64_t send_bytes = length * kSendBytesPerOT;
     if (length == 0) return;
+    const int64_t window = std::min(kWindow, length);
 
     // Per-OT public matrix A_i, in NTT domain when used for t = A_i·x.
     polyvec A[kK];
 
-    // Per-OT secret x (NTT domain), reused at decryption.
-    default_init_vector<polyvec> x_ntt(static_cast<size_t>(length));
+    // Secret x (NTT domain) of each OT whose reply is outstanding, reused at
+    // decryption; OT i uses slot i % window.
+    default_init_vector<polyvec> x_ntt(static_cast<size_t>(window));
 
-    // Round 1 payload: (r, c_0, c_1) per OT.
-    default_init_vector<uint8_t> send_buf(static_cast<size_t>(recv_bytes));
+    // Round 2 (S→R): (ct_0, ct_1) for OT i. Decrypt branch b.
+    auto decrypt = [&](int64_t i) {
+        const int bb = b[i] ? 1 : 0;
+        uint8_t in[kSendBytesPerOT];
+        io->recv_data(in, kSendBytesPerOT);
+        const uint8_t* branch = in + (size_t)bb * kSendBytesPerBranch;
+
+        polyvec u;
+        polyvec_decompress(&u, branch);
+        poly v;
+        poly_decompress(&v, branch + kPolyVecCompBytes);
+
+        polyvec_ntt(&u);
+        poly inner;
+        polyvec_basemul_acc_montgomery(&inner, &x_ntt[(size_t)(i % window)], &u);
+        poly_invntt_tomont(&inner);
+        poly_sub(&v, &v, &inner);
+        poly_reduce(&v);
+
+        uint8_t m_b[kSymBytes];
+        poly_tomsg(m_b, &v);
+        std::memcpy(&data[i], m_b, sizeof(block));
+    };
 
     PRG prg;
 
@@ -172,7 +213,7 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
         sample_polyvec_eta1(&x, noise_seed, /*base=*/0);
         sample_polyvec_eta1(&e, noise_seed, /*base=*/kK);
         polyvec_ntt(&x);
-        x_ntt[i] = x;
+        x_ntt[(size_t)(i % window)] = x;
 
         polyvec t;
         for (int j = 0; j < kK; ++j)
@@ -193,7 +234,8 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
             poly_sub(&r.vec[j], &t.vec[j], &Hhat.vec[j]);
         polyvec_reduce(&r);
 
-        uint8_t* out = send_buf.data() + (size_t)i * kRecvBytesPerOT;
+        // Round 1 (R→S): OT i's (r, c_0, c_1).
+        uint8_t out[kRecvBytesPerOT];
         polyvec_tobytes(out, &r);
 
         const lam_t h        = h_correlation(sid.value(), i, bb, out, c_b);
@@ -202,37 +244,14 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
         const lam_t c1       = (bb == 0) ? c_other : c_b;
         std::memcpy(out + kPolyVecBytes,                c0.v, kLambdaBytes);
         std::memcpy(out + kPolyVecBytes + kLambdaBytes, c1.v, kLambdaBytes);
+        io->send_data(out, kRecvBytesPerOT);
+        if ((i + 1) % kFlushEvery == 0 || i + 1 == length) io->flush();
+
+        // OT i + 1's first message waits for this decryption (kWindow).
+        if (i + 1 >= window) decrypt(i + 1 - window);
     }
-
-    io->send_data(send_buf.data(), recv_bytes);
-    io->flush();
-
-    // Round 2 (S→R): (ct_0, ct_1) per OT. Decrypt branch b.
-    default_init_vector<uint8_t> recv_buf(static_cast<size_t>(send_bytes));
-    io->recv_data(recv_buf.data(), send_bytes);
-
-    for (int64_t i = 0; i < length; ++i) {
-        const int bb = b[i] ? 1 : 0;
-        const uint8_t* branch = recv_buf.data()
-                              + (size_t)i * kSendBytesPerOT
-                              + (size_t)bb * kSendBytesPerBranch;
-
-        polyvec u;
-        polyvec_decompress(&u, branch);
-        poly v;
-        poly_decompress(&v, branch + kPolyVecCompBytes);
-
-        polyvec_ntt(&u);
-        poly inner;
-        polyvec_basemul_acc_montgomery(&inner, &x_ntt[i], &u);
-        poly_invntt_tomont(&inner);
-        poly_sub(&v, &v, &inner);
-        poly_reduce(&v);
-
-        uint8_t m_b[kSymBytes];
-        poly_tomsg(m_b, &v);
-        std::memcpy(&data[i], m_b, sizeof(block));
-    }
+    // The last window - 1 replies.
+    for (int64_t i = length - window + 1; i < length; ++i) decrypt(i);
 }
 
 // ----- Sender (S in the paper). Round 1 recv, Round 2 send. -----
@@ -241,21 +260,17 @@ void BMM::send(const block* data0, const block* data1, int64_t length) {
                    "BMM::send: invalid length or null buffer");
     fix_sid_();
     // Per-OT payloads are wider than a block; kSendBytesPerOT is the larger
-    // element size, so this bound covers both byte-count products below.
+    // element size, so this bound keeps both directions' byte counts in range.
     expecting(length <= std::numeric_limits<int64_t>::max() / kSendBytesPerOT,
               "BMM::send: payload byte count overflow");
-    const int64_t recv_bytes = length * kRecvBytesPerOT;
-    const int64_t send_bytes = length * kSendBytesPerOT;
     if (length == 0) return;
 
     // Per-OT public matrix A_i^T, in NTT domain when used for u = A_i^T·ρ.
     polyvec AT[kK];
 
-    // Round 1 (R→S): pull the (r, c_0, c_1) batch.
-    default_init_vector<uint8_t> recv_buf(static_cast<size_t>(recv_bytes));
-    io->recv_data(recv_buf.data(), recv_bytes);
-
-    default_init_vector<uint8_t> send_buf(static_cast<size_t>(send_bytes));
+    // One OT's Round 1 payload (r, c_0, c_1) and Round 2 reply (ct_0, ct_1).
+    uint8_t in[kRecvBytesPerOT];
+    uint8_t reply[kSendBytesPerOT];
 
     PRG prg;
 
@@ -265,7 +280,8 @@ void BMM::send(const block* data0, const block* data1, int64_t length) {
         crs_expand_matrix(AT, matrix_seed, /*transposed=*/true);
         for (int j = 0; j < kK; ++j) polyvec_ntt(&AT[j]);
 
-        const uint8_t* in      = recv_buf.data() + (size_t)i * kRecvBytesPerOT;
+        // Round 1 (R→S): OT i's (r, c_0, c_1).
+        io->recv_data(in, kRecvBytesPerOT);
         const uint8_t* r_bytes = in;
         lam_t c0, c1;
         std::memcpy(c0.v, in + kPolyVecBytes,                kLambdaBytes);
@@ -281,7 +297,7 @@ void BMM::send(const block* data0, const block* data1, int64_t length) {
             lam_xor(c0, h_correlation(sid.value(), i, 1, r_bytes, c1))
         };
 
-        uint8_t* out = send_buf.data() + (size_t)i * kSendBytesPerOT;
+        uint8_t* out = reply;
 
         for (int beta = 0; beta < 2; ++beta) {
             // pk_β = r + Ĥ_β(ĉ_β), then NTT for the basemuls.
@@ -330,10 +346,10 @@ void BMM::send(const block* data0, const block* data1, int64_t length) {
             poly_compress(out, &v);
             out += kPolyCompBytes;
         }
-    }
 
-    io->send_data(send_buf.data(), send_bytes);
-    io->flush();
+        io->send_data(reply, kSendBytesPerOT);
+        if ((i + 1) % kFlushEvery == 0 || i + 1 == length) io->flush();
+    }
 }
 
 }  // namespace emp
