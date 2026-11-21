@@ -21,14 +21,19 @@ inline void pretouch_blocks(block *p, int64_t n) {
 	std::memset(p, 0, sizeof(block) * (size_t)n);
 }
 
+// COTs one Ferret / SilentFerret round delivers: (t - refill_trees) *
+// 2^tree_depth.
+inline int64_t ferret_round_cots(const PrimalLPNParameter& p) {
+	return (p.t - p.refill_trees) << p.tree_depth;
+}
+
 // Snap a requested RCOT length down to a whole number of SilentFerret
-// rounds (one round = (t - refill_trees) * 2^tree_depth COTs). Ferret
-// ships corrections per tree, but SilentFerret prepays whole rounds, so
-// a partial tail round over-ships its corrections; at a whole-round
-// length the two are wire-identical (the trace-hash baseline pins it)
-// and their reported bits/RCOT compare directly.
+// rounds. Ferret ships corrections per tree, but SilentFerret prepays whole
+// rounds, so a partial tail round over-ships its corrections; at a
+// whole-round length the two are wire-identical (the trace-hash baseline
+// pins it) and their reported bits/RCOT compare directly.
 inline int64_t snap_to_ferret_rounds(int64_t n, const PrimalLPNParameter& p) {
-	const int64_t cpr = (p.t - p.refill_trees) << p.tree_depth;
+	const int64_t cpr = ferret_round_cots(p);
 	return n < cpr ? cpr : n / cpr * cpr;
 }
 

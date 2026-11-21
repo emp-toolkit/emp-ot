@@ -61,6 +61,42 @@ of them and is a registry knob. The prefetch never clears the variance gate on
 any of them, Zen 5 included: its share of the Zen 5 gain in the table is drift
 between runs that were not interleaved. There is no prefetch knob.
 
+## The LPN tables on huge pages
+
+The fold's gathers land anywhere in the table, so with 4 KiB pages most of
+them also need an address translation that the TLB does not hold: the 8 MiB
+`ferret_b12` table spans 2,048 pages, and the 16 MiB tables (`ferret_b13`, and
+`F2kVOLE`'s 32-byte entries at `ferret_b12`) span 4,096. On Linux each buffer
+that holds a table ([`table_alloc.h`](../emp-ot/common/table_alloc.h)) is mapped
+on its own 2 MiB-aligned range and advised `MADV_HUGEPAGE`, so transparent huge
+pages back it when the system's THP mode is `madvise` (Ubuntu's default) or
+`always`, and the whole table needs 4–8 TLB entries. With THP off, and on other
+systems, the buffers keep 4 KiB pages. Contents are the same either way.
+
+- To check: `AnonHugePages` in `/proc/<pid>/smaps_rollup` while a party runs.
+- To turn it off: THP `enabled=never`. With `defrag=defer` (or `never`) a page
+  fault does not compact memory synchronously; on a fragmented host that
+  compaction can stall the first touch of a buffer. The buffers are allocated
+  once per object and reused every round, so any stall is a one-time cost.
+- Each buffer rounds up to whole 2 MiB pages: a `ferret_b12` `Ferret`'s two
+  8.8 MiB buffers take 10 MiB each.
+
+Measured as an interleaved two-box A/B of one source revision with and without
+the huge-page mapping (one core per party, the slower party, the median of the
+per-round ratios over 9 rounds, 11 for the sVOLEs):
+
+| Row | Zen 5 (m8a.xlarge) | Granite Rapids (c8i.2xlarge) |
+|---|---|---|
+| `Ferret` `ferret_b12`, streaming, semi / malicious | +5.5% / +3.5% | +2.4% / +2.8% |
+| `Ferret` `ferret_b13`, `rcot`, semi / malicious | +22% / +32% | +32% / +31% |
+| `SilentFerret` `ferret_b12`, streaming, semi / malicious | +1.1% / +0.8% | +1.2% / +0.8% |
+| `F2kVOLE` per-round time | −10% | −14% |
+| `FpVOLE` per-round time | −1.7% | −2.7% |
+
+Without huge pages the Zen 5 `ferret_b13` rows also varied between 44 and
+112 MOT/s from run to run; with them every run was within 5% of the median.
+`IKNP` and `SoftSpoken`, which have no LPN table, stayed within 0.8%.
+
 ## Methodology requirements for any sweep
 
 A sweep, by the tuner or by hand, must defend against these measurement
@@ -135,8 +171,8 @@ How it works:
 - **The socket.** tuning.h includes a generated `emp-ot/tuning_local.h`
   when present (`__has_include`); every tuner-managed LOCAL knob is an
   `#ifndef`-guarded macro default forwarded into its constexpr, while the
-  fixed LOCAL policies (`cot_chosen_input_tile`, `mp_gadget_flush_trees`)
-  are plain constexpr. AGREEMENT and SECURITY knobs have no macro guard —
+  fixed LOCAL policies (`cot_chosen_input_tile`, `mp_gadget_flush_trees`,
+  `ot_extension_stream_flush_bytes`) are plain constexpr. AGREEMENT and SECURITY knobs have no macro guard —
   the generated file has no channel to reach them, so the class boundary
   is enforced by construction.
 - **The tuner** (`tools/tune.cpp`, target `emp-ot-tune`). Every knob is a
@@ -228,8 +264,7 @@ Rapids + fast link: T16 at k=2 measured +12%).
 These measurements are from two m8a.8xlarge (cluster placement group,
 Release builds using one tuner result frozen across both hosts). The
 frozen result selected cGGM tile 64 and LPN batch 64. The README's tables
-are measured on two m8a.large with the same tuner result. Their single-core
-rows agree with the m8a.8xlarge figures to within a few percent; the
+are measured on two m8a.large with the same tuner result; the
 aggregate-bandwidth figures below are m8a.8xlarge's.
 
 **What binds each configuration.**
@@ -256,14 +291,14 @@ aggregate-bandwidth figures below are m8a.8xlarge's.
 - Malicious `SoftSpoken<4>`, both `SoftSpoken<8>` modes, `Ferret`, and
   `SilentFerret` are CPU-bound at these link rates. The published values
   use nine-run medians: `IKNP` and semi-honest `SoftSpoken<2>` varied by under 1%
-  across the runs, semi-honest `SoftSpoken<4>` and malicious `SoftSpoken<2>` by
-  about 3%, and the CPU-bound rows by 4–10%, so no blanket reproducibility figure
-  is claimed.
+  across the runs and the other rows by 1–5%, so no blanket reproducibility
+  figure is claimed.
 
 **Wire-format facts behind the bits/RCOT column.** At the common
 33,251,328-output length (two `ferret_b12` rounds), Ferret uses 0.476
-bits/RCOT including the one-time bootstrap (0.388 in steady state).
-SilentFerret sends the same correction stream. The semi-honest totals are
+bits/RCOT including the one-time bootstrap (0.388 in steady state). Over
+two `ferret_b13` rounds (71,499,776 outputs) it uses 0.267 (0.209 in steady
+state). SilentFerret sends the same correction stream. The semi-honest totals are
 identical; in malicious mode a two-round prepaid batch folds the two
 per-round checks into one, saving 48 bytes total (about 0.000012
 bits/RCOT). Parameter choice must be agreed by both parties.

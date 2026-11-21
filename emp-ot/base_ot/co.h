@@ -63,6 +63,8 @@ class CO: public OT { public:
 				B[i] = B[i].add(A);
 			io->send_pt(&B[i]);
 		}
+		// Push the B_i now, so the sender's B_i^a run alongside this side's A^{b_i}.
+		io->flush();
 
 		for(int64_t i = 0; i < length; ++i)
 			As[i] = A.mul(bb[i]);

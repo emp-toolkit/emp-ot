@@ -58,9 +58,9 @@ void IKNP::send_begin_() {
 		// Ferret.
 		block k0[128];
 		if (csw_base_) {
-			// CSW base: messy core now (buffered, no flush); the
-			// extraction check is deferred to send_end_ so the base round-2
-			// bytes bundle with the extension's first message (3-round overlap).
+			// CSW base: messy core now; the extraction check is deferred
+			// to send_end_ so the base round-2 bytes and the extension's first
+			// message share one flow (3-round overlap).
 			csw_base_->recv_core(k0 + 1, delta_bool + 1, 127);
 			base_check_pending_ = true;
 		} else {
@@ -165,8 +165,8 @@ void IKNP::recv_begin_() {
 		this->prg.random_block(k0, 128);
 		this->prg.random_block(k1, 128);
 		if (csw_base_) {
-			// CSW base: messy core now (buffered, no flush); the
-			// extraction check is deferred to recv_end_.
+			// CSW base: messy core now; the extraction check is
+			// deferred to recv_end_.
 			csw_base_->send_core(k0 + 1, k1 + 1, 127);
 			base_check_pending_ = true;
 		} else {
@@ -207,6 +207,7 @@ void IKNP::recv_end_() {
 	// recv_next_ batch (and the malicious tail above) sit in
 	// send_buf otherwise.
 	io->flush();
+	stream_flushed_();
 }
 
 // Sample r — the bit-packed choice vector. bit_k(r) is OT k's choice.
@@ -228,6 +229,7 @@ void IKNP::recv_next_(block *out) {
 		xorBlocksTo_arr(tmp, r, row_blocks);
 		io->send_data(tmp, block_size / 8);
 	}
+	stream_sent_(127 * (block_size / 8));
 	// Pin t[0] = r so bit_0(out[k]) = bit_k(r) = choice_k after transpose.
 	memcpy(t, r, block_size / 8);
 	sse_trans_n128(out, t, block_size);

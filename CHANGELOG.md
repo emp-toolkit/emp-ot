@@ -138,6 +138,45 @@ metadata is numeric (see the README's version guidance).
   base-OT transcripts and semi-honest `IKNP` and `SoftSpoken` transcripts are
   unchanged. Both parties must upgrade together, and
   `test/trace_hash.baseline` is regenerated.
+- `CO` and `CSW` flush each message as soon as the other party can use it, so
+  the two parties' work overlaps. Each direction carries the same bytes in the
+  same order, and `test/trace_hash.baseline` is unchanged.
+- `PVW` computes u and the c term of each branch as two-point products where
+  OpenSSL runs its dedicated P-256 code, which is constant-time for any number
+  of points (x86-64 and AArch64), and its receiver streams round 1. Elsewhere
+  it keeps two single-point products. Transcripts are unchanged.
+- `BMM` streams per OT, with at most 32 OTs outstanding, instead of sending each
+  round as one batch. Each direction carries the same bytes in the same order.
+  A receiver message that is not canonical now aborts the sender after it has
+  replied to the earlier OTs.
+- `BMM`'s SHAKE shim fetches its SHAKE implementations once per thread and
+  reuses one SHAKE-128 context. It used to resolve OpenSSL's legacy digest
+  handles on every initialization and allocate a context per polynomial.
+  Outputs are unchanged.
+- `FpVOLE`'s base sVOLE (COPE) sends each bit position's corrections in one call
+  and no longer builds its four whole-batch arrays, which cuts the bootstrap's
+  time and peak memory. Transcripts are unchanged.
+- `F2kVOLE`'s bootstrap packs its base COTs window by window from one session
+  of the inner `Ferret`, instead of from one buffer holding all of them (139 MB
+  at the default set). Outputs and transcripts are unchanged.
+- `FpVOLE`: the multi-point gadget's per-tree sums of macs and the check
+  accumulation reduce once instead of after every term. A `kHasSecretSum`
+  carrier now provides `MacSum`, the per-tree sum. Outputs are unchanged.
+- The LPN fold takes each output's indices in a fixed-length loop that unrolls
+  fully. Outputs are unchanged.
+- `IKNP` and `SoftSpoken`: the OT-receiver's `next()` flushes once 128 KiB of
+  corrections have accumulated (`tuning::ot_extension_stream_flush_bytes`), so
+  the OT-sender's first output no longer waits for a 1 MiB buffer to fill.
+  Transcripts are unchanged.
+- On Linux, each buffer that holds an LPN table (`Ferret`'s two round buffers,
+  `SilentFerret`'s batch base and the sVOLEs' two round buffers) is mapped on
+  its own 2 MiB-aligned range, rounded up to whole 2 MiB pages and advised
+  `MADV_HUGEPAGE`, so transparent huge pages back it when the system's THP
+  mode is `madvise` or `always`. The LPN fold reads the table at random, and
+  with 4 KiB pages most of those reads missed the TLB. Smaller buffers, and
+  every buffer on other systems, are 64-byte aligned, so an `F2kVOLE` table
+  entry no longer spans two cache lines. `Svole::carry_curr_` and
+  `carry_next_` change type. Outputs and transcripts are unchanged.
 
 ## v1.0.0-alpha.2
 

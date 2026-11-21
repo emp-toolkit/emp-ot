@@ -127,6 +127,16 @@ inline void validate_primal_lpn_parameter(const PrimalLPNParameter &p) {
 
 namespace tuning {
 
+// ===== Streaming OT extensions (IKNP, SoftSpoken) =====
+// LOCAL scheduling policy (fixed, not auto-tuned): bytes of per-chunk
+// correction an IKNP / SoftSpoken OT-receiver sends from next() before it
+// flushes. Its next() ends in sends but does not flush, and NetIO holds those
+// bytes until its 1 MiB stream buffer fills, so the OT-sender's next() would
+// wait for that much production. A flush at this threshold bounds the wait at
+// one socket write per threshold. It changes only flush timing, not
+// transcript order or bytes.
+inline constexpr int64_t ot_extension_stream_flush_bytes = 128 * 1024;
+
 // ===== IKNP =====
 // Chunk size in OTs per IKNP::next() call. Must be a multiple of
 // 128 (one IKNP matrix row's worth) and a multiple of the F_{2^128}

@@ -39,6 +39,8 @@
 //   static void expand_chi(block, F*, int64_t)    — FS chi
 //   static void accumulate_VW(F&, const F*, const AuthValue*, int64_t)
 //                                                 — VW[i] = Σ chi·mac
+//   struct MacSum { void add(F); F value(); }     — sVOLE only: Σ mac over a
+//                                                   tree, reduced once
 //   static constexpr bool          kHasSecretSum  — wire flag
 //   static constexpr bool          kClearLeafLSB  — cGGM flag
 //   static constexpr ChiFoldFlavor kChiFoldFlavor — F2kPacked|FTyped
@@ -208,10 +210,10 @@ public:
     io->send_block(c.data(), tree_depth);
 
     if constexpr (AuthValue::kHasSecretSum) {
-      F leaves_sum = AuthValue::f_zero();
+      typename AuthValue::MacSum leaves_sum;
       for (int64_t i = 0; i < leave_n; ++i)
-        leaves_sum = AuthValue::f_add(leaves_sum, leaves_i[i].mac);
-      F secret_sum = AuthValue::f_sub(gamma_i, leaves_sum);
+        leaves_sum.add(leaves_i[i].mac);
+      F secret_sum = AuthValue::f_sub(gamma_i, leaves_sum.value());
       io->send_data(&secret_sum, sizeof(F));
     }
     io->flush();
@@ -527,18 +529,18 @@ public:
       // The punctured slot (zero here) is hashed too, so both parties take
       // the same gids; its mac is filled below.
       hash_leaves(leaf_hash, leaves_block.data(), leave_n);
-      F nodes_sum = AuthValue::f_zero();
+      typename AuthValue::MacSum nodes_sum;
       for (int64_t i = 0; i < leave_n; ++i) {
         if ((uint32_t)i == rev) {
           leaves_i[i] = AuthValue{};   // .mac filled below; .val by caller
           continue;
         }
         leaves_i[i] = AuthValue::auth_from_block(leaves_block[i]);
-        nodes_sum = AuthValue::f_add(nodes_sum, leaves_i[i].mac);
+        nodes_sum.add(leaves_i[i].mac);
       }
       leaves_i[rev].mac =
           AuthValue::f_sub(triple_yz_i,
-                           AuthValue::f_add(secret_sum, nodes_sum));
+                           AuthValue::f_add(secret_sum, nodes_sum.value()));
     }
 
     if (is_malicious) {

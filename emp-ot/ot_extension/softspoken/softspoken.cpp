@@ -154,9 +154,9 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_send_() {
 
     BlockVec received(total);
     if (csw_base_) {
-        // CSW base: messy core now (buffered, no flush); the extraction
-        // check is deferred to send_end_ so the base round-2 bytes bundle with
-        // the extension's first message (3-round overlap).
+        // CSW base: messy core now; the extraction check is deferred to
+        // send_end_ so the base round-2 bytes and the extension's first
+        // message share one flow (3-round overlap).
         csw_base_->recv_core(received.data(),
                              reinterpret_cast<bool*>(choices.data()), total);
         base_check_pending_ = true;
@@ -215,8 +215,8 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
         }
     }
     if (csw_base_) {
-        // CSW base: messy core now (buffered, no flush); the extraction
-        // check is deferred to recv_end_.
+        // CSW base: messy core now; the extraction check is deferred to
+        // recv_end_.
         csw_base_->send_core(K0.data(), K1.data(), total);
         base_check_pending_ = true;
     } else {
@@ -592,6 +592,7 @@ void SoftSpoken<k, kChunkBlocks>::recv_end_() {
     // Flush any d_buf bytes still buffered in NetIO so the peer's
     // matching recv_next_ can complete.
     this->io->flush();
+    this->stream_flushed_();
     EMP_SS_PHASE_REPORT(recv);
 }
 
@@ -654,6 +655,7 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
         // so io->get_digest() in combine_*_chunk agrees on both sides.
         EMP_SS_PHASE(recv, io);
         this->io->send_block(d_bufs, total_d_blocks);
+        this->stream_sent_(total_d_blocks * (int64_t)sizeof(block));
     }
 
     {

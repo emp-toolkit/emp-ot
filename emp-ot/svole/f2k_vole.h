@@ -96,6 +96,14 @@ struct AuthValueF2k {
     VW_slot = reduce(lo, hi);
   }
 
+  // Σ mac over one tree (the gadget's secret_sum and nodes_sum): XOR needs
+  // no reduction.
+  struct MacSum {
+    block s = zero_block;
+    void add(F x) { s = s ^ x; }
+    F value() const { return s; }
+  };
+
   // -------- LPN ops (Lpn<AuthValueF2k, tuning::lpn_d>) --------
   // Every LPN matrix entry is a pseudorandom GF(2^128) element rather than
   // 0/1 (see lpn.h), applied to val and mac alike.
@@ -144,22 +152,38 @@ struct AuthValueF2k {
         inner.run(svole.carry_next_.data(), M);
       } else {
         // Base case: direct Galois packing of M * 128 raw Ferret COTs.
-        std::vector<block> ferret_buf((size_t)M * 128);
-        svole.pull_cots_(ferret_buf.data(), M * 128);
+        // They are drawn in one session of the inner Ferret, which nothing
+        // has drawn from before the bootstrap, a window of whole 128-COT
+        // groups at a time, and each window is packed before the next is
+        // drawn, so only one window is held. The session makes the same
+        // next() calls as one rcot of M * 128 COTs, so the COTs, the wire
+        // bytes and the tail the Ferret keeps for its next draw are the same.
+        // A window of 1024 groups is a whole number of the Ferret's trees.
+        constexpr int64_t kWindowGroups = 1024;
+        Ferret &ferret = *svole.base_ferret_;
+        const int64_t window_groups = std::min<int64_t>(M, kWindowGroups);
+        std::vector<block> window((size_t)window_groups * 128);
         GaloisFieldPacking pack;
-        for (int64_t i = 0; i < M; ++i) {
-          svole.carry_next_[i].val = zero_block;
-          // Non-Δ-holder packs the val side from RCOT LSBs; the
-          // Δ-holder keeps val = 0 (no val on the sender side).
-          if (!svole.is_delta_holder()) {
-            bool val_b[128];
-            for (int kk = 0; kk < 128; ++kk)
-              val_b[kk] = getLSB(ferret_buf[i * 128 + kk]);
-            svole.carry_next_[i].val = bool_to_block(val_b);
+        ferret.begin();
+        for (int64_t g = 0; g < M; g += window_groups) {
+          const int64_t n = std::min<int64_t>(window_groups, M - g);
+          ferret.next_n(window.data(), n * 128);
+          for (int64_t i = 0; i < n; ++i) {
+            const block *cots = window.data() + i * 128;
+            AuthValueF2k &pair = svole.carry_next_[g + i];
+            pair.val = zero_block;
+            // Non-Δ-holder packs the val side from RCOT LSBs; the
+            // Δ-holder keeps val = 0 (no val on the sender side).
+            if (!svole.is_delta_holder()) {
+              bool val_b[128];
+              for (int kk = 0; kk < 128; ++kk)
+                val_b[kk] = getLSB(cots[kk]);
+              pair.val = bool_to_block(val_b);
+            }
+            pack.packing(&pair.mac, cots);
           }
-          pack.packing(&svole.carry_next_[i].mac,
-                       ferret_buf.data() + i * 128);
         }
+        ferret.end();
       }
     }
   };
