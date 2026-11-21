@@ -96,6 +96,14 @@ struct AuthValueF2k {
     VW_slot = reduce(lo, hi);
   }
 
+  // Σ mac over one tree (the gadget's secret_sum and nodes_sum): XOR needs
+  // no reduction.
+  struct MacSum {
+    block s = zero_block;
+    void add(F x) { s = s ^ x; }
+    F value() const { return s; }
+  };
+
   // -------- LPN ops (Lpn<AuthValueF2k, tuning::lpn_d>) --------
   // Every LPN matrix entry is a pseudorandom GF(2^128) element rather than
   // 0/1 (see lpn.h), applied to val and mac alike.

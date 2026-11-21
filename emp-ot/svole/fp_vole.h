@@ -70,13 +70,34 @@ struct alignas(16) AuthValueFp {
     for (int64_t i = 0; i < sz; ++i) chi[i] = mod(chi[i]);
   }
 
+  // VW[idx] = Σ chi[i] · leaves[i].mac, reduced once instead of per term:
+  // each product of canonical operands is folded below 2^62 (mult_mod_lazy)
+  // and summed in two __uint128_t lanes. A lane takes fewer than 2^62 terms
+  // (sz is an int64_t), so neither lane nor their sum can wrap; at the
+  // largest tree the parameter validation admits (2^30 leaves) the total
+  // stays below 2^92. mod_u128 then gives the canonical residue, the element
+  // the add_mod / mult_mod chain returned.
   static inline void accumulate_VW(F& VW_slot, const F* chi,
                                    const AuthValueFp* leaves, int64_t sz) {
-    F v = f_zero();
-    for (int64_t i = 0; i < sz; ++i)
-      v = f_add(v, f_mul(chi[i], leaves[i].mac));
-    VW_slot = v;
+    __uint128_t acc0 = 0, acc1 = 0;
+    int64_t i = 0;
+    for (; i + 2 <= sz; i += 2) {
+      acc0 += mult_mod_lazy(chi[i], leaves[i].mac);
+      acc1 += mult_mod_lazy(chi[i + 1], leaves[i + 1].mac);
+    }
+    if (i < sz) acc0 += mult_mod_lazy(chi[i], leaves[i].mac);
+    VW_slot = mod_u128(acc0 + acc1);
   }
+
+  // Σ mac over one tree (the gadget's secret_sum and nodes_sum), reduced
+  // once. The macs are canonical (< 2^61) and a tree has fewer than 2^63
+  // leaves, so the sum stays below 2^124 and cannot wrap; at the largest
+  // tree the parameter validation admits (2^30 leaves) it stays below 2^91.
+  struct MacSum {
+    __uint128_t s = 0;
+    void add(F x) { s += x; }
+    F value() const { return mod_u128(s); }
+  };
 
   // -------- LPN ops (Lpn<AuthValueFp, tuning::lpn_d>) --------
   // mod-p adds overflow uint64_t after ~8 unreduced accumulations, so

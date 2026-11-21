@@ -159,6 +159,9 @@ metadata is numeric (see the README's version guidance).
 - `F2kVOLE`'s bootstrap packs its base COTs window by window from one session
   of the inner `Ferret`, instead of from one buffer holding all of them (139 MB
   at the default set). Outputs and transcripts are unchanged.
+- `FpVOLE`: the multi-point gadget's per-tree sums of macs and the check
+  accumulation reduce once instead of after every term. A `kHasSecretSum`
+  carrier now provides `MacSum`, the per-tree sum. Outputs are unchanged.
 
 ## v1.0.0-alpha.2
 
