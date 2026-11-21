@@ -34,6 +34,12 @@ class PVW: public OT { public:
 
 	PVW(IOChannel* io_) { this->io = io_; }
 
+	// Round 1 streams: the receiver flushes every kStreamOTs OTs, so the
+	// sender starts on the first ones while the rest are being built. Round 2
+	// streams per OT already: each of the sender's per-OT recvs drains the
+	// previous OT's reply.
+	static constexpr int64_t kStreamOTs = 8;
+
 	// Derive the CRS lazily on first use so it binds the session id (the one
 	// set via OT::set_sid before first use, else the channel's next session
 	// id, which fix_sid_ takes here). Both parties derive identical, non-DH
@@ -52,6 +58,35 @@ class PVW: public OT { public:
 			*crs[i] = RO("emp-ot:pvw-base-ot:crs", sid.value())
 			              .absorb(std::string_view(labels[i])).squeeze_point(G);
 		crs_ready_ = true;
+	}
+
+	// s·P + t·Q, both scalars secret. A two-point product shares its doublings
+	// between the terms. OpenSSL's dedicated P-256 code (nistz256, nistp256)
+	// computes it in constant time, as it does a single-point product; the
+	// generic prime-field methods, and the s390x code, use variable-time wNAF
+	// for more than one point. So the two-point product is taken only on
+	// x86-64 and AArch64 and only off the generic methods; otherwise the sum
+	// is built from two single-point products. EC_POINTs_mul and the method
+	// queries are deprecated since OpenSSL 3.0 and absent from no-deprecated
+	// builds.
+	Point mul2_(const Point &P, const Scalar &s, const Point &Q, const Scalar &t) {
+#if !defined(OPENSSL_NO_DEPRECATED_3_0) && (defined(__x86_64__) || defined(__aarch64__))
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+		const EC_METHOD *m = EC_GROUP_method_of(G.ec_group());
+		if (m != EC_GFp_simple_method() && m != EC_GFp_mont_method() &&
+		    m != EC_GFp_nist_method()) {
+			Point r(&G);
+			const EC_POINT *pts[2] = {P.point(), Q.point()};
+			const BIGNUM *scs[2] = {s.n(), t.n()};
+			expecting(EC_POINTs_mul(G.ec_group(), r.point(), nullptr, 2, pts,
+			                        scs, G.bn_ctx()) == 1,
+			          "PVW: EC_POINTs_mul");
+			return r;
+		}
+#pragma GCC diagnostic pop
+#endif
+		return P.mul(s).add(Q.mul(t));
 	}
 
 	void send(const block* data0, const block* data1, int64_t length) override {
@@ -78,8 +113,8 @@ class PVW: public OT { public:
 
 				const Point &gb = (b == 0 ? g0 : g1);
 				const Point &hb = (b == 0 ? h0 : h1);
-				Point u    = gb.mul(s).add(hb.mul(t));
-				Point c_pt = gs_i.mul(s).add(hs_i.mul(t)).add(xb[b]);
+				Point u    = mul2_(gb, s, hb, t);
+				Point c_pt = mul2_(gs_i, s, hs_i, t).add(xb[b]);
 				io->send_pt(&u);
 				io->send_pt(&c_pt);
 			}
@@ -108,6 +143,7 @@ class PVW: public OT { public:
 			Point h_send = h_base.mul(rs[i]);
 			io->send_pt(&g_send);
 			io->send_pt(&h_send);
+			if ((i + 1) % kStreamOTs == 0) io->flush();
 		}
 
 		// Round 2: receive (u_b, c_b) for each b, plus ciphertexts.

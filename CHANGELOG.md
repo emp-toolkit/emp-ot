@@ -141,6 +141,10 @@ metadata is numeric (see the README's version guidance).
 - `CO` and `CSW` flush each message as soon as the other party can use it, so
   the two parties' work overlaps. Each direction carries the same bytes in the
   same order, and `test/trace_hash.baseline` is unchanged.
+- `PVW` computes u and the c term of each branch as two-point products where
+  OpenSSL runs its dedicated P-256 code, which is constant-time for any number
+  of points (x86-64 and AArch64), and its receiver streams round 1. Elsewhere
+  it keeps two single-point products. Transcripts are unchanged.
 
 ## v1.0.0-alpha.2
 
