@@ -44,22 +44,33 @@ inline int rej_uniform(int16_t *r, int n, const uint8_t *buf, int buflen) {
     return ctr;
 }
 
+// The SHAKE-128 state of the calling thread. Every polynomial re-absorbs
+// into it, so the OpenSSL-EVP-backed shim keeps one heap EVP_MD_CTX per
+// thread rather than allocating and freeing one per polynomial. Its one
+// user, poly_uniform_from_seed, never nests, so one state suffices.
+struct ThreadShake128 {
+    // Zero-init enforces "no ctx yet", so the shim's lazy-allocation
+    // path triggers on first use.
+    keccak_state st = {};
+    ~ThreadShake128() { shake_state_release(&st); }
+};
+inline keccak_state *thread_shake128() {
+    static thread_local ThreadShake128 holder;
+    return &holder.st;
+}
+
 // One uniform polynomial in R_q from (seed, x, y). Matches the per-cell
 // shape Kyber uses in gen_matrix. Used both for the CRS matrix A and for
 // the hash-to-R_q^k oracle Ĥ of the BMM OT.
 inline void poly_uniform_from_seed(poly *p,
                                    const uint8_t seed[kSymBytes],
                                    uint8_t x, uint8_t y) {
-    // The OpenSSL-EVP-backed shim wraps a heap EVP_MD_CTX inside
-    // keccak_state.opaque; zero-init enforces "no ctx yet" so the
-    // shim's lazy-allocation path triggers (and so we don't crash on
-    // a garbage pointer at first use).
-    keccak_state state = {};
-    kyber_shake128_absorb(&state, seed, x, y);
+    keccak_state *state = thread_shake128();
+    kyber_shake128_absorb(state, seed, x, y);
 
     constexpr int kBlocks = (12 * kN / 8 + XOF_BLOCKBYTES) / XOF_BLOCKBYTES;
     uint8_t buf[kBlocks * XOF_BLOCKBYTES + 2];
-    shake128_squeezeblocks(buf, kBlocks, &state);
+    shake128_squeezeblocks(buf, kBlocks, state);
     int buflen = kBlocks * XOF_BLOCKBYTES;
     int ctr = rej_uniform(p->coeffs, kN, buf, buflen);
 
@@ -69,15 +80,10 @@ inline void poly_uniform_from_seed(poly *p,
         // resume rejection sampling.
         const int off = buflen - (buflen / 3) * 3;
         for (int k = 0; k < off; ++k) buf[k] = buf[buflen - off + k];
-        shake128_squeezeblocks(buf + off, 1, &state);
+        shake128_squeezeblocks(buf + off, 1, state);
         buflen = off + XOF_BLOCKBYTES;
         ctr += rej_uniform(p->coeffs + ctr, kN - ctr, buf, buflen);
     }
-
-    // The OpenSSL-EVP-backed shim allocates a heap EVP_MD_CTX inside
-    // keccak_state lazily on absorb; release it before this function
-    // returns and the stack-resident state goes out of scope.
-    shake_state_release(&state);
 }
 
 // Derive a sub-seed from session_seed via SHAKE-256(session_seed || tag).

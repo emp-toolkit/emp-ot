@@ -149,6 +149,10 @@ metadata is numeric (see the README's version guidance).
   round as one batch. Each direction carries the same bytes in the same order.
   A receiver message that is not canonical now aborts the sender after it has
   replied to the earlier OTs.
+- `BMM`'s SHAKE shim fetches its SHAKE implementations once per thread and
+  reuses one SHAKE-128 context. It used to resolve OpenSSL's legacy digest
+  handles on every initialization and allocate a context per polynomial.
+  Outputs are unchanged.
 
 ## v1.0.0-alpha.2
 
