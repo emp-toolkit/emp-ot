@@ -255,6 +255,15 @@ void SilentFerret::next_chunks_parallel(block *out, int64_t n_chunks,
 
 void SilentFerret::ensure_tree_available_() {
 	if (local_tree_ != round_capacity()) return;
+	advance_round_();
+}
+
+void SilentFerret::next_round() {
+	expect_in_session_();
+	advance_round_();
+}
+
+void SilentFerret::advance_round_() {
 	if (consume_round_ + 1 < n_rounds_) {
 		// Wire-free roll into the next prepaid round.
 		roll_base_(abs_round_base_ + (uint64_t)consume_round_);
@@ -320,6 +329,28 @@ block SilentFerret::produce_range_fused_xor(block *tree_scratch,
 	    n_trees, carry_curr_.data());
 }
 
+void SilentFerret::produce_range_leaves(block *out, int64_t tree_begin,
+                                        int64_t n_trees) const {
+	expect_in_session_();
+	const int64_t capacity = round_capacity();
+	expecting(tree_begin >= 0 && tree_begin <= capacity && n_trees >= 0 &&
+	              n_trees <= capacity - tree_begin,
+	          "produce_range_leaves out of current-round bounds");
+	expecting(n_trees == 0 || out != nullptr,
+	          "produce_range_leaves: null output for nonzero range");
+	produce_trees_(out, abs_round_base_ + (uint64_t)consume_round_, tree_begin,
+	               n_trees, carry_curr_.data(), /*fold=*/false);
+}
+
+const block *SilentFerret::lpn_secret() const {
+	expect_in_session_();
+	return carry_curr_.data() + kConsistCheckCotNum;
+}
+
+uint64_t SilentFerret::current_round() const {
+	return abs_round_base_ + (uint64_t)consume_round_;
+}
+
 void SilentFerret::roll_base_(uint64_t abs_round) {
 	// The round's refill trees [round_capacity, t) produce the next round's
 	// M base COTs; write them into carry_next_ and swap.
@@ -330,7 +361,8 @@ void SilentFerret::roll_base_(uint64_t abs_round) {
 
 void SilentFerret::produce_trees_(block *out, uint64_t abs_round,
                                   int64_t local_begin, int64_t n,
-                                  const block *base_for_round) const {
+                                  const block *base_for_round,
+                                  bool fold) const {
 	const int64_t chunk    = chunk_size();
 	const int64_t cggm_off = kConsistCheckCotNum + param.k;
 	const AuthValueFerret *pre = reinterpret_cast<const AuthValueFerret *>(
@@ -365,7 +397,7 @@ void SilentFerret::produce_trees_(block *out, uint64_t abs_round,
 			    c_rounds_.data() + (size_t)(r * param.t + i) * param.tree_depth;
 			gadget_recv_->produce_tree(o, base_j, c_i, scratch);
 		}
-		lpn_->compute_slice(lpn_prg, o, pre, chunk);  // advances by bpc_
+		if (fold) lpn_->compute_slice(lpn_prg, o, pre, chunk);  // advances by bpc_
 	}
 }
 

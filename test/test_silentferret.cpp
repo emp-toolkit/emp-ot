@@ -5,6 +5,7 @@
 // "silent consume" property. Throughput lives in bench/bench_silentferret.cpp
 // and the bounded-scratch comparison in bench/bench_silentferret_sink.cpp.
 #include "emp-ot/emp-ot.h"
+#include "emp-ot/common/lpn.h"   // Lpn, the caller's own LPN step (verify_external_lpn)
 #include "test/test.h"
 #include <algorithm>
 #include <array>
@@ -380,6 +381,43 @@ static void verify_comm_batched_vs_ferret(NetIO* io, int party,
     delete[] buf;
 }
 
+// The lower-level consume path: each round's cGGM leaves and its LPN secret, folded
+// by the caller. The instance's own index stream is private, so both ends fold with one
+// public matrix of the caller's (an Lpn under a fixed seed), across two prepaid rounds.
+// The result must still be an RCOT, and the path must move no bytes.
+static void verify_external_lpn(NetIO* io, int party, bool malicious,
+                                const PrimalLPNParameter& param) {
+    SilentFerret ot(party, io, malicious, param, nullptr, /*n_threads=*/1);
+    const int64_t chunk = ot.chunk_size();
+    io->sync();
+    ot.begin(ot.cots_per_round() * 2);                // two prepaid rounds
+    const int64_t n_trees = std::min<int64_t>(ot.round_capacity(), 16);
+    const int64_t eff = n_trees * chunk;
+    Lpn<AuthValueFerret, 10> lpn(param.k);
+    const block seed = makeBlock(0x5eed, 0x1);          // public, the same at both ends
+    const uint64_t bpc = lpn.blocks_per_chunk(chunk);
+    std::vector<block> buf((size_t)(2 * eff));
+    const uint64_t s0 = io->send_counter, r0 = io->recv_counter;
+    const uint64_t first = ot.current_round();
+    for (int r = 0; r < 2; ++r) {
+        expecting(ot.current_round() == first + (uint64_t)r,
+                  "SilentFerret current_round() did not advance with next_round()");
+        block* b = buf.data() + r * eff;
+        ot.produce_range_leaves(b, 0, n_trees);
+        PRG prg(&seed);
+        prg.seek(ot.current_round() * (uint64_t)param.t * bpc);   // the round's first tree
+        lpn.compute_slice(prg, reinterpret_cast<AuthValueFerret*>(b),
+                          reinterpret_cast<const AuthValueFerret*>(ot.lpn_secret()), eff);
+        if (r == 0) ot.next_round();
+    }
+    expecting(io->send_counter == s0 && io->recv_counter == r0,
+              "SilentFerret lower-level consume performed wire I/O");
+    ot.end();
+    verify_rcot(&ot, io, party, buf.data(), 2 * eff);
+    cout << "  external LPN over leaves + lpn_secret ok ("
+         << (malicious ? "mali" : "semi") << ")" << endl;
+}
+
 int main(int argc, char** argv) {
     int port, party;
     party = parse_party(argv);
@@ -420,6 +458,7 @@ int main(int argc, char** argv) {
             verify_prepaid(io.get(), party, mali, p, n_threads);
             verify_partial_end_chain(io.get(), party, mali, p, n_threads);
             verify_parallel_rollover(io.get(), party, mali, p, n_threads);
+            verify_external_lpn(io.get(), party, mali, p);
         }
 
     // Differential: no-arg SilentFerret moves exactly as many bytes as Ferret;

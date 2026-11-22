@@ -131,6 +131,24 @@ public:
 	block produce_range_fused_xor(block *tree_scratch, int64_t tree_begin,
 	                              int64_t n_trees) const;
 
+	// The lower-level consume path, for a caller that applies the LPN step itself,
+	// for instance to several streams that share one public matrix. Within a round use
+	// these or the cursor (next/run/next_n/next_chunks_parallel), not both.
+	//
+	// produce_range without the LPN step: the cGGM leaves of the current round's trees
+	// [tree_begin, tree_begin + n_trees), which produce_range would then fold against
+	// lpn_secret(). Same thread-safety as produce_range.
+	void produce_range_leaves(block *out, int64_t tree_begin, int64_t n_trees) const;
+	// The LPN secret of the current round: the param.k base COTs its trees fold
+	// against. Valid until the next next_round(), begin() or end().
+	const block *lpn_secret() const;
+	// The current round's absolute index over the instance's lifetime.
+	uint64_t current_round() const;
+	// Move to the next round, as next() does when a round runs out: the base rolls
+	// forward wire-free inside the prepaid batch, and past it the next batch of the
+	// same size is prepaid (live communication).
+	void next_round();
+
 protected:
 	void process_one_tree_(AuthValueFerret *out) override;
 
@@ -183,14 +201,18 @@ private:
 	// If the cursor has consumed the current round, roll to the next prepaid
 	// round or live-reprepay exactly as next() does.
 	void ensure_tree_available_();
+	// The roll into the next round (next_round() and ensure_tree_available_()).
+	void advance_round_();
 
 	// Produce `n` consecutive trees [local_begin, local_begin + n) of
 	// absolute round `abs_round` into `out` (out + m*chunk = tree
 	// local_begin+m). Reads `base_for_round` (the round's M base COTs) and,
 	// receiver-side, c_rounds_[(abs_round - abs_round_base_) ...]; sender-side
 	// re-derives seeds from cggm_seed_key_. No wire I/O; thread-safe / const.
+	// fold = false leaves each tree's cGGM leaves without the LPN step.
 	void produce_trees_(block *out, uint64_t abs_round, int64_t local_begin,
-	                    int64_t n, const block *base_for_round) const;
+	                    int64_t n, const block *base_for_round,
+	                    bool fold = true) const;
 
 	// Bounded-scratch counterparts to produce_trees_.
 	block produce_trees_scratch_xor_(block *tree_scratch, uint64_t abs_round,

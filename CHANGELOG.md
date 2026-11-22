@@ -80,6 +80,17 @@ metadata is numeric (see the README's version guidance).
   copies that many pre-stage outputs into the carry-over, and such a set used to
   make it read before the start of the pre-stage buffer. Every shipped set fits.
 
+### Added
+
+- `SilentFerret`'s lower-level consume path, for a caller that applies the LPN
+  step itself, for instance to several streams that share one public matrix:
+  `produce_range_leaves(out, tree_begin, n_trees)` gives a range of the current
+  round's cGGM leaves without the LPN step, `lpn_secret()` the round's LPN
+  secret, `current_round()` its absolute index, and `next_round()` moves to the
+  next round as the cursor does when a round runs out, wire-free inside the
+  prepaid batch. Within a round, use these or the cursor, not both. The wire and
+  `SilentFerret`'s own outputs are unchanged.
+
 ### Removed
 
 - `OTExtension::set_choice_seed`, with `OTExtension::choice_prg`, and
