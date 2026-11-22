@@ -173,9 +173,8 @@ int emp_mlkem512_bmm_sender_keys(uint8_t ek0[EMP_MLKEM512_PKBYTES],
   mlk_polyvec_add(&h1, &rv);
   mlk_polyvec_reduce(&h0);
   mlk_polyvec_reduce(&h1);
-  mlk_polyvec_tobytes(ek0, &h0);
-  mlk_polyvec_tobytes(ek1, &h1);
-  mlk_memcpy(ek1 + MLKEM_POLYVECBYTES, rho, MLKEM_SYMBYTES);
+  mlk_pack_pk(ek0, &h0, rho);
+  mlk_pack_pk(ek1, &h1, rho);
   return 0;
 }
 
