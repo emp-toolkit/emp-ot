@@ -36,16 +36,13 @@ Fiat-Shamir transcript defaults to SHA-256.
 - CMake ≥ 3.25 (emp-tool's floor; emp-ot alone configures with ≥ 3.21)
 - A C++20 compiler (GCC ≥ 11, Clang ≥ 14, AppleClang 14+)
 - [emp-tool](https://github.com/emp-toolkit/emp-tool) ≥ 1.0
-- OpenSSL ≥ 3.0. The lattice OT ML-KEM SHAKE shim uses `EVP_DigestSqueeze` on
-  ≥ 3.3 (one-shot squeeze) and falls back to a re-init / re-absorb
-  loop on 3.0.x — same answers, slightly slower CRS expansion. No
-  build-time configuration needed; the version is detected from
-  `OPENSSL_VERSION_NUMBER`.
+- OpenSSL ≥ 3.0
 - pthreads
 
 emp-ot builds a small static library (`emp-ot::emp-ot`) that compiles
 the IKNP, SoftSpoken, Ferret, and SilentFerret bodies plus the
-`BMM` lattice base-OT body (with its vendored ML-KEM/Kyber sources);
+`BMM` lattice base-OT body (on the vendored
+[mlkem-native](third_party/mlkem-native/VENDOR.md));
 the header-only base OTs (`CO`, `PVW`, `CSW`) and the sVOLE layer are
 consumed inline.
 
@@ -196,7 +193,7 @@ round at the default set.
 CO                     send=f2f89068a7816fb0 recv=d9c1fafc2be169a6
 CSW                    send=6cbdbfdeab5e4295 recv=682f47c8b14c6ce3
 PVW                    send=29c86c1a3e9ca181 recv=9b84ed820cbcacb7
-BMM                    send=29c79a292dcb6804 recv=a36fb2f0a8d131b5
+BMM                    send=356438d8b2753410 recv=74ebc2ae00798c13
 IKNP semi              send=10683f96182d1932 recv=71521069116554ea
 SoftSpoken<2> semi     send=58b5841c59972871 recv=5659fdade553c889
 SoftSpoken<8> semi     send=58b5841c59972871 recv=7331c25770184af2
@@ -528,7 +525,7 @@ send/recv bytes are deterministic).
 | `CO`       | 6.0 ms |   4,165 |   8,832 | semi-honest                                  |
 | `CSW`      | 5.6 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `PVW`      |  23 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
-| `BMM`      | 8.3 ms | 196,608 | 106,496 | malicious-secure, post-quantum (over ML-KEM-512 internals) |
+| `BMM`      | 2.0 ms | 196,608 | 106,496 | malicious-secure, post-quantum (over ML-KEM-512 internals) |
 
 ### OT extensions (RCOT throughput)
 
@@ -655,11 +652,10 @@ what the estimates do not cover, and how to reproduce them and evaluate a custom
   of a session that aborts. An abort can also tell the adversary which of
   its guesses failed, so do not rerun with a Δ that an aborted session
   used (`set_delta`): let each new session sample its own.
-- **`BMM` is a custom OT construction** using ML-KEM-512 (Kyber)
-  parameters and arithmetic (vendored reference sources); it is not
-  standardized FIPS-203 ML-KEM used as a black box, and "post-quantum"
-  refers to the Module-LWE hardness of that construction, not an
-  end-to-end PQ composition claim.
+- **`BMM` is a custom OT construction** on ML-KEM-512's IND-CPA core
+  (FIPS 203's K-PKE, from the vendored mlkem-native); it does not use the
+  ML-KEM KEM as a black box, and "post-quantum" refers to the Module-LWE
+  hardness of that construction, not an end-to-end PQ composition claim.
 - No systematic constant-time guarantee: base-OT elliptic-curve ops call
   OpenSSL and the symmetric kernels are written for throughput;
   secret-dependent timing has not been audited across the tree.
@@ -670,5 +666,5 @@ what the estimates do not cover, and how to reproduce them and evaluate a custom
 ## License
 
 Licensed under the Apache License, Version 2.0 — see [LICENSE](LICENSE).
-Vendored third-party code (pq-crystals/Kyber) is noted in
+Vendored third-party code (mlkem-native) is noted in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

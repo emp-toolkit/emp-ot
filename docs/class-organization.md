@@ -24,7 +24,7 @@ emp-ot/
 │   ├── csw.h                    CSW        (CSW "blazing-fast")
 │   ├── pvw.h                    PVW        (Peikert-Vaikuntanathan-Waters)
 │   ├── bmm.h                    BMM        (Badrinarayanan-Masny-Mukherjee; PQ, custom over ML-KEM-512 internals)
-│   └── mlkem/                   vendored Kyber / ML-KEM-512 arithmetic + lattice OT impls
+│   └── mlkem/                   BMM's body + its ML-KEM-512 calls into third_party/mlkem-native
 │
 ├── ot_extension/          RandomCOT extensions
 │   ├── ot_extension.h           OTExtension base

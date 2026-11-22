@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(emp-ot VERSION 1.0.0 LANGUAGES CXX C)
+project(emp-ot VERSION 1.0.0 LANGUAGES CXX C ASM)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR
@@ -63,20 +63,24 @@ find_package(emp-tool 1.0 REQUIRED)
 # The IKNP, SoftSpoken, Ferret, SilentFerret and BMM bodies live in .cpp;
 # the rest of the headers are consumed inline.
 #
-# Verbatim pq-crystals/kyber sources sit in emp-ot/base_ot/mlkem/kyber/;
-# the SHAKE / Keccak shim is a single header at emp-ot/base_ot/mlkem/
-# symmetric.h. Kyber's poly.c does `#include "symmetric.h"`, so we add
-# mlkem/ to the include path PRIVATELY for that resolution.
-# Parameterized for ML-KEM-512 via KYBER_K=2 → namespace prefix
-# pqcrystals_kyber512_ref_* (scoped to the .c files only so KYBER_K
-# doesn't leak into our C++ TUs).
-set(KYBER_C_SOURCES
-    emp-ot/base_ot/mlkem/kyber/poly.c
-    emp-ot/base_ot/mlkem/kyber/polyvec.c
-    emp-ot/base_ot/mlkem/kyber/ntt.c
-    emp-ot/base_ot/mlkem/kyber/reduce.c
-    emp-ot/base_ot/mlkem/kyber/cbd.c
-    emp-ot/base_ot/mlkem/kyber/verify.c)
+# BMM's ML-KEM-512 is the vendored mlkem-native (third_party/mlkem-native,
+# unmodified; see its VENDOR.md). emp-ot/base_ot/mlkem/mlkem512.c compiles
+# its C sources as one translation unit and the vendored
+# mlkem_native_asm.S supplies the assembly; both read the configuration
+# emp-ot/base_ot/mlkem/mlkem_config.h through MLK_CONFIG_FILE. The backend
+# is chosen at compile time: AVX2 when the build targets it (emp-tool's
+# native build), AArch64 on arm64, the C code otherwise.
+option(EMP_OT_MLKEM_PORTABLE
+    "Build BMM's ML-KEM on mlkem-native's C code only (for comparing backends)" OFF)
+set(EMP_OT_MLKEM_SOURCES
+    emp-ot/base_ot/mlkem/mlkem512.c
+    third_party/mlkem-native/mlkem/mlkem_native_asm.S)
+set(_emp_ot_mlkem_defs "MLK_CONFIG_FILE=\"emp-ot/base_ot/mlkem/mlkem_config.h\"")
+if(EMP_OT_MLKEM_PORTABLE)
+    list(APPEND _emp_ot_mlkem_defs EMP_OT_MLKEM_PORTABLE)
+endif()
+set_source_files_properties(${EMP_OT_MLKEM_SOURCES}
+    PROPERTIES COMPILE_DEFINITIONS "${_emp_ot_mlkem_defs}")
 
 add_library(emp-ot STATIC
     emp-ot/ot_extension/iknp.cpp
@@ -84,17 +88,14 @@ add_library(emp-ot STATIC
     emp-ot/ot_extension/ferret/silent_ferret.cpp
     emp-ot/ot_extension/softspoken/softspoken.cpp
     emp-ot/base_ot/mlkem/bmm.cpp
-    ${KYBER_C_SOURCES})
+    ${EMP_OT_MLKEM_SOURCES})
 add_library(emp-ot::emp-ot ALIAS emp-ot)
 
 # Tracks emp-tool's C++20 public contract (it depends on emp-tool transitively).
 target_compile_features(emp-ot PUBLIC cxx_std_20)
 
 target_include_directories(emp-ot PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/emp-ot/base_ot/mlkem)
-
-set_source_files_properties(${KYBER_C_SOURCES}
-    PROPERTIES COMPILE_DEFINITIONS "KYBER_K=2")
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/mlkem-native)
 
 target_include_directories(emp-ot PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
@@ -155,17 +156,18 @@ if(EMP_OT_INSTALL)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING
             PATTERN "tuning_local.h" EXCLUDE
+            PATTERN "mlkem" EXCLUDE
             PATTERN "*.h")
 
     install(FILES ${EMP_OT_TUNING_LOCAL_H}
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/emp-ot)
 
     # License payload: emp-ot's Apache-2.0 text, the third-party notices,
-    # and the vendored Kyber upstream license.
+    # and the vendored mlkem-native license.
     install(FILES LICENSE THIRD_PARTY_NOTICES.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/emp-ot)
-    install(FILES emp-ot/base_ot/mlkem/kyber/LICENSE
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/emp-ot/kyber)
+    install(FILES third_party/mlkem-native/LICENSE
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/emp-ot/mlkem-native)
 
     install(EXPORT emp-otTargets
         NAMESPACE   emp-ot::
