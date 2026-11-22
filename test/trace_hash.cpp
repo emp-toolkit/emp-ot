@@ -188,6 +188,8 @@ int main(int argc, char** argv) {
     measure(party, anchor.get(), "CSW",      base_sf, [&](NetIO* io){ run_base_ot<CSW>     (io, party, base_len); });
     measure(party, anchor.get(), "PVW",      base_sf, [&](NetIO* io){ run_base_ot<PVW>     (io, party, base_len); });
     measure(party, anchor.get(), "BMM",      base_sf, [&](NetIO* io){ run_base_ot<BMM>     (io, party, base_len); });
+    measure(party, anchor.get(), "BMM768",   base_sf, [&](NetIO* io){ run_base_ot<BMM768>  (io, party, base_len); });
+    measure(party, anchor.get(), "BMM1024",  base_sf, [&](NetIO* io){ run_base_ot<BMM1024> (io, party, base_len); });
 
     for (bool mali : {false, true}) {
         const string mode = mali ? "mali" : "semi";

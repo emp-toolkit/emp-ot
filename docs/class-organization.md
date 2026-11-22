@@ -23,8 +23,8 @@ emp-ot/
 │   ├── co.h                     CO         (Chou-Orlandi)
 │   ├── csw.h                    CSW        (CSW "blazing-fast")
 │   ├── pvw.h                    PVW        (Peikert-Vaikuntanathan-Waters)
-│   ├── bmm.h                    BMM        (Badrinarayanan-Masny-Mukherjee; PQ, custom over ML-KEM-512 internals)
-│   └── mlkem/                   BMM's body + its ML-KEM-512 calls into third_party/mlkem-native
+│   ├── bmm.h                    BMM_T<512|768|1024> (Badrinarayanan-Masny-Mukherjee; PQ, custom over ML-KEM internals)
+│   └── mlkem/                   BMM's body + its ML-KEM calls into third_party/mlkem-native, one file per level
 │
 ├── ot_extension/          RandomCOT extensions
 │   ├── ot_extension.h           OTExtension base

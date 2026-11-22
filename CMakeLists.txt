@@ -63,24 +63,31 @@ find_package(emp-tool 1.0 REQUIRED)
 # The IKNP, SoftSpoken, Ferret, SilentFerret and BMM bodies live in .cpp;
 # the rest of the headers are consumed inline.
 #
-# BMM's ML-KEM-512 is the vendored mlkem-native (third_party/mlkem-native,
-# unmodified; see its VENDOR.md). emp-ot/base_ot/mlkem/mlkem512.c compiles
-# its C sources as one translation unit and the vendored
-# mlkem_native_asm.S supplies the assembly; both read the configuration
-# emp-ot/base_ot/mlkem/mlkem_config.h through MLK_CONFIG_FILE. The backend
-# is chosen at compile time: AVX2 when the build targets it (emp-tool's
-# native build), AArch64 on arm64, the C code otherwise.
+# BMM's ML-KEM is the vendored mlkem-native (third_party/mlkem-native,
+# unmodified; see its VENDOR.md), at all three parameter sets as one
+# multi-level build: emp-ot/base_ot/mlkem/mlkem{512,768,1024}.c each compile
+# its C sources for one level (the 512 file also the level-independent
+# code), and the vendored mlkem_native_asm.S supplies the assembly for all
+# levels. All of them read emp-ot/base_ot/mlkem/mlkem_config.h through
+# MLK_CONFIG_FILE. The backend is chosen at compile time: AVX2 when the
+# build targets it (emp-tool's native build), AArch64 on arm64, the C code
+# otherwise.
 option(EMP_OT_MLKEM_PORTABLE
     "Build BMM's ML-KEM on mlkem-native's C code only (for comparing backends)" OFF)
-set(EMP_OT_MLKEM_SOURCES
+set(EMP_OT_MLKEM_C_SOURCES
     emp-ot/base_ot/mlkem/mlkem512.c
-    third_party/mlkem-native/mlkem/mlkem_native_asm.S)
+    emp-ot/base_ot/mlkem/mlkem768.c
+    emp-ot/base_ot/mlkem/mlkem1024.c)
+set(EMP_OT_MLKEM_ASM_SOURCE third_party/mlkem-native/mlkem/mlkem_native_asm.S)
+set(EMP_OT_MLKEM_SOURCES ${EMP_OT_MLKEM_C_SOURCES} ${EMP_OT_MLKEM_ASM_SOURCE})
 set(_emp_ot_mlkem_defs "MLK_CONFIG_FILE=\"emp-ot/base_ot/mlkem/mlkem_config.h\"")
 if(EMP_OT_MLKEM_PORTABLE)
     list(APPEND _emp_ot_mlkem_defs EMP_OT_MLKEM_PORTABLE)
 endif()
-set_source_files_properties(${EMP_OT_MLKEM_SOURCES}
+set_source_files_properties(${EMP_OT_MLKEM_C_SOURCES}
     PROPERTIES COMPILE_DEFINITIONS "${_emp_ot_mlkem_defs}")
+set_source_files_properties(${EMP_OT_MLKEM_ASM_SOURCE}
+    PROPERTIES COMPILE_DEFINITIONS "${_emp_ot_mlkem_defs};MLK_CONFIG_MULTILEVEL_WITH_SHARED")
 
 add_library(emp-ot STATIC
     emp-ot/ot_extension/iknp.cpp

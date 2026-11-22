@@ -194,6 +194,8 @@ CO                     send=f2f89068a7816fb0 recv=d9c1fafc2be169a6
 CSW                    send=6cbdbfdeab5e4295 recv=682f47c8b14c6ce3
 PVW                    send=29c86c1a3e9ca181 recv=9b84ed820cbcacb7
 BMM                    send=356438d8b2753410 recv=74ebc2ae00798c13
+BMM768                 send=89e88234d11cb7e1 recv=c25b37fc62230c19
+BMM1024                send=048279522e25c944 recv=fb6e042160cc5728
 IKNP semi              send=10683f96182d1932 recv=71521069116554ea
 SoftSpoken<2> semi     send=58b5841c59972871 recv=5659fdade553c889
 SoftSpoken<8> semi     send=58b5841c59972871 recv=7331c25770184af2
@@ -245,7 +247,8 @@ full class layout.
 
 Concrete classes attach as follows:
 
-- **Base OTs** (`OT` only): `CO`, `PVW`, `CSW`, `BMM`.
+- **Base OTs** (`OT` only): `CO`, `PVW`, `CSW`, `BMM` (and `BMM768`,
+  `BMM1024`).
 - **OT extensions** (`OTExtension`, so all of the above): `IKNP`,
   `SoftSpoken<k>`, and `Ferret`.
 
@@ -271,7 +274,9 @@ else                ot.recv(mc, c, length);    // mc[i] = m_{c[i]}
 ```
 
 All four implement the same `OT` interface. `CO` is semi-honest;
-`CSW`, `PVW`, `BMM` are malicious-secure.
+`CSW`, `PVW`, `BMM` are malicious-secure. `BMM` is the post-quantum one, at
+any of FIPS 203's three ML-KEM parameter sets: `BMM` (= `BMM_T<512>`, NIST
+category 1), `BMM768` (category 3) and `BMM1024` (category 5).
 
 ### OT extensions
 
@@ -526,6 +531,8 @@ send/recv bytes are deterministic).
 | `CSW`      | 5.6 ms |   6,229 |   8,864 | malicious-secure (CDH + RO)                  |
 | `PVW`      |  23 ms |  39,424 |  17,664 | malicious-secure (DDH messy mode)            |
 | `BMM`      | 2.0 ms | 196,608 | 106,496 | malicious-secure, post-quantum (over ML-KEM-512 internals) |
+| `BMM768`   | 3.2 ms | 278,528 | 155,648 | malicious-secure, post-quantum (over ML-KEM-768 internals) |
+| `BMM1024`  | 4.6 ms | 401,408 | 204,800 | malicious-secure, post-quantum (over ML-KEM-1024 internals) |
 
 ### OT extensions (RCOT throughput)
 
@@ -652,8 +659,9 @@ what the estimates do not cover, and how to reproduce them and evaluate a custom
   of a session that aborts. An abort can also tell the adversary which of
   its guesses failed, so do not rerun with a Δ that an aborted session
   used (`set_delta`): let each new session sample its own.
-- **`BMM` is a custom OT construction** on ML-KEM-512's IND-CPA core
-  (FIPS 203's K-PKE, from the vendored mlkem-native); it does not use the
+- **`BMM` is a custom OT construction** on ML-KEM's IND-CPA core
+  (FIPS 203's K-PKE at the chosen parameter set, from the vendored
+  mlkem-native); it does not use the
   ML-KEM KEM as a black box, and "post-quantum" refers to the Module-LWE
   hardness of that construction, not an end-to-end PQ composition claim.
 - No systematic constant-time guarantee: base-OT elliptic-curve ops call

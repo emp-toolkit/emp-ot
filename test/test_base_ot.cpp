@@ -123,6 +123,18 @@ int main(int argc, char **argv) {
 		bmm.set_sid(sid);
 		run_one("BMM", &bmm, io.get(), party, length);
 	}
+	{
+		block sid = makeBlock(0xCAFEBABE12345678ULL, 0x0BADC0DE0DEFACE1ULL);
+		BMM768 bmm(io.get());
+		bmm.set_sid(sid);
+		run_one("BMM768", &bmm, io.get(), party, length);
+	}
+	{
+		block sid = makeBlock(0xCAFEBABE12345678ULL, 0x0BADC0DE0DEFACE2ULL);
+		BMM1024 bmm(io.get());
+		bmm.set_sid(sid);
+		run_one("BMM1024", &bmm, io.get(), party, length);
+	}
 	check_csw_message_keys(io.get(), party);
 	cout << "\n";
 
