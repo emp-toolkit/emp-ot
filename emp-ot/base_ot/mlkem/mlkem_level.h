@@ -17,6 +17,9 @@
  * the caller: in BMM both parties derive rho from the session id and the OT
  * index, and the receiver must not be able to choose its own matrix.
  */
+#ifndef EMP_OT_MLKEM_LEVEL_H__
+#define EMP_OT_MLKEM_LEVEL_H__
+
 #if !defined(MLK_CONFIG_FILE)
 #error "mlkem_level.h must be built with MLK_CONFIG_FILE set (see CMakeLists.txt)"
 #endif
@@ -238,3 +241,5 @@ int EMP_MLKEM_FN(decrypt)(uint8_t *m, const uint8_t *ct, const uint8_t *sk)
 {
   return mlk_indcpa_dec(m, ct, sk, 0);
 }
+
+#endif /* EMP_OT_MLKEM_LEVEL_H__ */
