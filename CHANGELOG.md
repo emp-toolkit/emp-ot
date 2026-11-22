@@ -82,6 +82,13 @@ metadata is numeric (see the README's version guidance).
 
 ### Added
 
+- `BMM` at all three ML-KEM parameter sets: `BMM_T<Level>` for `Level` 512,
+  768 or 1024 (NIST categories 1, 3 and 5), with `BMM` = `BMM_T<512>`,
+  `BMM768` and `BMM1024`, and `BaseOtKind::BMM768` / `BaseOtKind::BMM1024`
+  for `make_base_ot`. The three levels are one multi-level build of the
+  vendored mlkem-native. Per OT, `BMM768` sends 1216 and 2176 bytes and
+  `BMM1024` 1600 and 3136. `BMM` itself, its bytes and its trace row are
+  unchanged; `test/trace_hash.baseline` gains the two new rows.
 - `SilentFerret`'s lower-level consume path, for a caller that applies the LPN
   step itself, for instance to several streams that share one public matrix:
   `produce_range_leaves(out, tree_begin, n_trees)` gives a range of the current

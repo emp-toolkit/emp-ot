@@ -11,6 +11,7 @@
 #include <string>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -450,19 +451,31 @@ int main() {
         BMM bmm(nullptr);
         bmm.send(nullptr, nullptr, -1);
     });
-    ok &= expect_rejected("BMM noncanonical r", "noncanonical r encoding", [] {
-        // One receiver first-flow payload: 768-byte r followed by c_0,c_1.
-        // Encode coefficient 3329 (= q) in the first 12-bit slot; every
-        // canonical R_q coefficient must instead be in [0,3329).
-        std::array<uint8_t, 832> first_flow = {};
-        first_flow[0] = 0x01;
-        first_flow[1] = 0x0d;
-        FixedInputIO io(first_flow.data(), static_cast<int64_t>(first_flow.size()));
-        BMM bmm(&io);
-        block data0[1] = {zero_block};
-        block data1[1] = {zero_block};
-        bmm.send(data0, data1, 1);
-    });
+    // One receiver first-flow payload: r (768 / 1152 / 1536 bytes) followed
+    // by c_0, c_1. Encode coefficient 3329 (= q) in the first 12-bit slot;
+    // every canonical R_q coefficient must instead be in [0,3329).
+    auto noncanonical_r = [](auto bmm_tag, auto flow_bytes) {
+        return [] {
+            using BMMx = typename decltype(bmm_tag)::type;
+            std::array<uint8_t, decltype(flow_bytes)::value> first_flow = {};
+            first_flow[0] = 0x01;
+            first_flow[1] = 0x0d;
+            FixedInputIO io(first_flow.data(), static_cast<int64_t>(first_flow.size()));
+            BMMx bmm(&io);
+            block data0[1] = {zero_block};
+            block data1[1] = {zero_block};
+            bmm.send(data0, data1, 1);
+        };
+    };
+    ok &= expect_rejected("BMM noncanonical r", "noncanonical r encoding",
+                          noncanonical_r(std::type_identity<BMM>{},
+                                         std::integral_constant<size_t, 832>{}));
+    ok &= expect_rejected("BMM768 noncanonical r", "noncanonical r encoding",
+                          noncanonical_r(std::type_identity<BMM768>{},
+                                         std::integral_constant<size_t, 1216>{}));
+    ok &= expect_rejected("BMM1024 noncanonical r", "noncanonical r encoding",
+                          noncanonical_r(std::type_identity<BMM1024>{},
+                                         std::integral_constant<size_t, 1600>{}));
     ok &= expect_rejected("invalid BaseOtKind", "invalid BaseOtKind", [] {
         (void)make_base_ot(static_cast<BaseOtKind>(255), nullptr);
     });

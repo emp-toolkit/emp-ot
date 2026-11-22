@@ -16,9 +16,10 @@
 
 namespace emp {
 
-// CSW = CDH/EC "Blazing Fast" OT; BMM = lattice (ML-KEM-512 / Kyber, 2022/415);
-// CO = Chou-Orlandi (semi-honest); PVW = Peikert-Vaikuntanathan-Waters.
-enum class BaseOtKind { CSW, BMM, CO, PVW };
+// CSW = CDH/EC "Blazing Fast" OT; BMM / BMM768 / BMM1024 = lattice (2022/415
+// over ML-KEM-512 / -768 / -1024); CO = Chou-Orlandi (semi-honest);
+// PVW = Peikert-Vaikuntanathan-Waters.
+enum class BaseOtKind { CSW, BMM, CO, PVW, BMM768, BMM1024 };
 
 inline std::unique_ptr<OT> make_base_ot(BaseOtKind kind, IOChannel* io) {
   switch (kind) {
@@ -26,6 +27,8 @@ inline std::unique_ptr<OT> make_base_ot(BaseOtKind kind, IOChannel* io) {
     case BaseOtKind::BMM: return std::make_unique<BMM>(io);
     case BaseOtKind::CO:  return std::make_unique<CO>(io);
     case BaseOtKind::PVW: return std::make_unique<PVW>(io);
+    case BaseOtKind::BMM768:  return std::make_unique<BMM768>(io);
+    case BaseOtKind::BMM1024: return std::make_unique<BMM1024>(io);
   }
   expecting(false, "make_base_ot: invalid BaseOtKind");
   return nullptr;
