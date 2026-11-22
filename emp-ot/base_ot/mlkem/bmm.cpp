@@ -1,14 +1,15 @@
 #include "emp-ot/base_ot/bmm.h"
-#include "emp-ot/base_ot/mlkem/params.hpp"
-#include "emp-ot/base_ot/mlkem/crs.hpp"
+#include "emp-ot/base_ot/mlkem/mlkem512.h"
 
-// The Regev/Kyber PKE underlying the BMM OT reuses Kyber's IND-CPA core:
-//   Gen : pk = t = A·x + e,  sk = x        (x,e ← CBD_eta1)
-//   Enc : u = A^T·ρ + e1, v = t^T·ρ + e2 + Encode(m)   (ρ←eta1, e1,e2←eta2)
-//   Dec : m = Decode(v − x^T·u)
-// "Encode"/"Decode" are Kyber's poly_frommsg / poly_tomsg (32 B ↔ R_q with
-// the bit_i × ⌊(q+1)/2⌋ embedding). A 128-bit OT message occupies the first
-// 16 bytes of m; the remaining 16 bytes are zero. There is no KEM–DEM wrapper.
+// The PKE underlying the BMM OT is ML-KEM-512's IND-CPA core, FIPS 203's
+// K-PKE, run by the vendored mlkem-native (mlkem512.h):
+//   Gen : t̂ = Â·ŝ + ê, sk = ŝ        (s, e ← CBD_eta1; Â from the seed rho)
+//   Enc : K-PKE.Encrypt((t̂, rho), m)  (u = A^T·y + e1, v = t^T·y + e2 + Decompress1(m))
+//   Dec : K-PKE.Decrypt(ŝ, (u, v))
+// Public keys and the Ĥ oracle live in the NTT domain, as t̂ does in an
+// ML-KEM public key. A 128-bit OT message occupies the first 16 bytes of the
+// 32-byte plaintext; the remaining 16 bytes are zero. There is no KEM–DEM
+// wrapper.
 
 #include <algorithm>
 #include <cstdint>
@@ -17,9 +18,14 @@
 
 namespace emp {
 
-using namespace mlkem;
-
 namespace {
+
+constexpr int kSymBytes     = EMP_MLKEM512_SYMBYTES;      // 32: seeds, coins
+constexpr int kPolyVecBytes = EMP_MLKEM512_POLYVECBYTES;  // 768: r
+constexpr int kPkBytes      = EMP_MLKEM512_PKBYTES;       // 800: (t̂, rho)
+constexpr int kSkBytes      = EMP_MLKEM512_SKBYTES;       // 768: ŝ
+constexpr int kCtBytes      = EMP_MLKEM512_CTBYTES;       // 768: (u, v)
+constexpr int kMsgBytes     = EMP_MLKEM512_MSGBYTES;      // 32: plaintext
 
 // Symmetric security parameter λ = 256 bits. The correlation-breaker strings
 // c_0, c_1, ĉ_β and the H_β oracle outputs live in {0,1}^λ; with λ=256 the
@@ -39,11 +45,11 @@ inline lam_t lam_xor(const lam_t& a, const lam_t& b) {
 }
 
 // Per-OT wire sizes.
-//   recv → send : r (uncompressed uniform R_q^K) + c_0 + c_1 (λ-bit each).
-//   send → recv : per branch (compressed u_β, compressed v_β).
+//   recv → send : r (a uniform element of R_q^K, NTT domain) + c_0 + c_1.
+//   send → recv : one K-PKE ciphertext per branch.
 constexpr int kRecvBytesPerOT     = kPolyVecBytes + 2 * kLambdaBytes; // 832
-constexpr int kSendBytesPerBranch = kPolyVecCompBytes + kPolyCompBytes; // 768
-constexpr int kSendBytesPerOT     = 2 * kSendBytesPerBranch; // 1536
+constexpr int kSendBytesPerBranch = kCtBytes;                         // 768
+constexpr int kSendBytesPerOT     = 2 * kSendBytesPerBranch;          // 1536
 
 // Both parties stream: each sends an OT's message as soon as it has computed
 // it, so the sender works on OT i while the receiver computes later first
@@ -64,45 +70,24 @@ constexpr int64_t kWindow     = 32;
 static_assert(kWindow >= 2 * kFlushEvery,
               "BMM: the receiver window must span two flush groups");
 
-// Derive an independent 32-byte public matrix seed for OT i. The leading tag
-// gives this use its own domain even before crs_expand_matrix applies its 0x01
-// sub-seed tag.
-inline void sid_index_to_matrix_seed(block sid, int64_t i,
-                                     uint8_t out[kSymBytes]) {
+// The 32-byte matrix seed rho of OT i: both parties expand OT i's public
+// matrix Â_i from it, as K-PKE expands Â from the rho of a public key. The
+// leading tag separates this use from Ĥ's seeds (tag 0x02).
+inline void matrix_seed(block sid, int64_t i, uint8_t out[kSymBytes]) {
     uint8_t in[1 + sizeof(block) + sizeof(uint64_t)];
     in[0] = 0x03;
     std::memcpy(in + 1, &sid, sizeof(block));
     const uint64_t ii = static_cast<uint64_t>(i);
     std::memcpy(in + 1 + sizeof(block), &ii, sizeof(ii));
-    shake256(out, kSymBytes, in, sizeof(in));
+    emp_mlkem512_shake256(out, kSymBytes, in, sizeof(in));
 }
 
-// Sample a polyvec under CBD_eta1 keyed by `seed` with per-component
-// nonces `base..base+K-1`. (Kyber's poly_getnoise_eta1 is one
-// SHAKE-256 PRF call per polynomial.)
-inline void sample_polyvec_eta1(polyvec* p, const uint8_t seed[kSymBytes],
-                                uint8_t base) {
-    for (int j = 0; j < kK; ++j)
-        poly_getnoise_eta1(&p->vec[j], seed, (uint8_t)(base + j));
-}
-
-// Same, under CBD_eta2 — used for the encryption errors e1, e2 (ML-KEM-512
-// samples these with eta2; only x, e, ρ use eta1).
-inline void sample_polyvec_eta2(polyvec* p, const uint8_t seed[kSymBytes],
-                                uint8_t base) {
-    for (int j = 0; j < kK; ++j)
-        poly_getnoise_eta2(&p->vec[j], seed, (uint8_t)(base + j));
-}
-
-// Ĥ_β : {0,1}^λ → R_q^K, the hash into the public-key space. Realized as a
-// uniform polyvec rejection-sampled from a SHAKE-256 seed over
-// (sid, i, β, ĉ). Coefficient domain, in [0, q). Both parties compute the
-// same vector for the same inputs, so the r ± Ĥ_β cancellation is exact mod q.
-inline void hash_to_polyvec(polyvec* out, block sid, int64_t i, int beta,
-                            const lam_t& c_hat) {
-    // Leading 0x02 tag domain-separates Ĥ from the matrix-A CRS expansion
-    // (which uses tag 0x01 in crs_expand_matrix) — explicit so the split
-    // survives refactors, not just the distinct SHAKE-256 input structure.
+// Ĥ_β : {0,1}^λ → R_q^K, the hash into the public-key space, a uniform
+// element of R_q^K in the NTT domain. It is sampled (mlkem512.h) from this
+// seed, a SHAKE-256 digest over (sid, i, β, ĉ). Both parties derive the same
+// element for the same inputs, so the r ± Ĥ_β cancellation is exact mod q.
+inline void hhat_seed(block sid, int64_t i, int beta, const lam_t& c_hat,
+                      uint8_t seed[kSymBytes]) {
     uint8_t in[1 + sizeof(block) + sizeof(uint64_t) + 1 + kLambdaBytes];
     size_t off = 0;
     in[off++] = 0x02;
@@ -111,11 +96,7 @@ inline void hash_to_polyvec(polyvec* out, block sid, int64_t i, int beta,
     std::memcpy(in + off, &ii, sizeof(uint64_t));       off += sizeof(uint64_t);
     in[off++] = (uint8_t)beta;
     std::memcpy(in + off, c_hat.v, kLambdaBytes);       off += kLambdaBytes;
-
-    uint8_t seed[kSymBytes];
-    shake256(seed, kSymBytes, in, off);
-    for (int j = 0; j < kK; ++j)
-        crs_detail::poly_uniform_from_seed(&out->vec[j], seed, (uint8_t)j, 0);
+    emp_mlkem512_shake256(seed, kSymBytes, in, off);
 }
 
 // H_β : R_q^K × {0,1}^λ → {0,1}^λ, the correlation-breaker oracle (λ=256-bit
@@ -131,22 +112,6 @@ inline lam_t h_correlation(block sid, int64_t i, int beta,
         .absorb(c.v, kLambdaBytes)
         .squeeze_digest(out.v);
     return out;
-}
-
-// Decode r only if its 12-bit coefficients are the canonical representatives
-// in [0,q). Kyber's polyvec_frombytes deliberately accepts all 12-bit values;
-// BMM instead hashes and adds an element of R_q^K, whose wire representation
-// must be unique for the random-oracle proof to use the same domain as the
-// implementation.
-inline bool polyvec_frombytes_canonical(polyvec* out, const uint8_t* in) {
-    polyvec_frombytes(out, in);
-    for (int j = 0; j < kK; ++j) {
-        for (int k = 0; k < kN; ++k) {
-            if (out->vec[j].coeffs[k] < 0 || out->vec[j].coeffs[k] >= kQ)
-                return false;
-        }
-    }
-    return true;
 }
 
 }  // anonymous namespace
@@ -165,34 +130,20 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
     if (length == 0) return;
     const int64_t window = std::min(kWindow, length);
 
-    // Per-OT public matrix A_i, in NTT domain when used for t = A_i·x.
-    polyvec A[kK];
-
-    // Secret x (NTT domain) of each OT whose reply is outstanding, reused at
-    // decryption; OT i uses slot i % window.
-    default_init_vector<polyvec> x_ntt(static_cast<size_t>(window));
+    // The secret key ŝ of each OT whose reply is outstanding; OT i uses slot
+    // i % window.
+    struct sk_t { uint8_t v[kSkBytes]; };
+    default_init_vector<sk_t> sk(static_cast<size_t>(window));
 
     // Round 2 (S→R): (ct_0, ct_1) for OT i. Decrypt branch b.
     auto decrypt = [&](int64_t i) {
         const int bb = b[i] ? 1 : 0;
         uint8_t in[kSendBytesPerOT];
         io->recv_data(in, kSendBytesPerOT);
-        const uint8_t* branch = in + (size_t)bb * kSendBytesPerBranch;
-
-        polyvec u;
-        polyvec_decompress(&u, branch);
-        poly v;
-        poly_decompress(&v, branch + kPolyVecCompBytes);
-
-        polyvec_ntt(&u);
-        poly inner;
-        polyvec_basemul_acc_montgomery(&inner, &x_ntt[(size_t)(i % window)], &u);
-        poly_invntt_tomont(&inner);
-        poly_sub(&v, &v, &inner);
-        poly_reduce(&v);
-
-        uint8_t m_b[kSymBytes];
-        poly_tomsg(m_b, &v);
+        uint8_t m_b[kMsgBytes];
+        expecting(emp_mlkem512_decrypt(m_b, in + (size_t)bb * kSendBytesPerBranch,
+                                       sk[(size_t)(i % window)].v) == 0,
+                  "BMM::recv: decryption failed");
         std::memcpy(&data[i], m_b, sizeof(block));
     };
 
@@ -201,43 +152,24 @@ void BMM::recv(block* data, const bool* b, int64_t length) {
     for (int64_t i = 0; i < length; ++i) {
         const int bb = b[i] ? 1 : 0;
 
-        uint8_t matrix_seed[kSymBytes];
-        sid_index_to_matrix_seed(sid.value(), i, matrix_seed);
-        crs_expand_matrix(A, matrix_seed, /*transposed=*/false);
-        for (int j = 0; j < kK; ++j) polyvec_ntt(&A[j]);
+        uint8_t rho[kSymBytes];
+        matrix_seed(sid.value(), i, rho);
 
-        // Gen: x, e ← eta1 ; pk = t = A_i·x + e (coefficient domain).
+        // Gen's noise coins, then ĉ_b, c_b ← {0,1}^λ.
         uint8_t noise_seed[kSymBytes];
         prg.random_data_unaligned(noise_seed, kSymBytes);
-        polyvec x, e;
-        sample_polyvec_eta1(&x, noise_seed, /*base=*/0);
-        sample_polyvec_eta1(&e, noise_seed, /*base=*/kK);
-        polyvec_ntt(&x);
-        x_ntt[(size_t)(i % window)] = x;
-
-        polyvec t;
-        for (int j = 0; j < kK; ++j)
-            polyvec_basemul_acc_montgomery(&t.vec[j], &A[j], &x);
-        polyvec_invntt_tomont(&t);
-        polyvec_add(&t, &t, &e);
-        polyvec_reduce(&t);
-
-        // ĉ_b, c_b ← {0,1}^λ ; r = t − Ĥ_b(ĉ_b) ; c_{1−b} = ĉ_b ⊕ H_b(r, c_b).
         lam_t c_hat_b, c_b;
         prg.random_data_unaligned(c_hat_b.v, kLambdaBytes);
         prg.random_data_unaligned(c_b.v,     kLambdaBytes);
 
-        polyvec Hhat;
-        hash_to_polyvec(&Hhat, sid.value(), i, bb, c_hat_b);
-        polyvec r;
-        for (int j = 0; j < kK; ++j)
-            poly_sub(&r.vec[j], &t.vec[j], &Hhat.vec[j]);
-        polyvec_reduce(&r);
-
-        // Round 1 (R→S): OT i's (r, c_0, c_1).
+        // (t̂, ŝ) ← Gen ; r = t̂ − Ĥ_b(ĉ_b).
+        uint8_t h_seed[kSymBytes];
+        hhat_seed(sid.value(), i, bb, c_hat_b, h_seed);
         uint8_t out[kRecvBytesPerOT];
-        polyvec_tobytes(out, &r);
+        emp_mlkem512_bmm_receiver_key(out, sk[(size_t)(i % window)].v, rho,
+                                      noise_seed, h_seed);
 
+        // c_{1−b} = ĉ_b ⊕ H_b(r, c_b). Round 1 (R→S): OT i's (r, c_0, c_1).
         const lam_t h        = h_correlation(sid.value(), i, bb, out, c_b);
         const lam_t c_other  = lam_xor(c_hat_b, h);    // c_{1−b}
         const lam_t c0       = (bb == 0) ? c_b : c_other;
@@ -265,9 +197,6 @@ void BMM::send(const block* data0, const block* data1, int64_t length) {
               "BMM::send: payload byte count overflow");
     if (length == 0) return;
 
-    // Per-OT public matrix A_i^T, in NTT domain when used for u = A_i^T·ρ.
-    polyvec AT[kK];
-
     // One OT's Round 1 payload (r, c_0, c_1) and Round 2 reply (ct_0, ct_1).
     uint8_t in[kRecvBytesPerOT];
     uint8_t reply[kSendBytesPerOT];
@@ -275,10 +204,8 @@ void BMM::send(const block* data0, const block* data1, int64_t length) {
     PRG prg;
 
     for (int64_t i = 0; i < length; ++i) {
-        uint8_t matrix_seed[kSymBytes];
-        sid_index_to_matrix_seed(sid.value(), i, matrix_seed);
-        crs_expand_matrix(AT, matrix_seed, /*transposed=*/true);
-        for (int j = 0; j < kK; ++j) polyvec_ntt(&AT[j]);
+        uint8_t rho[kSymBytes];
+        matrix_seed(sid.value(), i, rho);
 
         // Round 1 (R→S): OT i's (r, c_0, c_1).
         io->recv_data(in, kRecvBytesPerOT);
@@ -287,64 +214,35 @@ void BMM::send(const block* data0, const block* data1, int64_t length) {
         std::memcpy(c0.v, in + kPolyVecBytes,                kLambdaBytes);
         std::memcpy(c1.v, in + kPolyVecBytes + kLambdaBytes, kLambdaBytes);
 
-        polyvec r;
-        expecting(polyvec_frombytes_canonical(&r, r_bytes),
-                  "BMM::send: noncanonical r encoding");
-
         // ĉ_0 = c_1 ⊕ H_0(r,c_0) ; ĉ_1 = c_0 ⊕ H_1(r,c_1).
         const lam_t c_hat[2] = {
             lam_xor(c1, h_correlation(sid.value(), i, 0, r_bytes, c0)),
             lam_xor(c0, h_correlation(sid.value(), i, 1, r_bytes, c1))
         };
 
-        uint8_t* out = reply;
+        // pk_β = (r + Ĥ_β(ĉ_β), rho). r must be the canonical encoding of an
+        // element of R_q^K: BMM hashes it and adds to it, so its wire
+        // representation has to be unique for the random-oracle proof to use
+        // the same domain as the implementation.
+        uint8_t h_seed[2][kSymBytes];
+        hhat_seed(sid.value(), i, 0, c_hat[0], h_seed[0]);
+        hhat_seed(sid.value(), i, 1, c_hat[1], h_seed[1]);
+        uint8_t pk[2][kPkBytes];
+        expecting(emp_mlkem512_bmm_sender_keys(pk[0], pk[1], r_bytes, rho,
+                                               h_seed[0], h_seed[1]) == 0,
+                  "BMM::send: noncanonical r encoding");
 
         for (int beta = 0; beta < 2; ++beta) {
-            // pk_β = r + Ĥ_β(ĉ_β), then NTT for the basemuls.
-            polyvec Hhat;
-            hash_to_polyvec(&Hhat, sid.value(), i, beta, c_hat[beta]);
-            polyvec pk;
-            polyvec_add(&pk, &r, &Hhat);
-            polyvec_reduce(&pk);
-            polyvec_ntt(&pk);
-
-            // Directly embed the 128-bit OT message in Kyber's 256-bit
+            // Directly embed the 128-bit OT message in K-PKE's 256-bit
             // plaintext space. IND-CPA permits this fixed zero padding.
-            uint8_t m[kSymBytes] = {};
+            uint8_t m[kMsgBytes] = {};
             const block& message = (beta == 0) ? data0[i] : data1[i];
             std::memcpy(m, &message, sizeof(block));
-            uint8_t noise_seed[kSymBytes];
-            prg.random_data_unaligned(noise_seed, kSymBytes);
-
-            polyvec rho, err1;
-            poly err2;
-            sample_polyvec_eta1(&rho,  noise_seed, /*base=*/0);     // ρ  ~ eta1
-            sample_polyvec_eta2(&err1, noise_seed, /*base=*/kK);    // e1 ~ eta2
-            poly_getnoise_eta2(&err2, noise_seed, (uint8_t)(2 * kK)); // e2 ~ eta2
-            polyvec_ntt(&rho);
-
-            // u_β = A_i^T·ρ + e1.
-            polyvec u;
-            for (int j = 0; j < kK; ++j)
-                polyvec_basemul_acc_montgomery(&u.vec[j], &AT[j], &rho);
-            polyvec_invntt_tomont(&u);
-            polyvec_add(&u, &u, &err1);
-            polyvec_reduce(&u);
-
-            // v_β = pk_β^T·ρ + e2 + Encode(μ_β).
-            poly v;
-            polyvec_basemul_acc_montgomery(&v, &pk, &rho);
-            poly_invntt_tomont(&v);
-            poly_add(&v, &v, &err2);
-            poly enc;
-            poly_frommsg(&enc, m);
-            poly_add(&v, &v, &enc);
-            poly_reduce(&v);
-
-            polyvec_compress(out, &u);
-            out += kPolyVecCompBytes;
-            poly_compress(out, &v);
-            out += kPolyCompBytes;
+            uint8_t coins[kSymBytes];
+            prg.random_data_unaligned(coins, kSymBytes);
+            expecting(emp_mlkem512_encrypt(reply + (size_t)beta * kSendBytesPerBranch,
+                                           m, pk[beta], coins) == 0,
+                      "BMM::send: encryption failed");
         }
 
         io->send_data(reply, kSendBytesPerOT);

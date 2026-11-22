@@ -3,11 +3,12 @@
 emp-ot vendors third-party source. Their licenses are retained in-tree
 and installed alongside the library.
 
-- **pq-crystals / Kyber (ML-KEM) reference code** — used by the `BMM`
-  post-quantum base OT (`emp-ot/base_ot/mlkem/kyber/`). Dual-licensed
-  Public Domain (CC0) or Apache-2.0; the Keccak and AES portions are
-  public-domain code from the sources/authors listed in per-file
-  comments. The complete upstream notice is retained at
-  `emp-ot/base_ot/mlkem/kyber/LICENSE`.
+- **mlkem-native** (Post-Quantum Cryptography Alliance), an ML-KEM
+  implementation derived from the pq-crystals Kyber reference code — used
+  by the `BMM` post-quantum base OT (`third_party/mlkem-native/`, version
+  and commit in its `VENDOR.md`). Licensed Apache-2.0 OR ISC OR MIT; a few
+  files carry their own SPDX identifiers, as the upstream notice explains.
+  The complete upstream notice is retained at
+  `third_party/mlkem-native/LICENSE`.
 
 emp-ot itself is licensed under Apache-2.0; see `LICENSE`.

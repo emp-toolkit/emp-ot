@@ -101,11 +101,23 @@ metadata is numeric (see the README's version guidance).
 
 ### Changed
 
+- `BMM` runs on the vendored mlkem-native v2.0.0
+  (`third_party/mlkem-native`, unmodified) in place of the pq-crystals
+  reference code and the OpenSSL SHAKE shim. Builds that target AVX2 or
+  AArch64 get mlkem-native's assembly, others its C code;
+  `-DEMP_OT_MLKEM_PORTABLE=ON` builds the C code only. Encryption and
+  decryption are mlkem-native's K-PKE functions unchanged, and the receiver's
+  key is K-PKE key generation under the per-OT matrix seed. Each OT's matrix
+  and the Ĥ oracle are sampled in the NTT domain, as ML-KEM samples Â, and
+  `r` is sent as the NTT-domain encoding of t̂ − Ĥ_b, as an ML-KEM public key
+  carries t̂. The sender checks `r` with FIPS 203's modulus check. Message
+  sizes are unchanged but the bytes are not: both parties must upgrade
+  together, and the `BMM` row of `test/trace_hash.baseline` is regenerated.
+  The other rows are unchanged, and the C and assembly backends give the same
+  bytes.
 - `PrimalLPNParameter` requires `tree_depth ≥ 2`. The cGGM applies its
   leaf-LSB mask only from depth 2 on, so a depth-1 set gave broken COTs in
   semi-honest mode and made honest parties abort in malicious mode.
-- `BMM`'s SHAKE shim aborts when an OpenSSL digest call fails, instead of
-  continuing with unwritten output.
 - `COT::send` and `RandomCOT::recv_cot` flush before returning, as `send_rot`
   does, so a caller whose next step waits on another channel no longer leaves
   its peer blocked.

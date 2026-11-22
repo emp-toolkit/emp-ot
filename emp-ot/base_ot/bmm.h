@@ -20,12 +20,15 @@ namespace emp {
  * a "correlation breaker", which is what lets the reduction be tight (no
  * guess-the-query rewinding, unlike Masny-Rindal).
  *
- * Setup. For every OT index i, both parties independently derive
- * A_i in R_q^{KxK} from (`sid`, i) via SHAKE-256 (public coins). The PKE is
- * Regev/Kyber: pk = t = A_i·x + e in R_q^K (pseudorandom under DMLWE),
- * sk = x; Enc/Dec are Kyber's IND-CPA core (with ciphertext compression).
- * The 128-bit base-OT string is embedded directly in the first half of the
- * PKE's 256-bit message; the second half is zero.
+ * Setup. For every OT index i, both parties independently derive a matrix
+ * seed rho_i from (`sid`, i) via SHAKE-256 (public coins) and expand the
+ * public matrix Â_i in R_q^{KxK} from it, as ML-KEM expands Â from a public
+ * key's rho. The PKE is ML-KEM-512's IND-CPA core, FIPS 203's K-PKE, run by
+ * the vendored mlkem-native (third_party/mlkem-native): pk = t̂ = Â_i·ŝ + ê in
+ * the NTT domain (pseudorandom under DMLWE), sk = ŝ; Enc/Dec are K-PKE's,
+ * with its ciphertext compression. Ĥ_β maps into the same NTT-domain
+ * public-key space. The 128-bit base-OT string is embedded directly in the
+ * first half of the PKE's 256-bit message; the second half is zero.
  *
  * Symmetric security parameter λ = 256 (the {0,1}^λ correlation-breaker
  * strings and the H_β outputs): the malicious-receiver argument tolerates a
@@ -49,8 +52,8 @@ namespace emp {
  *   Recv:
  *     data[i] := Dec(sk_b, ct_b).
  *
- * Wire bytes per OT (Kyber IND-CPA compression du=10, dv=4 at K=2; r is
- * a uniform R_q^K element, uncompressible; c_β are λ=256-bit):
+ * Wire bytes per OT (K-PKE compression du=10, dv=4 at K=2; r is a uniform
+ * element of R_q^K in the NTT domain, uncompressible; c_β are λ=256-bit):
  *   recv → send  :  832 B  =  768 B (r)  +  2 × 32 B (c_β)
  *   send → recv  : 1536 B  =  2 × (640 B u_β + 128 B v_β)
  *
