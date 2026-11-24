@@ -30,6 +30,33 @@ static block derive_lpn_seed_(block sid) {
 	return RO("emp-ot:ferret:lpn-seed", sid).squeeze_block();
 }
 
+// Seeded choices. The matrix seed binds the parameter set, so a nested
+// ferret_b9 and the set above it draw different matrices from one root; so does
+// the key of the receiver's seeded choice bits.
+static block derive_lpn_seed_from_root_(block root,
+		const PrimalLPNParameter &param) {
+	return RO("emp-ot:ferret:lpn-matrix-seed", root)
+		.absorb((uint64_t)param.t)
+		.absorb((uint64_t)param.logk)
+		.absorb((uint64_t)param.tree_depth)
+		.squeeze_block();
+}
+
+static block derive_choice_key_(block seed, const PrimalLPNParameter &param) {
+	return RO("emp-ot:ferret:choice-seed", seed)
+		.absorb((uint64_t)param.t)
+		.absorb((uint64_t)param.logk)
+		.absorb((uint64_t)param.tree_depth)
+		.squeeze_block();
+}
+
+// The SoftSpoken that bootstraps a set below the nesting threshold.
+// kChunkBlocks is sized so ferret_b9's base COTs fit in a single chunk
+// (ferret_b10, the other direct-bootstrap set, takes two): the default chunk
+// would overshoot b9.M by most of a chunk and ship unused PPRF planes.
+using FerretBootstrapSoftSpoken =
+	SoftSpoken<8, tuning::softspoken_ferret_bootstrap_chunk_blocks>;
+
 Ferret::Ferret(int party, IOChannel *io,
 		bool malicious, std::unique_ptr<OT> base_ot,
 		PrimalLPNParameter param)
@@ -85,6 +112,20 @@ void Ferret::set_sid(SessionID s) {
 	OT::set_sid(s);
 }
 
+void Ferret::set_choice_seed(const block *choice_seed, const block &lpn_seed) {
+	expecting(!setup_done, "set_choice_seed: bootstrap already fired");
+	if (is_ot_sender()) {
+		expecting(choice_seed == nullptr,
+		          "set_choice_seed: the sender has no choice bits; pass nullptr");
+	} else {
+		expecting(choice_seed != nullptr,
+		          "set_choice_seed: the receiver needs a choice seed");
+		choice_seed_ = *choice_seed;
+	}
+	lpn_root_ = lpn_seed;
+	seeded_ = true;
+}
+
 // =====================================================================
 // Lifecycle
 // =====================================================================
@@ -123,6 +164,7 @@ void Ferret::end() {
 		return;
 	}
 	run_refill_();
+	if (mask_src_) draw_check_masks_(carry_curr_.data());
 	inner_run_end_();
 	mark_chunks_checked_();
 	exit_session_();
@@ -144,47 +186,82 @@ void Ferret::end() {
 // bootstrap sees its own small M, below the threshold, and drops
 // straight to SoftSpoken — at most one level of nesting.
 //
+// With seeded choices (set_choice_seed) the base [128, M) carries the seeded
+// choice bits: a set that bootstraps directly takes it from SoftSpoken's cot,
+// with the seeded bits as the receiver's choices (one correction bit per COT,
+// on SoftSpoken's own flow from the receiver), and a set that nests from a
+// ferret_b9 seeded alike. Slots [0, 128) stay zero: every check draws its own
+// masks (draw_check_masks_) from that SoftSpoken, which malicious mode keeps.
+//
 // FS transcript enabled before either path; in malicious mode it binds the
 // per-tree chi seeds pulled by MPCOT. The public LPN matrix seed is derived
-// once from the SID for this Ferret instance.
+// once for this Ferret instance, at the first round's begin.
 void Ferret::bootstrap_() {
 	if (setup_done) return;
 	fix_sid_();
 	if (!io->fs_enabled())
 		io->enable_fs(/*send_first=*/is_ot_sender());
 
-	auto pump = [&](auto* src) {
-		// Give the nested bootstrap source its own derived session id
-		// (it re-forwards a further-derived sid to the moved-in base OT).
-		// Role-symmetric: both parties tick the counter identically.
-		src->set_sid(sid.derive());
-		if (is_ot_sender()) src->set_delta(delta_bool);
-		src->rcot(carry_next_.data(), param.M);
-	};
-
 	// base_ot moves into the nested source below, which runs it (including
-	// any deferred base-OT check) and destroys it on return. Clear csw_base_,
-	// this instance's CSW view of it, so no dangling alias remains.
+	// any deferred base-OT check). Clear csw_base_, this instance's CSW view
+	// of it, so no dangling alias remains.
 	csw_base_ = nullptr;
+
+	block *dst = carry_next_.data();
+	int64_t n = param.M;
+	if (seeded_) {
+		std::fill(dst, dst + kConsistCheckCotNum, zero_block);
+		dst += kConsistCheckCotNum;
+		n -= kConsistCheckCotNum;
+	}
+
+	// The nested source gets its own derived session id (it re-forwards a
+	// further-derived sid to the moved-in base OT). Role-symmetric: both
+	// parties tick the counter identically.
 	if (param.M > tuning::ferret_bootstrap_nest_factor * tuning::ferret_b9.M) {
 		Ferret b9(party, io, /*malicious=*/malicious,
 		          std::move(base_ot), tuning::ferret_b9);
-		pump(&b9);
+		b9.set_sid(sid.derive());
+		if (is_ot_sender()) b9.set_delta(delta_bool);
+		if (seeded_)
+			b9.set_choice_seed(is_ot_sender() ? nullptr : &choice_seed_, lpn_root_);
+		b9.rcot(dst, n);
+		mask_src_ = std::move(b9.mask_src_);
 	} else {
-		// kChunkBlocks sized so b9.M fits in a single SoftSpoken chunk
-		// (b10, the other direct-bootstrap set, takes two) — the default
-		// chunk would overshoot b9.M by most of a chunk and ship unused
-		// PPRF planes on the wire.
-		SoftSpoken<8, tuning::softspoken_ferret_bootstrap_chunk_blocks>
-		    ssp(party, io, /*malicious=*/malicious, std::move(base_ot));
-		pump(&ssp);
+		auto ssp = std::make_unique<FerretBootstrapSoftSpoken>(
+		    party, io, /*malicious=*/malicious, std::move(base_ot));
+		ssp->set_sid(sid.derive());
+		if (is_ot_sender()) ssp->set_delta(delta_bool);
+		if (!seeded_) {
+			ssp->rcot(dst, n);
+		} else if (is_ot_sender()) {
+			ssp->send_cot(dst, n);
+		} else {
+			const block key = derive_choice_key_(choice_seed_, param);
+			PRG choices(&key);
+			default_init_vector<uint8_t> c(n);
+			choices.random_bool(c.data(), n);
+			ssp->recv_cot(dst, reinterpret_cast<const bool *>(c.data()), n);
+		}
+		if (seeded_ && malicious) mask_src_ = std::move(ssp);
 	}
 	setup_done = true;
 }
 
+// 128 fresh COTs for the check about to run, as one counted SoftSpoken
+// session: one 128-OT unit, and in malicious mode SoftSpoken's sacrificial
+// unit and its own check. All of it flows from the receiver to the sender,
+// ahead of the check's reply from the receiver, so it adds no round trip.
+void Ferret::draw_check_masks_(block *mask128) {
+	mask_src_->begin(kConsistCheckCotNum);
+	mask_src_->next_n(mask128, kConsistCheckCotNum);
+	mask_src_->end();
+}
+
 // One-shot per-Ferret-lifetime LPN seed. Both parties derive it locally
-// from the shared session id (no wire exchange). Subsequent rounds let
-// lpn_'s PRG state advance naturally through compute_slice.
+// from the shared session id, or with seeded choices from the shared root (no
+// wire exchange). Subsequent rounds let lpn_'s PRG state advance naturally
+// through compute_slice.
 void Ferret::inner_run_begin_() {
 	if (is_ot_sender()) {
 		gadget_send_->sid = sid.value();
@@ -194,7 +271,8 @@ void Ferret::inner_run_begin_() {
 		gadget_recv_->run_begin();
 	}
 	if (!lpn_seed_set_) {
-		lpn_->reseed(derive_lpn_seed_(sid.value()));
+		lpn_->reseed(seeded_ ? derive_lpn_seed_from_root_(lpn_root_, param)
+		                     : derive_lpn_seed_(sid.value()));
 		lpn_seed_set_ = true;
 	}
 }

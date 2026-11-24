@@ -70,8 +70,9 @@ metadata is numeric (see the README's version guidance).
   the same receiver state: senders who combined their views read every choice
   bit. The README and the `Ferret` docs described sharing one choice pattern
   across instances, with a shared matrix root, as supported. A protocol that
-  needs one party's bits under several keys can instead correct each
-  instance's random choices to them, at one bit per COT. Messages are
+  needs one party's bits under several keys can instead seed `Ferret`'s
+  choices with the new `Ferret::set_choice_seed` (see Added), or take them
+  through each instance's `cot`, at one bit per COT. Messages are
   unchanged; the receivers now draw from a different PRG stream, so the
   test-mode `test/trace_hash.baseline` rows of the OT extensions and sVOLEs
   are regenerated.
@@ -82,6 +83,22 @@ metadata is numeric (see the README's version guidance).
 
 ### Added
 
+- `Ferret::set_choice_seed(choice_seed, lpn_seed)`, which `SilentFerret`
+  inherits, for a receiver that needs one set of choice bits under several
+  senders' Δs. Instances whose receivers hold one choice seed, and that share
+  the LPN seed and the parameter set, give the same choice bit at each position
+  of their output streams. Both ends call it before the first `begin()`, the
+  receiver with its secret seed and the sender with `nullptr`. Only the choice
+  bits are shared: the bootstrap's `SoftSpoken` runs on its own randomness and
+  delivers the base through `cot`, with the seeded bits as the receiver's
+  choices: one correction bit per base COT, once, at the bottom of the bootstrap
+  (87,136 bits for `ferret_b9` and the sets that nest through it, 159,072 for
+  `ferret_b10`). In malicious mode every
+  consistency check is masked by 128 COTs that the same `SoftSpoken` extends
+  just before the check, instead of by base COTs, which the instances share.
+  Neither addition costs a round trip. Instances that do not call it are
+  unchanged on the wire; `test/trace_hash.baseline` gains seeded rows for
+  `Ferret(b9)`, `SilentFerret(b9)` and `Ferret(b11)`.
 - `BMM` at all three ML-KEM parameter sets: `BMM_T<Level>` for `Level` 512,
   768 or 1024 (NIST categories 1, 3 and 5), with `BMM` = `BMM_T<512>`,
   `BMM768` and `BMM1024`, and `BaseOtKind::BMM768` / `BaseOtKind::BMM1024`
@@ -101,13 +118,20 @@ metadata is numeric (see the README's version guidance).
 ### Removed
 
 - `OTExtension::set_choice_seed`, with `OTExtension::choice_prg`, and
-  `Ferret::set_lpn_matrix_seed`; see Security.
+  `Ferret::set_lpn_matrix_seed`; see Security. `Ferret::set_choice_seed`, under
+  Added, is a different construction.
 - `OTIdeal` (`emp-ot/ideal.h`), a test-only ideal COT that no test used. Its
   chosen-input and ROT wrappers went out of step after the first call, because
   the wrapper drew its start point from the PRG the mock shared between parties.
 
 ### Changed
 
+- `RandomCOT::send_cot` / `recv_cot` keep `rcot`'s LSB encoding for the chosen
+  bits: the receiver's LSB is its choice bit and the sender's is 0. Where a
+  choice flips, the sender XORs in Δ with its LSB cleared and the receiver flips
+  its own LSB. The correction bits on the wire are unchanged. Chosen-message OT
+  over an extension hashes the adjusted keys, so its pads differ where a choice
+  flipped; no `test/trace_hash.baseline` row covers it.
 - `BMM` runs on the vendored mlkem-native v2.0.0
   (`third_party/mlkem-native`, unmodified) in place of the pq-crystals
   reference code and the OpenSSL SHAKE shim. Builds that target AVX2 or

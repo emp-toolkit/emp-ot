@@ -418,6 +418,33 @@ int main() {
         extension.mark_setup_done();
         extension.set_sid(SessionID{});
     });
+    {
+        const block seed = zero_block;
+        Ferret receiver(BOB, nullptr, false, std::make_unique<DummyOT>(false),
+                        tuning::ferret_b9);
+        receiver.set_choice_seed(&seed, zero_block);
+        Ferret sender(ALICE, nullptr, false, std::make_unique<DummyOT>(false),
+                      tuning::ferret_b9);
+        sender.set_choice_seed(nullptr, zero_block);
+    }
+    ok &= expect_rejected("sender choice seed", "the sender has no choice bits", [] {
+        const block seed = zero_block;
+        Ferret ferret(ALICE, nullptr, false, std::make_unique<DummyOT>(false),
+                      tuning::ferret_b9);
+        ferret.set_choice_seed(&seed, zero_block);
+    });
+    ok &= expect_rejected("receiver without a choice seed", "the receiver needs a choice seed", [] {
+        Ferret ferret(BOB, nullptr, false, std::make_unique<DummyOT>(false),
+                      tuning::ferret_b9);
+        ferret.set_choice_seed(nullptr, zero_block);
+    });
+    ok &= expect_rejected("late choice seed", "bootstrap already fired", [] {
+        const block seed = zero_block;
+        Ferret ferret(BOB, nullptr, false, std::make_unique<DummyOT>(false),
+                      tuning::ferret_b9);
+        ferret.setup_done = true;
+        ferret.set_choice_seed(&seed, zero_block);
+    });
     ok &= expect_rejected("receiver wrapper on a sender", "this extension is the sender", [] {
         DummyExtension extension(ALICE, false, std::make_unique<DummyOT>(false));
         block out[1];

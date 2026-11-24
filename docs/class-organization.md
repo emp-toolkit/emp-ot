@@ -118,7 +118,10 @@ one unified body each, and the per-tree helpers
 party-dispatch internally.
 
 Ferret derives its public LPN matrix from its session id: the one set with
-`set_sid`, or else the channel's next session id, taken at bootstrap.
+`set_sid`, or else the channel's next session id, taken at bootstrap. With
+seeded choices (`set_choice_seed`) it derives the matrix from the caller's LPN
+seed instead, and its bootstrap SoftSpoken stays alive (malicious mode) to mask
+every consistency check with fresh COTs.
 
 ## Svole — one template, two carriers, two policies
 

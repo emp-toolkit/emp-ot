@@ -355,6 +355,32 @@ of their parent's id. On a channel without a session root the id stays zero.
 An id given to `set_sid()` must belong to one object, as the channel's ids
 do: two objects given the same id derive the same child ids.
 
+A receiver that needs one set of choice bits under several senders' `Δ`s, as
+one party of a multi-party protocol does, can seed them. `Ferret` and
+`SilentFerret` instances whose receivers hold one choice seed, and that share
+an LPN seed and a parameter set, give the same choice bit at each position of
+their output streams, provided they are drawn alike (the same `begin()` /
+`begin(n_ots)` / `end()` sequence):
+
+```cpp
+Ferret ote(party, io.get());     // one per peer
+if (party == BOB) ote.set_choice_seed(&choice_seed, lpn_seed);  // secret, one per receiving party
+else              ote.set_choice_seed(nullptr, lpn_seed);       // public, the same at both ends
+```
+
+Only the choice bits are shared. Each instance's bootstrap `SoftSpoken` runs
+on its own randomness and delivers the base through `cot`, with the seeded bits
+as the receiver's choices: one correction bit per base COT, once, at the bottom
+of the bootstrap: `M − 128` bits for a set that bootstraps directly (87,136 for
+`ferret_b9`,
+159,072 for `ferret_b10`), and `ferret_b9`'s 87,136 for the sets that nest
+through it. The refill trees carry the choices from round to round. In
+malicious mode every consistency check is masked by 128 COTs that the same
+`SoftSpoken` extends just before the check, never by base COTs, which the
+instances share, so that `SoftSpoken` lives as long as the instance. Both
+additions travel in a flow the receiver sends anyway, so neither adds a round
+trip. Without `set_choice_seed` nothing changes on the wire.
+
 ### Streaming RCOT
 
 The `OTExtension` base also exposes a streaming API for callers that

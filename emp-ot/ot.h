@@ -200,9 +200,10 @@ protected:
 };
 
 // Random COT (random correlated OT). Subclasses produce LSB-encoded
-// correlated outputs without choice bits; send_cot / recv_cot below
-// add the standard 1-bit-per-COT correction so a chosen-correlation
-// COT layer composes on top.
+// correlated outputs without choice bits: with LSB(Δ) = 1, the receiver's
+// LSB is its choice bit and the sender's is 0. send_cot / recv_cot below add
+// the standard 1-bit-per-COT correction so a chosen-correlation COT layer
+// composes on top, and keep that encoding for the chosen bits.
 class RandomCOT : public COT {
 public:
 	// Single role-implicit RCOT entry. The output is signature-symmetric
@@ -222,10 +223,13 @@ public:
 		default_init_vector<unsigned char> bo(length);
 		io->recv_bool(reinterpret_cast<bool*>(bo.data()), length);
 
+		// Where the receiver's choice flips, XOR in Δ with its LSB cleared:
+		// this side's LSB stays 0, and the receiver flips its own.
+		const block flip = Delta ^ makeBlock(0, 1);
 		block tab[2] = {zero_block, all_one_block};
 
 		for (int64_t i = 0; i < length; ++i)
-			data[i] ^= Delta & tab[bo[i]];
+			data[i] ^= flip & tab[bo[i]];
 	}
 
 	void recv_cot(block* data, const bool* b, int64_t length) override {
@@ -233,9 +237,13 @@ public:
 		               "RandomCOT::recv_cot: invalid length or null buffer");
 		expect_role_(false, "RandomCOT::recv_cot: this extension is the sender");
 		rcot(data, length);
+		// Where the choice flips, flip the LSB too, so it stays the choice bit.
 		default_init_vector<unsigned char> bo(length);
-		for (int64_t i = 0; i < length; ++i)
+		const block tab[2] = {zero_block, makeBlock(0, 1)};
+		for (int64_t i = 0; i < length; ++i) {
 			bo[i] = b[i] ^ getLSB(data[i]);
+			data[i] ^= tab[bo[i]];
+		}
 
 		io->send_bool(reinterpret_cast<bool*>(bo.data()), length);
 		io->flush();
