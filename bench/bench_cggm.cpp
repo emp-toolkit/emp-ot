@@ -3,7 +3,7 @@
 // based on this bench's results.
 //
 // Per cell: ns/H of cggm::build_sender, where H is the underlying
-// CCRH call (= one fixed-key AES + linear orthomorphism). One tree
+// CCRH call (= one AES under the tree's key + linear orthomorphism). One tree
 // at depth d does (2^d - 2) calls to H, batched in tiles of `Tile`.
 //
 // First column is the raw H<Tile> peak — same AES, no cGGM scaffolding
@@ -50,13 +50,13 @@ static double bench_raw_H(CCRH& ccrh, block* in, block* out, int64_t total_H) {
 // ---------- cGGM build_sender at arbitrary tile ----------
 template <int Tile>
 static double bench_cggm_at(int d, int64_t trees, block* leaves, block* K0,
-                            block Delta, block k) {
-    for (int i = 0; i < 4; ++i) cggm::build_sender<Tile>(d, Delta, k, leaves, K0);
+                            block Delta, block k, block key) {
+    for (int i = 0; i < 4; ++i) cggm::build_sender<Tile>(d, Delta, k, leaves, K0, key);
     double best = 1e18;
     for (int trial = 0; trial < 5; ++trial) {
         auto t0 = clock_start();
         for (int64_t t = 0; t < trees; ++t)
-            cggm::build_sender<Tile>(d, Delta, k, leaves, K0);
+            cggm::build_sender<Tile>(d, Delta, k, leaves, K0, key);
         best = std::min(best, time_from(t0));
     }
     volatile uint64_t sink = 0;
@@ -68,7 +68,7 @@ static double bench_cggm_at(int d, int64_t trees, block* leaves, block* K0,
 // One row of the table: raw H<Tile> ns + cGGM ns/H at each depth.
 template <int Tile>
 static void run_row(CCRH& ccrh, block* raw_in, block* raw_out,
-                    block* leaves, block* K0, block Delta, block k,
+                    block* leaves, block* K0, block Delta, block k, block key,
                     const int* depths, int n_depths) {
 #ifdef NDEBUG
     constexpr int64_t total_H_target = 1LL << 22;  // ~4M H
@@ -89,7 +89,7 @@ static void run_row(CCRH& ccrh, block* raw_in, block* raw_out,
         if (trees < 16) trees = 16;
         const int64_t total_H = trees * H_per_tree;
 
-        const double us = bench_cggm_at<Tile>(d, trees, leaves, K0, Delta, k);
+        const double us = bench_cggm_at<Tile>(d, trees, leaves, K0, Delta, k, key);
         const double ns_per_H = us * 1000.0 / (double)total_H;
         std::printf("  %8.3f", ns_per_H);
     }
@@ -114,11 +114,12 @@ int main() {
     block* raw_out = aligned_blocks(kMaxTile);
     PRG prg;
     prg.random_block(raw_in, kMaxTile);
-    block Delta, k;
+    block Delta, k, key;
     prg.random_block(&Delta, 1);
     prg.random_block(&k,     1);
+    prg.random_block(&key,   1);
 
-    CCRH ccrh;
+    CCRH ccrh(key);
 
     std::printf("# cGGM throughput sweep — ns/H (lower = faster). Best of 5 trials.\n");
     std::printf("# raw H<Tile> column: standalone CCRH::H<Tile> peak (no cGGM scaffolding).\n");
@@ -130,12 +131,12 @@ int main() {
     std::printf("\n");
     std::printf("  -----      --------  --------  --------  --------  --------  --------\n");
 
-    run_row<  4>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, depths, n_depths);
-    run_row<  8>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, depths, n_depths);
-    run_row< 16>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, depths, n_depths);
-    run_row< 32>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, depths, n_depths);
-    run_row< 64>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, depths, n_depths);
-    run_row<128>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, depths, n_depths);
+    run_row<  4>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, key, depths, n_depths);
+    run_row<  8>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, key, depths, n_depths);
+    run_row< 16>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, key, depths, n_depths);
+    run_row< 32>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, key, depths, n_depths);
+    run_row< 64>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, key, depths, n_depths);
+    run_row<128>(ccrh, raw_in, raw_out, leaves, K0, Delta, k, key, depths, n_depths);
 
     free(leaves); free(K0); free(raw_in); free(raw_out);
     return 0;

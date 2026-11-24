@@ -7,6 +7,25 @@ metadata is numeric (see the README's version guidance).
 
 ### Security
 
+- Every cGGM tree (`Ferret`, `SilentFerret`, `F2kVOLE`, `FpVOLE`, `SoftSpoken`)
+  hashes under its own public AES key instead of the fixed zero key. Tree
+  `index` of round `round` is keyed by `AES_g(makeBlock(round, index))`, with `g` a
+  session id derived for the tree builder alone (`cggm::TreeKeys`). The receiver
+  knows every on-path node up to Δ, and under one key shared by every tree in
+  every session, one evaluation of AES could be tested against all of those
+  nodes at once. The bound then degraded with the number of trees ever built,
+  the multi-instance setting of ePrint 2019/1168. Under per-tree keys it
+  reaches the `d − 1` hashed on-path nodes of one tree. `SoftSpoken`'s
+  malicious-mode PPRF check expands each leaf under a key derived from the
+  instance's session id instead of a fixed one, for the same reason. The
+  multi-point gadget takes its session id through `set_sid`, and `Ferret`
+  and `Svole` give it a derived child of their own instead of a copy of their
+  id. `cggm::build_sender` / `eval_receiver` take the tree's key, and the
+  gadget's `produce_tree` takes the tree's round and index. No extra
+  messages or key schedules: a tree already scheduled an AES key, and the
+  per-tree key costs one more AES block. Every `Ferret`, `SilentFerret`, sVOLE and
+  `SoftSpoken` transcript changes: both parties must upgrade together, and
+  those `test/trace_hash.baseline` rows are regenerated.
 - Every OT, OT extension and sVOLE runs under a nonzero session id. An object
   whose id was not set with `set_sid()` takes its channel's next session id at
   its first use, as before, but on a channel without a session root that first

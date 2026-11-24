@@ -144,6 +144,11 @@ void SilentFerret::begin_batch_(int64_t n_ots) {
 		const uint64_t abs = abs_round_base_ + (uint64_t)r;
 		// Round-begin: reset the gadget's VW and (once) seed the LPN PRG.
 		inner_run_begin_();
+		// The gadget keys its trees by its own round count; produce_trees_
+		// rebuilds them by `abs`, so the two must name the same round.
+		expecting((is_ot_sender() ? gadget_send_->current_round()
+		                          : gadget_recv_->current_round()) == abs,
+		          "SilentFerret: round index out of step with the gadget");
 		if (!lpn_key_set_) { lpn_key_ = lpn_->prg_key(); lpn_key_set_ = true; }
 
 		base = carry_curr_.data() + (kConsistCheckCotNum + param.k);
@@ -391,13 +396,13 @@ void SilentFerret::produce_trees_(block *out, uint64_t abs_round,
 		if (is_ot_sender()) {
 			block seed;
 			seed_prg.random_block(&seed, 1);
-			gadget_send_->produce_tree(o, seed, scratch);
+			gadget_send_->produce_tree(o, seed, scratch, abs_round, i);
 		} else {
 			const block *base_j =
 			    base_for_round + cggm_off + i * param.tree_depth;
 			const block *c_i =
 			    c_rounds_.data() + (size_t)(r * param.t + i) * param.tree_depth;
-			gadget_recv_->produce_tree(o, base_j, c_i, scratch);
+			gadget_recv_->produce_tree(o, base_j, c_i, scratch, abs_round, i);
 		}
 		if (fold) lpn_->compute_slice(lpn_prg, o, pre, chunk);  // advances by bpc_
 	}
@@ -428,13 +433,13 @@ block SilentFerret::produce_trees_scratch_xor_(
 		if (is_ot_sender()) {
 			block seed;
 			seed_prg.random_block(&seed, 1);
-			gadget_send_->produce_tree(leaves, seed, path_scratch);
+			gadget_send_->produce_tree(leaves, seed, path_scratch, abs_round, i);
 		} else {
 			const block *base_j =
 			    base_for_round + cggm_off + i * param.tree_depth;
 			const block *c_i =
 			    c_rounds_.data() + (size_t)(r * param.t + i) * param.tree_depth;
-			gadget_recv_->produce_tree(leaves, base_j, c_i, path_scratch);
+			gadget_recv_->produce_tree(leaves, base_j, c_i, path_scratch, abs_round, i);
 		}
 		lpn_->compute_slice(lpn_prg, leaves, pre, chunk);
 		sum = sum ^ xor_blocks_unrolled(tree_scratch, chunk);
@@ -467,13 +472,13 @@ block SilentFerret::produce_trees_fused_xor_(
 		if (is_ot_sender()) {
 			block seed;
 			seed_prg.random_block(&seed, 1);
-			gadget_send_->produce_tree(leaves, seed, path_scratch);
+			gadget_send_->produce_tree(leaves, seed, path_scratch, abs_round, i);
 		} else {
 			const block *base_j =
 			    base_for_round + cggm_off + i * param.tree_depth;
 			const block *c_i =
 			    c_rounds_.data() + (size_t)(r * param.t + i) * param.tree_depth;
-			gadget_recv_->produce_tree(leaves, base_j, c_i, path_scratch);
+			gadget_recv_->produce_tree(leaves, base_j, c_i, path_scratch, abs_round, i);
 		}
 		lpn_->compute_slice_sink(
 		    lpn_prg, leaves, pre, chunk,

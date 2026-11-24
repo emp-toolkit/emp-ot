@@ -156,9 +156,24 @@ private:
     void bootstrap_send_();
     void bootstrap_recv_();
     void ensure_chunk_scratch_();
+
+    // The bootstrap's public AES keys, from two children of this instance's
+    // session id that both roles derive first thing in their bootstrap: the
+    // cGGM tree keys (tree i is keyed at (0, i)) and the PPRF check key.
+    struct BootstrapKeys {
+        cggm::TreeKeys trees;
+        block pprf_check;
+    };
+    BootstrapKeys bootstrap_keys_() {
+        BootstrapKeys keys;
+        keys.trees.reset(this->sid.derive().value());
+        keys.pprf_check = this->sid.derive().value();
+        return keys;
+    }
+
     // Malicious-mode PPRF check (Roy '22 Fig. protpprfconsistency).
-    void pprf_check_send();
-    void pprf_check_recv();
+    void pprf_check_send(block check_key);
+    void pprf_check_recv(block check_key);
     // Per-chunk subspace-VOLE chi-fold (Roy '22 Fig. protvoleconsistency).
     void combine_send_chunk(block* out, int64_t bs);
     void combine_recv_chunk(block* out, const block* u_canonical, int64_t bs);

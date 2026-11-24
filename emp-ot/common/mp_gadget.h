@@ -128,7 +128,6 @@ public:
   using F = typename AuthValue::F;
 
   IOChannel *io;
-  block     sid = zero_block;   // set by the owner; binds chi seeds + checks
   bool      is_malicious = false;
   int64_t   tree_n;
   int64_t   tree_depth;
@@ -166,10 +165,23 @@ public:
   void set_cggm_delta(block d) { cggm_delta = d; }
   void set_delta(F d)          { delta = d; }
 
+  // The gadget's own session id: a SessionID child the owner derived for this
+  // gadget alone, set before the first round. It binds the chi seeds and the
+  // checks, and keys every tree: tree `tree_idx` of round r hashes under
+  // TreeKeys(sid).key(r, tree_idx), r the round's index among run_begin calls.
+  void set_sid(const SessionID &s) {
+    sid_ = s.value();
+    tree_keys_.reset(sid_);
+  }
+  uint64_t current_round() const {
+    expecting(rounds_begun > 0, "MultiPointGadget: no round has begun");
+    return rounds_begun - 1;
+  }
+
   void run_begin() {
     if (is_malicious) consist_check_VW.assign(tree_n, AuthValue::f_zero());
     if constexpr (AuthValue::kHasSecretSum)
-      leaf_hash.setS(leaf_hash_start(sid, rounds_begun));
+      leaf_hash.setS(leaf_hash_start(sid_, rounds_begun));
     ++rounds_begun;
   }
 
@@ -191,15 +203,16 @@ public:
                      [[maybe_unused]] F gamma_i = AuthValue::f_zero()) {
     block seed;
     prg.random_block(&seed, 1);
+    const block key = tree_keys_.key(current_round(), (uint64_t)tree_idx);
 
     if constexpr (!AuthValue::kHasSecretSum) {
       // AuthValueFerret has single `block mac` field → layout = block.
       cggm::build_sender<cggm::kTile, AuthValue::kClearLeafLSB>(
           tree_depth, cggm_delta, seed,
-          reinterpret_cast<block*>(leaves_i), K0.data());
+          reinterpret_cast<block*>(leaves_i), K0.data(), key);
     } else {
       cggm::build_sender<cggm::kTile, AuthValue::kClearLeafLSB>(
-          tree_depth, cggm_delta, seed, leaves_block.data(), K0.data());
+          tree_depth, cggm_delta, seed, leaves_block.data(), K0.data(), key);
       hash_leaves(leaf_hash, leaves_block.data(), leave_n);
       for (int64_t i = 0; i < leave_n; ++i)
         leaves_i[i] = AuthValue::auth_from_block(leaves_block[i]);
@@ -218,7 +231,7 @@ public:
     io->flush();
 
     if (is_malicious) {
-      block chi_seed = fs_challenge(io, sid);
+      block chi_seed = fs_challenge(io, sid_);
       AuthValue::expand_chi(chi_seed, chi.data(), leave_n);
       AuthValue::accumulate_VW(consist_check_VW[tree_idx], chi.data(),
                                leaves_i, leave_n);
@@ -248,13 +261,15 @@ public:
   // (contiguous; base + i*tree_depth is tree i's K^{ᾱ} input). `seeds`
   // supplies the tree_n cGGM root seeds — caller-owned and *reproducible*
   // (e.g. a seek'd PRG) so produce_tree can re-derive the same leaves
-  // later with no stored per-round state. `pool` may be null (serial);
+  // later with no stored per-round state. The trees are the current round's
+  // (current_round()). `pool` may be null (serial);
   // `batch` bounds peak leaf scratch. Corrections are shipped and not
   // retained (the sender never re-reads them).
   void prepare_all(ThreadPool *pool, int batch, const block *base,
                    const block *seeds) {
     static_assert(!AuthValue::kHasSecretSum,
                   "prepare_all: Ferret-style (no secret_sum) path only");
+    const uint64_t round = current_round();
     if (batch < 1) batch = 1;
     c_scratch_.resize(tree_n * tree_depth);
     leaves_scratch_.resize((int64_t)batch * leave_n);
@@ -271,7 +286,8 @@ public:
         block *lv = leaves_scratch_.data() + (int64_t)s * leave_n;
         block *k0 = K0_scratch_.data() + (int64_t)s * tree_depth;
         cggm::build_sender<cggm::kTile, AuthValue::kClearLeafLSB>(
-            tree_depth, cggm_delta, seeds[i], lv, k0);
+            tree_depth, cggm_delta, seeds[i], lv, k0,
+            tree_keys_.key(round, (uint64_t)i));
         const block *base_i = base + i * tree_depth;
         block *c_i = c_scratch_.data() + i * tree_depth;
         for (int64_t j = 0; j < tree_depth; ++j) c_i[j] = base_i[j] ^ k0[j];
@@ -280,7 +296,7 @@ public:
       for (int s = 0; s < B; ++s) {
         const int64_t i = b0 + s;
         io->send_block(c_scratch_.data() + i * tree_depth, tree_depth);
-        if (is_malicious) chi_seeds[s] = fs_challenge(io, sid);
+        if (is_malicious) chi_seeds[s] = fs_challenge(io, sid_);
       }
       // In malicious mode the receiver must evaluate these trees for its chi
       // fold. Flush coarse waves so that work overlaps our VW fold instead of
@@ -310,18 +326,19 @@ public:
     if (!is_malicious) io->flush();
   }
 
-  // Re-derive one tree's leaves into `leaves_i` from its cGGM root `seed`
-  // (layout-compat block* since kHasSecretSum=false). No wire I/O, no VW
-  // (already folded in prepare_all). Reentrant / const: the caller supplies
-  // `k0_scratch` (tree_depth blocks, the throwaway correction sink) so
-  // concurrent threads can produce disjoint trees.
-  void produce_tree(AuthValue *leaves_i, block seed,
-                    block *k0_scratch) const {
+  // Re-derive tree `tree_idx` of round `round` into `leaves_i` from its cGGM
+  // root `seed` (layout-compat block* since kHasSecretSum=false). No wire I/O,
+  // no VW (already folded in prepare_all). Reentrant / const: the caller
+  // supplies `k0_scratch` (tree_depth blocks, the throwaway correction sink)
+  // so concurrent threads can produce disjoint trees.
+  void produce_tree(AuthValue *leaves_i, block seed, block *k0_scratch,
+                    uint64_t round, int64_t tree_idx) const {
     static_assert(!AuthValue::kHasSecretSum,
                   "produce_tree: Ferret-style path only");
     cggm::build_sender<cggm::kTile, AuthValue::kClearLeafLSB>(
         tree_depth, cggm_delta, seed,
-        reinterpret_cast<block *>(leaves_i), k0_scratch);
+        reinterpret_cast<block *>(leaves_i), k0_scratch,
+        tree_keys_.key(round, (uint64_t)tree_idx));
   }
 
   // F2kPacked round-final check. XORs Δ into `pre_cot_data[i]` for each i
@@ -341,7 +358,7 @@ public:
     pack.packing(&r2, pre_cot_data);
     r1 = r1 ^ r2;
     block dig[2];
-    RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
+    RO(kDomCheckPacked, sid_).absorb(r1).squeeze_digest(dig);
     io->send_data(dig, 2 * sizeof(block));
     io->flush();
   }
@@ -380,7 +397,7 @@ public:
     pack.packing(&Y, consist);
     block r1 = acc_vw ^ Y;
     block dig[2];
-    RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
+    RO(kDomCheckPacked, sid_).absorb(r1).squeeze_digest(dig);
     io->send_data(dig, 2 * sizeof(block));
     io->flush();
   }
@@ -413,7 +430,7 @@ public:
     block salt;
     prg.random_block(&salt, 1);
     block com[2];
-    typed_check_commit(sid, vb, salt, com);
+    typed_check_commit(sid_, vb, salt, com);
     io->send_data(com, sizeof(com));
     io->flush();
     F va;
@@ -425,6 +442,10 @@ public:
     io->send_data(&salt, sizeof(block));
     io->flush();
   }
+
+private:
+  block           sid_ = zero_block;   // set_sid
+  cggm::TreeKeys  tree_keys_;          // keyed by sid_ in set_sid
 };
 
 // =================================================================
@@ -437,7 +458,6 @@ public:
   using F = typename AuthValue::F;
 
   IOChannel *io;
-  block     sid = zero_block;   // set by the owner; binds chi seeds + checks
   bool      is_malicious = false;
   int64_t   tree_n;
   int64_t   tree_depth;
@@ -467,13 +487,23 @@ public:
 
   void set_malicious() { is_malicious = true; chi.resize(leave_n); }
 
+  // The sender's session id, as MultiPointGadgetSender::set_sid describes.
+  void set_sid(const SessionID &s) {
+    sid_ = s.value();
+    tree_keys_.reset(sid_);
+  }
+  uint64_t current_round() const {
+    expecting(rounds_begun > 0, "MultiPointGadget: no round has begun");
+    return rounds_begun - 1;
+  }
+
   void run_begin() {
     if (is_malicious) {
       consist_check_chi_alpha.assign(tree_n, AuthValue::f_zero());
       consist_check_VW.assign(tree_n, AuthValue::f_zero());
     }
     if constexpr (AuthValue::kHasSecretSum)
-      leaf_hash.setS(leaf_hash_start(sid, rounds_begun));
+      leaf_hash.setS(leaf_hash_start(sid_, rounds_begun));
     ++rounds_begun;
   }
 
@@ -509,13 +539,14 @@ public:
     }
 
     for (int64_t j = 0; j < tree_depth; ++j) K_recv[j] = base_i[j] ^ c[j];
+    const block key = tree_keys_.key(current_round(), (uint64_t)tree_idx);
 
     if constexpr (!AuthValue::kHasSecretSum) {
       // Ferret-style: AuthValue layout = block; cGGM writes directly.
       block* leaves_block_view = reinterpret_cast<block*>(leaves_i);
       const block known_xor =
           cggm::eval_receiver<cggm::kTile, AuthValue::kClearLeafLSB>(
-              tree_depth, alpha, K_recv.data(), leaves_block_view);
+              tree_depth, alpha, K_recv.data(), leaves_block_view, key);
       // F2kPacked α-fill: eval_receiver leaves leaves[α] = zero_block;
       // XOR-sum of all LSB-cleared leaves equals the sender's LSB-
       // cleared α-leaf; OR in bit0_mask to recover the carrier bit.
@@ -524,7 +555,7 @@ public:
       (void)triple_yz_i;
     } else {
       cggm::eval_receiver<cggm::kTile, AuthValue::kClearLeafLSB>(
-          tree_depth, alpha, K_recv.data(), leaves_block.data());
+          tree_depth, alpha, K_recv.data(), leaves_block.data(), key);
       // The punctured slot (zero here) is hashed too, so both parties take
       // the same gids; its mac is filled below.
       hash_leaves(leaf_hash, leaves_block.data(), leave_n);
@@ -543,7 +574,7 @@ public:
     }
 
     if (is_malicious) {
-      block chi_seed = fs_challenge(io, sid);
+      block chi_seed = fs_challenge(io, sid_);
       AuthValue::expand_chi(chi_seed, chi.data(), leave_n);
       consist_check_chi_alpha[tree_idx] = chi[rev];
       AuthValue::accumulate_VW(consist_check_VW[tree_idx], chi.data(),
@@ -573,12 +604,14 @@ public:
   // (contiguous; base + i*tree_depth is tree i's input). The received
   // corrections are written into `c_out` (tree_n*tree_depth, caller-owned)
   // — the receiver *cannot* re-derive them, so the caller retains them and
-  // hands the matching slice back to produce_tree. `pool` may be null
+  // hands the matching slice back to produce_tree. The trees are the current
+  // round's (current_round()). `pool` may be null
   // (serial); `batch` bounds peak leaf scratch.
   void prepare_all(ThreadPool *pool, int batch, const block *base,
                    block *c_out) {
     static_assert(!AuthValue::kHasSecretSum,
                   "prepare_all: Ferret-style (no secret_sum) path only");
+    const uint64_t round = current_round();
     if (!is_malicious) {
       for (int64_t i = 0; i < tree_n; ++i)
         io->recv_block(c_out + i * tree_depth, tree_depth);
@@ -596,7 +629,7 @@ public:
       for (int s = 0; s < B; ++s) {
         const int64_t i = b0 + s;
         io->recv_block(c_out + i * tree_depth, tree_depth);
-        if (is_malicious) chi_seeds[s] = fs_challenge(io, sid);
+        if (is_malicious) chi_seeds[s] = fs_challenge(io, sid_);
       }
       // (2) eval + α-fill (+ malicious chi_alpha / VW) — parallel.
       mp_parallel_for(pool, B, [&](int s) {
@@ -605,7 +638,8 @@ public:
         const block *c_i = c_out + i * tree_depth;
         block *lv = leaves_scratch_.data() + (int64_t)s * leave_n;
         block *kr = K_recv_scratch_.data() + (int64_t)s * tree_depth;
-        const uint32_t rev = eval_one_(base_i, c_i, lv, kr);
+        const uint32_t rev =
+            eval_one_(base_i, c_i, lv, kr, tree_keys_.key(round, (uint64_t)i));
         if (is_malicious) {
           F *chi = chi_scratch_.data() + (int64_t)s * leave_n;
           AuthValue::expand_chi(chi_seeds[s], chi, leave_n);
@@ -617,25 +651,28 @@ public:
     }
   }
 
-  // Re-evaluate one tree's leaves into `leaves_i` from its `base_i` cGGM
-  // input and stored correction `c_i` (tree_depth blocks). No wire I/O, no
-  // VW (already folded in prepare_all). Reentrant / const: the caller
-  // supplies `kr_scratch` (tree_depth blocks) so concurrent threads can
-  // produce disjoint trees. Returns bit_reverse(alpha) (the punctured slot).
+  // Re-evaluate tree `tree_idx` of round `round` into `leaves_i` from its
+  // `base_i` cGGM input and stored correction `c_i` (tree_depth blocks). No
+  // wire I/O, no VW (already folded in prepare_all). Reentrant / const: the
+  // caller supplies `kr_scratch` (tree_depth blocks) so concurrent threads
+  // can produce disjoint trees. Returns bit_reverse(alpha) (the punctured slot).
   uint32_t produce_tree(AuthValue *leaves_i, const block *base_i,
-                        const block *c_i, block *kr_scratch) const {
+                        const block *c_i, block *kr_scratch,
+                        uint64_t round, int64_t tree_idx) const {
     static_assert(!AuthValue::kHasSecretSum,
                   "produce_tree: Ferret-style path only");
     return eval_one_(base_i, c_i,
-                     reinterpret_cast<block *>(leaves_i), kr_scratch);
+                     reinterpret_cast<block *>(leaves_i), kr_scratch,
+                     tree_keys_.key(round, (uint64_t)tree_idx));
   }
 
  private:
-  // Shared cGGM-eval + F2kPacked α-fill body for one tree. `kr` is a
-  // tree_depth-block scratch (caller-owned, so it is reentrant across pool
-  // tasks). const — reads only tree_depth/leave_n. Returns rev = bit_reverse(alpha).
+  // Shared cGGM-eval + F2kPacked α-fill body for one tree, hashed under
+  // `key`. `kr` is a tree_depth-block scratch (caller-owned, so it is
+  // reentrant across pool tasks). const — reads only tree_depth/leave_n.
+  // Returns rev = bit_reverse(alpha).
   uint32_t eval_one_(const block *base_i, const block *c_i, block *lv,
-                     block *kr) const {
+                     block *kr, block key) const {
     uint32_t alpha = 0;
     for (int64_t j = 0; j < tree_depth; ++j) {
       alpha <<= 1;
@@ -645,7 +682,7 @@ public:
     for (int64_t j = 0; j < tree_depth; ++j) kr[j] = base_i[j] ^ c_i[j];
     const block known_xor =
         cggm::eval_receiver<cggm::kTile, AuthValue::kClearLeafLSB>(
-            tree_depth, alpha, kr, lv);
+            tree_depth, alpha, kr, lv, key);
     lv[rev] = known_xor ^ bit0_mask;
     return rev;
   }
@@ -679,7 +716,7 @@ public:
     pack.packing(&r3, pre_cot_data);
     r1 = r1 ^ r3;
     block dig[2];
-    RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
+    RO(kDomCheckPacked, sid_).absorb(r1).squeeze_digest(dig);
     block recv[2];
     io->recv_data(recv, 2 * sizeof(block));
     expecting(cmpBlock(dig, recv, 2),
@@ -722,7 +759,7 @@ public:
     pack.packing(&Z, mask128);
     block r1 = acc_vw ^ Z;
     block dig[2];
-    RO(kDomCheckPacked, sid).absorb(r1).squeeze_digest(dig);
+    RO(kDomCheckPacked, sid_).absorb(r1).squeeze_digest(dig);
     block recv[2];
     io->recv_data(recv, 2 * sizeof(block));
     expecting(cmpBlock(dig, recv, 2),
@@ -758,10 +795,14 @@ public:
     block salt;
     io->recv_data(&salt, sizeof(block));
     block opened[2];
-    typed_check_commit(sid, va, salt, opened);
+    typed_check_commit(sid_, va, salt, opened);
     expecting(cmpBlock(com, opened, 2),
               "MultiPointGadget chi-fold check failed");
   }
+
+private:
+  block           sid_ = zero_block;   // set_sid
+  cggm::TreeKeys  tree_keys_;          // keyed by sid_ in set_sid
 };
 
 } // namespace emp

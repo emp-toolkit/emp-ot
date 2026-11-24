@@ -127,6 +127,7 @@ SoftSpoken<k, kChunkBlocks>::SoftSpoken(OTExtension::CloneInit ci,
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::bootstrap_send_() {
     this->fix_sid_();
+    const BootstrapKeys keys = bootstrap_keys_();
     // Δ = α_0 + α_1·X + … + α_{n-1}·X^{n-1} over F_{2^k}: α_i is the
     // i-th k-bit slice of Δ (bit m of α_i = delta_bool[i*k + m]). α_i is
     // the sub-VOLE field element; the butterfly indexes leaves[x] by it.
@@ -173,10 +174,11 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_send_() {
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < k; ++j) K_recv[j] = received[i * k + j];
         cggm::eval_receiver(k, (int)cggm::bit_reverse((uint32_t)alphas_[i], k),
-                            K_recv, &leaves_recv_[i * Q]);
+                            K_recv, &leaves_recv_[i * Q],
+                            keys.trees.key(0, (uint64_t)i));
     }
 
-    if (malicious) pprf_check_recv();
+    if (malicious) pprf_check_recv(keys.pprf_check);
 
     setup_done = true;
     // OT-sender is the FS send_first side (convention shared across
@@ -189,6 +191,7 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_send_() {
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
     this->fix_sid_();
+    const BootstrapKeys keys = bootstrap_keys_();
     // Build n GGM trees and ship the per-level XOR sums via base OT.
     // Each tree gets a fresh Δ and root from this instance's own PRG;
     // K0[h] = level-(h+1) left-side XOR-sum, K1[h] = K0[h] ⊕ Δ (leveled
@@ -207,7 +210,8 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
         // at index bit_reverse(p)); the sub-VOLE sender has no puncture and
         // its butterfly reads leaves[x] as field element x, matching the
         // receiver's storage==field-element convention (see bootstrap_send_).
-        cggm::build_sender(k, Delta, root, &leaves_send_[i * Q], K0_buf);
+        cggm::build_sender(k, Delta, root, &leaves_send_[i * Q], K0_buf,
+                           keys.trees.key(0, (uint64_t)i));
         for (int h = 0; h < k; ++h) K1_buf[h] = K0_buf[h] ^ Delta;
         for (int j = 0; j < k; ++j) {
             K0[i * k + j] = K0_buf[j];
@@ -223,7 +227,7 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
         base_ot->send(K0.data(), K1.data(), total);
     }
 
-    if (malicious) pprf_check_send();
+    if (malicious) pprf_check_send(keys.pprf_check);
 
     setup_done = true;
     if (malicious && !this->io->fs_enabled())
@@ -234,7 +238,7 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
 // Malicious-mode: PPRF consistency check (Roy '22 Fig. protpprfconsistency)
 // =====================================================================
 //
-// Each cGGM leaf is expanded by PRG' into three blocks under a fixed
+// Each cGGM leaf is expanded by PRG' into three blocks under a public
 // AES key shared by both parties:
 //   exp = aes_ctr_fill_dm<3>(0, &check_K, cGGM_leaf)   // CRH, 3λ output
 //     exp[0]  -> the "real" leaf that downstream sfvole uses
@@ -255,20 +259,18 @@ void SoftSpoken<k, kChunkBlocks>::bootstrap_recv_() {
 // exp[2]), feeds the resulting Q × 2-block vector through its own
 // rolling SHA-256, and compares.
 //
-// check_K is a fixed key, kPPRFCheckSessionHigh in its high 64 bits. The
-// per-chunk sfvole session keys are RO outputs (session_key_), so none
-// equals it except with negligible probability.
-
-namespace {
-constexpr int64_t kPPRFCheckSessionHigh = 0x70505246434B5F00LL; // "pPRFCK_\0"
-}
+// check_K is this instance's own key, a child of its session id
+// (bootstrap_keys_). The receiver learns s'_{α_i} of a leaf it does not know,
+// so a key shared across instances would let one evaluation of AES be tested
+// against the missing leaves of all of them at once; under a per-instance key
+// it reaches this instance's n trees only.
 
 template <int k, int kChunkBlocks>
-void SoftSpoken<k, kChunkBlocks>::pprf_check_send() {
+void SoftSpoken<k, kChunkBlocks>::pprf_check_send(block check_key) {
     constexpr int kHashSize = Hash::DIGEST_SIZE;  // 32 B
 
     AES_KEY check_K;
-    AES_set_encrypt_key(makeBlock(kPPRFCheckSessionHigh, 0LL), &check_K);
+    AES_set_encrypt_key(check_key, &check_K);
 
     // t̂_i ∈ {0,1}^{2λ}: 2-block XOR per sub-VOLE of the s'_y values.
     BlockVec t_buf(static_cast<size_t>(n) * 2);
@@ -299,11 +301,11 @@ void SoftSpoken<k, kChunkBlocks>::pprf_check_send() {
 }
 
 template <int k, int kChunkBlocks>
-void SoftSpoken<k, kChunkBlocks>::pprf_check_recv() {
+void SoftSpoken<k, kChunkBlocks>::pprf_check_recv(block check_key) {
     constexpr int kHashSize = Hash::DIGEST_SIZE;
 
     AES_KEY check_K;
-    AES_set_encrypt_key(makeBlock(kPPRFCheckSessionHigh, 0LL), &check_K);
+    AES_set_encrypt_key(check_key, &check_K);
 
     BlockVec t_buf(static_cast<size_t>(n) * 2);
     unsigned char their_digest[kHashSize];

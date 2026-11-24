@@ -157,7 +157,9 @@ void Ferret::end() {
 		// check() already finished the preceding round, then begin() swapped
 		// its certified next-round base into carry_curr_. With no new tree
 		// generated, undo that swap so a later ordinary begin() advances to
-		// exactly this base again. inner_run_begin_ only reset check scratch.
+		// exactly this base again. inner_run_begin_ only reset check scratch
+		// and advanced the gadget's round count, which both parties advance
+		// alike, so the skipped round index keys no tree.
 		std::swap(carry_curr_, carry_next_);
 		mark_checked_continuation_closed_();
 		exit_session_();
@@ -245,6 +247,11 @@ void Ferret::bootstrap_() {
 		}
 		if (seeded_ && malicious) mask_src_ = std::move(ssp);
 	}
+	// The MPCOT gadget's own id: its checks bind it and its trees are keyed
+	// from it (cggm::TreeKeys), so no other object's id may equal it.
+	const SessionID gadget_sid = sid.derive();
+	if (is_ot_sender()) gadget_send_->set_sid(gadget_sid);
+	else                gadget_recv_->set_sid(gadget_sid);
 	setup_done = true;
 }
 
@@ -263,13 +270,8 @@ void Ferret::draw_check_masks_(block *mask128) {
 // wire exchange). Subsequent rounds let lpn_'s PRG state advance naturally
 // through compute_slice.
 void Ferret::inner_run_begin_() {
-	if (is_ot_sender()) {
-		gadget_send_->sid = sid.value();
-		gadget_send_->run_begin();
-	} else {
-		gadget_recv_->sid = sid.value();
-		gadget_recv_->run_begin();
-	}
+	if (is_ot_sender()) gadget_send_->run_begin();
+	else                gadget_recv_->run_begin();
 	if (!lpn_seed_set_) {
 		lpn_->reseed(seeded_ ? derive_lpn_seed_from_root_(lpn_root_, param)
 		                     : derive_lpn_seed_(sid.value()));

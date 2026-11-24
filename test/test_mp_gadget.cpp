@@ -7,7 +7,10 @@
 // receiver knows that leaf up to cggm_delta and the gadget must hash it. For
 // F_p it also checks the property that hashing buys: the linear system a
 // receiver can form from its punctured leaves, in Δ and the low 64 bits of
-// cggm_delta, has no solution.
+// cggm_delta, has no solution. Those checks read the receiver's raw cGGM tree,
+// which the test rebuilds under the key it expects the gadget to use; a check
+// ties that tree to the gadget's leaves, and the trees run in round 1, so the
+// gadget's round enters the key. It also checks cggm::TreeKeys on its own.
 //
 // Single-process (no IO / no `run`).
 #include "emp-ot/emp-ot.h"
@@ -73,9 +76,10 @@ struct F2kOps {
 	static bool eq(F a, F b) { return cmpBlock(&a, &b, 1); }
 };
 
-// One semi-honest run of `trees` trees on both sides, with what the test
-// needs from each tree: both parties' leaves, the punctured slot, the
-// receiver's point value β, and the XOR of the receiver's raw cGGM leaves.
+// One semi-honest run of `trees` trees on both sides, in the gadget's second
+// round, with what the test needs from each tree: both parties' leaves, the
+// punctured slot, the receiver's point value β, and the receiver's raw cGGM
+// tree (punctured slot zero) and the XOR of its leaves.
 template <typename Ops>
 struct Run {
 	using AV = typename Ops::AV;
@@ -85,7 +89,10 @@ struct Run {
 	vector<F> beta;
 	vector<vector<AV>> v, w;   // sender's and receiver's leaves
 	vector<uint32_t> rev;      // the punctured slot
+	vector<vector<block>> raw; // the receiver's raw cGGM tree
 	vector<block> known;       // XOR of the receiver's raw cGGM leaves
+	block gadget_sid;
+	uint64_t round;
 };
 
 template <typename Ops>
@@ -125,20 +132,24 @@ static Run<Ops> run_trees(int trees, int depth) {
 		M[i] = Ops::mul_add(r.beta[i], r.delta, K[i]);
 	}
 
+	r.gadget_sid = makeBlock(0x51d, 1);
+	r.round = 1;   // an empty round 0 first, so the round enters the key
 	CaptureIO cap;
 	MultiPointGadgetSender<AV> snd(trees, depth, &cap);
-	snd.sid = makeBlock(0x51d, 1);
+	snd.set_sid(r.gadget_sid);
 	snd.set_cggm_delta(r.cggm_delta);
 	snd.set_delta(r.delta);
-	snd.run_begin();
+	for (uint64_t g = 0; g <= r.round; ++g) snd.run_begin();
 	r.v.assign(trees, vector<AV>(leaves));
 	for (int i = 0; i < trees; ++i)
 		snd.run_next_tree(r.v[i].data(), base_s.data() + (size_t)i * depth, i, K[i]);
 
 	ReplayIO rep(cap.bytes);
 	MultiPointGadgetReceiver<AV> rcv(trees, depth, &rep);
-	rcv.sid = snd.sid;
-	rcv.run_begin();
+	rcv.set_sid(r.gadget_sid);
+	for (uint64_t g = 0; g <= r.round; ++g) rcv.run_begin();
+	cggm::TreeKeys keys;   // the gadget's tree keys, as the test expects them
+	keys.reset(r.gadget_sid);
 	// Per tree on the wire: the corrections, then secret_sum.
 	const size_t per_tree = (size_t)depth * sizeof(block) + sizeof(F);
 	r.w.assign(trees, vector<AV>(leaves));
@@ -155,7 +166,8 @@ static Run<Ops> run_trees(int trees, int depth) {
 			k_recv[j] = base_i[j] ^ c[j];
 		}
 		r.known.push_back(cggm::eval_receiver<cggm::kTile, AV::kClearLeafLSB>(
-		    depth, (int)alpha, k_recv.data(), raw.data()));
+		    depth, (int)alpha, k_recv.data(), raw.data(), keys.key(r.round, i)));
+		r.raw.push_back(raw);
 	}
 	return r;
 }
@@ -165,9 +177,19 @@ static void check_carrier(const char *name) {
 	using AV = typename Ops::AV;
 	const int trees = 6, depth = 6;
 	const Run<Ops> r = run_trees<Ops>(trees, depth);
-	bool relation = true, hashed = true;
+	bool relation = true, hashed = true, same_tree = true;
+	// The raw trees the test rebuilt, hashed with the gadget's leaf-hash stream
+	// for the round, must give the receiver's leaves: the test keyed them as the
+	// gadget did, so the checks below read the gadget's actual trees.
+	MITCCRH<> leaf_hash;
+	leaf_hash.setS(leaf_hash_start(r.gadget_sid, r.round));
 	for (int i = 0; i < trees; ++i) {
 		const uint32_t rev = r.rev[i];
+		vector<block> hashed_raw = r.raw[i];
+		hash_leaves(leaf_hash, hashed_raw.data(), (int64_t)hashed_raw.size());
+		for (size_t j = 0; j < hashed_raw.size(); ++j)
+			if (j != rev)
+				same_tree &= Ops::eq(AV::auth_from_block(hashed_raw[j]).mac, r.w[i][j].mac);
 		for (size_t j = 0; j < r.w[i].size(); ++j)
 			if (j != rev) relation &= Ops::eq(r.w[i][j].mac, r.v[i][j].mac);
 		relation &= Ops::eq(r.w[i][rev].mac,
@@ -179,6 +201,7 @@ static void check_carrier(const char *name) {
 		                   r.v[i][rev].mac);
 	}
 	const string tag = string(name);
+	check((tag + ": the test's raw trees are the gadget's trees").c_str(), same_tree);
 	check((tag + ": every tree yields the sVOLE relation").c_str(), relation);
 	check((tag + ": the punctured leaf is not the cGGM leaf").c_str(), hashed);
 }
@@ -235,7 +258,47 @@ static void check_fp_linear_system() {
 	      rank == C && inconsistent > 0);
 }
 
+// The cGGM tree keys (cggm::TreeKeys): tree (round, index) is keyed by
+// SessionID::derive()'s step at that index, every (round, index) gets its own
+// key, and the key reaches the hash, so one root and Δ give a different tree
+// under another tree's key. A receiver evaluating under the sender's key
+// rebuilds the sender's tree; the protocol tests cover that end to end.
+static void check_tree_keys() {
+	const block g = makeBlock(0x7ee5, 0x6e75);
+	cggm::TreeKeys keys;
+	keys.reset(g);
+
+	SessionID parent(g);
+	bool derive_step = true;
+	for (uint64_t i = 0; i < 4; ++i) {
+		const block want = parent.derive().value();
+		const block got = keys.key(0, i);
+		derive_step &= cmpBlock(&want, &got, 1);
+	}
+	check("tree keys: key(0, i) is the id's i-th derive() child", derive_step);
+
+	const block k00 = keys.key(0, 0), k01 = keys.key(0, 1), k10 = keys.key(1, 0);
+	check("tree keys: distinct per (round, index)",
+	      !cmpBlock(&k00, &k01, 1) && !cmpBlock(&k00, &k10, 1) &&
+	          !cmpBlock(&k01, &k10, 1));
+
+	const int d = 6;
+	const int64_t leaves = int64_t{1} << d;
+	block Delta = makeBlock(0xde17a, 1), root = makeBlock(0x5007, 0x5eed);
+	vector<block> a(leaves), b(leaves), ka(d), kb(d);
+	cggm::build_sender(d, Delta, root, a.data(), ka.data(), k00);
+	cggm::build_sender(d, Delta, root, b.data(), kb.data(), k01);
+	bool all_differ = true;
+	for (int64_t j = 0; j < leaves; ++j) all_differ &= !cmpBlock(&a[j], &b[j], 1);
+	// Level 1 is (root, root ^ Δ) under any key; every hashed level differs.
+	bool sums_differ = true;
+	for (int i = 1; i < d; ++i) sums_differ &= !cmpBlock(&ka[i], &kb[i], 1);
+	check("tree keys: another tree's key gives another tree",
+	      all_differ && sums_differ);
+}
+
 int main() {
+	check_tree_keys();
 	check_carrier<FpOps>("Fp");
 	check_carrier<F2kOps>("F2k");
 	check_fp_linear_system();
