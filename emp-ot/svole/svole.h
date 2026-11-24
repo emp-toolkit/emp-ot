@@ -80,9 +80,9 @@ public:
   // Session id for this VOLE instance. Svole is not an OT, so it carries its
   // own SessionID, fixed as an OT's is (ot.h): a sid set via set_sid before
   // the first begin()/run() is kept; otherwise bootstrap takes the channel's
-  // next session id, or keeps the zero id on a channel without a session root.
-  // It seeds the public LPN matrix and binds the gadgets' checks and
-  // challenges, and it is propagated as a derived child sid to the inner
+  // next session id, and a channel without a session root is an error. The id
+  // is never zero. It seeds the public LPN matrix and binds the gadgets' checks
+  // and challenges, and it is propagated as a derived child sid to the inner
   // Ferret and to the bootstrap: on the F2k path to the nested bootstrap
   // Svole; on the Fp path to the COPE base OT and then to the pre-stage
   // gadgets.
@@ -90,6 +90,8 @@ public:
   bool sid_fixed_ = false;
   void set_sid(SessionID s) {
     expecting(!this->setup_done, "set_sid: bootstrap already fired");
+    const block v = s.value();
+    expecting(!cmpBlock(&v, &zero_block, 1), "set_sid: the session id is zero");
     sid = s;
     sid_fixed_ = true;
   }
@@ -236,8 +238,12 @@ private:
     if (this->setup_done) return;
     if (!io_->fs_enabled())
       io_->enable_fs(/*send_first=*/is_delta_holder());
-    if (!sid_fixed_ && io_->has_session_root()) sid = io_->next_session_id();
-    sid_fixed_ = true;
+    if (!sid_fixed_) {
+      expecting(io_->has_session_root(),
+                "Svole: no session id; call set_sid() before the first use, "
+                "or use a channel with a session root");
+      set_sid(io_->next_session_id());
+    }
     // Session-separate the inner Ferret before it bootstraps (its rcot is
     // first consumed inside Bootstrap::run / inner_run_begin_).
     base_ferret_->set_sid(sid.derive());

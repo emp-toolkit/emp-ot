@@ -3,8 +3,9 @@
 // so the two parties agree on it and a channel's top-level objects get distinct
 // ids, whatever order they were built in. A sid set before the first use is
 // kept, an sVOLE seeds its public LPN matrix from the id it took, and on a
-// channel without a session root the id stays zero. Two-party via the `run`
-// script, on EMP_PORT and EMP_PORT + 1.
+// channel without a session root an object runs under the id set on it (one
+// without a set id is rejected; test_contracts checks that). Two-party via the
+// `run` script, on EMP_PORT and EMP_PORT + 1.
 #include "test/test.h"
 #include <vector>
 using namespace std;
@@ -86,11 +87,14 @@ int main(int argc, char **argv) {
 		auto io = party == ALICE
 		    ? NetIO::listen(port + 1, true, NetIO::SessionRoot::none)
 		    : NetIO::connect(peer_ip(), port + 1, true, NetIO::SessionRoot::none);
+		const block set = makeBlock(0x0de5, 0x51d);
 		IKNP ot(party, io.get());
+		ot.set_sid(set);
 		check_cot(&ot, io.get(), party, length);
-		expecting(is_zero(ot.session_id().value()),
+		const block kept = ot.session_id().value();
+		expecting(cmpBlock(&kept, &set, 1),
 		          "test_session_id: an object on a channel without a session root "
-		          "drew an id");
+		          "did not keep the id set on it");
 	}
 	if (party == ALICE) cout << "session ids: OK" << endl;
 	return 0;

@@ -7,6 +7,13 @@ metadata is numeric (see the README's version guidance).
 
 ### Security
 
+- Every OT, OT extension and sVOLE runs under a nonzero session id. An object
+  whose id was not set with `set_sid()` takes its channel's next session id at
+  its first use, as before, but on a channel without a session root that first
+  use is now an error instead of keeping the zero id, and `set_sid()` rejects
+  the zero id. Objects left at the zero id used to share every id-derived key
+  across sessions. Code on such a channel (NetIO's `SessionRoot::none`, or a
+  NetIO adopted from a socket) must call `set_sid()` with an id of its own.
 - `F2kVOLE` / `FpVOLE`: the multi-point gadget hashes every tree leaf before it
   becomes a field element, with a MITCCRH stream: one gid per leaf, taken by both
   parties in the same order, from a fresh start point
@@ -169,7 +176,8 @@ metadata is numeric (see the README's version guidance).
   `IOChannel::next_session_id()`) at its first use, instead of the zero id.
   First uses come in the order the parties run their protocols, so both draw
   the same ids; nested objects still get derived children of their parent's
-  id, and on a channel without a session root the id stays zero. Every
+  id, and an object on a channel without a session root needs `set_sid()`
+  (see Security). Every
   session-bound derivation (base-OT key derivation and reference points, LPN
   matrices, check hashes) now differs per session, so transcripts change and
   both parties must upgrade together. `session_id()` reads an OT's or

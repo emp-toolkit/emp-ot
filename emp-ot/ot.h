@@ -48,8 +48,9 @@ public:
 
 	// Per-session domain separator. A sid set before the first use is kept.
 	// Otherwise the first use takes the channel's next session id
-	// (IOChannel::next_session_id()), or keeps the zero id on a channel without
-	// a session root. First uses come in the order the parties run their
+	// (IOChannel::next_session_id()); on a channel without a session root the
+	// first use is an error, so such a channel needs set_sid(). The id is never
+	// zero. First uses come in the order the parties run their
 	// protocols, which both ends already share, so both draw the same ids.
 	// Extensions forward a derived child sid to their base OT before it runs
 	// (see OTExtension; Ferret gives it to the nested extension that takes
@@ -59,6 +60,8 @@ public:
 	// An id set here must not be shared with another object, as the channel's
 	// ids never are: two objects with one id derive the same child ids.
 	virtual void set_sid(SessionID s) {
+		const block v = s.value();
+		expecting(!cmpBlock(&v, &zero_block, 1), "set_sid: the session id is zero");
 		sid = s;
 		sid_fixed_ = true;
 	}
@@ -70,8 +73,10 @@ protected:
 	// nothing.
 	void fix_sid_() {
 		if (sid_fixed_) return;
-		if (io != nullptr && io->has_session_root()) set_sid(io->next_session_id());
-		sid_fixed_ = true;
+		expecting(io != nullptr && io->has_session_root(),
+		          "OT: no session id; call set_sid() before the first use, or "
+		          "use a channel with a session root");
+		set_sid(io->next_session_id());
 	}
 	IOChannel * io = nullptr;
 	SessionID sid;

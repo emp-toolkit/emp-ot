@@ -351,7 +351,9 @@ session id. Every OT, OT extension and sVOLE has one: unless `set_sid()` set it
 before the object's first use, that first use takes the channel's next session
 id (emp-tool's `IOChannel::next_session_id()`), so the top-level objects of a
 protocol are session-separated with no setup, and nested objects get children
-of their parent's id. On a channel without a session root the id stays zero.
+of their parent's id. On a channel without a session root (NetIO's
+`SessionRoot::none`, or a NetIO adopted from a socket) an object needs
+`set_sid()`: its first use without one is an error, as is a zero id.
 An id given to `set_sid()` must belong to one object, as the channel's ids
 do: two objects given the same id derive the same child ids.
 
