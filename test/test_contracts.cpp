@@ -416,7 +416,31 @@ int main() {
     ok &= expect_rejected("late sid", "bootstrap already fired", [] {
         DummyExtension extension(BOB, false, std::make_unique<DummyOT>(false));
         extension.mark_setup_done();
+        extension.set_sid(makeBlock(0x1a7e, 1));
+    });
+    // Every object runs under a nonzero session id, set explicitly or drawn
+    // from a channel with a session root; a channel without one needs set_sid.
+    ok &= expect_rejected("zero sid", "the session id is zero", [] {
+        DummyExtension extension(BOB, false, std::make_unique<DummyOT>(false));
         extension.set_sid(SessionID{});
+    });
+    ok &= expect_rejected("zero sVOLE sid", "the session id is zero", [] {
+        F2kVOLE<> vole(ALICE, nullptr, false, tuning::ferret_b9);
+        vole.set_sid(SessionID{});
+    });
+    ok &= expect_rejected("OT on a channel without a session root",
+                          "no session id", [] {
+        FixedInputIO io(nullptr, 0);
+        CO co(&io);
+        block data0[1] = {zero_block};
+        block data1[1] = {zero_block};
+        co.send(data0, data1, 1);
+    });
+    ok &= expect_rejected("sVOLE on a channel without a session root",
+                          "no session id", [] {
+        FixedInputIO io(nullptr, 0);
+        F2kVOLE<> vole(ALICE, &io, false, tuning::ferret_b9);
+        vole.begin();
     });
     {
         const block seed = zero_block;
@@ -489,6 +513,7 @@ int main() {
             first_flow[1] = 0x0d;
             FixedInputIO io(first_flow.data(), static_cast<int64_t>(first_flow.size()));
             BMMx bmm(&io);
+            bmm.set_sid(makeBlock(0xb33, 1));
             block data0[1] = {zero_block};
             block data1[1] = {zero_block};
             bmm.send(data0, data1, 1);
@@ -526,6 +551,7 @@ int main() {
         FixedInputIO io(nullptr, 0);
         FpVOLE<> vole(ALICE, &io, /*malicious=*/true,
                       PrimalLPNParameter(200, 21, 14));
+        vole.set_sid(makeBlock(0xf9, 1));
         vole.begin();
     });
 

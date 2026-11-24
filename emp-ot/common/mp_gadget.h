@@ -91,9 +91,8 @@ inline void typed_check_commit(block sid, const F &v, block salt, block out[2]) 
 // every leaf before it becomes a field element. The hash is a MITCCRH stream
 // with one gid per leaf, taken by both parties in the same leaf order, and
 // run_begin starts each round's stream at RO(kDomLeafHash, sid, round), so no
-// (start point, gid) pair recurs across rounds, or across instances with
-// distinct session ids. Instances left at the zero id share start points and
-// fall back to the fixed-key setting of the cGGM's own CCRH.
+// (start point, gid) pair recurs across rounds, or across instances, whose
+// session ids are distinct.
 inline block leaf_hash_start(block sid, uint64_t round) {
   return RO(kDomLeafHash, sid).absorb(round).squeeze_block();
 }
