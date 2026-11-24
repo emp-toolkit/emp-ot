@@ -11,7 +11,16 @@
 //   right = parent XOR left
 // Root children are (k, Δ XOR k); the leveled correlation
 // `Δ = XOR of all nodes on level i` then holds for every i in [1, d].
-// H is emp-tool's CCRH (= π(σ(x)) ⊕ σ(x), Theorem 4.3).
+//
+// H is σ-MMO under the tree's own AES key: H_K(x) = π_K(σ(x)) ⊕ σ(x), with
+// π_K = AES_K and σ the linear orthomorphism of emp-tool's CCRH. Every tree
+// takes its key from TreeKeys below. The keys are public; what matters is that
+// no two trees share one. The receiver knows every on-path node up to Δ, so
+// under a key shared by many trees one evaluation of π could be tested against
+// all of their on-path nodes at once, and the bound would degrade with the
+// number of trees ever built under that key (the multi-instance setting of
+// Guo-Katz-Wang-Weng-Yu, ePrint 2019/1168). With a key per tree, an evaluation
+// reaches the d-1 hashed on-path nodes of one tree only.
 //
 // Used as:
 //   - the per-tree puncturable PRF in MultiPointGadget (mp_gadget.h);
@@ -45,6 +54,34 @@ namespace emp { namespace cggm {
 // expand_level / build_sender / eval_receiver defaults to kTile but can
 // be overridden.
 constexpr int kTile = tuning::cggm_tile();
+
+// Per-tree AES keys. A protocol keys its trees from a session id of their
+// own, a SessionID child that nothing else derives from: tree `index` of round
+// `round` is hashed under AES_g(makeBlock(round, index)), g that id. This is
+// SessionID::derive()'s step at an explicit index instead of a running
+// counter, so a tree's key is a pure function of the tree's address. Both
+// parties reach it without a message, and a tree can be rebuilt later, in any
+// order, on any thread. reset() schedules g once.
+class TreeKeys {
+public:
+    void reset(block g) {
+        expecting(!cmpBlock(&g, &zero_block, 1),
+                  "cggm::TreeKeys: the session id is zero");
+        AES_set_encrypt_key(g, &kdf_);
+        ready_ = true;
+    }
+
+    block key(uint64_t round, uint64_t index) const {
+        expecting(ready_, "cggm::TreeKeys: no session id is set");
+        block k = makeBlock(round, index);
+        AES_ecb_encrypt_blks<1>(&k, &kdf_);
+        return k;
+    }
+
+private:
+    AES_KEY kdf_;
+    bool ready_ = false;
+};
 
 namespace detail {
 
@@ -116,8 +153,8 @@ inline uint32_t bit_reverse(uint32_t x, int d) {
     return r;
 }
 
-// Sender: build the depth-d cGGM tree given Δ and a top secret k.
-// Writes 2^d leaves into `leaves` and the per-level left-side
+// Sender: build the depth-d cGGM tree given Δ and a top secret k, hashing
+// under `tree_key` (TreeKeys). Writes 2^d leaves into `leaves` and the per-level left-side
 // XOR-sums K^0_i for i ∈ [1, d] into `K0[i-1]`. The right-side
 // sum at each level is K^1_i = K^0_i XOR Δ (leveled correlation),
 // derivable by callers that need both sides.
@@ -132,8 +169,8 @@ inline uint32_t bit_reverse(uint32_t x, int d) {
 // Tile defaults to the platform's kTile.
 template <int Tile = kTile, bool ClearLeafLSB = false>
 inline void build_sender(int d, block Delta, block k,
-                         block* leaves, block* K0) {
-    CCRH ccrh;
+                         block* leaves, block* K0, block tree_key) {
+    CCRH ccrh(tree_key);
 
     // Level 1 (two children of the conceptual root).
     leaves[0] = k;
@@ -158,7 +195,8 @@ inline void build_sender(int d, block Delta, block k,
 
 // Receiver: reconstruct the depth-d cGGM tree from the punctured
 // path `alpha` (d bits, MSB-first) and d corrections K_recv[i] =
-// K^{ᾱ_{i+1}}_{i+1}. After return, leaves[x] holds the correct cGGM
+// K^{ᾱ_{i+1}}_{i+1}, hashing under the sender's `tree_key` for this
+// tree. After return, leaves[x] holds the correct cGGM
 // leaf for every x != bit_reverse(alpha, d); the punctured leaf at
 // index bit_reverse(alpha, d) is zero_block (split layout).
 //
@@ -171,8 +209,9 @@ inline void build_sender(int d, block Delta, block k,
 // zero). The value follows the same optional leaf-LSB clearing convention.
 template <int Tile = kTile, bool ClearLeafLSB = false>
 inline block eval_receiver(int d, int alpha,
-                           const block* K_recv, block* leaves) {
-    CCRH ccrh;
+                           const block* K_recv, block* leaves,
+                           block tree_key) {
+    CCRH ccrh(tree_key);
 
     // `pos` = split-layout storage index of the on-path node at the
     // current level. In the split layout a node at index j has its

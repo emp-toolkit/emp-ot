@@ -84,19 +84,20 @@ static void test_cggm_tiles(const char* mode) {
 	constexpr int d = 13;
 	constexpr int64_t Q = int64_t{1} << d;
 	PRG prg;
-	block Delta, root;
+	block Delta, root, key;
 	prg.random_block(&Delta, 1);
 	prg.random_block(&root, 1);
+	prg.random_block(&key, 1);
 
 	BlockVec leaves_a(Q), leaves_b(Q);
 	block K0_a[d], K0_b[d];
 
-	cggm::build_sender<8, ClearLSB>(d, Delta, root, leaves_a.data(), K0_a);
+	cggm::build_sender<8, ClearLSB>(d, Delta, root, leaves_a.data(), K0_a, key);
 	bool ok = true;
-	cggm::build_sender<4, ClearLSB>(d, Delta, root, leaves_b.data(), K0_b);
+	cggm::build_sender<4, ClearLSB>(d, Delta, root, leaves_b.data(), K0_b, key);
 	ok = ok && blocks_equal(leaves_a.data(), leaves_b.data(), Q)
 	        && blocks_equal(K0_a, K0_b, d);
-	cggm::build_sender<64, ClearLSB>(d, Delta, root, leaves_b.data(), K0_b);
+	cggm::build_sender<64, ClearLSB>(d, Delta, root, leaves_b.data(), K0_b, key);
 	ok = ok && blocks_equal(leaves_a.data(), leaves_b.data(), Q)
 	        && blocks_equal(K0_a, K0_b, d);
 
@@ -110,8 +111,8 @@ static void test_cggm_tiles(const char* mode) {
 		K_recv[i - 1] = alpha_i ? K0_a[i - 1] : (K0_a[i - 1] ^ Delta);
 	}
 	BlockVec eval_a(Q), eval_b(Q);
-	cggm::eval_receiver<4, ClearLSB>(d, alpha, K_recv, eval_a.data());
-	cggm::eval_receiver<64, ClearLSB>(d, alpha, K_recv, eval_b.data());
+	cggm::eval_receiver<4, ClearLSB>(d, alpha, K_recv, eval_a.data(), key);
+	cggm::eval_receiver<64, ClearLSB>(d, alpha, K_recv, eval_b.data(), key);
 	ok = ok && blocks_equal(eval_a.data(), eval_b.data(), Q);
 
 	char tag[64];

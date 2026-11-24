@@ -216,8 +216,9 @@ static Candidate cggm_lpn_candidate(bool is_default) {
 	auto pos = make_shared<int64_t>(0);
 	PRG fill;
 	fill.random_block(reinterpret_cast<block*>(pre->data()), kk);
-	block Delta;
+	block Delta, tree_key;
 	fill.random_block(&Delta, 1);
+	fill.random_block(&tree_key, 1);
 
 	Candidate c;
 	c.label = "t" + to_string(Tile) + "/M" + to_string(M);
@@ -235,7 +236,7 @@ static Candidate cggm_lpn_candidate(bool is_default) {
 		block* lv = reinterpret_cast<block*>(out->data() + *pos);
 		block root;
 		prg->random_block(&root, 1);
-		cggm::build_sender<Tile, true>(d, Delta, root, lv, K0->data());
+		cggm::build_sender<Tile, true>(d, Delta, root, lv, K0->data(), tree_key);
 		lpn->compute_slice_as<M>(*prg, out->data() + *pos, pre->data(), slice);
 		*pos = (*pos + slice) % (out_n - slice);
 	};

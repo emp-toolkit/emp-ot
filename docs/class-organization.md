@@ -273,7 +273,11 @@ storing them back to the initial buffer.
 `namespace emp::cggm` (in `common/cggm.h`) is the Half-Tree cGGM tree
 build/eval. It's a free-function namespace, no class, no
 templating on AuthValue — it just writes `block` leaves. Used by
-`MultiPointGadget` and by SoftSpoken's PPRF tree.
+`MultiPointGadget` and by SoftSpoken's PPRF tree. Every tree hashes under
+its own public AES key, which the caller passes in. `cggm::TreeKeys` derives
+the key of tree (round, index) from a session id that the tree builder holds
+alone: the multi-point gadget takes one from its owner (`set_sid`, a derived
+child of the owner's id), and SoftSpoken derives one at bootstrap.
 
 ## Putting it together: data-flow for a single sVOLE round
 

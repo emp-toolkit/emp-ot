@@ -81,11 +81,11 @@ public:
   // own SessionID, fixed as an OT's is (ot.h): a sid set via set_sid before
   // the first begin()/run() is kept; otherwise bootstrap takes the channel's
   // next session id, and a channel without a session root is an error. The id
-  // is never zero. It seeds the public LPN matrix and binds the gadgets' checks
-  // and challenges, and it is propagated as a derived child sid to the inner
-  // Ferret and to the bootstrap: on the F2k path to the nested bootstrap
-  // Svole; on the Fp path to the COPE base OT and then to the pre-stage
-  // gadgets.
+  // is never zero. It seeds the public LPN matrix and is propagated as a
+  // derived child sid to the inner Ferret, to the main gadgets (whose checks
+  // and cGGM tree keys bind it), and to the bootstrap: on the F2k path to the
+  // nested bootstrap Svole; on the Fp path to the COPE base OT and then to the
+  // pre-stage gadgets.
   SessionID sid;
   bool sid_fixed_ = false;
   void set_sid(SessionID s) {
@@ -247,6 +247,11 @@ private:
     // Session-separate the inner Ferret before it bootstraps (its rcot is
     // first consumed inside Bootstrap::run / inner_run_begin_).
     base_ferret_->set_sid(sid.derive());
+    // The main MPFSS gadget's own id: its checks bind it and its trees are
+    // keyed from it (cggm::TreeKeys).
+    const SessionID gadget_sid = sid.derive();
+    if (is_delta_holder()) gadget_send_->set_sid(gadget_sid);
+    else                   gadget_recv_->set_sid(gadget_sid);
     // One-shot per-instance LPN matrix, seeded now that sid is final. Later
     // rounds let lpn_'s PRG state advance naturally through compute_slice.
     lpn_->reseed(svole_lpn_seed(AuthValue::kLpnSeedDomain, sid.value()));
@@ -261,12 +266,10 @@ private:
     if (is_delta_holder()) {
       // cGGM Δ = Ferret's block Δ (for F2k this equals delta_value_;
       // for F_p they are independent). Chi-fold Δ = delta_value_.
-      gadget_send_->sid = sid.value();
       gadget_send_->set_cggm_delta(base_ferret_->Delta);
       gadget_send_->set_delta(delta_value_);
       gadget_send_->run_begin();
     } else {
-      gadget_recv_->sid = sid.value();
       gadget_recv_->run_begin();
     }
   }

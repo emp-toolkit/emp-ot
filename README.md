@@ -27,7 +27,9 @@ SilentFerret silent COT extensions, and the `F2kVOLE` / `FpVOLE`
 subfield-VOLE generators built on top of Ferret. The chosen-input
 COT/ROT/OT conversion wrappers hash with
 [MITCCRH](https://github.com/emp-toolkit/emp-tool/blob/main/emp-tool/runtime/crypto/mitccrh.h)
-for optimal concrete security; base OTs derive keys from a random oracle
+for optimal concrete security, and every correlated GGM tree hashes under
+its own public AES key, derived from the session id, so no permutation is
+shared across trees or sessions; base OTs derive keys from a random oracle
 (`RO`), `BMM` additionally uses SHAKE-256 in its ML-KEM core, and the
 Fiat-Shamir transcript defaults to SHA-256.
 
@@ -197,23 +199,29 @@ BMM                    send=356438d8b2753410 recv=74ebc2ae00798c13
 BMM768                 send=89e88234d11cb7e1 recv=c25b37fc62230c19
 BMM1024                send=048279522e25c944 recv=fb6e042160cc5728
 IKNP semi              send=10683f96182d1932 recv=71521069116554ea
-SoftSpoken<2> semi     send=58b5841c59972871 recv=5659fdade553c889
-SoftSpoken<8> semi     send=58b5841c59972871 recv=7331c25770184af2
-Ferret(b9) semi        send=d44267c2cf91d948 recv=d32d2e7a7b9ff737
-SilentFerret(b9) semi  send=d44267c2cf91d948 recv=d32d2e7a7b9ff737
-F2kVOLE semi           send=45ad8665a1cd00a0 recv=6800d7be63b04dbc
-FpVOLE semi            send=891df284f4e0e873 recv=43a57b9fefee635b
-F2kVOLE(b9) semi       send=780342c92a008584 recv=0956a3fc6360f1fd
-FpVOLE(b9) semi        send=756066ed76d004d3 recv=43a57b9fefee635b
+SoftSpoken<2> semi     send=58b5841c59972871 recv=d7be07c2abe3d135
+SoftSpoken<8> semi     send=58b5841c59972871 recv=8b8379723e908580
+Ferret(b9) semi        send=b0657be0edf77646 recv=76b2919c0def64be
+SilentFerret(b9) semi  send=b0657be0edf77646 recv=76b2919c0def64be
+Ferret(b9) seeded semi send=6343bff968b633a3 recv=6b6a1821fac3c816
+SilentFerret(b9) seeded semi send=6343bff968b633a3 recv=6b6a1821fac3c816
+Ferret(b11) seeded semi send=d5f80d98f4f38a68 recv=1c63750c0d61bd4f
+F2kVOLE semi           send=05647c9d9817beb3 recv=10e23b4ab3c92ec9
+FpVOLE semi            send=d9b318b0fd480e00 recv=5ecd049750f37b6a
+F2kVOLE(b9) semi       send=430c1ba394201db7 recv=fccc01801726a0f3
+FpVOLE(b9) semi        send=48efb68cb9af7b53 recv=5ecd049750f37b6a
 IKNP mali              send=10683f96182d1932 recv=807647cc71d70624
-SoftSpoken<2> mali     send=58b5841c59972871 recv=c14aaa7faffd4a8c
-SoftSpoken<8> mali     send=58b5841c59972871 recv=8f92908e6477c69b
-Ferret(b9) mali        send=e0c4d4a792105ae5 recv=cbe7eaae4142579a
-SilentFerret(b9) mali  send=e0c4d4a792105ae5 recv=cbe7eaae4142579a
-F2kVOLE mali           send=497942ce701bf7de recv=c2117e78ec6572c7
-FpVOLE mali            send=3928e02476b258f0 recv=2cbd1c00a1939ca8
-F2kVOLE(b9) mali       send=a1a6511d555fe63f recv=e4f47d513449318b
-FpVOLE(b9) mali        send=5fcd1617dae04e84 recv=0ad0ac51c977bc42
+SoftSpoken<2> mali     send=58b5841c59972871 recv=f2c9f9fa13ec7df1
+SoftSpoken<8> mali     send=58b5841c59972871 recv=39303c342989e042
+Ferret(b9) mali        send=c0f4c9ef2208e2bc recv=84f9697fe3a0d588
+SilentFerret(b9) mali  send=c0f4c9ef2208e2bc recv=84f9697fe3a0d588
+Ferret(b9) seeded mali send=4858f755163b2afe recv=e0ec25841430f8f7
+SilentFerret(b9) seeded mali send=4858f755163b2afe recv=e0ec25841430f8f7
+Ferret(b11) seeded mali send=3aadbb1cdeeb6efb recv=67b522a035546b52
+F2kVOLE mali           send=9c10a3cefee3b176 recv=f4b2f946ff22f89e
+FpVOLE mali            send=78c71d5863ab115a recv=4e6d1f1b416830b9
+F2kVOLE(b9) mali       send=d3ff4389ebbc1e01 recv=349fcad8bcd0b801
+FpVOLE(b9) mali        send=7dddce7ed7fd5b2b recv=79c12081bb7aab6a
 ```
 
 ## Usage

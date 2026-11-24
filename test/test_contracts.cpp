@@ -442,6 +442,20 @@ int main() {
         F2kVOLE<> vole(ALICE, &io, false, tuning::ferret_b9);
         vole.begin();
     });
+    // cGGM tree keys come from a nonzero id, and a gadget builds no tree
+    // before it has one.
+    ok &= expect_rejected("zero tree-key id", "the session id is zero", [] {
+        cggm::TreeKeys keys;
+        keys.reset(zero_block);
+    });
+    ok &= expect_rejected("gadget without a session id", "no session id is set", [] {
+        FixedInputIO io(nullptr, 0);
+        MultiPointGadgetSender<AuthValueFerret> gadget(1, 2, &io);
+        gadget.run_begin();
+        AuthValueFerret leaves[4];
+        const block base[2] = {zero_block, zero_block};
+        gadget.run_next_tree(leaves, base, 0);
+    });
     {
         const block seed = zero_block;
         Ferret receiver(BOB, nullptr, false, std::make_unique<DummyOT>(false),
@@ -619,7 +633,7 @@ int main() {
         };
         auto holder = [&](ScriptIO &io) {
             MultiPointGadgetSender<AuthValueFp> gadget(1, 1, &io);
-            gadget.sid = sid;
+            gadget.set_sid(sid);
             gadget.set_malicious();
             gadget.set_delta(12345);
             gadget.run_begin();
@@ -656,7 +670,7 @@ int main() {
         };
         auto receiver = [&](ScriptIO &io) {
             MultiPointGadgetReceiver<AuthValueFp> gadget(1, 1, &io);
-            gadget.sid = sid;
+            gadget.set_sid(sid);
             gadget.set_malicious();
             gadget.run_begin();
             const AuthValueFp triples[1] = {AuthValueFp{3, 4}};
