@@ -9,6 +9,9 @@ SoftSpoken<2> semi     send=58b5841c59972871 recv=5659fdade553c889
 SoftSpoken<8> semi     send=58b5841c59972871 recv=7331c25770184af2
 Ferret(b9) semi        send=d44267c2cf91d948 recv=d32d2e7a7b9ff737
 SilentFerret(b9) semi  send=d44267c2cf91d948 recv=d32d2e7a7b9ff737
+Ferret(b9) seeded semi send=18863bcb9f0dcc21 recv=af02fffc160da49d
+SilentFerret(b9) seeded semi send=18863bcb9f0dcc21 recv=af02fffc160da49d
+Ferret(b11) seeded semi send=0cb463d71c58f6d7 recv=efc3acb177680e33
 F2kVOLE semi           send=45ad8665a1cd00a0 recv=6800d7be63b04dbc
 FpVOLE semi            send=891df284f4e0e873 recv=43a57b9fefee635b
 F2kVOLE(b9) semi       send=780342c92a008584 recv=0956a3fc6360f1fd
@@ -18,6 +21,9 @@ SoftSpoken<2> mali     send=58b5841c59972871 recv=c14aaa7faffd4a8c
 SoftSpoken<8> mali     send=58b5841c59972871 recv=8f92908e6477c69b
 Ferret(b9) mali        send=e0c4d4a792105ae5 recv=cbe7eaae4142579a
 SilentFerret(b9) mali  send=e0c4d4a792105ae5 recv=cbe7eaae4142579a
+Ferret(b9) seeded mali send=a82c414c0d99bea2 recv=eb65685c1f85698e
+SilentFerret(b9) seeded mali send=a82c414c0d99bea2 recv=eb65685c1f85698e
+Ferret(b11) seeded mali send=39a2745706ae245a recv=45c6b8e57368414e
 F2kVOLE mali           send=497942ce701bf7de recv=c2117e78ec6572c7
 FpVOLE mali            send=3928e02476b258f0 recv=2cbd1c00a1939ca8
 F2kVOLE(b9) mali       send=a1a6511d555fe63f recv=e4f47d513449318b

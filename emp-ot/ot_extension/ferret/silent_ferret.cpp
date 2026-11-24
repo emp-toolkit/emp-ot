@@ -167,9 +167,11 @@ void SilentFerret::begin_batch_(int64_t n_ots) {
 	}
 
 	// One malicious check over the whole prepay, masked by round-0's 128 consist-
-	// check COTs (from the pristine base0_, finalized once). The FS transcript
-	// stayed append-only in (round,tree) order across the loop, so each round's
-	// chi was sampled after its commitment. No-op when semi-honest.
+	// check COTs (from the pristine base0_, finalized once), or with seeded
+	// choices by 128 COTs drawn fresh for it into the same slots. The FS
+	// transcript stayed append-only in (round,tree) order across the loop, so
+	// each round's chi was sampled after its commitment. No-op when semi-honest.
+	if (mask_src_) draw_check_masks_(base0_.data());
 	if (is_ot_sender())
 		gadget_send_->finalize_batched_packed_sender(acc_vw_, base0_.data());
 	else

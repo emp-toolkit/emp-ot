@@ -55,6 +55,8 @@ void check_cot(T* ot, NetIO* io, int party, int64_t length) {
 			block b1 = b0[i] ^ delta;
 			expecting(cmpBlock(&r[i], b[i] ? &b1 : &b0[i], 1),
 			          "COT failed");
+			expecting(getLSB(r[i]) == b[i] && !getLSB(b0[i]),
+			          "COT lost the LSB encoding");
 		}
 	}
 	std::cout << "Tests passed.\t";

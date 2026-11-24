@@ -113,7 +113,7 @@ In the code:
 | `PrimalLPNParameter`, its derived `k`, `M`, `refill_trees`, and `validate_primal_lpn_parameter` | [`emp-ot/tuning.h`](../emp-ot/tuning.h) |
 | `d = 10` | `tuning::lpn_d` in [`emp-ot/tuning.h`](../emp-ot/tuning.h) |
 | The matrix: `idx = r & (k−1)` from an AES-CTR PRG; for `F2kVOLE`, one GF(2¹²⁸) coefficient block per entry from the same stream | `Lpn` in [`emp-ot/common/lpn.h`](../emp-ot/common/lpn.h) |
-| The matrix seed: `RO("emp-ot:ferret:lpn-seed", sid)`; `RO("emp-ot:f2kvole:lpn-seed", sid)` and `RO("emp-ot:fpvole:lpn-seed", sid)` for sVOLE, and `RO("emp-ot:fpvole:pre-lpn-seed", sid)` for `FpVOLE`'s pre-stage | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h), [`fp_vole.h`](../emp-ot/svole/fp_vole.h) |
+| The matrix seed: `RO("emp-ot:ferret:lpn-seed", sid)`, or with seeded choices `RO("emp-ot:ferret:lpn-matrix-seed", root)` absorbing `t`, `logk` and `tree_depth`; `RO("emp-ot:f2kvole:lpn-seed", sid)` and `RO("emp-ot:fpvole:lpn-seed", sid)` for sVOLE, and `RO("emp-ot:fpvole:pre-lpn-seed", sid)` for `FpVOLE`'s pre-stage | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h), [`fp_vole.h`](../emp-ot/svole/fp_vole.h) |
 | The noise: tree `i` owns block `i`, and its one nonzero entry sits at the bit-reversed cGGM puncture point, the complement of the receiver's base-COT choice bits for that tree | [`emp-ot/common/mp_gadget.h`](../emp-ot/common/mp_gadget.h) |
 | The round loop and the slot layout of `M` | [`ferret.cpp`](../emp-ot/ot_extension/ferret/ferret.cpp), [`svole.h`](../emp-ot/svole/svole.h) |
 | Choosing a set: the `param` constructor argument, `ferret_b12` by default | [`ferret.h`](../emp-ot/ot_extension/ferret/ferret.h), [`silent_ferret.h`](../emp-ot/ot_extension/ferret/silent_ferret.h), [`svole.h`](../emp-ot/svole/svole.h) |
@@ -466,6 +466,13 @@ These were read and do not set any parameter here.
   Small experiments and Cueto Noval et al. support this, but neither covers these sizes.
 - **Leakage.** The malicious-mode selective-failure query of §1 is outside the
   single-instance model.
+- **Seeded choices.** `Ferret::set_choice_seed` gives several instances one LPN
+  secret, one noise vector and one matrix, so they produce the same outputs `u`
+  under different senders' Δs. No sender sees `u`: the receiver's messages are
+  padded by randomness of their own instance (the bootstrap correction by
+  `SoftSpoken`'s random choice bits, each check reply by a fresh mask). What the
+  instances add is selective-failure queries: senders who collude can aim one
+  from every instance at the same noise, and each wrong guess still aborts.
 
 ## 5. The sVOLE check mask
 

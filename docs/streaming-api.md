@@ -105,6 +105,9 @@ first session. Preconditions on these configuration APIs use
   buffer with bit 0 set, and must run before bootstrap.
 - OT-extension and sVOLE `set_sid` must run before bootstrap; Ferret and
   sVOLE also seed their public LPN matrix from it.
+- Ferret `set_choice_seed` must run before bootstrap, at both ends: the
+  receiver passes its choice seed, the sender `nullptr`, and both the same LPN
+  seed, which then seeds the matrix in place of the session id.
 - sVOLE `set_delta` is Δ-holder-only and pre-bootstrap; reading
   `delta()` is Δ-holder-only. The F2k carrier additionally requires
   Δ's least-significant bit to be one. Fp instead requires a canonical
@@ -480,7 +483,7 @@ gone).
 
 `setup_done` is a public-on-the-base bool. Subclasses set it true
 inside their lazy bootstrap. Setters that must fire pre-bootstrap
-(`set_delta` and `set_sid`) enforce
+(`set_delta`, `set_sid` and Ferret's `set_choice_seed`) enforce
 `!setup_done` with always-on `emp::expecting` checks. The base does not
 check `setup_done` itself — it remains a contract implemented by each
 subclass's bootstrap and configuration surface.

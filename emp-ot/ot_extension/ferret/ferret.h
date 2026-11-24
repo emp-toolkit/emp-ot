@@ -127,6 +127,26 @@ public:
 	// that runs the base OT sets the base OT's sid, once.
 	void set_sid(SessionID s) override;
 
+	// Seeded choices, for a receiver that needs one set of choice bits under
+	// several senders' Δs. Instances whose receivers hold the same choice seed,
+	// and that share the LPN seed and the parameter set, give the same choice
+	// bit at each position of their output streams, provided they are drawn
+	// alike (the same begin() / begin(n_ots) / end() sequence). Both ends call
+	// this before the first begin(): the receiver passes its secret seed, the
+	// sender nullptr, and both the same public `lpn_seed`, which takes the place
+	// of the session id in the LPN matrix. It changes the wire.
+	//
+	// Only the choice bits are shared. The bootstrap's SoftSpoken runs on its
+	// own randomness and delivers the base through cot, with the seeded bits as
+	// the receiver's choices (one correction bit per base COT), at the bottom of
+	// the bootstrap only (the nested ferret_b9 for the sets that nest). Every later base comes from the
+	// refill trees, whose choice bits follow. In malicious mode each consistency
+	// check is masked by 128 COTs that the same SoftSpoken extends just before
+	// that check, never by base COTs, which the instances share; the SoftSpoken
+	// therefore lives as long as this object. Every message the receiver sends
+	// is thus padded by randomness of its own instance.
+	void set_choice_seed(const block *choice_seed, const block &lpn_seed);
+
 	// StreamingExtension contract. Each next() produces exactly
 	// `chunk_size()` = 2^tree_depth RCOT outputs (one cGGM tree's
 	// leaves). next() includes the auto-rollover check (transparent
@@ -159,12 +179,26 @@ protected:
 	void inner_run_end_();
 	void run_refill_();
 
+	// Seeded choices (set_choice_seed). Malicious mode only: fill `mask128`
+	// with 128 COTs freshly extended by the bootstrap's SoftSpoken, for the
+	// consistency check about to run.
+	void draw_check_masks_(block *mask128);
+
 	int64_t tree_idx_ = 0;
 
 	// Per-Ferret-lifetime public LPN-matrix seed state: both roles derive the
-	// seed from the shared transcript sid at the first begin(), and lpn_'s
-	// PRG state advances continuously after that.
+	// seed at the first begin(), from the shared transcript sid or, with seeded
+	// choices, from lpn_root_; lpn_'s PRG state advances continuously after
+	// that.
 	bool lpn_seed_set_ = false;
+
+	// Seeded choices: choice_seed_ (receiver only, secret) and lpn_root_
+	// (public). mask_src_ is the bootstrap's SoftSpoken in malicious mode, kept
+	// for draw_check_masks_; null otherwise.
+	bool seeded_ = false;
+	block choice_seed_ = zero_block;
+	block lpn_root_ = zero_block;
+	std::unique_ptr<OTExtension> mask_src_;
 
 	// Two ping-pong base-COT buffers, each `refill_trees * 2^tree_depth`
 	// blocks. curr_ holds the round's M base COTs (chi-check + LPN-secret +

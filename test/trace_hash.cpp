@@ -58,6 +58,18 @@ static void measure(int party, NetIO* anchor, const string& name,
 // depend on how many rows ran before it.
 static const block kTraceSid = makeBlock(0x74726163652d6861ULL, 0x73682d7369640000ULL);
 
+// The seeded-choice rows' receiver choice seed and public LPN seed.
+static constexpr block kTraceChoiceSeed =
+    makeBlock(0x74726163652d6368ULL, 0x6f6963652d736565ULL);
+static constexpr block kTraceLpnSeed =
+    makeBlock(0x74726163652d6c70ULL, 0x6e2d736565640000ULL);
+
+template <typename F>
+static std::unique_ptr<F> seeded(std::unique_ptr<F> ot, int party) {
+    ot->set_choice_seed(party == BOB ? &kTraceChoiceSeed : nullptr, kTraceLpnSeed);
+    return ot;
+}
+
 // RCOT runner. Constructed inside body() so each protocol gets a
 // fresh OT object too (just like a real caller would).
 template <typename Make>
@@ -228,6 +240,32 @@ int main(int argc, char** argv) {
                         new SilentFerret(party, x, m, tuning::ferret_b9));
                 }, mali);
         });
+        // Seeded choices: the b9 rows bootstrap directly from SoftSpoken and,
+        // like the rows above, match over whole rounds; the b11 row bootstraps
+        // through a nested ferret_b9.
+        measure(party, anchor.get(), "Ferret(b9) seeded " + mode, rcot_sf, [&](NetIO* io){
+            run_rcot(io, party, ferret_len,
+                [&](IOChannel* x, bool m) {
+                    return seeded(std::make_unique<Ferret>(
+                        party, x, m, nullptr, tuning::ferret_b9), party);
+                }, mali);
+        });
+        measure(party, anchor.get(), "SilentFerret(b9) seeded " + mode, rcot_sf, [&](NetIO* io){
+            run_rcot(io, party, ferret_len,
+                [&](IOChannel* x, bool m) {
+                    return seeded(std::make_unique<SilentFerret>(
+                        party, x, m, tuning::ferret_b9), party);
+                }, mali);
+        });
+#ifdef NDEBUG
+        measure(party, anchor.get(), "Ferret(b11) seeded " + mode, rcot_sf, [&](NetIO* io){
+            run_rcot(io, party, rcot_len,
+                [&](IOChannel* x, bool m) {
+                    return seeded(std::make_unique<Ferret>(
+                        party, x, m, nullptr, tuning::ferret_b11), party);
+                }, mali);
+        });
+#endif
         measure(party, anchor.get(), "F2kVOLE " + mode, f2k_sf, [&](NetIO* io){
             // F2k: use Ferret's auto-sampled Δ (no set_delta call).
             run_svole<F2kVOLE<>>(io, party, svole_len, mali,
