@@ -210,18 +210,18 @@ F2kVOLE semi           send=4b242f7c8f19708a recv=2199baa3e2a30a8b
 FpVOLE semi            send=a664a4bad51dc114 recv=7cea81f45c317406
 F2kVOLE(b9) semi       send=c40a076e7bb95527 recv=873b157f8e0baeec
 FpVOLE(b9) semi        send=798d5666980ef3ee recv=7cea81f45c317406
-IKNP mali              send=c57ce16c79aa0882 recv=681c36e5e1a4fdf2
-SoftSpoken<2> mali     send=4c3ce8d37f141bd2 recv=7b2d05c60ea2183d
-SoftSpoken<8> mali     send=4c3ce8d37f141bd2 recv=aa49d79a76b5cc01
-Ferret(b9) mali        send=b2779a827c77883e recv=3c69c775a19cd3bd
-SilentFerret(b9) mali  send=b2779a827c77883e recv=3c69c775a19cd3bd
-Ferret(b9) seeded mali send=6007dc29df362d46 recv=9752d2f9f4a84dc9
-SilentFerret(b9) seeded mali send=6007dc29df362d46 recv=9752d2f9f4a84dc9
-Ferret(b11) seeded mali send=25b21f13e839a486 recv=fd1fdf140f249869
-F2kVOLE mali           send=ca1d637c6c95ef4e recv=6de6463b2eb58a9b
-FpVOLE mali            send=8b4e9978a86d5247 recv=6e05ef9806510778
-F2kVOLE(b9) mali       send=92c8d1f3ef4e7ba1 recv=efe8e6b3bb26507f
-FpVOLE(b9) mali        send=5cb8f3229f553548 recv=6eaaeec40d7d8446
+IKNP mali              send=c57ce16c79aa0882 recv=910ea5effd077968
+SoftSpoken<2> mali     send=4c3ce8d37f141bd2 recv=3e634522669fb223
+SoftSpoken<8> mali     send=4c3ce8d37f141bd2 recv=602d2fc5382b5ef3
+Ferret(b9) mali        send=ee28dd7103c1fad1 recv=29659c4694bd356c
+SilentFerret(b9) mali  send=ee28dd7103c1fad1 recv=29659c4694bd356c
+Ferret(b9) seeded mali send=cfe0bdd0d4e4435c recv=4fb4b0cf83778d22
+SilentFerret(b9) seeded mali send=cfe0bdd0d4e4435c recv=4fb4b0cf83778d22
+Ferret(b11) seeded mali send=a90a915fcbf62434 recv=9c952078e8972d3d
+F2kVOLE mali           send=354a9c3c52e9ab16 recv=77aac10bb81a8851
+FpVOLE mali            send=daa9598d88b18424 recv=66f7305d6cfdd40c
+F2kVOLE(b9) mali       send=26c7e408a2e01731 recv=44621480df189a8b
+FpVOLE(b9) mali        send=405e5dc7054d19e2 recv=861779e8af2613c6
 ```
 
 ## Usage
@@ -578,9 +578,10 @@ rounds down to whole chunks, 33,243,136; the `ferret_b13` rows run two
 party, pinned to one core; `SilentFerret`'s `begin()` expansion pool disabled). `MOT/s` is the
 median of 9 runs, the slower of the two parties per run; `bits/RCOT` (total
 wire bytes, both directions — deterministic) includes the one-time base-OT
-bootstrap amortised over the length. Observed: the `IKNP` and `SoftSpoken<2>`
-rows, plus semi-honest `SoftSpoken<4>`, ran at 95–99% of the measured
-link rate; the remaining rows were CPU-bound. Analysis of what binds each configuration is in
+bootstrap amortised over the length. Observed: the `IKNP` rows and
+semi-honest `SoftSpoken<2>` and `SoftSpoken<4>` ran at 95–99% of the
+measured link rate; the remaining rows, malicious `SoftSpoken<2>` just
+below that rate, were CPU-bound. Analysis of what binds each configuration is in
 [`docs/performance-tuning.md`](docs/performance-tuning.md).
 
 | Protocol                      | Mode      | bits/RCOT | MOT/s |
@@ -588,11 +589,11 @@ link rate; the remaining rows were CPU-bound. Analysis of what binds each config
 | `IKNP`                        | semi      |       127 |    74 |
 | `IKNP`                        | malicious |       127 |    74 |
 | `SoftSpoken<2>`               | semi      |        63 |   148 |
-| `SoftSpoken<2>`               | malicious |        63 |   148 |
+| `SoftSpoken<2>`               | malicious |        63 |   143 |
 | `SoftSpoken<4>`               | semi      |        31 |   292 |
-| `SoftSpoken<4>`               | malicious |        31 |   208 |
+| `SoftSpoken<4>`               | malicious |        31 |   196 |
 | `SoftSpoken<8>`               | semi      |        15 |    78 |
-| `SoftSpoken<8>`               | malicious |        15 |    73 |
+| `SoftSpoken<8>`               | malicious |        15 |    71 |
 | `Ferret`                      | semi      |      0.48 |   138 |
 | `Ferret`                      | malicious |      0.48 |   121 |
 | `SilentFerret`                | semi      |      0.48 |   126 |

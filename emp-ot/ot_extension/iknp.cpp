@@ -73,28 +73,17 @@ void IKNP::send_begin_() {
 		setup_done = true;
 	}
 	expecting(is_ot_sender(), "IKNP::begin: not in sender role");
-	if (malicious) check_q = makeBlock(0, 0);
+	if (malicious) plane_check_.reset();
 }
 
 void IKNP::send_end_() {
 	if (malicious) {
-		// Sacrificial chunk: 128 extra OTs folded into check_q with chi
-		// from the same Fiat-Shamir transcript as the real chunks. The
-		// Q ⊕ T = R · Δ identity is linear in chi, so the final
-		// check_q ⊕ check_x · Δ == check_t comparison still holds.
-		// Built with the same send_next_ as a real chunk; the
-		// extra block_size − 128 OTs in the chunk are simply unused
-		// (the chi-fold over them still satisfies Q ⊕ T = R · Δ).
+		// Sacrificial chunk, folded like a real one: its random choice bits
+		// mask Ũ. Built with the same send_next_ as a real chunk, and all
+		// of its OTs are discarded.
 		BlockVec scratch(block_size);
 		send_next_(scratch.data());
-		// Receiver opens (check_x, check_t); accept iff
-		// check_q ⊕ check_x · Δ == check_t.
-		block x, t, tmp;
-		io->recv_block(&x, 1);
-		io->recv_block(&t, 1);
-		gfmul(x, Delta, &tmp);
-		check_q = check_q ^ tmp;
-		expecting(cmpBlock(&check_q, &t, 1),
+		expecting(plane_check_.verify(io, sid.value(), delta_bool),
 		          "OT Extension check failed");
 	}
 	// Deferred base-OT extraction check, AFTER the extension's own check so the
@@ -116,7 +105,7 @@ void IKNP::send_end_() {
 // relation at bit 0 becomes 0 ^ bit_0(M_k) = r[k] · 1, so bit_0(M_k)
 // = choice directly. Both sides skip row 0 on the wire and in the
 // transcript (both know it's zeros), so only rows 1..127 are
-// exchanged and hashed — same chi seed on both sides.
+// exchanged and hashed — same challenges on both sides.
 void IKNP::send_next_(block *out) {
 	block t[block_size];
 	block tmp[block_size / 128];
@@ -130,29 +119,10 @@ void IKNP::send_next_(block *out) {
 	}
 	sse_trans_n128(out, t, block_size);
 
+	// Rows of t are the chunk's planes; the u-matrix bytes are already on
+	// the transcript.
 	if (malicious)
-		combine_send(out);
-}
-
-// Sender-side fold: pack each 128-block chunk of `out` into Q_i and
-// accumulate chi_i · Q_i into check_q. `out` is cache-hot from
-// sse_trans. The chi seed is fs_challenge over the sid and the IOChannel
-// FS digest snapshot taken after this chunk's u-matrix bytes have been
-// recv'd (and absorbed by FS).
-void IKNP::combine_send(block *out) {
-	block seed = fs_challenge(io, sid.value());
-	PRG chiPRG(&seed);
-	constexpr int64_t chunks = block_size / 128;
-	block chi[chunks];
-	block packed[chunks];
-	chiPRG.random_block(chi, chunks);
-	for (int64_t i = 0; i < chunks; ++i) {
-		packer.packing(&packed[i], out + 128 * i);
-	}
-
-	block lo_hi[2];
-	vector_inn_prdt_sum_no_red(lo_hi, chi, packed, chunks);
-	check_q = check_q ^ reduce(lo_hi[0], lo_hi[1]);
+		plane_check_.fold(io, sid.value(), t, row_blocks);
 }
 
 void IKNP::recv_begin_() {
@@ -181,20 +151,16 @@ void IKNP::recv_begin_() {
 		setup_done = true;
 	}
 	expecting(!is_ot_sender(), "IKNP::begin: not in receiver role");
-	if (malicious) {
-		check_t = makeBlock(0, 0);
-		check_x = makeBlock(0, 0);
-	}
+	if (malicious) plane_check_.reset();
 }
 
 void IKNP::recv_end_() {
 	if (malicious) {
 		BlockVec scratch(block_size);
 		recv_next_(scratch.data());
-		io->send_block(&check_x, 1);
-		io->send_block(&check_t, 1);
+		plane_check_.send(io, sid.value());
 	}
-	// Deferred base-OT extraction check, AFTER the (check_x, check_t) send so
+	// Deferred base-OT extraction check, AFTER the consistency-check send so
 	// the base challenge (chi, proof) bundles into the same receiver→sender run.
 	// Receiver plays the base SENDER → send_check (sends chi/proof, then its
 	// recv otans' flushes the whole bundle and verifies). otans' is the one
@@ -234,32 +200,10 @@ void IKNP::recv_next_(block *out) {
 	memcpy(t, r, block_size / 8);
 	sse_trans_n128(out, t, block_size);
 
+	// Rows of t are the chunk's planes, row 0 = r; the u-matrix bytes are
+	// already on the transcript.
 	if (malicious)
-		combine_recv(out, r);
-}
-
-// Receiver-side fold: pack each 128-block chunk of `out` into T_i,
-// take R_i = r[i] (the bit-packed choice block for chunk i), and
-// accumulate chi_i · T_i into check_t and chi_i · R_i into check_x.
-// Chi seed is fs_challenge over the same sid and FS digest snapshot as
-// the sender's (after this chunk's u-matrix bytes crossed the wire), so
-// per-chunk chi values match.
-void IKNP::combine_recv(block *out, block *r) {
-	block seed = fs_challenge(io, sid.value());
-	PRG chiPRG(&seed);
-	constexpr int64_t chunks = block_size / 128;
-	block chi[chunks];
-	block packed[chunks];
-	chiPRG.random_block(chi, chunks);
-	for (int64_t i = 0; i < chunks; ++i) {
-		packer.packing(&packed[i], out + 128 * i);
-	}
-
-	block lo_hi[2];
-	vector_inn_prdt_sum_no_red(lo_hi, chi, packed, chunks);
-	check_t = check_t ^ reduce(lo_hi[0], lo_hi[1]);
-	vector_inn_prdt_sum_no_red(lo_hi, chi, r, chunks);
-	check_x = check_x ^ reduce(lo_hi[0], lo_hi[1]);
+		plane_check_.fold(io, sid.value(), t, row_blocks);
 }
 
 }  // namespace emp

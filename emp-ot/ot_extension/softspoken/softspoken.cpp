@@ -48,6 +48,7 @@
 //      receiver's choice.
 //   4. One sse_trans_n128 over the chunk-local plane buffer writes
 //      bs*128 OT blocks.
+//   5. Malicious mode: PlaneCheck folds the chunk's 128 planes.
 //
 // ===== Malicious mode =====
 //
@@ -64,17 +65,14 @@
 //       pprfcheckattack). Details inline below at pprf_check_send /
 //       pprf_check_recv.
 //
-//   (2) Subspace VOLE check, once per begin/next…/end session. Each
-//       chunk's d_bufs are absorbed into the IOChannel FS transcript
-//       via send_data / recv_data; chi seed comes from
-//       io->get_digest(), bound to the sid by fs_challenge (ot.h).
-//       Both sides chi-fold packed F_{2^128} elements
-//       over post-Conv outputs (sender accumulates check_q := Σ chi_i
-//       · Q_i, receiver check_t := Σ chi_i · T_i and check_x := Σ chi_i
-//       · R_i where R_i = u_canonical[i]). One 128-OT sacrificial chunk
-//       runs in *_end before the (check_x, check_t) exchange and the
-//       check_q ?= check_t ⊕ check_x · Δ compare. Same shape as IKNP
-//       — see emp-ot/ot_extension/iknp.{h,cpp}.
+//   (2) Subspace VOLE check (Roy '22 Fig. 9), once per begin/next…/end
+//       session; PlaneCheck in plane_check.h, shared with IKNP. Each
+//       chunk's d_bufs are absorbed into the IOChannel FS transcript via
+//       send_data / recv_data, and both sides then fold the chunk's 128
+//       planes (after derandomization and the LSB pinning) under that
+//       chunk's challenges. One 128-OT sacrificial chunk runs in *_end
+//       before the receiver sends Ũ and the digest of its per-plane
+//       folds, and the sender compares them with its own.
 
 #include "emp-ot/ot_extension/softspoken/softspoken.h"
 #include "emp-ot/ot_extension/softspoken/ss_bench_phases.h"
@@ -391,12 +389,6 @@ void SoftSpoken<k, kChunkBlocks>::ensure_chunk_scratch_() {
         if (d_bufs_chunk_.size() < static_cast<size_t>(n - 1) * kChunkBlocks)
             d_bufs_chunk_.resize(static_cast<size_t>(n - 1) * kChunkBlocks);
     }
-    if (malicious) {
-        if (check_chi_chunk_.size() < static_cast<size_t>(kChunkBlocks))
-            check_chi_chunk_.resize(static_cast<size_t>(kChunkBlocks));
-        if (check_pack_chunk_.size() < static_cast<size_t>(kChunkBlocks))
-            check_pack_chunk_.resize(static_cast<size_t>(kChunkBlocks));
-    }
 }
 
 // StreamingExtension lifecycle: party-dispatch inline to the per-role
@@ -448,28 +440,20 @@ void SoftSpoken<k, kChunkBlocks>::send_begin_() {
     if (!setup_done) bootstrap_send_();
     cur_send_session_ = session_++;
     cur_send_b0_ = 0;
-    if (malicious) check_q_ = zero_block;
+    if (malicious) plane_check_.reset();
     EMP_SS_PHASE_RESET(send);
 }
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::send_end_() {
     if (malicious) {
-        // Sacrificial 128-OT chunk: extends the chi-fold by one packed
-        // F_{2^128} element so the revealed (check_x, check_t) doesn't
-        // determine the user-visible R/T values in any single equation.
-        // Run at bs=1 directly (not through send_next_, which
-        // would compute a full kChunkOTs).
+        // Sacrificial 128-OT chunk: its random choice bits mask Ũ. Run at
+        // bs=1 directly (not through send_next_, which would compute a full
+        // kChunkOTs).
         block scratch[128];
         send_chunk_pipeline(scratch, /*bs=*/1);
-        // Receiver opens (check_x, check_t); accept iff
-        // check_q_ ⊕ check_x · Δ == check_t.
-        block x, t, tmp;
-        this->io->recv_block(&x, 1);
-        this->io->recv_block(&t, 1);
-        gfmul(x, this->Delta, &tmp);
-        block lhs = check_q_ ^ tmp;
-        expecting(cmpBlock(&lhs, &t, 1),
+        expecting(plane_check_.verify(this->io, this->sid.value(),
+                                      this->delta_bool),
                   "SoftSpoken subspace VOLE check failed");
     }
     // Deferred base-OT extraction check, AFTER the subspace check so otans' is
@@ -521,9 +505,8 @@ void SoftSpoken<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
         }
         // d_bufs are now absorbed into the IOChannel FS transcript via
         // recv_block → recv_data; the matching send side absorbs the
-        // same bytes via send_data, so the chi seed taken via
-        // io->get_digest() in combine_send_chunk agrees with the
-        // receiver's combine_recv_chunk.
+        // same bytes via send_data, so both sides' PlaneCheck::fold draws
+        // the same challenges.
         EMP_SS_PHASE(send, derand);
         for (int i = 1; i < n; ++i) {
             block* w_i = w_planes_chunk + i * k * bs;
@@ -557,7 +540,7 @@ void SoftSpoken<k, kChunkBlocks>::send_chunk_pipeline(block* out, int64_t bs) {
 
     if (malicious) {
         EMP_SS_PHASE(send, combine);
-        combine_send_chunk(out, bs);
+        plane_check_.fold(this->io, this->sid.value(), w_planes_chunk, bs);
     }
 
     EMP_SS_PHASE_OTS(send, bs * 128);
@@ -569,22 +552,21 @@ void SoftSpoken<k, kChunkBlocks>::recv_begin_() {
     if (!setup_done) bootstrap_recv_();
     cur_recv_session_ = session_++;
     cur_recv_b0_ = 0;
-    if (malicious) check_t_ = check_x_ = zero_block;
+    if (malicious) plane_check_.reset();
     EMP_SS_PHASE_RESET(recv);
 }
 
 template <int k, int kChunkBlocks>
 void SoftSpoken<k, kChunkBlocks>::recv_end_() {
     if (malicious) {
-        // Mirror the sender's sacrificial chunk at bs=1, then open the
-        // chi-fold accumulators. Must run before the io->flush() below
-        // so the (check_x, check_t) bytes go out in the same flush.
+        // Mirror the sender's sacrificial chunk at bs=1, then send Ũ and
+        // the digest. Must run before the io->flush() below so the check
+        // bytes go out in the same flush.
         block scratch[128];
         recv_chunk_pipeline(scratch, /*bs=*/1);
-        this->io->send_block(&check_x_, 1);
-        this->io->send_block(&check_t_, 1);
+        plane_check_.send(this->io, this->sid.value());
     }
-    // Deferred base-OT extraction check, AFTER the (check_x, check_t) send so
+    // Deferred base-OT extraction check, AFTER the consistency-check send so
     // the base challenge bundles into the same receiver→sender run. OT-receiver
     // plays the base SENDER → send_check (its recv otans' flushes the bundle).
     if (base_check_pending_) {
@@ -654,7 +636,7 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
         const int64_t total_d_blocks = (int64_t)(n - 1) * bs;
         // send_block → send_data absorbs d_bufs into the IOChannel FS
         // transcript; the matching OT-sender's recv_block does the same,
-        // so io->get_digest() in combine_*_chunk agrees on both sides.
+        // so both sides' PlaneCheck::fold draws the same challenges.
         EMP_SS_PHASE(recv, io);
         this->io->send_block(d_bufs, total_d_blocks);
         this->stream_sent_(total_d_blocks * (int64_t)sizeof(block));
@@ -675,61 +657,11 @@ void SoftSpoken<k, kChunkBlocks>::recv_chunk_pipeline(block* out, int64_t bs) {
 
     if (malicious) {
         EMP_SS_PHASE(recv, combine);
-        combine_recv_chunk(out, u_canonical, bs);
+        plane_check_.fold(this->io, this->sid.value(), v_planes_chunk, bs);
     }
 
     EMP_SS_PHASE_OTS(recv, bs * 128);
     cur_recv_b0_ += bs;
-}
-
-// =====================================================================
-// Malicious-mode: per-chunk subspace VOLE chi-fold
-// =====================================================================
-//
-// Each chunk's bs * 128 OT outputs satisfy the IKNP-shape relation
-//   Q_i ⊕ T_i = R_i · Δ in F_{2^128},
-// where (Q_i, T_i) = pack128(out[128i..128i+127]) on each side and
-// R_i = u_canonical[i]. Chi-fold accumulates chi_i · {Q,T,R}_i into
-// running checks; the final check at *_end verifies the linear
-// relation under one fresh chi (statistical soundness ≈ 2^{-128}).
-// Same shape as IKNP::combine_send / combine_recv — see iknp.cpp.
-
-template <int k, int kChunkBlocks>
-void SoftSpoken<k, kChunkBlocks>::combine_send_chunk(block* out, int64_t bs) {
-    block seed = fs_challenge(this->io, this->sid.value());
-    PRG chiPRG(&seed);
-    block* chi = check_chi_chunk_.data();
-    block* packed = check_pack_chunk_.data();
-    chiPRG.random_block(chi, bs);
-    for (int64_t i = 0; i < bs; ++i) {
-        packer_.packing(&packed[i], out + 128 * i);
-    }
-
-    block lo_hi[2];
-    vector_inn_prdt_sum_no_red(lo_hi, chi, packed, bs);
-    check_q_ = check_q_ ^ reduce(lo_hi[0], lo_hi[1]);
-}
-
-template <int k, int kChunkBlocks>
-void SoftSpoken<k, kChunkBlocks>::combine_recv_chunk(block* out, const block* u_canonical, int64_t bs) {
-    block seed = fs_challenge(this->io, this->sid.value());
-    PRG chiPRG(&seed);
-    block* chi = check_chi_chunk_.data();
-    block* packed = check_pack_chunk_.data();
-    chiPRG.random_block(chi, bs);
-    for (int64_t i = 0; i < bs; ++i) {
-        // R_i = u_canonical[i]: after Conv, bit_0(out[128i+j]) =
-        // bit_j(u_canonical[i]) by the LSB pinning convention, so
-        // u_canonical[i] is exactly the packed F_{2^128} choice for
-        // this 128-OT block.
-        packer_.packing(&packed[i], out + 128 * i);
-    }
-
-    block lo_hi[2];
-    vector_inn_prdt_sum_no_red(lo_hi, chi, packed, bs);
-    check_t_ = check_t_ ^ reduce(lo_hi[0], lo_hi[1]);
-    vector_inn_prdt_sum_no_red(lo_hi, chi, u_canonical, bs);
-    check_x_ = check_x_ ^ reduce(lo_hi[0], lo_hi[1]);
 }
 
 template class SoftSpoken<2>;
