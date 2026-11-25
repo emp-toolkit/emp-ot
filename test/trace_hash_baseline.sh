@@ -1,8 +1,8 @@
 #!/bin/bash
 # Wire-format gate: run trace_hash and diff its per-protocol send/recv digests
 # against the checked-in baseline. The digests are deterministic only when
-# emp-tool was built with -DEMP_TEST_MODE=ON; the CMake registration adds
-# this test only to such trees.
+# emp-tool was built with -DEMP_DETERMINISTIC_MODE=ON; the CMake registration
+# adds this test only to such trees.
 # A protocol whose wire bytes change (a non-reproducible refactor) fails here.
 #
 #   trace_hash_baseline.sh <run-script> <trace_hash-binary> <baseline-file>

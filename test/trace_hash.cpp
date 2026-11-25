@@ -6,10 +6,10 @@
 // protocol's wire bytes.
 //
 // Refactor verification, in a Release tree configured against an emp-tool
-// built with -DEMP_TEST_MODE=ON (docs/wire-trace-hashes.md):
-//   ./run ./build-tm/trace_hash > before.txt
+// built with -DEMP_DETERMINISTIC_MODE=ON (docs/wire-trace-hashes.md):
+//   ./run ./build-det/trace_hash > before.txt
 //   <apply refactor>
-//   ./run ./build-tm/trace_hash > after.txt
+//   ./run ./build-det/trace_hash > after.txt
 //   diff before.txt after.txt    # must be empty for wire-equivalence
 //
 // The runner script invokes the binary on both parties; each party's
@@ -37,8 +37,9 @@ static void measure(int party, NetIO* anchor, const string& name,
     // runners pinning kTraceSid (below), its trace hash is independent of
     // which protocols ran before it. The table is order-independent: a
     // protocol can be added or reordered without disturbing the others'
-    // digests. (The seed reset has no effect outside a test-mode build.)
-    reset_test_seed_counter();
+    // digests. (The seed reset has no effect outside a deterministic-mode
+    // build.)
+    reset_deterministic_seeds();
     auto io = anchor->make_sibling();
     io->enable_fs(send_first);
     body(io.get());
@@ -126,9 +127,9 @@ int main(int argc, char** argv) {
     }
     party = parse_party(argv);
     port = peer_port();
-    if (!is_test_mode())
-        cerr << "trace_hash: not a test-mode build (emp-tool -DEMP_TEST_MODE=ON); "
-                "hashes will be non-deterministic\n";
+    if (!is_deterministic_mode())
+        cerr << "trace_hash: not a deterministic-mode build "
+                "(emp-tool -DEMP_DETERMINISTIC_MODE=ON); hashes will be non-deterministic\n";
 
     // One quiet anchor connection for the whole run; every measured
     // protocol gets a fresh sibling channel off its shared listener.

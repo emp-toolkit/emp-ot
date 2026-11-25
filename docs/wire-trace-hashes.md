@@ -13,7 +13,7 @@ transcript over a sibling channel taken from one anchor `NetIO` per
 protocol.
 
 Each protocol is measured from a **reset deterministic seed state**
-(`reset_test_seed_counter()` before each one) and under **one pinned
+(`reset_deterministic_seeds()` before each one) and under **one pinned
 session id**, `kTraceSid`, which every row sets with `set_sid()` on each
 top-level object before its first use (a pinned id suits a trace; in an
 application each top-level object needs its own). Unpinned, an object would take
@@ -31,30 +31,30 @@ changed.
 ## Quick workflow
 
 ```bash
-# One-time: a test-mode emp-tool (deterministic, INSECURE randomness) in
+# One-time: a deterministic-mode emp-tool (INSECURE randomness) in
 # its own prefix, and a Release tree against it (debug uses smaller
 # stress lengths, so its digests differ)
-TM=$HOME/emp-tool-test-mode
-cmake -S ../emp-tool -B ../emp-tool/build-tm -DCMAKE_BUILD_TYPE=Release \
-      -DEMP_TEST_MODE=ON -DEMP_TOOL_BUILD_TESTS=OFF -DCMAKE_INSTALL_PREFIX=$TM
-cmake --build ../emp-tool/build-tm -j && cmake --install ../emp-tool/build-tm
-cmake -B build-tm -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$TM
-cmake --build build-tm -j --target trace_hash
+DET=$HOME/emp-tool-deterministic
+cmake -S ../emp-tool -B ../emp-tool/build-det -DCMAKE_BUILD_TYPE=Release \
+      -DEMP_DETERMINISTIC_MODE=ON -DEMP_TOOL_BUILD_TESTS=OFF -DCMAKE_INSTALL_PREFIX=$DET
+cmake --build ../emp-tool/build-det -j && cmake --install ../emp-tool/build-det
+cmake -B build-det -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$DET
+cmake --build build-det -j --target trace_hash
 
 # Snapshot before the change
-./run ./build-tm/trace_hash | grep '^[A-Za-z(]' > /tmp/before.txt
+./run ./build-det/trace_hash | grep '^[A-Za-z(]' > /tmp/before.txt
 
-# Apply your refactor, rebuild build-tm
+# Apply your refactor, rebuild build-det
 
-./run ./build-tm/trace_hash | grep '^[A-Za-z(]' > /tmp/after.txt
+./run ./build-det/trace_hash | grep '^[A-Za-z(]' > /tmp/after.txt
 
 diff /tmp/before.txt /tmp/after.txt
 ```
 
-A test-mode emp-tool swaps every randomness source for a
-`(lane, ordinal)`-seeded deterministic stream (see
-[`emp-tool/docs/test_mode.md`](https://github.com/emp-toolkit/emp-tool/blob/main/docs/test_mode.md)).
-It exports the setting to everything built against it, so `build-tm` is
+A deterministic-mode emp-tool swaps every randomness source for a
+`(party, lane, ordinal)`-seeded deterministic stream (see
+[`emp-tool/docs/deterministic_mode.md`](https://github.com/emp-toolkit/emp-tool/blob/main/docs/deterministic_mode.md)).
+It exports the setting to everything built against it, so `build-det` is
 deterministic too, and a link-time check rejects mixing its objects with
 a normal build's. In a normal build the hashes are non-deterministic and
 the diff is useless.
@@ -138,10 +138,10 @@ A hash change is not automatically bad. There are three categories:
   trees: the `F2kVOLE(b9)` / `FpVOLE(b9)` rows run two whole rounds
   for this, while the default-set sVOLE rows run part of one.
 - **Non-deterministic protocol behavior.** In a normal build every
-  run differs — a test-mode build is the only thing that makes hashes
+  run differs — a deterministic-mode build is the only thing that makes hashes
   reproducible.
-- **Per-OS / per-arch differences.** PRG seeding in a test-mode build
-  is platform-independent (`(lane, ordinal)`-seeded), but if a protocol picks
+- **Per-OS / per-arch differences.** PRG seeding in a deterministic-mode build
+  is platform-independent (`(party, lane, ordinal)`-seeded), but if a protocol picks
   up entropy from elsewhere (e.g. OpenSSL nondeterministic ECDH
   blinding when not pinned), hashes will differ between machines.
   Pin the baseline by running on the same host that produced it.
@@ -178,7 +178,7 @@ If you add a new protocol or want to test a new parameter combination:
 
 `test/trace_hash.baseline` holds the deterministic digest rows and is
 diffed by the `trace_hash_baseline` ctest, which only a Release tree
-configured against a test-mode emp-tool registers; CI's test-mode job
+configured against a deterministic-mode emp-tool registers; CI's deterministic-mode job
 runs it, so a wire-format change fails CI instead of slipping through. It is a **regression guard,
 not a freeze**: it catches wire changes that were meant to be neutral
 (refactors, tuning, optimization), and an *intentional* protocol change
@@ -189,13 +189,13 @@ protocol change), the gate fails — that is the signal. Regenerate and
 commit the new baseline with the change:
 
 ```bash
-./run ./build-tm/trace_hash \
+./run ./build-det/trace_hash \
   | grep -E 'send=[0-9a-f]{16} recv=' > test/trace_hash.baseline
 ```
 
 and update the matching table in `README.md`. The baseline diff in that
 commit is the reviewable record of exactly which protocols' bytes
 changed. The README table and `test/trace_hash.baseline` carry the same
-rows; regenerate them together (a test-mode Release build — the
+rows; regenerate them together (a deterministic-mode Release build — the
 digests are Release-specific, since `trace_hash` uses larger
 NDEBUG-gated lengths).

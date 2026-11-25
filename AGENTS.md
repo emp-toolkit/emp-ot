@@ -67,21 +67,21 @@ cmake --build build -j --target test_f2k_vole
 ./run ./build/test_f2k_vole
 ```
 
-### Deterministic mode (test-mode build)
+### Deterministic mode
 
-An emp-tool built with `-DEMP_TEST_MODE=ON` swaps every randomness
-source for a counter-derived deterministic stream — same inputs, same
-wire bytes across runs and across machines. emp-tool exports the setting
+An emp-tool built with `-DEMP_DETERMINISTIC_MODE=ON` swaps every
+randomness source for a counter-derived deterministic stream, one per
+party — same inputs, same wire bytes across runs and across machines. emp-tool exports the setting
 to everything built against it, so the deterministic tree is a separate
-Release build (`build-tm`) configured against a test-mode emp-tool
-install; [docs/wire-trace-hashes.md](docs/wire-trace-hashes.md) has the
+Release build (`build-det`) configured against a deterministic-mode
+emp-tool install; [docs/wire-trace-hashes.md](docs/wire-trace-hashes.md) has the
 commands. Required for the wire-trace gate and for any byte-equivalence
 diagnostics:
 
 ```bash
-./run ./build-tm/trace_hash | grep '^[A-Za-z(]' > /tmp/before.txt
-# … apply a change, rebuild build-tm …
-./run ./build-tm/trace_hash | grep '^[A-Za-z(]' > /tmp/after.txt
+./run ./build-det/trace_hash | grep '^[A-Za-z(]' > /tmp/before.txt
+# … apply a change, rebuild build-det …
+./run ./build-det/trace_hash | grep '^[A-Za-z(]' > /tmp/after.txt
 diff /tmp/before.txt /tmp/after.txt    # must be empty for wire-equivalence
 ```
 
@@ -129,8 +129,8 @@ from a subdoc.
 
 - **Wire-trace check before *and* after any change that could touch
   bytes on the wire.** Run
-  `./run ./build-tm/trace_hash | grep '^[A-Za-z(]' > /tmp/<phase>.txt`
-  in the test-mode tree before the change, again after, and `diff` them. Empty diff means
+  `./run ./build-det/trace_hash | grep '^[A-Za-z(]' > /tmp/<phase>.txt`
+  in the deterministic-mode tree before the change, again after, and `diff` them. Empty diff means
   the wire is preserved. Any change to the protocol's wire format —
   even an algebraically equivalent reordering — must be intentional
   and update `test/trace_hash.baseline` and the table in

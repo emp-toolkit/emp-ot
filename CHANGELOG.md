@@ -258,6 +258,12 @@ metadata is numeric (see the README's version guidance).
   every buffer on other systems, are 64-byte aligned, so an `F2kVOLE` table
   entry no longer spans two cache lines. `Svole::carry_curr_` and
   `carry_next_` change type. Outputs and transcripts are unchanged.
+- The wire-trace programs (`trace_hash`, `trace_equiv`) and the
+  `trace_hash_baseline` gate run in emp-tool's deterministic mode, the new name
+  of its test mode: the tree is built against an emp-tool configured with
+  `-DEMP_DETERMINISTIC_MODE=ON`, and CI's job is renamed to match. That mode now
+  gives each party its own seeds, so every `test/trace_hash.baseline` row is
+  regenerated. Normal builds and their transcripts are unchanged.
 
 ## v1.0.0-alpha.2
 

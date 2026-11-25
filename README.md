@@ -138,16 +138,16 @@ digests are *order-independent*: adding or reordering a protocol
 changes only its own row (a new row must pin `kTraceSid` too).
 Refactors that leave the wire bytes untouched leave the hashes
 untouched; refactors that *do* change the wire are visible as a
-single-line diff. The digests are deterministic only in a test-mode
-build: a Release tree configured against an emp-tool built with
-`-DEMP_TEST_MODE=ON`. Such a tree registers the `trace_hash_baseline`
+single-line diff. The digests are deterministic only in a
+deterministic-mode build: a Release tree configured against an emp-tool
+built with `-DEMP_DETERMINISTIC_MODE=ON`. Such a tree registers the `trace_hash_baseline`
 ctest, which diffs the checked-in `test/trace_hash.baseline`, and CI runs
 one, so a wire-format change fails CI. See
 [`docs/wire-trace-hashes.md`](docs/wire-trace-hashes.md) for the full
 workflow.
 
 ```
-$ ./run ./build-tm/trace_hash | grep 'send='    # build-tm: test-mode Release tree
+$ ./run ./build-det/trace_hash | grep 'send='   # build-det: deterministic-mode Release tree
 ```
 
 ### Profiling the SoftSpoken pipeline (off by default)
@@ -192,36 +192,36 @@ rounds, so they cover it; the `F2kVOLE` and `FpVOLE` rows run part of one
 round at the default set.
 
 ```
-CO                     send=f2f89068a7816fb0 recv=d9c1fafc2be169a6
-CSW                    send=6cbdbfdeab5e4295 recv=682f47c8b14c6ce3
-PVW                    send=29c86c1a3e9ca181 recv=9b84ed820cbcacb7
-BMM                    send=356438d8b2753410 recv=74ebc2ae00798c13
-BMM768                 send=89e88234d11cb7e1 recv=c25b37fc62230c19
-BMM1024                send=048279522e25c944 recv=fb6e042160cc5728
-IKNP semi              send=10683f96182d1932 recv=71521069116554ea
-SoftSpoken<2> semi     send=58b5841c59972871 recv=d7be07c2abe3d135
-SoftSpoken<8> semi     send=58b5841c59972871 recv=8b8379723e908580
-Ferret(b9) semi        send=b0657be0edf77646 recv=76b2919c0def64be
-SilentFerret(b9) semi  send=b0657be0edf77646 recv=76b2919c0def64be
-Ferret(b9) seeded semi send=6343bff968b633a3 recv=6b6a1821fac3c816
-SilentFerret(b9) seeded semi send=6343bff968b633a3 recv=6b6a1821fac3c816
-Ferret(b11) seeded semi send=d5f80d98f4f38a68 recv=1c63750c0d61bd4f
-F2kVOLE semi           send=05647c9d9817beb3 recv=10e23b4ab3c92ec9
-FpVOLE semi            send=d9b318b0fd480e00 recv=5ecd049750f37b6a
-F2kVOLE(b9) semi       send=430c1ba394201db7 recv=fccc01801726a0f3
-FpVOLE(b9) semi        send=48efb68cb9af7b53 recv=5ecd049750f37b6a
-IKNP mali              send=10683f96182d1932 recv=807647cc71d70624
-SoftSpoken<2> mali     send=58b5841c59972871 recv=f2c9f9fa13ec7df1
-SoftSpoken<8> mali     send=58b5841c59972871 recv=39303c342989e042
-Ferret(b9) mali        send=c0f4c9ef2208e2bc recv=84f9697fe3a0d588
-SilentFerret(b9) mali  send=c0f4c9ef2208e2bc recv=84f9697fe3a0d588
-Ferret(b9) seeded mali send=4858f755163b2afe recv=e0ec25841430f8f7
-SilentFerret(b9) seeded mali send=4858f755163b2afe recv=e0ec25841430f8f7
-Ferret(b11) seeded mali send=3aadbb1cdeeb6efb recv=67b522a035546b52
-F2kVOLE mali           send=9c10a3cefee3b176 recv=f4b2f946ff22f89e
-FpVOLE mali            send=78c71d5863ab115a recv=4e6d1f1b416830b9
-F2kVOLE(b9) mali       send=d3ff4389ebbc1e01 recv=349fcad8bcd0b801
-FpVOLE(b9) mali        send=7dddce7ed7fd5b2b recv=79c12081bb7aab6a
+CO                     send=bf16a937d0615f5b recv=cb5a949c87c20f3b
+CSW                    send=086ebe86a9c974f7 recv=c81cf0f1b6b5fff2
+PVW                    send=47c055b777bd9628 recv=07849b4920a504c5
+BMM                    send=449bbc3660995d19 recv=98cf14739616ef9a
+BMM768                 send=f4db57820aa2d2b9 recv=e78454a9f4093821
+BMM1024                send=c9c54a8df0bac3d3 recv=a805fdf242443556
+IKNP semi              send=c57ce16c79aa0882 recv=a6707a35a3113abd
+SoftSpoken<2> semi     send=4c3ce8d37f141bd2 recv=b10f61ff7ebd24b9
+SoftSpoken<8> semi     send=4c3ce8d37f141bd2 recv=0709b645a42e5719
+Ferret(b9) semi        send=a352a6a0bce36a7e recv=18066a26c1910592
+SilentFerret(b9) semi  send=a352a6a0bce36a7e recv=18066a26c1910592
+Ferret(b9) seeded semi send=0e1d8f3bb9b91ef5 recv=52f4c471d04478b0
+SilentFerret(b9) seeded semi send=0e1d8f3bb9b91ef5 recv=52f4c471d04478b0
+Ferret(b11) seeded semi send=423ee54735a0e78e recv=f9a147356aac2d2e
+F2kVOLE semi           send=4b242f7c8f19708a recv=2199baa3e2a30a8b
+FpVOLE semi            send=a664a4bad51dc114 recv=7cea81f45c317406
+F2kVOLE(b9) semi       send=c40a076e7bb95527 recv=873b157f8e0baeec
+FpVOLE(b9) semi        send=798d5666980ef3ee recv=7cea81f45c317406
+IKNP mali              send=c57ce16c79aa0882 recv=681c36e5e1a4fdf2
+SoftSpoken<2> mali     send=4c3ce8d37f141bd2 recv=7b2d05c60ea2183d
+SoftSpoken<8> mali     send=4c3ce8d37f141bd2 recv=aa49d79a76b5cc01
+Ferret(b9) mali        send=b2779a827c77883e recv=3c69c775a19cd3bd
+SilentFerret(b9) mali  send=b2779a827c77883e recv=3c69c775a19cd3bd
+Ferret(b9) seeded mali send=6007dc29df362d46 recv=9752d2f9f4a84dc9
+SilentFerret(b9) seeded mali send=6007dc29df362d46 recv=9752d2f9f4a84dc9
+Ferret(b11) seeded mali send=25b21f13e839a486 recv=fd1fdf140f249869
+F2kVOLE mali           send=ca1d637c6c95ef4e recv=6de6463b2eb58a9b
+FpVOLE mali            send=8b4e9978a86d5247 recv=6e05ef9806510778
+F2kVOLE(b9) mali       send=92c8d1f3ef4e7ba1 recv=efe8e6b3bb26507f
+FpVOLE(b9) mali        send=5cb8f3229f553548 recv=6eaaeec40d7d8446
 ```
 
 ## Usage

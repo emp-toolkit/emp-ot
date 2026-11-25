@@ -459,7 +459,7 @@ sVOLE: `is_delta_holder()`).
 
 ### 5b. Update the baselines
 
-After verifying with `./run ./build-tm/trace_hash` in a test-mode tree
+After verifying with `./run ./build-det/trace_hash` in a deterministic-mode tree
 ([wire-trace-hashes.md](wire-trace-hashes.md)), regenerate
 `test/trace_hash.baseline` (diffed by the `trace_hash_baseline` CI gate)
 and paste the new line into the `### Wire-trace hashes` table in

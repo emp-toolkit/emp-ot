@@ -48,12 +48,12 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
-  # Test mode: emp-tool built with -DEMP_TEST_MODE=ON (deterministic, INSECURE
-  # randomness) exports the setting to this tree, which then also registers
-  # the trace_hash_baseline wire-format gate. Release only: the baseline is a
-  # Release artifact.
-  test-mode:
-    name: Test mode (Ubuntu, Release)
+  # Deterministic mode: emp-tool built with -DEMP_DETERMINISTIC_MODE=ON
+  # (predictable, INSECURE randomness) exports the setting to this tree, which
+  # then also registers the trace_hash_baseline wire-format gate. Release only:
+  # the baseline is a Release artifact.
+  deterministic-mode:
+    name: Deterministic mode (Ubuntu, Release)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -63,7 +63,7 @@ jobs:
         id: dep
         run: echo "ref=$(cat .github/workflows/emp-tool.dep)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and install emp-tool sibling (test mode)
+      - name: Build and install emp-tool sibling (deterministic mode)
         run: |
           git clone --depth 1 --branch "${{ steps.dep.outputs.ref }}" \
             https://github.com/emp-toolkit/emp-tool.git "$RUNNER_TEMP/emp-tool"
@@ -72,7 +72,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/emp-tool-install" \
             -DEMP_TOOL_NATIVE_ARCH=OFF \
             -DEMP_TOOL_BUILD_TESTS=OFF \
-            -DEMP_TEST_MODE=ON
+            -DEMP_DETERMINISTIC_MODE=ON
           cmake --build "$RUNNER_TEMP/emp-tool/build" -j
           cmake --install "$RUNNER_TEMP/emp-tool/build"
 
