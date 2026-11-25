@@ -2,6 +2,7 @@
 #define EMP_SOFTSPOKEN_H__
 #include <emp-tool/emp-tool.h>
 #include "emp-ot/ot_extension/ot_extension.h"
+#include "emp-ot/ot_extension/plane_check.h"
 #include "emp-ot/base_ot/csw.h"
 #include "emp-ot/common/cggm.h"
 #include "emp-ot/ot_extension/softspoken/sfvole_butterfly.h"
@@ -144,13 +145,8 @@ private:
     BlockVec planes_chunk_;         // n * k * kChunkBlocks blocks
     BlockVec d_bufs_chunk_;         // (n - 1) * kChunkBlocks blocks
 
-    // Malicious-mode chi-fold state.
-    GaloisFieldPacking packer_;     // pack128 for F_{2^128} chi-fold
-    block check_q_  = zero_block;   // sender's running fold
-    block check_t_  = zero_block;   // receiver's running fold (T_i)
-    block check_x_  = zero_block;   // receiver's running fold (R_i)
-    BlockVec check_chi_chunk_;      // bs chi_i values for deferred inner product
-    BlockVec check_pack_chunk_;     // bs packed Q_i / T_i values
+    // Malicious-mode subspace-VOLE consistency check (plane_check.h).
+    PlaneCheck plane_check_;
 
     // Setup halves, lazy on first begin() per role.
     void bootstrap_send_();
@@ -174,9 +170,6 @@ private:
     // Malicious-mode PPRF check (Roy '22 Fig. protpprfconsistency).
     void pprf_check_send(block check_key);
     void pprf_check_recv(block check_key);
-    // Per-chunk subspace-VOLE chi-fold (Roy '22 Fig. protvoleconsistency).
-    void combine_send_chunk(block* out, int64_t bs);
-    void combine_recv_chunk(block* out, const block* u_canonical, int64_t bs);
     // Per-chunk pipeline at arbitrary bs (1..kChunkBlocks). Called with
     // bs=kChunkBlocks from {send,recv}_next_, bs=1 from the sacrificial
     // chunk in {send,recv}_end_, and the rounded-up tail from

@@ -2,6 +2,7 @@
 #define EMP_IKNP_H__
 #include <memory>
 #include "emp-ot/ot_extension/ot_extension.h"
+#include "emp-ot/ot_extension/plane_check.h"
 #include "emp-ot/base_ot/csw.h"
 #include "emp-ot/tuning.h"
 
@@ -17,19 +18,17 @@ using IKNPBaseOT = CSW;
  *       https://www.iacr.org/archive/crypto2003/27290145/27290145.pdf
  * [REF] "More Efficient Oblivious Transfer and Extensions for Faster Secure Computation"
  *       https://eprint.iacr.org/2013/552.pdf
- * [REF] Active security via "Actively Secure OT Extension with Optimal Overhead"
- *       https://eprint.iacr.org/2015/546.pdf  (send_check / recv_check)
+ * [REF] Active security: the subspace-VOLE consistency check of "SoftSpokenOT"
+ *       (Roy '22, https://eprint.iacr.org/2022/192, Fig. 9) at k = 1, with
+ *       every matrix row its own sub-VOLE (PlaneCheck, plane_check.h).
  *
- * Streaming Fiat-Shamir: each next() derives a per-chunk chi seed by
- * snapshotting the IOChannel FS transcript (io->get_digest()) after
- * the chunk's u-matrix bytes have crossed the wire — they are absorbed
- * automatically by send_data/recv_data, no per-row puts needed — and
- * binding it to the session id (fs_challenge in ot.h). The chunk's
- * packed F_{2^128} elements fold into running accumulators
- * (check_q on the sender, check_t / check_x on the receiver) right
- * after sse_trans, while `out` is still cache-hot. end() runs a final
- * sacrificial chunk (folded with chi from the same continuing transcript)
- * before the (x, t) io exchange and the check_q ⊕ x·Δ == t compare.
+ * Streaming Fiat-Shamir: each next() folds the chunk's 128 matrix rows
+ * into PlaneCheck under challenges drawn from the IOChannel FS transcript
+ * after the chunk's u-matrix bytes have crossed the wire (they are
+ * absorbed automatically by send_data/recv_data) and bound to the session
+ * id (fs_challenge in ot.h). end() runs a final sacrificial chunk, folded
+ * the same way, before the receiver sends Ũ and the digest of its
+ * per-row folds and the sender compares them with its own.
  * Each next() writes exactly chunk_size() = block_size = 2048 blocks;
  * the StreamingExtension base wraps it into a one-shot rcot() with a
  * leftover buffer for callers whose `num` isn't a multiple of
@@ -73,17 +72,8 @@ private:
 	// vector r from the base-class prg. The sender-side Δ bool form
 	// lives on the base as `delta_bool[]` and is read in send_next_.
 	PRG G0[128], G1[128];
-	// Packs 128 consecutive COT outputs into a single F_{2^128} element
-	// via the gadget (1, X, ..., X^{127}). Lets the malicious check
-	// chi-combine 128x fewer elements than the unpacked version.
-	GaloisFieldPacking packer;
-	// Running malicious-check accumulators, reset at each begin().
-	// Sender uses check_q; receiver uses check_t and check_x.
-	block check_q, check_t, check_x;
-
-	// ===== Internal helpers (chi-fold per chunk) =====
-	void combine_send(block *out);
-	void combine_recv(block *out, block *r);
+	// Malicious-mode consistency check, reset at each begin().
+	PlaneCheck plane_check_;
 
 	// Per-role bodies invoked from begin/next/end with inline
 	// party-dispatch — IKNP's sender and receiver paths share no work.

@@ -7,6 +7,24 @@ metadata is numeric (see the README's version guidance).
 
 ### Security
 
+- `IKNP` and `SoftSpoken` (malicious mode) run the subspace-VOLE consistency
+  check of SoftSpokenOT (Roy '22, Fig. 9), which compares each of the 128 bit
+  positions of the COTs on its own; `IKNP` is its k = 1 case. Both share it as
+  `PlaneCheck` (`ot_extension/plane_check.h`). The check they ran instead
+  folded each block of 128 COTs into one GF(2^128) element with the fixed
+  weights X^j before the random combination, which added the 128 bit
+  positions together with the fixed weights X^p. A cheating receiver that
+  placed its wrong corrections at positions with equal j + p passed with
+  probability 2^-k (1/2 for `IKNP`), however many sub-VOLEs it left
+  inconsistent. Each chunk's challenges now fold every bit-plane separately,
+  and the receiver sends the fold of its choice bits and a 256-bit digest of
+  the 128 per-plane folds: 48 bytes per check instead of 32, and no extra
+  round. The fold costs one GF(2^128) multiplication per COT on each side,
+  where the old one cost one per 128 COTs, so the README's malicious
+  `SoftSpoken` rows are re-measured. Every malicious `IKNP`, `SoftSpoken`, `Ferret`, `SilentFerret` and
+  sVOLE transcript changes: both parties must upgrade together, and those
+  `test/trace_hash.baseline` rows are regenerated. `test_plane_check` covers
+  the check directly.
 - Every cGGM tree (`Ferret`, `SilentFerret`, `F2kVOLE`, `FpVOLE`, `SoftSpoken`)
   hashes under its own public AES key instead of the fixed zero key. Tree
   `index` of round `round` is keyed by `AES_g(makeBlock(round, index))`, with `g` a
